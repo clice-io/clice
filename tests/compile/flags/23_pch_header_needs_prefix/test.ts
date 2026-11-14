@@ -11,7 +11,7 @@ import { test, type TestContext } from "@clice/tools/testing";
 // without the index, the tree of a run without the PCH shows it entered.
 
 async function context(t: TestContext, indexed: boolean): Promise<void> {
-    const s = await t.start({ config: { project: { enable_indexing: indexed } } });
+    const s = await t.start({ lastRule: { background_index: indexed } });
     if (indexed) {
         await s.indexed();
     }

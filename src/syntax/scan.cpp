@@ -528,6 +528,24 @@ void lookup_places(clang::FileManager& files,
             add(directory->getName());
         }
     }
+    // clang leaves a search directory that does not exist out of the
+    // search, where a build run later may generate headers.
+    auto& options = search.getHeaderSearchOpts();
+    llvm::StringRef sysroot = options.Sysroot;
+    for(auto& entry: options.UserEntries) {
+        if(entry.IsFramework || (angled && entry.Group == clang::frontend::Quoted)) {
+            continue;
+        }
+        llvm::SmallString<256> directory;
+        if(!entry.IgnoreSysRoot && !sysroot.empty() && sysroot != "/" &&
+           path::is_absolute(entry.Path)) {
+            directory = sysroot;
+        }
+        directory += entry.Path;
+        if(!files.getOptionalDirectoryRef(directory) && !files.getOptionalFileRef(directory)) {
+            add(directory);
+        }
+    }
 }
 
 std::vector<std::string> absent_places(const llvm::StringSet<>& looked) {

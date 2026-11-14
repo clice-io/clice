@@ -227,8 +227,6 @@ async function onServer(
     const { root, copied } = copy(c, "clice-answers-");
     const workspace = new Workspace(root);
     const steps = new StepRecord();
-    const config = options.config ?? {};
-    const project = (config["project"] ?? {}) as Record<string, unknown>;
     const s = new Serve(
         workspace,
         {
@@ -236,10 +234,8 @@ async function onServer(
             ...(options.positionEncoding === undefined
                 ? {}
                 : { positionEncoding: options.positionEncoding }),
-            config: {
-                ...config,
-                project: { ...project, enable_indexing: options.indexing === true },
-            },
+            ...(options.config === undefined ? {} : { config: options.config }),
+            ...(options.indexing === true ? {} : { lastRule: { background_index: false } }),
         },
         { marks: c.markers, steps, disk: new Disk(root, c.project, steps) },
     );

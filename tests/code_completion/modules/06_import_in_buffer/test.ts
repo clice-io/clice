@@ -16,7 +16,7 @@ test("an unsaved import", async (t) => {
 // A module imported below an include: its names, which no index holds, are
 // read from the module file, beside the preamble's the index offers.
 test("an import below an include", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("math.cppm")).toEqual([]);
     s.open("main.cpp");
     s.edit("main.cpp", {

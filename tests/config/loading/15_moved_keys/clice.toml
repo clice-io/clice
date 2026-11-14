@@ -1,0 +1,12 @@
+[project]
+cache_dir = "cache"
+enable_indexing = false
+stateless_worker_count = 4
+skip_header_bodies = false
+
+[tracker]
+workspace_poll_seconds = 10
+
+[[rules]]
+patterns = ["main.cpp"]
+index = false

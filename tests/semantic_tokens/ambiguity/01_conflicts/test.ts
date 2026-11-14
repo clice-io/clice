@@ -9,7 +9,7 @@ answers("compiled", async (a) => {
 
 // The tokens the index serves before the file compiles merge the meanings too.
 test("index", async (t) => {
-    const s = await t.start({ config: { project: { readonly: "on" } } });
+    const s = await t.start({ lastRule: { readonly: "on" } });
     s.open("main.cpp", { pull: false });
     await s.sync();
     for (const m of t.markers()) {

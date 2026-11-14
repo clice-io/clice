@@ -27,7 +27,7 @@ The box belongs to the calling session, not to this skill: build on the id the c
 - Build: `pixi run build [type]` = `npx bazel build --config=[type] //:dist` (npm's bazelisk). Each type has its own output directory: `build/[type]/bin` is Bazel's output tree, with `bin/clice`, `bin/unittests` and the resource directory `lib/clang` in it — the tests and everything else run `build/[type]/bin/bin/clice`.
 - Other targets or Bazel options go after `--`: `pixi run build RelWithDebInfo -- //:bin/unittests`; `//:package` and `//:symbols` are the release archive and the symbol package, `clice.gsym` (`build/[type]/bin/clice.tar.gz` and `clice-symbol.tar.xz`, `.zip` on Windows). A target of the host's OS on another architecture builds with `--platforms=@xclang//platforms:<triple>`.
 - libclang is ThinLTO bitcode: a link redoes its code generation (minutes) unless lld's ThinLTO cache (`bazel/clice.bazelrc`) has it, so the first link on a machine is slow and later ones take seconds.
-- `compile_commands.json` for clice's own sources: `npx bazel run @compdb//:refresh` (of `//...`).
+- `compile_commands.json` for clice's own sources: `npx bazel run @compdb//:refresh -- --output_groups=+compilation_prerequisites_INTERNAL_` (of `//...`): the added output group builds what the commands read but the aspect does not, the generated headers and the `_virtual_includes` trees, which go stale otherwise.
 
 On failure:
 

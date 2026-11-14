@@ -18,7 +18,7 @@ function temporary(prefix: string): string {
     return root;
 }
 
-test("each copy has its scenario, its databases and the test hooks on", () => {
+test("each copy has its scenario and its databases", () => {
     const target = path.join(temporary("clice-editors-"), "copies");
     const copies = prepareFixtures(target);
     expect(copies.map((copy) => path.basename(copy))).toEqual(
@@ -28,9 +28,6 @@ test("each copy has its scenario, its databases and the test hooks on", () => {
         expect(fs.existsSync(path.join(copy, "scenario.json")), copy).toBe(true);
         expect(fs.existsSync(path.join(copy, "compile_commands.json")), copy).toBe(true);
         expect(fs.existsSync(path.join(copy, "project.toml")), copy).toBe(false);
-        expect(fs.readFileSync(path.join(copy, "clice.toml"), "utf8")).toMatch(
-            /^\[project\]\ntest_hooks = true\n$/m,
-        );
     }
 });
 
@@ -52,7 +49,7 @@ test("a fixture's own clice.toml keeps its rules", () => {
     const copies = prepareFixtures(path.join(root, "copies"), root);
     expect(copies).toHaveLength(1);
     expect(fs.readFileSync(path.join(copies[0] ?? "", "clice.toml"), "utf8")).toBe(
-        '[[rules]]\nappend = ["-DX"]\n\n[project]\ntest_hooks = true\n',
+        '[[rules]]\nappend = ["-DX"]\n',
     );
 });
 

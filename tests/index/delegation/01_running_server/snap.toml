@@ -53,6 +53,7 @@ stdout = '''
 exit = 0
 
 ["refuses a writer it cannot ask"."$ clice index"]
+stdout = "Session log: ${WS}/.clice/logs/${SESSION}"
 stderr = "error: another clice process (pid #) holds the index writer lock at .clice; retry when it is done"
 exit = 2
 

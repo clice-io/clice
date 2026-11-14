@@ -227,7 +227,7 @@ void Project::reconcile_index(index::IndexReport& report) {
         LOG_WARN(
             "The index at {} cannot tell which databases listed its files; it keeps every "
             "unit the build no longer compiles",
-            std::string_view(settings.project.cache_dir));
+            std::string_view(settings.cache_dir));
     }
     llvm::StringMap<const SavedMembers::Member*> before;
     if(persisted) {

@@ -1,0 +1,89 @@
+[test."$ clice command third_party/lib.cpp"]
+stdout = '''
+${WS}/compile_commands.json:
+  directory: ${WS}
+  command:   ${WS}/missing-cc -c third_party/lib.cpp
+  resolved:  ${WS}/missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/third_party/lib.cpp
+  error:     the compiler could not be queried: the compiler ${WS}/missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine
+
+settings:  background_index = false (${WS}/clice.toml:6)
+           skip_function_body = true (${WS}/clice.toml:1)
+           lint = false (${WS}/clice.toml:1)
+           the rest by default
+'''
+stderr = "warning: Cannot ask the compiler for its default settings: the compiler missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands"
+exit = 0
+
+[test."$ clice command src/main.cpp --json"]
+stdout = '''
+{
+  "file": "${WS}/src/main.cpp",
+  "commands": [
+    {
+      "database": "${WS}/compile_commands.json",
+      "entry": {
+        "directory": "${WS}",
+        "file": "src/main.cpp",
+        "arguments": [
+          "${WS}/missing-cc",
+          "-c",
+          "src/main.cpp"
+        ]
+      },
+      "resolved": {
+        "directory": "${WS}",
+        "arguments": [
+          "${WS}/missing-cc",
+          "--no-default-config",
+          "-fno-delayed-template-parsing",
+          "-resource-dir",
+          "${RESOURCE}",
+          "${WS}/src/main.cpp"
+        ]
+      },
+      "toolchainError": "the compiler ${WS}/missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine"
+    }
+  ],
+  "settings": [
+    {
+      "name": "query_toolchain",
+      "value": "true"
+    },
+    {
+      "name": "background_index",
+      "value": "false",
+      "rule": "${WS}/clice.toml:6"
+    },
+    {
+      "name": "skip_function_body",
+      "value": "unset"
+    },
+    {
+      "name": "index_function_body",
+      "value": "unset"
+    },
+    {
+      "name": "readonly",
+      "value": "off"
+    },
+    {
+      "name": "self_contained",
+      "value": "unset"
+    },
+    {
+      "name": "other_contexts",
+      "value": "true"
+    },
+    {
+      "name": "lint",
+      "value": "true"
+    },
+    {
+      "name": "format",
+      "value": "true"
+    }
+  ]
+}
+'''
+stderr = "warning: Cannot ask the compiler for its default settings: the compiler missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands"
+exit = 0

@@ -21,7 +21,7 @@ test("one compile", async (t) => {
 // the index the PCM build merged, with that header's #include, and the
 // unit's own not at all.
 test("completion", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("math.cppm")).toEqual([]);
     s.open("main.cpp");
     s.edit("main.cpp", {

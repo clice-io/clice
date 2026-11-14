@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // it on disk: nothing is saved, and no importer changes.
 
 test("asked", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("broken", s.errors("main.cpp"));
     t.disk.edit("frag.h", { replace: "return missing_name;", with: "return 1;" });
     expect(await s.errors("main.cpp")).toEqual([]);

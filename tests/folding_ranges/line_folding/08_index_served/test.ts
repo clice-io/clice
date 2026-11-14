@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 import { answers, test } from "@clice/tools/testing";
 
-const READONLY = { project: { readonly: "on" } };
+const READONLY = { lastRule: { readonly: "on" } };
 const LINES = { textDocument: { foldingRange: { lineFoldingOnly: true } } };
 
 answers("characters", (a) => a.show("main.cpp", a.foldingRanges("main.cpp")));
@@ -17,7 +17,7 @@ test("whole lines", async (t) => {
 // kind the index does not know, the conditionals, and a block whose braces
 // the branches of a conditional unbalance wait for the compile.
 test("index characters", async (t) => {
-    const s = await t.start({ config: READONLY });
+    const s = await t.start(READONLY);
     s.open("main.cpp", { pull: false });
     await s.sync();
     await t.show("main.cpp", s.foldingRanges("main.cpp"));
@@ -25,7 +25,7 @@ test("index characters", async (t) => {
 });
 
 test("index whole lines", async (t) => {
-    const s = await t.start({ config: READONLY, capabilities: LINES });
+    const s = await t.start({ ...READONLY, capabilities: LINES });
     s.open("main.cpp", { pull: false });
     await s.sync();
     await t.show("main.cpp", s.foldingRanges("main.cpp"));

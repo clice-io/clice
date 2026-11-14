@@ -24,7 +24,7 @@ test("index skips excluded units", async (t) => {
 test("excluded unit compiles when read", async (t) => {
     // No shard will ever serve an excluded unit: the read-only session
     // compiles it at once when it is opened.
-    const s = await t.start({ config: { project: { readonly: "auto" } } });
+    const s = await t.start({ lastRule: { readonly: "auto" } });
     s.open("third_party/lib.cpp", { pull: false });
     await s.sync();
     await t.show("symbols", s.documentSymbols("third_party/lib.cpp"));

@@ -1,0 +1,3 @@
+["a restart takes the index over"."$ clice index"]
+stdout = "Indexed through the running clice server (pid #)."
+exit = 0

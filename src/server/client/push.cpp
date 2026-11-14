@@ -80,14 +80,20 @@ std::vector<protocol::Diagnostic>
     // shown, as the compile read it from the disk; one that changed since
     // places the note off.
     llvm::StringMap<std::optional<SourceText>> disk;
-    auto note_positions = [&](llvm::StringRef note_path) -> std::optional<PositionMap> {
+    auto note_file = [&](llvm::StringRef note_path) -> std::optional<feature::NoteFile> {
         auto [it, inserted] = disk.try_emplace(note_path);
         if(inserted) {
             if(auto text = vfs::read_text(note_path)) {
                 it->second.emplace(std::move(*text));
             }
         }
-        return it->second ? std::optional(it->second->positions()) : std::nullopt;
+        if(!it->second) {
+            return std::nullopt;
+        }
+        // The compile names a file by its identity; the editor knows it by
+        // the name it opened it or its folder under.
+        return feature::NoteFile{.shown = server.files.display_identity(note_path),
+                                 .positions = it->second->positions()};
     };
     std::vector<protocol::Diagnostic> shaped;
     for(const auto& diagnostic: diagnostics) {
@@ -96,7 +102,7 @@ std::vector<protocol::Diagnostic>
                                               server.position_encoding,
                                               path,
                                               positions,
-                                              note_positions));
+                                              note_file));
     }
     return shaped;
 }
@@ -135,6 +141,10 @@ void LSPClient::refresh_diagnostics() {
         server.loop.schedule(compile_stale(server));
         return;
     }
+    // LIMITATION: a client pulling diagnostics without taking a refresh
+    // (Neovim 0.10 and 0.11) shows what a compile of the same text changed —
+    // after a dependency changed, a context switch, a crash — only at its
+    // next pull, after the next edit.
     if(diagnostic_refresh) {
         // The client pulls every document again: no report it pulled is
         // one it holds any more.

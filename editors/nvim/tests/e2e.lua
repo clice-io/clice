@@ -4,9 +4,10 @@
 -- Usage: nvim -l editors/nvim/tests/e2e.lua <clice-executable> <fixtures-dir> [<fixture>]
 --
 -- The fixtures are copies of tests/editors/NN_name (pixi run -e editor
--- editor-prepare nvim): each a project with the test hooks on, so the script
--- waits for the server through clice/internal/sync, and its scenario.json,
--- which says what to check (tools/testing/editors/scenario.ts). Each fixture
+-- editor-prepare nvim): each a project and its scenario.json; the task
+-- running the script turns the test hooks on (CLICE_TEST_HOOKS=1), so the
+-- script waits for the server through clice/internal/sync. The scenario
+-- says what to check (tools/testing/editors/scenario.ts). Each fixture
 -- runs in a Neovim of its own; naming one runs it alone. Every vim.wait bound
 -- only fails a hang.
 

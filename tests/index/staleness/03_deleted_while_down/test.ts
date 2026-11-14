@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 test(async (t) => {
     await t.cli("index");
     t.disk.rm("b.cpp");
-    const s = await t.start({ config: { project: { idle_timeout_ms: 600_000 } } });
+    const s = await t.start({ config: { workers: { background_delay_ms: 600_000 } } });
     await t.show("symbols", {
         removed: s.workspaceSymbols("only_in_b"),
         kept: s.workspaceSymbols("main"),

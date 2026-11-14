@@ -221,10 +221,8 @@ export class Session {
                 // to: the overlay replaces the rules of any clice.toml, so
                 // none of its flag edits apply either.
                 rules: [{ compile_commands: [database] }],
-                project: {
-                    // Logs where finish() reads them.
-                    logging_dir: loggingDir(workspace),
-                },
+                // Logs where finish() reads them.
+                logging_dir: loggingDir(workspace),
             },
             cacheDir: cliceDir(workspace, this.server),
             testDefaults: false,

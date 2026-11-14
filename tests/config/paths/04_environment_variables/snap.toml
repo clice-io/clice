@@ -1,0 +1,6 @@
+["a variable that is set"."main.cpp"]
+errors = []
+
+["a variable that is not set"."$ clice command main.cpp"]
+stderr = "error: clice.toml:2:10: the environment variable CLICE_CASE_VALUE is not set (a server an editor starts may not see the shell's environment; VS Code passes one through `clice.serverEnv`) at rules[0].append"
+exit = 2

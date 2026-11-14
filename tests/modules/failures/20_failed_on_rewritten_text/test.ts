@@ -6,7 +6,7 @@ import { test } from "@clice/tools/testing";
 // on text the disk no longer holds: the module builds again from the disk
 // before main.cpp compiles against it.
 test(async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     const park = await s.park("pcm", "a.cppm", { at: "reply" });
     const first = s.errors("main.cpp");
     await park.reached();

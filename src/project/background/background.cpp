@@ -531,7 +531,7 @@ void BackgroundIndex::schedule(bool immediate) {
     // a crashed file's retry must not owe an extra idle window on top of
     // the pass boundary it already waited out.
     idle_timer->start(
-        chrono::milliseconds(immediate ? 0 : project.settings.project.idle_timeout_ms) +
+        chrono::milliseconds(immediate ? 0 : project.settings.workers.background_delay_ms) +
         test_jitter());
 
     [[maybe_unused]] bool spawned = tasks.spawn(run_pass());

@@ -21,9 +21,10 @@ export const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
 
 /// The environment servers under test run in: every freshness answer given
 /// without a look at the disk is checked against one, a contradiction
-/// being an anomaly the gates catch.
+/// being an anomaly the gates catch, and the test hooks are on (the
+/// clice/internal requests the tests wait through).
 export function serverEnv(): NodeJS.ProcessEnv {
-    return { ...process.env, CLICE_SHADOW_FRESHNESS: "1" };
+    return { ...process.env, CLICE_SHADOW_FRESHNESS: "1", CLICE_TEST_HOOKS: "1" };
 }
 
 /// A session directory's name: when its process started and its pid,

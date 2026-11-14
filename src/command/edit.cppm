@@ -23,6 +23,23 @@ struct CommandEdit {
     Spelling directory;
 };
 
+/// A run's own edits of the commands it compiles (a lint plan's clang-tidy
+/// ExtraArgsBefore, ExtraArgs and RemovedArgs), in the resolved command's
+/// own dialect: unlike a rule's they are never NVCC-translated — clang-tidy's
+/// args are clang args by definition. Prepends land right after the binary
+/// name, ahead of the command's own flags (the command wins on collision);
+/// removes cancel the matching options of the command the rules edited;
+/// appends land after the rule appends and win.
+struct ExtraArgs {
+    llvm::ArrayRef<std::string> prepend;
+    llvm::ArrayRef<std::string> append;
+    llvm::ArrayRef<std::string> remove;
+
+    bool empty() const {
+        return prepend.empty() && append.empty() && remove.empty();
+    }
+};
+
 /// Rule edits applied on top of a base command (structured, no
 /// re-parse), in the order the rules declare them: a remove cancels the
 /// matching options of the base command and of the appends before it;
@@ -31,20 +48,14 @@ struct CommandEdit {
 struct CommandEdits {
     llvm::ArrayRef<CommandEdit> edits;
 
-    /// Per-run additions in the resolved command's own dialect (a lint
-    /// plan's clang-tool extra args). Unlike the rule lists above
-    /// they are never NVCC-translated — clang-tidy's extra args are clang
-    /// args by definition. Prepends land right after the binary name,
-    /// ahead of the command's own flags (the command wins on collision);
-    /// appends land after the rule appends and win.
-    llvm::ArrayRef<std::string> extra_prepend;
-    llvm::ArrayRef<std::string> extra_append;
+    /// The run's own, after the rules'.
+    ExtraArgs extra;
 
     /// False when a rule turns the toolchain query off.
     bool query_toolchain = true;
 
     bool empty() const {
-        return edits.empty() && extra_prepend.empty() && extra_append.empty() && query_toolchain;
+        return edits.empty() && extra.empty() && query_toolchain;
     }
 
     /// The identity of the edits: their content and the directory each

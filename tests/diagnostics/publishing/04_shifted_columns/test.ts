@@ -6,7 +6,10 @@ import { test } from "@clice/tools/testing";
 // moves the error by characters that take a different number of units in
 // each encoding.
 
-const QUIET = { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } };
+const QUIET = {
+    config: { diagnostics: { clang_tidy: false } },
+    lastRule: { background_index: false },
+};
 const PULL = { textDocument: { diagnostic: {} } };
 const ENCODINGS = [undefined, "utf-8", "utf-32"] as const;
 const EDIT = { replace: `"宽𝄞"`, with: `"宽𝄞宽𝄞宽𝄞"` };
@@ -29,7 +32,7 @@ for (const positionEncoding of ENCODINGS) {
     // being edited stays silent; the next, after another edit, shows.
     test(`push ${name}`, async (t) => {
         const s = await t.start({
-            config: QUIET,
+            ...QUIET,
             crash: { request: "completion", file: "main.cpp" },
             env: { CLICE_TEST_CRASH_SPACING_MS: "0" },
             ...options,
@@ -54,7 +57,7 @@ for (const positionEncoding of ENCODINGS) {
     });
 
     test(`pull ${name}`, async (t) => {
-        const s = await t.start({ config: QUIET, capabilities: PULL, ...options });
+        const s = await t.start({ ...QUIET, capabilities: PULL, ...options });
         await s.diagnostics("main.cpp");
         await t.show("opened", at(await s.client.pullDiagnostics(s.uri("main.cpp"))));
         s.edit("main.cpp", EDIT);

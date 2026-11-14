@@ -3,19 +3,20 @@ module clice;
 import :compile.compilation;
 import :feature.inlay_hints;
 import :feature.protocol;
-import :index.indexing;
-import :index.query;
-import :index.query.site;
-import :index.symbol;
 import :index.indexing.tu_index;
+import :index.indexing;
+import :index.query.site;
+import :index.query;
+import :index.symbol;
 import :semantic.decls;
 import :semantic.designators;
 import :semantic.display;
 import :semantic.identity;
-import :semantic.template_resolver;
 import :semantic.semantics;
 import :semantic.symbol;
+import :semantic.template_resolver;
 import :semantic.types;
+import :support.json;
 import :support.text;
 import :syntax.lexical_scan;
 import :syntax.position;
@@ -159,10 +160,9 @@ std::size_t characters(llvm::StringRef text) {
     return lsp::encoded_length(text, PositionEncoding::UTF32);
 }
 
-/// `text` within `limit` characters, cut with `…` where it no longer fits;
-/// `0` means no limit.
+/// `text` within `limit` characters, cut with `…` where it no longer fits.
 std::string truncate(llvm::StringRef text, std::size_t limit) {
-    if(limit == 0 || characters(text) <= limit) {
+    if(characters(text) <= limit) {
         return text.str();
     }
     return (take_characters(text, limit - 1) + "…").str();
@@ -826,13 +826,13 @@ private:
             if(is_default) {
                 if(options.default_arguments) {
                     auto text = *display::default_argument(params[i]);
-                    const auto limit = options.max_length.default_arguments;
+                    const auto limit = at_most(options.max_length.default_arguments);
                     auto& element = formatted_default_args.emplace_back();
                     if(name_hint) {
                         append(element, linked(name, named_params[i]));
                         append(element, plain(": "));
                     }
-                    append(element, plain(limit && characters(text) > limit ? "…" : text));
+                    append(element, plain(characters(text) > limit ? "…" : text));
                 }
             } else if(name_hint || reference_hint) {
                 std::vector<InlayHintPart> label;
@@ -849,7 +849,7 @@ private:
         }
 
         if(!formatted_default_args.empty()) {
-            const auto limit = options.max_length.default_arguments;
+            const auto limit = at_most(options.max_length.default_arguments);
             std::vector<InlayHintPart> hint;
             std::size_t size = 0;
             for(auto&& [index, element]: views::enumerate(formatted_default_args)) {
@@ -858,7 +858,7 @@ private:
                 std::size_t rest =
                     static_cast<std::size_t>(index) + 1 < formatted_default_args.size() ? 3 : 0;
                 auto element_size = text_size(element);
-                if(limit && size + separator + element_size + rest > limit) {
+                if(size + separator + element_size + rest > limit) {
                     append(hint, plain(hint.empty() ? "…" : ", …"));
                     break;
                 }
@@ -898,7 +898,7 @@ private:
 
         add_end_hint(hint_range->end,
                      label,
-                     options.max_length.block_end,
+                     at_most(options.max_length.block_end),
                      unit.focus_file().offset(start));
     }
 
@@ -942,7 +942,7 @@ private:
         if(previous) {
             add_end_hint(lexical.tokens[closing.first + 1].range.end,
                          condition,
-                         options.max_length.endif,
+                         at_most(options.max_length.endif),
                          opening.range.begin);
         }
     }
@@ -1120,8 +1120,7 @@ private:
     }
 
     std::optional<std::string> fit_type(llvm::StringRef text) const {
-        auto limit = options.max_length.types;
-        return limit == 0 ? text.str() : elide(text, limit);
+        return elide(text, at_most(options.max_length.types));
     }
 
     /// The scope the code of the node being visited is in, null at the top

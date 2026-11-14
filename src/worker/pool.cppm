@@ -83,8 +83,8 @@ struct WorkerPoolOptions {
     /// when empty.
     std::string program;
 
-    /// Stateless workers started, and the most that background (Low) work
-    /// keeps busy; only interactive work that finds no idle slot grows the
+    /// The most stateless workers background (Low) work keeps busy, started
+    /// as it queues; only interactive work that finds no idle slot grows the
     /// pool past it, up to max_stateless.
     std::uint32_t stateless_count = 2;
     std::uint32_t stateful_count = 2;
@@ -129,9 +129,9 @@ struct WorkerPoolOptions {
     std::optional<std::size_t> max_resident;
 
     /// Dynamic scaling bounds for stateless workers.
-    /// min_stateless: floor — never scale down below this count.
-    /// max_stateless: ceiling — never spawn above this count (0 = auto = the
-    /// physical cores, see default_max_stateless_worker_count).
+    /// min_stateless: the ones started, and the floor idle scale-down keeps.
+    /// max_stateless: ceiling — never spawn above this count, nor below
+    /// stateless_count.
     std::uint32_t min_stateless = 1;
     std::uint32_t max_stateless = 0;
 };
@@ -304,7 +304,7 @@ public:
     /// it spends none of its slot's budget.
     void exempt_death(const ipc::Error& error);
 
-    /// The server's test hooks while project.test_hooks is on, null
+    /// The server's test hooks while CLICE_TEST_HOOKS=1, null
     /// otherwise.
     TestHooks* hooks = nullptr;
 

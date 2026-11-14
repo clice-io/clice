@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 // precompiled preamble, and pops it in the body. Each compiles clean
 // under clang.
 test("pushed before the includes", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     for (const file of ["pack.cpp", "attribute.cpp", "visibility.cpp", "diagnostic.cpp"]) {
         await t.show(file, s.diagnostics(file));
     }

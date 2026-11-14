@@ -6,7 +6,9 @@ import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :project.graph.unit;
 import :project.project;
+import :settings.rules;
 import :support.failure;
+import :support.json;
 import :support.logging;
 import :support.text;
 import :vfs.cache_store;
@@ -24,6 +26,10 @@ std::string cache_key(llvm::ArrayRef<llvm::StringRef> parts) {
     }
     auto hash = llvm::xxh3_128bits(llvm::arrayRefFromStringRef(input));
     return std::format("{:016x}{:016x}", hash.high64, hash.low64);
+}
+
+std::string body_rules_key(const Rules& rules) {
+    return json::to_string(rules.function_body_rules()).value_or("");
 }
 
 std::string new_blob(llvm::StringRef key) {

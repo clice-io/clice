@@ -279,7 +279,8 @@ ZEST_CASE(ExcludedModuleStillIndexed) {
                       {tmp.root, tmp.path("vendor/m.cppm"), {}},
                       {tmp.root, tmp.path("use.cpp"),       {}},
         }));
-        f.project.settings.rules.push_back(Rule{.patterns = {"vendor/**"}, .index = false});
+        f.project.settings.rules.push_back(
+            Rule{.patterns = {"vendor/**"}, .background_index = false});
         f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
         finish_settings(f.project);
         scan_all(f.project.cdb, f.project.toolchain, f.project.dep_graph);

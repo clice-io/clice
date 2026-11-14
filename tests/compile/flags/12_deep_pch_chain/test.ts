@@ -6,7 +6,7 @@ import { test } from "@clice/tools/testing";
 // compiles with no PCH at all.
 
 test("pch over a pch", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("main.cpp", s.diagnostics("main.cpp"));
     await t.show("hover", s.hover(t.marker("beta")));
     await t.show("definition", s.definition(t.marker("value")));

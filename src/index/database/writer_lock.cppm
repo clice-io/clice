@@ -15,9 +15,19 @@ namespace clice::index {
 /// the directory.
 class WriterLock {
 public:
-    /// nullopt when another process holds the lock (logged with the
-    /// holder's pid when it recorded one).
-    static std::optional<WriterLock> acquire(llvm::StringRef cache_dir);
+    /// Why acquire() took no lock.
+    enum class Refused : std::uint8_t {
+        /// Another process holds it (holder).
+        Held,
+        /// The lock file cannot be opened (logged).
+        Unopenable,
+    };
+
+    static std::expected<WriterLock, Refused> acquire(llvm::StringRef cache_dir);
+
+    /// Who holds the lock of `cache_dir`, for the user: `pid N` as the
+    /// holder recorded it, empty when it recorded none.
+    static std::string holder(llvm::StringRef cache_dir);
 
     WriterLock(WriterLock&& other) noexcept = default;
 
@@ -47,8 +57,9 @@ private:
 struct ServerEndpoint {
     std::uint32_t pid = 0;
     std::string version;
-    std::string host;
-    int port = 0;
+
+    /// The local socket, or the named pipe on Windows, it listens on.
+    std::string socket;
 };
 
 /// False when the record could not be written (logged).

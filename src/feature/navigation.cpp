@@ -548,7 +548,7 @@ std::vector<index::Site> references(const index::IndexQuery& query,
         [&](const index::IndexQuery& from, index::SymbolHash named) {
             return references(from, {.symbols = {named}, .site = cursor.site}, include_declaration);
         });
-    if(limit != 0 && sites.size() > limit) {
+    if(sites.size() > limit) {
         ranges::stable_partition(sites, [&](const index::Site& site) { return site.file == file; });
         sites.erase(sites.begin() + limit, sites.end());
     }

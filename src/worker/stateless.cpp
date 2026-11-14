@@ -92,9 +92,7 @@ static std::optional<std::string> write_preamble_index(llvm::StringRef blob,
 /// master asked.
 static index::TUIndexOptions index_options(const worker::IndexRequest& request) {
     return {.known_variants = request.known_variants,
-            .known_instantiations = request.known_instantiations,
-            .standard_library_instantiations = request.standard_library_instantiations,
-            .library_bodies = request.library_bodies};
+            .known_instantiations = request.known_instantiations};
 }
 
 /// Where a PCH or PCM build writes: the master's tmp path when it provided
@@ -221,6 +219,7 @@ static worker::PrecompiledBuildResult
         .output_file = *output,
         .modular = params.modular,
         .skip_bodies = params.skip_bodies,
+        .function_bodies = params.indexing.function_bodies,
         .stop = stop,
     };
     if(!params.whole_file) {
@@ -323,6 +322,7 @@ static worker::PrecompiledBuildResult
                   .project_root = params.project_root,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .output_file = *output,
+        .function_bodies = params.indexing.function_bodies,
         .stop = stop,
     };
     hold_recent(use_precompiled(cp.input, {params.pch, 0}, params.pcms));
@@ -477,6 +477,7 @@ static worker::CompileUnitResult
                   .project_root = params.project_root,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .tidy = params.tidy,
+        .function_bodies = params.indexing.function_bodies,
         .stop = stop,
     };
     hold_recent(use_precompiled(cp.input, {params.pch, 0}, params.pcms));

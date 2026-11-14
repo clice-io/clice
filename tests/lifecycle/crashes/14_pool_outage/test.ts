@@ -28,13 +28,7 @@ test(async (t) => {
     // parked: the pass that indexes them starts after the parks.
     t.disk.database({ "main.cpp": [] });
     const s = await t.start({
-        config: {
-            project: {
-                stateless_worker_count: 1,
-                min_stateless_worker_count: 1,
-                max_stateless_worker_count: 1,
-            },
-        },
+        config: { workers: { background: 1, max: 1 } },
         killWorkers: true,
         env: { CLICE_TEST_REVIVE_AFTER_MS: "3000" },
     });

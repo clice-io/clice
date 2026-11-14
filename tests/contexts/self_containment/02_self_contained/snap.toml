@@ -1,2 +1,5 @@
-[test."helper.h"]
+["found out"."helper.h"]
+diagnostics = []
+
+["declared not self-contained"."helper.h in main.cpp"]
 diagnostics = []

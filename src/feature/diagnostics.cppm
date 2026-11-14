@@ -322,17 +322,25 @@ FileDiagnostic crash_note(const CrashNote& note, llvm::StringRef reports);
 /// a compile never reads another document's buffer.
 FileDiagnostic unsaved_inputs_note(llvm::ArrayRef<std::string> files);
 
+/// Another file a note lies in: the path the client knows it by, and what
+/// its text maps.
+struct NoteFile {
+    std::string shown;
+
+    PositionMap positions;
+};
+
 /// The LSP form of `diagnostic`, shown on the file at `path` whose
 /// compiled text `positions` maps, its positions counted in `encoding`; a
-/// note in another file is placed in the text `note_positions` reads of it,
+/// note in another file is placed in the text `note_file` reads of it,
 /// left out when it cannot read it or the note lies past its end. A client
 /// that takes no related information gets the notes in the message.
-protocol::Diagnostic to_protocol(
-    const FileDiagnostic& diagnostic,
-    bool related_information,
-    PositionEncoding encoding,
-    llvm::StringRef path,
-    const PositionMap& positions,
-    llvm::function_ref<std::optional<PositionMap>(llvm::StringRef path)> note_positions);
+protocol::Diagnostic
+    to_protocol(const FileDiagnostic& diagnostic,
+                bool related_information,
+                PositionEncoding encoding,
+                llvm::StringRef path,
+                const PositionMap& positions,
+                llvm::function_ref<std::optional<NoteFile>(llvm::StringRef path)> note_file);
 
 }  // namespace clice::feature

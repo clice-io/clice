@@ -80,12 +80,21 @@ test("after a restart", async (t) => {
 // Turned off with the cache of a session that skipped them, the editor
 // parses the bodies.
 test("bodies parsed", async (t) => {
-    const config = { project: { enable_indexing: false } };
-    const skipping = await t.start({ config });
+    const skipping = await t.start({ lastRule: { background_index: false } });
     await skipping.diagnostics("main.cpp");
     await skipping.stop();
     const s = await t.start({
-        config: { project: { ...config.project, skip_header_bodies: false } },
+        lastRule: { background_index: false, skip_function_body: false },
     });
     await t.show("parsed", s.diagnostics("main.cpp"));
+});
+
+// A rule skipping shapes.h's bodies skips them in the background index too:
+// what goes wrong there when main.cpp instantiates them never shows.
+test("skipped everywhere", async (t) => {
+    const s = await t.start({
+        config: { rules: [{ patterns: ["shapes.h"], skip_function_body: true }] },
+    });
+    await s.indexed();
+    await t.show("skipped", s.diagnostics("main.cpp"));
 });

@@ -8,7 +8,9 @@
 /// or polls. Every action is recorded as a step; a failing test prints the
 /// steps, what the server still had to do, and the log lines that matter.
 
+import * as fs from "node:fs";
 import * as path from "node:path";
+import { parse, stringify } from "smol-toml";
 import * as proto from "vscode-languageserver-protocol";
 import { URI } from "vscode-uri";
 import { CliceClient, type InitializeOptions } from "../../client/client.ts";
@@ -111,11 +113,61 @@ export interface WorkerFault {
     input?: true;
 }
 
+/// Where the last rule withLastRule writes into a settings file starts.
+const LAST_RULE_MARK = "\n# The test's last rule.\n";
+
+/// `config` with `last`, a rule for every file, after the rules `config`
+/// passes; without those, `last` goes after the rules of the settings file
+/// in `root`, written into it so that the server reads them from the file
+/// as it does in use — the configuration's rules would replace the file's.
+export function withLastRule(
+    config: Record<string, unknown>,
+    root: string,
+    last: Record<string, unknown>,
+): Record<string, unknown> {
+    const rules = config["rules"] as unknown[] | undefined;
+    if (rules !== undefined) {
+        return { ...config, rules: [...rules, last] };
+    }
+    for (const name of ["clice.toml", path.join(".clice", "config.toml")]) {
+        const file = path.join(root, name);
+        if (!fs.existsSync(file)) {
+            continue;
+        }
+        // The rule an earlier server of the test wrote goes: each server
+        // ends the file with its own.
+        const written = fs.readFileSync(file, "utf8");
+        const mark = written.indexOf(LAST_RULE_MARK);
+        const text = mark === -1 ? written : written.slice(0, mark);
+        const table = `${LAST_RULE_MARK}${stringify({ rules: [last] })}`;
+        // A file that does not parse, or whose rules are no table array,
+        // keeps its error as written: the rule goes to the configuration.
+        try {
+            parse(text + table);
+        } catch {
+            break;
+        }
+        if (text + table !== written) {
+            fs.writeFileSync(file, text + table);
+        }
+        return config;
+    }
+    return { ...config, rules: [last] };
+}
+
 /// How the test's servers start: `t.start(options)`, and every restart of
 /// that server again.
 export interface ServerOptions {
     /// initializationOptions over the test defaults, shaped as clice.toml.
     config?: Record<string, unknown>;
+    /// Fields of a last rule for every file (withLastRule): a setting of every
+    /// file, `{ background_index: false }` to index nothing in the
+    /// background.
+    lastRule?: Record<string, unknown>;
+    /// The cache directory, workspace-relative, `.clice` by default: a
+    /// second server serving the project beside the first takes its own,
+    /// the first keeping the index.
+    cacheDir?: string;
     /// The client's capabilities; the most conservative client by default.
     capabilities?: proto.ClientCapabilities;
     /// The client offers this encoding before UTF-16, and the server must
@@ -420,12 +472,12 @@ export class Serve extends Client {
     }
 
     /// What the server showed the user (window/showMessage): what it tells
-    /// about the setup, once idle.
+    /// about the setup, once idle, another process's pid elided.
     guidance(): Promise<string[]> {
         return this.steps.run("guidance", async () => {
             await this.sync();
             return this.live().shownMessages.map((message) =>
-                portable(message, this.workspace.root),
+                portable(message, this.workspace.root).replace(/\(pid \d+\)/g, "(pid #)"),
             );
         });
     }
@@ -1116,14 +1168,22 @@ export class Serve extends Client {
         return this.steps.run("initialize", async () => {
             const client = this.live();
             this.recordToml("clice.toml");
-            const { config, capabilities, positionEncoding, foldersBeforeInitialized } =
-                this.options;
+            const { capabilities, positionEncoding, foldersBeforeInitialized } = this.options;
+            const { lastRule } = this.options;
+            const config =
+                lastRule === undefined
+                    ? this.options.config
+                    : withLastRule(this.options.config ?? {}, this.workspace.root, lastRule);
             const folders = this.folders;
             if (config !== undefined) {
                 recordConfig(config);
             }
             const initialize: InitializeOptions = {
                 initializationOptions: config,
+                cacheDir:
+                    this.options.cacheDir === undefined
+                        ? undefined
+                        : this.workspace.path(this.options.cacheDir),
                 capabilities,
                 positionEncodings:
                     positionEncoding === undefined ? undefined : [positionEncoding, "utf-16"],

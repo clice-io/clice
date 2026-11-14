@@ -2,7 +2,7 @@ import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
 test("unchanged save no recompile", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     s.open("h.h", { pull: false });
     expect(await s.errors("a.cpp")).toEqual([]);
     const call = t.at("a.cpp", "return |helper()");

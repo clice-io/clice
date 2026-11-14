@@ -1,0 +1,33 @@
+["bodies compiled".diagnostics]
+diagnostics = [
+    {
+        at = "return ⟦size_of⟧(42) + twice(helper(1));",
+        severity = "error",
+        message = "In template: member reference base type 'int' is not a structure or union",
+        source = "clang",
+        code = "err_typecheck_member_reference_struct_union",
+    },
+]
+
+["bodies compiled".references]
+references = [
+    "common.h │ int ⟦helper⟧(int x);",
+    "int ⟦helper⟧(int x) {",
+    "return size_of(42) + twice(⟦helper⟧(1));",
+    "third_party/lib.cppm │ return ⟦helper⟧(x) + helper(x);",
+    "third_party/lib.cppm │ return helper(x) + ⟦helper⟧(x);",
+]
+
+["bodies skipped".diagnostics]
+diagnostics = []
+
+["bodies skipped".references]
+references = ["common.h │ int ⟦helper⟧(int x);", "int ⟦helper⟧(int x) {", "return size_of(42) + twice(⟦helper⟧(1));"]
+
+["bodies skipped"."lib's declarations"]
+workspace_symbols = [
+    { name = "twice(int x)", kind = "Function", at = "third_party/lib.cppm │ export int ⟦twice⟧(int x) {" },
+]
+
+["rule added across a restart".skipped]
+diagnostics = []

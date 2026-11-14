@@ -426,22 +426,54 @@ ZEST_CASE(DottedExtensionRefused) {
     ZEXPECT(!resolution.params.header_file_extensions);
 }
 
+ZEST_CASE(RemovedArgsAndUser) {
+    TempDir tmp;
+    tmp.touch(".clang-tidy", "RemovedArgs: ['-Werror']\nUser: 'alice'\n");
+    tmp.touch("a.cpp");
+    auto params = tidy::resolve_tidy_params(tmp.path("a.cpp")).params;
+    std::vector<std::string> removed = {"-Werror"};
+    ZEXPECT(params.removed_args == removed);
+    ZASSERT(params.user.has_value());
+    ZEXPECT(*params.user == "alice");
+}
+
+ZEST_CASE(CustomChecksUnsupported) {
+    TempDir tmp;
+    tmp.touch(".clang-tidy", R"(Checks: '-*,bugprone-*'
+CustomChecks:
+  - Name: no-goto
+    Query: 'match gotoStmt().bind("goto")'
+    Diagnostic:
+      - BindName: goto
+        Message: avoid goto
+)");
+    tmp.touch("a.cpp");
+    auto resolution = tidy::resolve_tidy_params(tmp.path("a.cpp"));
+    ZEXPECT(resolution.params.checks.contains("bugprone-*"));
+    ZEXPECT(llvm::StringRef(resolution.error).starts_with("CustomChecks are not supported"));
+}
+
 ZEST_CASE(ExtraArgsCommandSplit) {
     // -W warning flags stay on the warning-options path where the Checks
     // gate applies; driver pass-throughs and everything else reach the
-    // command halves in order.
-    auto split = tidy::command_extra_args({"-DFOO=1", "-Wunused", "-Wp,-DY=2"},
-                                          {"-std=c++17", "-Wall", "-fno-exceptions"});
+    // command halves in order. The removed args reach the command whole.
+    auto split = tidy::command_extra_args({
+        .extra_args = {"-DFOO=1", "-Wunused", "-Wp,-DY=2"},
+        .extra_args_before = {"-std=c++17", "-Wall", "-fno-exceptions"},
+        .removed_args = {"-Werror", "-DBAR"},
+    });
     std::vector<std::string> prepend = {"-std=c++17", "-fno-exceptions"};
     std::vector<std::string> append = {"-DFOO=1", "-Wp,-DY=2"};
+    std::vector<std::string> remove = {"-Werror", "-DBAR"};
     ZASSERT(split.prepend == prepend);
     ZASSERT(split.append == append);
+    ZASSERT(split.remove == remove);
 
     // A -X<tool> pair filters on its operand's decision — dropping just
     // the operand would leave the forwarder to eat the next argument.
-    auto pairs = tidy::command_extra_args(
-        {"-Xclang", "-Wno-unused", "-Xclang", "-fno-exceptions", "-Xclang"},
-        {});
+    auto pairs = tidy::command_extra_args({
+        .extra_args = {"-Xclang", "-Wno-unused", "-Xclang", "-fno-exceptions", "-Xclang"}
+    });
     std::vector<std::string> kept = {"-Xclang", "-fno-exceptions", "-Xclang"};
     ZASSERT(pairs.append == kept);
 }

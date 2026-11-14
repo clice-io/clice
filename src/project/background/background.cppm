@@ -244,8 +244,8 @@ struct BackgroundOptions {
 
     /// Every attempt of a unit with a database entry brings back the
     /// diagnostics a compile skipping the bodies of the headers it
-    /// includes can get wrong (skipped_diagnostics): an editor's under
-    /// `skip_header_bodies` shows them.
+    /// includes can get wrong (skipped_diagnostics): the editor's, which
+    /// skips them, shows them.
     bool skipped_diagnostics = false;
 };
 

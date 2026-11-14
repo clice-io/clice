@@ -171,3 +171,6 @@ diagnostics = [
         code = "err_typecheck_member_reference_struct_union",
     },
 ]
+
+["skipped everywhere".skipped]
+diagnostics = []

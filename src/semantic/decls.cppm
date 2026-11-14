@@ -77,11 +77,6 @@ bool explicitly_specialized(const Spec* spec) {
 /// (ExplicitInstantiationDecl).
 bool is_instantiation(const clang::Decl* decl);
 
-/// Whether the declaration is the standard library's own: written in a
-/// system header, inside namespace `std` or a namespace whose name the
-/// standard reserves for the implementation (libstdc++'s `__gnu_cxx`).
-bool in_standard_library(const clang::Decl* decl);
-
 /// Whether `function` is one of the standard library's cast-like forms —
 /// `addressof`, `as_const`, `forward`, `forward_like`, `move`,
 /// `move_if_noexcept` — clang knows as library builtins.

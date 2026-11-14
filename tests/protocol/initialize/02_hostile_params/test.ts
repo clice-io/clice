@@ -27,9 +27,7 @@ for (const mode of ["unknown_string_enums", "out_of_range_int_enums", "unknown_f
             rootPath: t.root,
             rootUri: s.uri(""),
             workspaceFolders: [{ uri: s.uri(""), name: "test" }],
-            initializationOptions: {
-                project: { cache_dir: path.join(t.root, ".clice"), test_hooks: true },
-            },
+            initializationOptions: { cache_dir: path.join(t.root, ".clice") },
         })) as proto.InitializeResult;
         expect(result.serverInfo?.name).toBe("clice");
         await s.client.sendNotification(proto.InitializedNotification.type, {});

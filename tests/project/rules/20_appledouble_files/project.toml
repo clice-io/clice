@@ -1,0 +1,3 @@
+# No database: the rule's default command makes every source under src/
+# a unit.
+databases = {}

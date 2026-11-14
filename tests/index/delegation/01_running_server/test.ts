@@ -26,7 +26,10 @@ test("refuses a writer it cannot ask", { errors: ["holds the index writer lock"]
     const s = await t.start();
     await s.indexed();
     t.disk.rm(".clice/server.json");
-    await t.cli("index");
-    await t.cli("query symbol-search compute --fresh");
+    // The lock may come free soon from a holder that cannot be asked; this
+    // one keeps it.
+    const env = { CLICE_TEST_WRITER_WAIT_MS: "100" };
+    await t.cli("index", { env });
+    await t.cli("query symbol-search compute --fresh", { env });
     await t.cli("query symbol-search compute");
 });

@@ -80,7 +80,7 @@ for (const [phase, at] of PHASES) {
         test(`${request.method} mid-${phase}`, async (t) => {
             // Without an index the compile alone answers: entries of the disk
             // text would answer while the compile is in flight.
-            const s = await t.start({ config: { project: { enable_indexing: false } } });
+            const s = await t.start({ lastRule: { background_index: false } });
             await interrupted(s, request, at, t.disk.read("main.cpp"));
         });
     }

@@ -73,13 +73,16 @@ function resolveRef(root: StructSchema, schema: FieldSchema): StructSchema {
 /// width of its own).
 function renderType(field: FieldSchema): string {
     if (field.anyOf !== undefined) {
+        // An optional field's `null` is its being left out, which its
+        // description tells.
         return field.anyOf
-            .filter((alternative) => alternative.type !== "null")
+            .filter((member) => member.type !== "null")
             .map(renderType)
             .join(" or ");
     }
     if (field.type === undefined && field.enum?.every((name) => typeof name === "string")) {
-        return "`string`";
+        // A lone name is a keyword spelled in place of a number ("auto").
+        return field.enum.length === 1 ? `\`${JSON.stringify(field.enum[0])}\`` : "`string`";
     }
     switch (field.type) {
         case "boolean":
@@ -131,6 +134,7 @@ function renderDefault(field: FieldSchema): string {
     if (!("default" in field)) {
         return "—";
     }
+    // A rule's field it leaves to the rules after it.
     if (field.default === null) {
         return "unset";
     }

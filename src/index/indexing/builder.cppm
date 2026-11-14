@@ -221,6 +221,11 @@ private:
     /// a borrowed includer context, whose host indexes them.
     bool resolves_in(clang::FileID fid);
 
+    /// Whether the index walks what an instantiation made from `pattern`,
+    /// written in `home`, resolves: `home` resolves here, and its bodies
+    /// are indexed (CompilationUnit::indexes_bodies).
+    bool walks(const clang::Decl* pattern, clang::FileID home);
+
     /// The function and variable instantiations to walk; the known ones a
     /// file holds go to its skipped keys.
     std::vector<const clang::Decl*> walked_instantiations();
@@ -325,13 +330,6 @@ private:
     /// The keys of the instantiations the receiver already holds
     /// (TUIndexOptions::known_instantiations).
     llvm::ArrayRef<std::uint64_t> known_instantiations;
-
-    /// Whether the standard library's own instantiations and expansions are
-    /// walked (TUIndexOptions::standard_library_instantiations).
-    bool standard_library;
-
-    /// See TUIndexOptions::library_bodies.
-    bool library_bodies;
 
     llvm::DenseMap<clang::FileID, Resolved> resolved;
 

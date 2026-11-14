@@ -123,10 +123,14 @@ public:
         return lifecycle == ServerLifecycle::ShuttingDown || lifecycle == ServerLifecycle::Exited;
     }
 
-    /// Whether the test hooks are on: project.test_hooks of the first
-    /// project at initialize, kept whatever folders come and go — the
-    /// pool's test hooks are attached then.
+    /// Whether the test hooks are on: CLICE_TEST_HOOKS=1, read once at
+    /// initialize, when the pool's test hooks are attached.
     bool test_hooks() const;
+
+    /// Whether an open file's answers show, in the code its own context
+    /// skips, what its other contexts compile: the user's choice for the
+    /// file, else its rules' (Rules::other_contexts).
+    bool shows_other_contexts(Fid path_id);
 
     async::cancellation_token shutdown_token() const {
         return shutdown_source.token();
@@ -177,12 +181,17 @@ public:
     void change_folders(std::vector<Spelling> removed, std::vector<Spelling> added);
 
     /// The project serving a file: the owner of its open document, else
-    /// the one pick_owner picks now.
+    /// the one pick_owner picks now, else the first.
     ServedProject& owner_of(Fid path_id);
 
-    /// Every open document that pick_owner now gives to another project
+    /// Every open document that document_owner now gives to another project
     /// moves there (change_owner).
     void update_owners();
+
+    /// update_owners on the loop's next turn: asked from a project's own
+    /// work, which may run while the projects are walked, where making the
+    /// rootless project would move them.
+    void update_owners_later();
 
     /// A project's indexing progress moved: fold every project's pass
     /// into index_progress and tell the client.
@@ -382,9 +391,9 @@ public:
     /// The users' context choices, at most one per file.
     llvm::DenseMap<Fid, ChoiceEntry> choices;
 
-    /// The files whose answers show their own context alone
-    /// (clice/showOtherContexts).
-    llvm::DenseSet<Fid> own_context_only;
+    /// The users' choices of whether a file's answers show its other
+    /// contexts (clice/showOtherContexts), over the rules' (shows_other_contexts).
+    llvm::DenseMap<Fid, bool> other_contexts_choices;
 
     /// The projects' indexing passes as one: it begins with the first
     /// project's pass and ends with the last one's, and a project whose
@@ -455,8 +464,9 @@ private:
     /// nearest folder enclosing it, else the folder itself.
     CanonicalPath root_of(CanonicalRef folder) const;
 
-    /// The roots of the projects the folders need, in folder order; the
-    /// rootless project's when there is no folder.
+    /// The roots of the projects the folders need, in folder order; then
+    /// the rootless project's when there is no folder, or while it serves
+    /// an open document (document_owner).
     std::vector<CanonicalPath> project_roots() const;
 
     /// Make the projects served those project_roots names: make the
@@ -487,8 +497,14 @@ private:
     ServedProject* compiling_project(Fid path_id);
 
     /// The project a file belongs to now: its compiling_project, else the
-    /// deepest root holding it, else the first project.
-    ServedProject& pick_owner(Fid path_id);
+    /// deepest root holding it, else the rootless project; null when that
+    /// is not served.
+    ServedProject* pick_owner(Fid path_id);
+
+    /// The project an open document belongs to now: pick_owner's, else the
+    /// rootless project, made for it — a file outside every folder that no
+    /// project compiles borrows nothing of theirs.
+    ServedProject& document_owner(Fid path_id);
 
     /// Move the document to `to`: its generation moves on, so what a
     /// request computed under the old owner is void, the old owner releases
@@ -605,8 +621,48 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration);
 /// a JSON peer: `accepted` registers its handlers and returns what serves it
 /// (none for nothing), kept beside the peer and destroyed first when the
 /// connection ends. `what` names the clients in the log.
-async::task<> accept_peers(async::tcp::acceptor acceptor,
+template <typename Stream>
+async::task<> accept_peers(async::acceptor<Stream> acceptor,
                            llvm::StringRef what,
-                           llvm::unique_function<std::shared_ptr<void>(ipc::JSONPeer&)> accepted);
+                           llvm::unique_function<std::shared_ptr<void>(ipc::JSONPeer&)> accepted) {
+    struct Connection {
+        std::unique_ptr<ipc::JSONPeer> peer;
+
+        /// What serves the peer, destroyed before it.
+        std::shared_ptr<void> served;
+    };
+
+    using Connections = std::list<Connection>;
+    auto run = [](ipc::JSONPeer* peer,
+                  llvm::StringRef what,
+                  Connections& connections,
+                  Connections::iterator pos) -> async::task<> {
+        co_await peer->run();
+        LOG_INFO("{} disconnected", what);
+        connections.erase(pos);
+    };
+    auto& loop = async::event_loop::current();
+    Connections connections;
+    // The loop is a child of the group: a cancel reaches it through the
+    // group, which waits for every connection's run to end before the peers
+    // go.
+    co_await async::with_task_group([&](async::task_group<>& group) -> async::task<> {
+        while(true) {
+            auto connection = co_await acceptor.accept();
+            if(!connection.has_value()) {
+                break;
+            }
+            LOG_INFO("{} connected", what);
+            auto transport = std::make_unique<ipc::StreamTransport>(std::move(*connection));
+            auto peer = std::make_unique<ipc::JSONPeer>(loop, std::move(transport));
+            auto* raw = peer.get();
+            auto served = accepted(*raw);
+            auto pos = connections.emplace(
+                connections.end(),
+                Connection{.peer = std::move(peer), .served = std::move(served)});
+            group.spawn(run(raw, what, connections, pos));
+        }
+    });
+}
 
 }  // namespace clice

@@ -95,6 +95,10 @@ void LSPClient::register_lifecycle() {
         // the server initialized.
         this->server.pool.user_activity();
         auto& srv = this->server;
+        // LIMITATION: an editor connecting again to a socket server is
+        // refused here — the server keeps the folders and capabilities of
+        // the first — so it can only shut the server down; a developer
+        // reloading the editor restarts the server.
         if(srv.lifecycle != ServerLifecycle::Uninitialized) {
             return kotatsu::outcome_error(protocol::Error{"Server already initialized"});
         }

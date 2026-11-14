@@ -428,8 +428,10 @@ std::string enabled_checks(const TidyParams& params, bool batch) {
 tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
     tidy::ClangTidyOptions opts = default_options();
 
-    // clang::clangd::provideEnvironment
-    if(std::string user; !sys::user_name(user)) {
+    // clang::clangd::provideEnvironment, under the configuration's own.
+    if(params.user) {
+        opts.User = *params.user;
+    } else if(std::string user; !sys::user_name(user)) {
         opts.User = std::move(user);
     }
     opts.Checks = enabled_checks(params, batch);
@@ -459,8 +461,7 @@ tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
 
 }  // namespace
 
-CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
-                                    llvm::ArrayRef<std::string> extra_args_before) {
+CommandExtraArgs command_extra_args(const TidyParams& params) {
     // -Wp,/-Wl,/-Wa, are driver pass-throughs, not warning flags: they
     // must reach the command, while true -W warning flags stay on the
     // warning-options path where the Checks gate applies.
@@ -490,8 +491,9 @@ CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
         }
     };
     CommandExtraArgs split;
-    filter_into(extra_args_before, split.prepend);
-    filter_into(extra_args, split.append);
+    filter_into(params.extra_args_before, split.prepend);
+    filter_into(params.extra_args, split.append);
+    split.remove = params.removed_args;
     return split;
 }
 
@@ -833,6 +835,14 @@ TidyResolution resolve_tidy_params(llvm::StringRef file) {
     params.implementation_file_extensions = opts.ImplementationFileExtensions;
     params.extra_args = opts.ExtraArgs.value_or(std::vector<std::string>());
     params.extra_args_before = opts.ExtraArgsBefore.value_or(std::vector<std::string>());
+    params.removed_args = opts.RemovedArgs.value_or(std::vector<std::string>());
+    params.user = opts.User;
+    // clice's clang-tidy is built without query-based checks.
+    if(opts.CustomChecks && !opts.CustomChecks->empty() && resolution.error.empty()) {
+        resolution.error =
+            "CustomChecks are not supported: clice's clang-tidy is built without "
+            "query-based checks";
+    }
     resolution.files = std::move(reads->files);
     return resolution;
 }

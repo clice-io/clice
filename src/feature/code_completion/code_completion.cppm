@@ -94,10 +94,10 @@ struct CodeCompletionOptions {
 
     KANNOTATE(&limit,
               description =
-                  "Maximum number of completion items, the best ranked; "
-                  "`0` means no limit. A list cut short is marked "
+                  "Maximum number of completion items, the best ranked, "
+                  "or `\"unlimited\"`. A list cut short is marked "
                   "incomplete, so the editor asks again as you type.")
-    std::uint32_t limit = 100;
+    Limit limit = 100u;
 };
 
 /// What the editor's completion supports, read once from the LSP
@@ -323,7 +323,7 @@ inline std::string sort_text(float score, std::optional<std::uint32_t> order) {
 inline auto completion_list(std::vector<protocol::CompletionItem> items, std::uint32_t limit)
     -> protocol::CompletionList {
     protocol::CompletionList list{.is_incomplete = false, .items = std::move(items)};
-    if(limit != 0 && list.items.size() > limit) {
+    if(list.items.size() > limit) {
         ranges::sort(list.items, {}, [](const protocol::CompletionItem& item) {
             return std::tie(static_cast<const std::optional<std::string>&>(item.sort_text),
                             item.label);

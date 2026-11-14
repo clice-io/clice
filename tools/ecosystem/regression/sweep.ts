@@ -634,11 +634,10 @@ export async function sweep(options: SweepOptions): Promise<SweepRun> {
         new Workspace(options.root),
         {
             capabilities: EDITOR_CAPABILITIES,
-            config: {
-                // Logs where the job reads them, whichever project of the
-                // checkout opens first.
-                project: { enable_indexing: false, logging_dir: loggingDir(options.root) },
-            },
+            // Logs where the job reads them, whichever project of the
+            // checkout opens first.
+            config: { logging_dir: loggingDir(options.root) },
+            lastRule: { background_index: false },
         },
         { marks, steps, disk: new Disk(options.root, {}, steps) },
     );

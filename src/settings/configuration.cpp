@@ -87,7 +87,7 @@ std::string choose_configuration(const Settings& settings,
         return requested.str();
     }
     auto fallback = settings.fallback_configuration();
-    if(auto selected = read_selected_configuration(settings.project.cache_dir); !selected.empty()) {
+    if(auto selected = read_selected_configuration(settings.cache_dir); !selected.empty()) {
         if(settings.declares(selected)) {
             LOG_INFO("Active configuration: {} (selected)", selected);
             return selected;
@@ -97,7 +97,7 @@ std::string choose_configuration(const Settings& settings,
             .message = std::format(
                 "The selected configuration {} in {} names no rule's configuration ({}); using {}",
                 selected,
-                state_path(settings.project.cache_dir),
+                state_path(settings.cache_dir),
                 llvm::join(tags, ", "),
                 fallback),
         });

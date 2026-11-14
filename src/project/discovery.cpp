@@ -333,7 +333,7 @@ std::string Project::deeper_databases_hint() const {
     }
     CanonicalRef root = this->root;
     std::vector<std::string> names;
-    for(auto& database: deeper_databases(root, settings.project.cache_identity)) {
+    for(auto& database: deeper_databases(root, settings.cache_identity)) {
         auto directory = database.parent();
         auto name = llvm::StringRef(directory).drop_front(root.size()).ltrim(R"(/\)").str();
         path::to_slash(name);
@@ -445,7 +445,7 @@ bool project_file(CanonicalRef root, CanonicalRef cache_dir, CanonicalRef file) 
 }
 
 EditableFiles Project::editable_files() const {
-    return {.root = root, .cache_dir = settings.project.cache_identity};
+    return {.root = root, .cache_dir = settings.cache_identity};
 }
 
 bool EditableFiles::editable(llvm::StringRef path) const {

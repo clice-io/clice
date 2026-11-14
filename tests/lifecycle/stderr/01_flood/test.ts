@@ -15,7 +15,7 @@ function floodLines(text: string): number {
 }
 
 test("the flood needs the hooks", async (t) => {
-    const s = await t.start({ config: { project: { test_hooks: false } } });
+    const s = await t.start({ env: { CLICE_TEST_HOOKS: "0" } });
     const refused = await s.client.logFlood(1, 16).then(
         () => null,
         (error: unknown) => error,

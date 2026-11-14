@@ -924,7 +924,8 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
         return clice::compile({
             .kind = CompilationKind::Content,
             .input = std::move(checked),
-            .skip_bodies = project.settings.project.skip_header_bodies,
+            .skip_bodies = true,
+            .function_bodies = project.rules.function_body_rules(),
         });
     };
     if(auto key = resolution.self_containment; key && !resolution.self_contained) {
@@ -1005,7 +1006,8 @@ void run_feature(FileEntry& entry,
     CompilationParams params{
         .kind = CompilationKind::Content,
         .input = input,
-        .skip_bodies = settings.project.skip_header_bodies,
+        .skip_bodies = true,
+        .function_bodies = project.rules.function_body_rules(),
     };
     if(settings.diagnostics.clang_tidy) {
         auto resolution = tidy::resolve_tidy_params(file.path);

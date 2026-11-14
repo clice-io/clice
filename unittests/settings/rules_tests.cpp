@@ -42,8 +42,8 @@ struct Layout {
 ZEST_SUITE(Rules) {
 
 ZEST_CASE(LintSet) {
-    /// Files outside the workspace are never linted; inside it, every
-    /// matching rule must keep `lint` on.
+    /// Files outside the workspace are never linted; inside it, the first
+    /// matching rule setting `lint` decides.
     Layout layout("lint_rules");
     ZEXPECT(layout.rules.lintable(layout.path("src/main.cpp")));
     ZEXPECT(layout.rules.lintable(layout.path("include/api.h")));
@@ -98,6 +98,103 @@ ZEST_CASE(FormatSet) {
     ZEXPECT(!layout.rules.formattable(layout.path("gen/out.h")));
     ZEXPECT(layout.rules.lintable(layout.path("gen/out.h")));
     ZEXPECT(!layout.rules.formattable(CanonicalPath(Spelling::absolute("/usr/include/stdio.h"))));
+};
+
+ZEST_CASE(FirstSetFieldDecides) {
+    /// Of the rules matching a file, the first to set a field decides it:
+    /// a narrow rule before a broad one, and a field the narrow rule leaves
+    /// out falls through to the broad one; one no rule sets keeps its
+    /// default.
+    TempDir tmp;
+    tmp.touch("clice.toml", R"([[rules]]
+patterns = ["vendor/**"]
+background_index = false
+readonly = "on"
+query_toolchain = true
+
+[[rules]]
+background_index = true
+readonly = "auto"
+query_toolchain = false
+lint = false
+)");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto loaded = load_settings(root);
+    ZEXPECT(loaded.issues.empty());
+    Rules rules(loaded.settings, root, "");
+    CanonicalPath vendor(Spelling::absolute(tmp.path("vendor/lib.cpp")));
+    CanonicalPath own(Spelling::absolute(tmp.path("src/main.cpp")));
+
+    ZEXPECT(!rules.indexable(vendor));
+    ZEXPECT(rules.indexable(own));
+    ZEXPECT(rules.readonly(vendor) == ReadonlyMode::On);
+    ZEXPECT(rules.readonly(own) == ReadonlyMode::Auto);
+    ZEXPECT(rules.edits({vendor}).query_toolchain);
+    ZEXPECT(!rules.edits({own}).query_toolchain);
+    ZEXPECT(!rules.lintable(vendor));
+    ZEXPECT(rules.formattable(vendor));
+    ZEXPECT(rules.other_contexts(vendor));
+    ZEXPECT(!rules.self_contained(vendor).has_value());
+
+    /// The rule deciding names where it is written.
+    auto file = path::join(root, "clice.toml");
+    auto* indexing = rules.deciding(vendor, &CompiledRule::background_index);
+    ZASSERT(indexing != nullptr);
+    ZEXPECT(indexing->origin == file + ":1");
+    auto* linting = rules.deciding(vendor, &CompiledRule::lint);
+    ZASSERT(linting != nullptr);
+    ZEXPECT(linting->origin == file + ":7");
+    ZEXPECT(rules.deciding(vendor, &CompiledRule::format) == nullptr);
+};
+
+ZEST_CASE(BodyRulesInOrder) {
+    /// The active rules saying something of function bodies, in order,
+    /// their patterns as compiled: anchored at the project root.
+    TempDir tmp;
+    Settings settings;
+    settings.rules.push_back(Rule{.patterns = {"third_party/**"}, .skip_function_body = true});
+    settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DX"}});
+    settings.rules.push_back(Rule{.configuration = "release", .index_function_body = false});
+    settings.rules.push_back(Rule{.configuration = "debug", .append = {"-DDEBUG"}});
+    settings.rules.push_back(Rule{.index_function_body = true});
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    settings.finalize(root);
+    Rules rules(settings, root, "debug");
+
+    auto bodies = rules.function_body_rules();
+    ZASSERT(bodies.rules.size() == 2u);
+    auto& skipped = bodies.rules[0];
+    ZEXPECT(skipped.patterns ==
+            (std::vector<std::string>{settings.compiled_rules[0].patterns[0].text}));
+    ZEXPECT(llvm::StringRef(skipped.patterns[0]).ends_with("/third_party/**"));
+    ZEXPECT(skipped.skip == true);
+    ZEXPECT(!skipped.index.has_value());
+    auto& indexed = bodies.rules[1];
+    ZEXPECT(indexed.patterns.empty());
+    ZEXPECT(!indexed.skip.has_value());
+    ZEXPECT(indexed.index == true);
+};
+
+ZEST_CASE(ParsesEveryBody) {
+    /// Every body is parsed only when a rule for every file says no skip
+    /// and no rule before it skips some files' bodies.
+    TempDir tmp;
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto parses_every_body = [&](std::vector<Rule> written) {
+        Settings settings;
+        settings.rules = std::move(written);
+        settings.finalize(root);
+        return Rules(settings, root, "").parses_every_body();
+    };
+    ZEXPECT(!parses_every_body({
+        Rule{.patterns = {"vendor/**"}, .skip_function_body = true},
+        Rule{.skip_function_body = false},
+    }));
+    ZEXPECT(parses_every_body({Rule{.skip_function_body = false}}));
+    ZEXPECT(!parses_every_body({
+        Rule{.patterns = {"src/**"}, .skip_function_body = false}
+    }));
+    ZEXPECT(!parses_every_body({}));
 };
 
 ZEST_CASE(HeaderCarriesHostEdits) {

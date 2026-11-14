@@ -27,7 +27,7 @@ test("preprocessed tree keeps host", async (t) => {
     // Without an index, the tree a preprocess run takes of unity.cpp for
     // common.h answers which files it enters; taken while part.cpp is
     // missing, it must not keep unity.cpp from being part.cpp's host.
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await s.diagnostics("unity.cpp");
     await s.diagnostics("common.h");
     t.disk.write("part.cpp", PART);

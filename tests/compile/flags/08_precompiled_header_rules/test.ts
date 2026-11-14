@@ -8,10 +8,8 @@ import { test } from "@clice/tools/testing";
 
 test("a rule's define reaches the pch", async (t) => {
     const s = await t.start({
-        config: {
-            project: { enable_indexing: false },
-            rules: [{ patterns: ["src/**"], append: ["-DSHAPES_METRIC"] }],
-        },
+        config: { rules: [{ patterns: ["src/**"], append: ["-DSHAPES_METRIC"] }] },
+        lastRule: { background_index: false },
     });
     await t.show("main.cpp", s.diagnostics("src/main.cpp"));
     await t.show("width", s.definition(t.marker("width")));

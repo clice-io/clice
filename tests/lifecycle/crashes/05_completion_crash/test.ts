@@ -3,10 +3,13 @@ import { test } from "@clice/tools/testing";
 // A crash completing code pauses completion in the file; hover and the
 // compile carry on.
 
-const QUIET = { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } };
+const QUIET = {
+    config: { diagnostics: { clang_tidy: false } },
+    lastRule: { background_index: false },
+};
 
 test(async (t) => {
-    const s = await t.start({ config: QUIET, crash: { request: "completion", file: "main.cpp" } });
+    const s = await t.start({ ...QUIET, crash: { request: "completion", file: "main.cpp" } });
     const add = t.marker("add");
     const complete = t.marker("complete");
     s.open("main.cpp");

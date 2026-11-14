@@ -13,11 +13,11 @@ import :support.prelude;
 
 namespace clice {
 
-/// Defaults that are computed rather than written: a fresh Settings queries
-/// them in its field initializers, so a default-constructed Settings is
-/// already fully valid ("born valid") and no later pass fills options in.
-std::uint32_t default_stateless_worker_count();
-std::uint32_t default_max_stateless_worker_count();
+/// The worker counts "auto" stands for (WorkersSettings): half the
+/// physical cores, at least 2, for the background index; the physical cores
+/// in all.
+std::uint32_t auto_background_count();
+std::uint32_t auto_max_count();
 
 /// A cache directory keys its indexes, configuration selection and server
 /// record by configuration alone, so it serves one project, whose root it
@@ -29,9 +29,12 @@ std::string cache_dir_owner(llvm::StringRef cache_dir);
 /// Whether `cache_dir` serves another project than `project_root`'s.
 bool owned_elsewhere(llvm::StringRef cache_dir, CanonicalRef project_root);
 
-/// Record `project_root` as the owner of a cache directory it may use
-/// (owned_elsewhere is false); called under the directory's writer lock.
-void set_cache_dir_owner(llvm::StringRef cache_dir, CanonicalRef project_root);
+/// Record `project_root`, spelled `shown` as its user names it, as the
+/// owner of a cache directory it may use (owned_elsewhere is false); called
+/// under the directory's writer lock.
+void set_cache_dir_owner(llvm::StringRef cache_dir,
+                         CanonicalRef project_root,
+                         llvm::StringRef shown);
 
 /// The configuration files a project root may hold, in lookup order.
 constexpr inline std::array<llvm::StringRef, 2> settings_file_names = {"clice.toml",
@@ -41,24 +44,50 @@ constexpr inline std::array<llvm::StringRef, 2> settings_file_names = {"clice.to
 /// command line, or an argv array.
 using CommandSpelling = std::variant<std::string, std::vector<std::string>>;
 
+/// How open files are served (`readonly`): whether an open document is
+/// compiled, PCH and AST, or its reads answered from the index alone
+/// (ServedDocument::compiles). Every request is answered by the best source
+/// available at that moment (ServedProject::pick_route). Builds are always
+/// pull-driven — no lifecycle event starts one, the first request that
+/// needs the AST does.
+enum class ReadonlyMode : std::uint8_t {
+    /// Every open file targets a full AST; the index answers while the
+    /// pulled compile is in flight.
+    Off,
+    /// Never build a PCH: reads serve from the index alone (a cold file
+    /// jumps the indexing queue), while completion and signature help
+    /// still compile on demand — without a preamble. The
+    /// low-resource profile.
+    On,
+    /// Files start as On and switch to Off at the first edit intent
+    /// (edit, completion, signature help, a context switch, a restored
+    /// buffer that diverged from the index). A file the index can never
+    /// serve — kept out of the background index, or the index attempt its
+    /// opening asked for finished without a servable shard — falls back to
+    /// Off rather than answering empty forever.
+    Auto,
+};
+
 /// A file-pattern rule: where matching files take their compile commands
-/// from and how those commands are edited. Corresponds to `[[rules]]` in
-/// clice.toml.
+/// from, how those commands are edited, and how the files are served,
+/// indexed, linted and formatted. Corresponds to `[[rules]]` in clice.toml.
+/// Every field a rule leaves out it has no say in: of the rules matching a
+/// file, the first to set a field decides it (Rules).
 KANNOTATE_TYPE(struct Rule, presence_all = optional);
 struct Rule {
     KANNOTATE(&patterns,
               description =
                   "Glob patterns selecting the files this rule applies "
-                  "to. A relative pattern is anchored at this "
-                  "configuration file's directory (`..` segments "
-                  "allowed), or at the project root for a rule passed "
-                  "through initializationOptions; an absolute pattern "
-                  "or one starting with `**` matches the file's "
-                  "absolute path. "
+                  "to. A relative pattern is anchored at the project root "
+                  "(`..` segments allowed); an absolute pattern or one "
+                  "starting with `**` matches the file's absolute path. "
                   "`*` matches within a path segment, `?` a single "
                   "character, `**` any number of segments, `{a,b}` "
                   "alternatives, `[0-9]` a character range, `[!...]` a "
-                  "negated range. Omitted means every file.")
+                  "negated range, `[*]` a literal `*`. Separators are `/` "
+                  "on every platform. Omitted means every file: such a "
+                  "rule belongs last, where it decides what no rule "
+                  "above it does.")
     std::vector<std::string> patterns;
 
     KANNOTATE(&configuration,
@@ -75,20 +104,18 @@ struct Rule {
               description =
                   "Compilation databases, in priority order: a "
                   "compile_commands.json or a directory containing one, "
-                  "relative to this configuration file (to the "
-                  "project root for a rule passed through "
-                  "initializationOptions). All of them load, and every "
-                  "entry applies to its own file "
-                  "whatever the patterns say; the patterns and the "
-                  "order decide which entry a file present in several "
-                  "databases gets by default. A rule without patterns "
-                  "names the project's databases. When no rule "
-                  "declares a source, every compile_commands.json in "
-                  "the project root and its immediate subdirectories "
-                  "loads, and so do the ones in the directories above "
-                  "a file when it is opened; a directory below the root "
-                  "with a clice.toml or .clice/config.toml of its own "
-                  "is another project, and none in it loads.")
+                  "relative to the project root. All of them load, and "
+                  "every entry applies to its own file whatever the "
+                  "patterns say; the patterns and the order decide which "
+                  "entry a file present in several databases gets by "
+                  "default. A rule without patterns names the project's "
+                  "databases. When no rule declares a source, every "
+                  "compile_commands.json in the project root and its "
+                  "immediate subdirectories loads, and so do the ones in "
+                  "the directories above a file when it is opened; a "
+                  "directory below the root with a clice.toml or "
+                  ".clice/config.toml of its own is another project, and "
+                  "none in it loads.")
     std::vector<std::string> compile_commands;
 
     KANNOTATE(&resolve_symlinks,
@@ -113,38 +140,37 @@ struct Rule {
                   "The compile command for matching files without a "
                   "database entry, without the source file: a string "
                   "tokenized like a shell command line, or an argv "
-                  "array. It runs from the directory of the configuration "
-                  "file it was read from (the project root for a rule "
-                  "passed through initializationOptions), and the "
-                  "matching source files on disk "
-                  "join the background index (unless the rule turns "
-                  "`index` off) — enumerated at startup and again on "
-                  "every workspace poll, so a file created later "
-                  "compiles when opened and joins the index within a "
-                  "poll period. A file clang has no language for (an "
-                  "Arduino `.ino`, an extensionless tool) is a source "
-                  "only when the command forces a language (`-x c++`) "
-                  "and a pattern names its suffix (`*.ino`) or the file "
-                  "itself. Omitted means none.")
+                  "array. It runs from the project root, and the "
+                  "matching source files on disk join the background "
+                  "index (unless `background_index` is `false`) — "
+                  "enumerated at startup and again on every poll, so a "
+                  "file created later compiles when opened and joins the "
+                  "index within a poll period. A file clang has no "
+                  "language for (an Arduino `.ino`, an extensionless "
+                  "tool) is a source only when the command forces a "
+                  "language (`-x c++`) and a pattern names its suffix "
+                  "(`*.ino`) or the file itself. Omitted means none.")
     CommandSpelling default_command;
 
     KANNOTATE(&append,
               description =
                   "Compilation flags appended for matching files, e.g. "
-                  "`[\"-std=c++20\", \"-DNDEBUG\"]`.")
+                  "`[\"-std=c++20\", \"-DNDEBUG\"]`. The flags of every "
+                  "matching rule apply, in declaration order.")
     std::vector<std::string> append;
 
     KANNOTATE(&remove,
               description =
                   "Compilation flags removed for matching files, e.g. "
-                  "`[\"-Wall\"]`. A flag with a value removes that value "
-                  "(`-DDEBUG`), the next element being a separate value "
-                  "as on a command line; one with `*` for its value "
-                  "(`-I*`, `[\"-include\", \"*\"]`), or without one "
-                  "at the end of the list (`[\"-include\"]`), removes "
-                  "every value; a `*` right after a flag's name removes "
-                  "every flag of its kind spelled with that prefix "
-                  "(`-W*` takes `-Wall` and `-Wextra` too).")
+                  "`[\"-Wall\"]`, before the rule's own `append`. A flag "
+                  "with a value removes that value (`-DDEBUG`), the next "
+                  "element being a separate value as on a command line; "
+                  "one with `*` for its value (`-I*`, `[\"-include\", "
+                  "\"*\"]`), or without one at the end of the list "
+                  "(`[\"-include\"]`), removes every value; a `*` right "
+                  "after a flag's name removes every flag of its kind "
+                  "spelled with that prefix (`-W*` takes `-Wall` and "
+                  "`-Wextra` too).")
     std::vector<std::string> remove;
 
     KANNOTATE(&query_toolchain,
@@ -155,246 +181,151 @@ struct Rule {
                   "macros and default language standard. `false` runs "
                   "no compiler: clice's own clang reads the command as "
                   "written, with clang's defaults for the compiler's "
-                  "name. Any matching rule saying `false` wins.")
-    bool query_toolchain = true;
+                  "name. Unset means `true`.")
+    std::optional<bool> query_toolchain;
 
-    KANNOTATE(&index,
+    KANNOTATE(&background_index,
               description =
-                  "Whether matching translation units join the "
-                  "background index. `false` keeps them out; they still "
-                  "compile when opened and still host the headers they "
-                  "include. A module unit, or the unit writing a "
-                  "precompiled header, is indexed all the same by the build "
-                  "of its module or header, for the files reading it. Any "
-                  "matching rule saying `false` wins.")
-    bool index = true;
+                  "Whether the background index compiles matching files "
+                  "as translation units of their own. `false` keeps them "
+                  "out, and drops what an earlier index recorded of them: "
+                  "they still compile when opened, and a header among "
+                  "them is still indexed through the units including it. "
+                  "A module unit, or the unit writing a precompiled "
+                  "header, is indexed all the same by the build of its "
+                  "module or header, for the files reading it. A rule "
+                  "without patterns saying `false` keeps the background "
+                  "index from compiling anything. Unset means `true`.")
+    std::optional<bool> background_index;
+
+    KANNOTATE(&skip_function_body,
+              description =
+                  "Whether the compiles that include matching files skip "
+                  "their function bodies. Unset, the editor's compile of "
+                  "an open file skips the bodies of the headers it "
+                  "includes at its top — several times faster to open "
+                  "and rebuild, the errors inside those bodies shown once "
+                  "the background index has compiled the file as saved — "
+                  "and every other compile reads them. `true`: every "
+                  "compile but a matching file's own skips its bodies, "
+                  "templates' included, the background index's too, and "
+                  "none of them is indexed — the fastest index of code "
+                  "you only call, such as third-party libraries, whose "
+                  "templates' errors your code causes are then never "
+                  "shown. The bodies of templates forwarding their "
+                  "arguments (`make_unique`) and of `constexpr` and "
+                  "`auto` functions are read all the same. `false`: no "
+                  "compile skips them, and their errors show at once.")
+    std::optional<bool> skip_function_body;
+
+    KANNOTATE(&index_function_body,
+              description =
+                  "Whether the index records what the function bodies of "
+                  "matching files use, and what their templates' "
+                  "instantiations resolve, so that references and the "
+                  "call hierarchy reach inside them. Unset means `false` "
+                  "for system headers — a library's own internals, which "
+                  "only a reader of its code asks about — and `true` for "
+                  "every other file. A file opened in the editor is "
+                  "indexed whole all the same. Applies to the units "
+                  "indexed after a change.")
+    std::optional<bool> index_function_body;
+
+    KANNOTATE(&readonly,
+              description =
+                  "How matching files are served when open: \"off\" "
+                  "compiles them — builds are pulled by the first request "
+                  "that needs them, with the index answering in the "
+                  "meantime; \"on\" builds no preamble PCH — reads serve "
+                  "from the index alone (a cold file jumps the indexing "
+                  "queue), while completion and signature help still "
+                  "compile on demand without a preamble; \"auto\" starts "
+                  "a file as \"on\", switches it to \"off\" at the first "
+                  "edit intent (edit, completion, signature help, context "
+                  "switch), and falls back to \"off\" for a file the "
+                  "index cannot serve. Unset means \"off\".")
+    std::optional<ReadonlyMode> readonly;
+
+    KANNOTATE(&self_contained,
+              description =
+                  "Whether matching headers compile on their own. `true`: "
+                  "a header compiles alone, without an includer's "
+                  "context; `false`: always in the context of a file "
+                  "including it. Unset, clice compiles a header alone "
+                  "once to find out.")
+    std::optional<bool> self_contained;
+
+    KANNOTATE(&other_contexts,
+              description =
+                  "Whether an open matching file shows, in the code its "
+                  "own context skips, what its other contexts compile "
+                  "there — the semantic colors, outline, folds, links and "
+                  "hover the index holds for them — while it is as the "
+                  "index read it. `false` shows its own context alone. "
+                  "The editor's choice for a file (Show or Hide other "
+                  "contexts) overrides it until the server stops. Unset "
+                  "means `true`.")
+    std::optional<bool> other_contexts;
 
     KANNOTATE(&lint,
               description =
-                  "Whether `clice lint` checks matching files. `false` "
-                  "keeps them out: their findings are dropped and a "
-                  "translation unit they head is not parsed, unless "
-                  "`--index` needs it for the index. Files outside the "
-                  "project are never checked. Any matching rule "
-                  "saying `false` wins.")
-    bool lint = true;
+                  "Whether `clice lint` checks matching files and the "
+                  "editor runs clang-tidy on them. `false` keeps them out: "
+                  "their findings are dropped and a translation unit they "
+                  "head is not parsed, unless `--index` needs it for the "
+                  "index. Files outside the project are never checked. "
+                  "Unset means `true`.")
+    std::optional<bool> lint;
 
     KANNOTATE(&format,
               description =
                   "Whether `clice format` formats matching files. "
                   "`false` keeps them out. Files outside the project "
-                  "are never formatted. Any matching rule saying "
-                  "`false` wins.")
-    bool format = true;
-
-    /// Where the rule's relative paths and patterns anchor and its default
-    /// command runs: the directory of the configuration file it was read
-    /// from; empty for a rule from initializationOptions, which anchors at
-    /// the project root.
-    KANNOTATE(&directory, skip = true)
-    std::string directory;
+                  "are never formatted. Unset means `true`.")
+    std::optional<bool> format;
 };
 
-/// How open files are served (`readonly`): whether an open document is
-/// compiled, PCH and AST, or its reads answered from the index alone
-/// (ServedDocument::compiles). Every request is answered by the best source
-/// available at that moment (ServedProject::pick_route). Builds are always
-/// pull-driven — no lifecycle event starts one, the first request that
-/// needs the AST does.
-enum class ReadonlyMode : std::uint8_t {
-    /// Every open file targets a full AST; the index answers while the
-    /// pulled compile is in flight.
-    Off,
-    /// Never build a PCH: reads serve from the index alone (a cold file
-    /// jumps the indexing queue), while completion and signature help
-    /// still compile on demand — without a preamble. The
-    /// low-resource profile.
-    On,
-    /// Files start as On and switch to Off at the first edit intent
-    /// (edit, completion, signature help, a context switch, a restored
-    /// buffer that diverged from the index). A file the index can never
-    /// serve — indexing disabled, or the index attempt its opening asked
-    /// for finished without a servable shard — falls back to Off rather
-    /// than answering empty forever.
-    Auto,
-};
-
-/// Corresponds to the `[project]` section in clice.toml. Field
-/// initializers are the defaults; `cache_dir` and `logging_dir` stay empty
-/// here because their defaults derive from the project root in
-/// finalize().
-KANNOTATE_TYPE(struct ProjectSettings, presence_all = optional);
-struct ProjectSettings {
-    /// finalize() leaves it the directory's identity, empty for none;
-    /// cache_identity names the directory.
-    KANNOTATE(&cache_dir,
-              description =
-                  "Directory for the unified on-disk cache (PCHs, PCMs and "
-                  "the index). Empty defaults to `${workspace}/.clice`, "
-                  "which keeps itself out of version control and backups via "
-                  "generated .gitignore and CACHEDIR.TAG markers (a "
-                  "`.clice/config.toml` stays visible to Git; backup tools "
-                  "honoring CACHEDIR.TAG skip the whole directory); an "
-                  "explicitly configured directory is never marked. The "
-                  "resolved path is printed at startup.")
-    std::string cache_dir;
-
-    /// Whether finalize() derived cache_dir rather than the user setting
-    /// it. Only such a dedicated root receives the self-ignore markers —
-    /// a configured directory may be shared with other content.
-    KANNOTATE(&cache_dir_defaulted, skip = true)
-    bool cache_dir_defaulted = false;
-
-    /// The identity of cache_dir, empty for none: finalize() resolves it
-    /// with cache_dir.
-    KANNOTATE(&cache_identity, skip = true)
-    CanonicalPath cache_identity;
-
-    KANNOTATE(&logging_dir,
-              description =
-                  "Directory for log files; empty derives `${cache_dir}/logs`. "
-                  "Each server, `clice index` and `clice lint` run logs into a "
-                  "subdirectory of its own; the 20 latest are kept.")
-    std::string logging_dir;
-
-    KANNOTATE(&enable_indexing,
-              description =
-                  "Build the background index that serves cross-TU "
-                  "features (find references, workspace symbols, ...).")
-    bool enable_indexing = true;
-
-    KANNOTATE(&standard_library_instantiations,
-              description =
-                  "Index what the standard library's own template "
-                  "instantiations and macros resolve inside the library — "
-                  "the comparator `std::sort` calls, the destructor "
-                  "`std::vector` runs — so references and the call "
-                  "hierarchy reach those places. Off by default: they are "
-                  "library internals, and walking them costs indexing time "
-                  "and space. Applies to the units indexed after a change.")
-    bool standard_library_instantiations = false;
-
-    KANNOTATE(&index_library_bodies,
-              description =
-                  "Index the bodies of the functions system headers "
-                  "define — the names `std::vector::push_back` uses inside "
-                  "— so references and the call hierarchy reach a library's "
-                  "internals. Off by default: only a reader of the library's "
-                  "own code asks about them, a header opened in the editor "
-                  "is indexed whole all the same, and walking them in every "
-                  "unit costs indexing time and space. Applies to the units "
-                  "indexed after a change.")
-    bool index_library_bodies = false;
-
-    KANNOTATE(&skip_header_bodies,
-              description =
-                  "Skip the bodies of the functions in the headers an open "
-                  "file includes at its top, as clangd does, but those of "
-                  "templates forwarding their arguments (`make_unique`) and "
-                  "of `constexpr` and `auto` functions, which clang always "
-                  "parses, and those of a precompiled header the build "
-                  "declares, which the file loads as the build compiled it. "
-                  "The file opens and rebuilds after an edit several "
-                  "times faster and holds less memory; the price is the "
-                  "errors and warnings inside those bodies, a header "
-                  "template's instantiated from the file among them, and "
-                  "whether a declaration is unused, which show only when "
-                  "the background index has compiled the file as it is "
-                  "saved. The background index and every command but "
-                  "`clice inspect` still compile the bodies.")
-    bool skip_header_bodies = true;
-
-    KANNOTATE(&readonly,
-              with = type<LowercaseNames>,
-              description =
-                  "Read-only serving for open files: \"off\" targets a "
-                  "full AST for every open file — builds are pulled by "
-                  "the first request that needs them, with the index "
-                  "answering in the meantime; \"on\" builds no "
-                  "preamble PCH — reads serve from the index alone (a "
-                  "cold file jumps the indexing queue), while completion "
-                  "and signature help still compile on demand without a "
-                  "preamble; \"auto\" starts every file as \"on\", "
-                  "switches it to \"off\" at the first edit intent "
-                  "(edit, completion, signature help, context switch), "
-                  "and falls back to \"off\" for a file the index "
-                  "cannot serve. Feature routing always answers from "
-                  "the best source currently available.")
-    ReadonlyMode readonly = ReadonlyMode::Off;
-
-    KANNOTATE(&idle_timeout_ms,
-              description =
-                  "Idle delay in milliseconds before background indexing "
-                  "starts.")
-    std::uint32_t idle_timeout_ms = 3000;
-
-    /// The hooks can generate load on demand (log floods).
-    KANNOTATE(&test_hooks,
-              description =
-                  "Enable the clice/internal test hooks used by the test "
-                  "harness.")
-    bool test_hooks = false;
-
-    KANNOTATE(&stateful_worker_count,
+/// Corresponds to the `[workers]` section in clice.toml: the worker
+/// processes and when background work starts.
+KANNOTATE_TYPE(struct WorkersSettings, presence_all = optional);
+struct WorkersSettings {
+    KANNOTATE(&foreground,
               minimum = 1,
               description =
-                  "Number of stateful workers — they hold ASTs in memory "
-                  "and serve queries (hover, semantic tokens, ...); at "
-                  "least 1.")
-    std::uint32_t stateful_worker_count = 2;
+                  "Number of foreground workers: they keep the open files "
+                  "compiled and answer the requests about them (hover, "
+                  "semantic tokens, ...); at least 1.")
+    std::uint32_t foreground = 2;
 
-    KANNOTATE(&max_resident_documents,
+    KANNOTATE(&background,
               description =
-                  "How many open documents keep their AST in the stateful "
-                  "workers. Past it, the document asked about least "
-                  "recently gives its AST up: it answers what its last "
-                  "compile's answers cover, and compiles again for the "
-                  "rest. `0` means one per GB of memory, at least 8 and "
-                  "at most 32, which is also the default.")
-    std::uint32_t max_resident_documents = 0;
+                  "The most compiles the background index runs at once, "
+                  "never more than `max`: \"auto\", half the machine's "
+                  "physical cores and at least 2, or a number, at least 1. "
+                  "Raising it speeds a first index up on a big machine.")
+    Count background = Automatic::Auto;
 
-    KANNOTATE(&stateless_worker_count,
-              schema_default = false,
-              minimum = 1,
+    KANNOTATE(&max,
               description =
-                  "Number of stateless workers started — they handle "
-                  "ephemeral tasks (PCH/PCM builds, completion, signature "
-                  "help, background indexing) — and the most that "
-                  "background indexing keeps busy at once; defaults to "
-                  "half the machine's physical cores, at least 2. At "
-                  "least 1.")
-    std::uint32_t stateless_worker_count = default_stateless_worker_count();
+                  "The most compile workers at once, the background "
+                  "index's, completion's, signature help's and the "
+                  "precompiled headers' and modules' together: \"auto\", "
+                  "the machine's physical cores, or a number, at least 1. "
+                  "They start as work needs them and stop after 30 "
+                  "seconds idle.")
+    Count max = Automatic::Auto;
 
-    /// See WorkerPoolOptions.
-    KANNOTATE(&min_stateless_worker_count,
-              minimum = 1,
+    KANNOTATE(&background_delay_ms,
               description =
-                  "Lower bound for dynamic stateless-worker scaling; at "
-                  "least 1.")
-    std::uint32_t min_stateless_worker_count = 1;
+                  "How long the background index waits after the last "
+                  "edit or request before it starts, in milliseconds.")
+    std::uint32_t background_delay_ms = 3000;
 
-    KANNOTATE(&max_stateless_worker_count,
-              schema_default = false,
-              description =
-                  "Upper bound for dynamic stateless-worker scaling, which "
-                  "only interactive work that finds every worker busy "
-                  "reaches; `0` means the machine's physical cores, which "
-                  "is also the default.")
-    std::uint32_t max_stateless_worker_count = default_max_stateless_worker_count();
-};
+    /// `background` as a number, "auto" the machine's, at most max_count().
+    std::uint32_t background_count() const;
 
-/// Corresponds to the `[tracker]` section in clice.toml: how often files
-/// are looked at in the background (integration tests drive ticks through
-/// the clice/internal/poll hook instead).
-KANNOTATE_TYPE(struct TrackerSettings, presence_all = optional);
-struct TrackerSettings {
-    KANNOTATE(&workspace_poll_seconds,
-              description =
-                  "Longest interval in seconds between two background looks at a "
-                  "workspace file: the interval doubles at every look that finds the "
-                  "file unchanged, up to this. 0 disables background polling, "
-                  "compilation databases included.")
-    std::uint32_t workspace_poll_seconds = 30;
+    /// `max` as a number: "auto" the machine's.
+    std::uint32_t max_count() const;
 };
 
 /// Corresponds to the `[references]` section in clice.toml.
@@ -403,19 +334,23 @@ struct ReferencesSettings {
     KANNOTATE(&limit,
               description =
                   "Maximum number of locations a references request "
-                  "answers with; `0` means no limit. A reply cut short "
+                  "answers with, or `\"unlimited\"`. A reply cut short "
                   "keeps the locations in the file it is asked from "
                   "before any other. `clice query references` lists "
                   "every one.")
-    std::uint32_t limit = 2000;
+    Limit limit = 2000u;
 };
 
-/// A rule after finalize(): patterns compiled, paths anchored.
+/// A rule after finalize(): patterns compiled, paths anchored at the
+/// project root.
 struct CompiledRule {
     struct Pattern {
         /// Matches the canonical absolute path: a relative pattern was
-        /// anchored at the configuration file's directory when compiled.
+        /// anchored at the project root when compiled.
         kotatsu::GlobPattern glob;
+
+        /// The pattern `glob` compiled, for a process compiling it again.
+        std::string text;
 
         /// The literal directory the pattern starts in (the project root
         /// for `**`-led patterns): where the files it covers are enumerated.
@@ -429,20 +364,27 @@ struct CompiledRule {
     std::vector<Spelling> compile_commands;
     bool resolve_symlinks = false;
     /// The command's argv (a string spelling tokenized with the host's
-    /// shell rules), `${workspace}` substituted; empty means none.
-    /// `directory` is its working directory.
+    /// shell rules), variables substituted; empty means none.
     std::vector<std::string> default_command;
-    Spelling directory;
     std::vector<std::string> append;
     std::vector<std::string> remove;
-    bool query_toolchain = true;
-    bool index = true;
-    bool lint = true;
-    bool format = true;
+    std::optional<bool> query_toolchain;
+    std::optional<bool> background_index;
+    std::optional<bool> skip_function_body;
+    std::optional<bool> index_function_body;
+    std::optional<ReadonlyMode> readonly;
+    std::optional<bool> self_contained;
+    std::optional<bool> other_contexts;
+    std::optional<bool> lint;
+    std::optional<bool> format;
 
     /// Every pattern failed to compile: the rule matches no file, but the
     /// sources it declares still load.
     bool unmatchable = false;
+
+    /// Where the rule is written, as `clice command` names it: the file and
+    /// line, or the editor's setting and the rule's index there.
+    std::string origin;
 
     bool has_default_command() const;
 
@@ -505,11 +447,53 @@ struct Settings {
                   "error. Unset, the first declared tag is used.")
     std::string default_configuration;
 
-    KANNOTATE(&project, description = "The [project] section: project-wide server options.")
-    ProjectSettings project;
+    /// finalize() leaves it the directory's identity, empty for none;
+    /// cache_identity names the directory.
+    KANNOTATE(&cache_dir,
+              description =
+                  "Directory for the unified on-disk cache (PCHs, PCMs and "
+                  "the index), relative to the project root. Empty "
+                  "defaults to `${workspace}/.clice`, which keeps itself "
+                  "out of version control and backups via generated "
+                  ".gitignore and CACHEDIR.TAG markers (a "
+                  "`.clice/config.toml` stays visible to Git; backup tools "
+                  "honoring CACHEDIR.TAG skip the whole directory); an "
+                  "explicitly configured directory is never marked. It "
+                  "must be on a local disk: on a network file system "
+                  "(NFS, SMB, a Windows drive under WSL) the index is not "
+                  "saved. The resolved path is printed at startup.")
+    std::string cache_dir;
 
-    KANNOTATE(&tracker, description = "The [tracker] section: background polling of files.")
-    TrackerSettings tracker;
+    /// Whether finalize() derived cache_dir rather than the user setting
+    /// it. Only such a dedicated root receives the self-ignore markers —
+    /// a configured directory may be shared with other content.
+    KANNOTATE(&cache_dir_defaulted, skip = true)
+    bool cache_dir_defaulted = false;
+
+    /// The identity of cache_dir, empty for none: finalize() resolves it
+    /// with cache_dir.
+    KANNOTATE(&cache_identity, skip = true)
+    CanonicalPath cache_identity;
+
+    KANNOTATE(&logging_dir,
+              description =
+                  "Directory for log files, relative to the project root; "
+                  "empty derives `${cache_dir}/logs`. Each server, "
+                  "`clice index` and `clice lint` run logs into a "
+                  "subdirectory of its own; the 20 latest are kept.")
+    std::string logging_dir;
+
+    KANNOTATE(&poll_seconds,
+              description =
+                  "Longest interval in seconds between two background "
+                  "looks at a project file: the interval doubles at every "
+                  "look that finds the file unchanged, up to this. 0 "
+                  "disables background polling, compilation databases "
+                  "included.")
+    std::uint32_t poll_seconds = 30;
+
+    KANNOTATE(&workers, description = "The [workers] section: the worker processes.")
+    WorkersSettings workers;
 
     // The feature sections are the features' own options: their optional
     // presence lets a decode leave unmentioned fields at their initializers,
@@ -552,21 +536,29 @@ struct Settings {
 
     KANNOTATE(&rules,
               description =
-                  "File-pattern rules that adjust compilation flags "
-                  "([[rules]] in clice.toml).")
+                  "File-pattern rules: where files take their commands "
+                  "from and how they are compiled, served, indexed, "
+                  "linted and formatted ([[rules]] in clice.toml). Rules "
+                  "given through initializationOptions replace the file's.")
     std::vector<Rule> rules;
+
+    /// Whether `rules` came from initializationOptions: they apply to every
+    /// project of the editor, a project without C/C++ files among them.
+    KANNOTATE(&rules_from_editor, skip = true)
+    bool rules_from_editor = false;
 
     KANNOTATE(&compiled_rules, skip = true)
     std::vector<CompiledRule> compiled_rules;
 
     /// Compute the values derived from the final merged settings: default
-    /// cache/logging directories, ${workspace} substitution, path
-    /// canonicalization and anchoring, and rule compilation. Run once per
-    /// load, after every source has been overlaid. Returns the values clice
-    /// cannot honor, each at its key: a glob that does not compile,
-    /// `default_configuration` naming no declared tag, a zero worker count
-    /// (which falls back to its default meanwhile, so the process-wide
-    /// settings read from it stay runnable).
+    /// cache/logging directories, variable substitution, path
+    /// canonicalization and anchoring at the project root, and rule
+    /// compilation. Run once per load, after every source has been
+    /// overlaid. Returns the values clice cannot honor, each at its key: a
+    /// glob that does not compile or holds a backslash, an environment
+    /// variable that is not set, `default_configuration` naming no declared
+    /// tag, a zero worker count or limit (each falls back to its default
+    /// meanwhile, so the process-wide settings read from it stay runnable).
     std::vector<codec::rich_error> finalize(CanonicalRef project_root);
 
     /// The distinct configuration tags, in first-appearance order.
@@ -581,11 +573,8 @@ struct Settings {
     llvm::StringRef fallback_configuration() const;
 
     /// The configuration's JSON schema (draft 2020-12), pretty-printed.
-    /// Fields whose defaults derive from the running machine (the worker
-    /// counts follow the CPU count) carry no `default` annotation, so the
-    /// schema is byte-identical on every host. Unknown properties are
-    /// rejected — the schema-side face of load_settings's unknown-key
-    /// warnings.
+    /// Unknown properties are rejected — the schema-side face of
+    /// load_settings's unknown-key warnings.
     static std::expected<std::string, std::string> json_schema();
 };
 
@@ -609,6 +598,10 @@ struct LoadSettingsOptions {
 
     /// The cache directories other projects of this process use.
     llvm::ArrayRef<CanonicalPath> taken_cache_dirs;
+
+    /// The root as the user spelled it, for messages; empty shows its
+    /// canonical path.
+    llvm::StringRef root_name;
 };
 
 /// A project's configuration as read: the configuration, the file it came
@@ -636,14 +629,20 @@ struct LoadedSettings {
 bool has_error(llvm::ArrayRef<SettingsIssue> issues);
 
 /// Read the configuration of the project at `root` (empty for a project
-/// without a folder): find its file (clice.toml, else .clice/config.toml),
-/// decode it, lay the overlay over it, finalize and check every value;
+/// without a folder): find its file (clice.toml, else .clice/config.toml,
+/// either anchoring its relative paths at `root`), decode it, lay the
+/// overlay over it, finalize and check every value;
 /// choose the cache directory — the one the merged configuration names,
 /// else the one the file names, else the default, else none, passing over
 /// those taken (LoadSettingsOptions::taken_cache_dirs) or owned by another
 /// project (owned_elsewhere); then resolve the build configuration from
-/// that directory's selection. A layer that does not decode is left out,
-/// an unknown key is a warning and the rest of its layer applies.
+/// that directory's selection. A layer that does not decode is left out;
+/// a key clice 1.0 moved is an error naming its new place, any other
+/// unknown key a warning, and the rest of its layer applies.
 LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& options = {});
 
 }  // namespace clice
+
+/// The settings spell a mode in lowercase (`off`).
+template <>
+struct kotatsu::codec::repr<clice::ReadonlyMode> : clice::LowercaseNames {};

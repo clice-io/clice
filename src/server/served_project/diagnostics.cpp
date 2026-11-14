@@ -129,7 +129,7 @@ std::vector<feature::FileDiagnostic>
 
 void ServedProject::book_skipped_diagnostics(Fid path_id, bool first) {
     auto& session = *server.find_session(path_id);
-    if(!project.settings.project.skip_header_bodies || !find_document(path_id)->compiles ||
+    if(project.rules.parses_every_body() || !find_document(path_id)->compiles ||
        project.entries(path_id).empty()) {
         return;
     }

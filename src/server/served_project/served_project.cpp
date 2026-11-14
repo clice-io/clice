@@ -82,10 +82,17 @@ std::string place(llvm::StringRef file, const SettingsIssue& issue) {
 /// opens: a database to index, one its rules name or one discovery finds,
 /// or the index an earlier session built.
 bool has_build(const Project& project) {
-    if(project.rules.declares_sources() || !discovered_databases(project.root).empty()) {
+    // The editor's rules apply to every folder, one without C/C++ files
+    // among them: theirs count by a database they name that is there.
+    bool declared =
+        project.settings.rules_from_editor
+            ? ranges::any_of(project.rules.declared_databases(),
+                             [](const Spelling& database) { return fs::exists(database.str()); })
+            : project.rules.declares_sources();
+    if(declared || !discovered_databases(project.root).empty()) {
         return true;
     }
-    auto& cache_dir = project.settings.project.cache_dir;
+    auto& cache_dir = project.settings.cache_dir;
     if(cache_dir.empty()) {
         return false;
     }
@@ -97,12 +104,14 @@ bool has_build(const Project& project) {
 
 void ServedProject::configure(const std::optional<codec::dyn::Value>& init_options,
                               llvm::ArrayRef<CanonicalPath> taken_cache_dirs) {
+    auto shown = server.files.display(project.root);
     auto loaded = load_settings(project.root,
                                 {
                                     .overlay = init_options,
                                     .configuration = server.requested_configuration,
                                     .strict = false,
                                     .taken_cache_dirs = taken_cache_dirs,
+                                    .root_name = shown,
                                 });
     project.settings = std::move(loaded.settings);
     configuration = std::move(loaded.configuration);
@@ -160,12 +169,8 @@ void ServedProject::start() {
 
 void ServedProject::open() {
     waiting = false;
-    started = true;
     server.log_into(*this);
-    if(broken()) {
-        return;
-    }
-    if(!project.root.empty()) {
+    if(!broken() && !project.root.empty()) {
         llvm::SmallVector<CanonicalPath> open_files;
         for(auto& [path_id, document]: documents) {
             open_files.emplace_back(project.file_table.resolve(path_id));
@@ -178,25 +183,40 @@ void ServedProject::open() {
         auto opened = project.open({
             .configuration = configuration,
             .cache = Project::OpenOptions::Cache::Write,
-            .freshness = {.withhold = project.settings.project.enable_indexing},
             .files = std::move(open_files),
         });
+        // Rules keeping every unit out of the background index leave the
+        // index as saved: no indexer refreshes what it withholds.
+        project.freshness.options.withhold = project.rules.indexes_any();
         if(project.store) {
             bg_tasks.spawn(checkpoint_task());
-        }
-        if(project.database && !project.database->read_only()) {
-            start_control_listener();
         }
         commands_missing =
             ranges::none_of(opened.members, [&](Fid member) { return project.declared(member); }) &&
             !project.rules.declares_sources() && !project.found_unreadable_database();
         // What the load read the databases and the saved index with.
         server.return_freed_memory();
+        if(project.index_waits) {
+            // The documents wait for their compiles until the index is this
+            // project's, or another process keeps it.
+            loaded.reset();
+            bg_tasks.spawn(open_index_task());
+            return;
+        }
     }
-    if(project.settings.project.enable_indexing) {
-        project.background_index.start(
-            {.skipped_diagnostics = project.settings.project.skip_header_bodies});
+    serve();
+}
+
+void ServedProject::serve() {
+    started = true;
+    if(broken()) {
+        loaded.set();
+        return;
     }
+    if(project.database && !project.database->read_only()) {
+        start_control_listener();
+    }
+    project.background_index.start({.skipped_diagnostics = !project.rules.parses_every_body()});
     server.load_choices(*this);
 
     // Documents adopted before the project started — held while its root's
@@ -221,7 +241,7 @@ void ServedProject::open() {
     if(project.root.empty()) {
         return;
     }
-    auto poll_seconds = chrono::seconds(project.settings.tracker.workspace_poll_seconds);
+    auto poll_seconds = chrono::seconds(project.settings.poll_seconds);
     project.file_table.disk.add_root(project.root, {.max = poll_seconds});
     // Watched from the project load on: each database is baselined at the
     // read its entries came from.
@@ -236,11 +256,35 @@ void ServedProject::open() {
     }
 }
 
+async::task<> ServedProject::open_index_task() {
+    auto lock = co_await project.wait_for_writer();
+    if(!lock) {
+        project.index_waits = false;
+        index_kept_elsewhere = true;
+        auto holder = index::WriterLock::holder(project.settings.cache_dir);
+        LOG_GUIDANCE(
+            "Another clice process{} keeps the index in {}: nothing under {} is served until it "
+            "lets go and clice restarts",
+            holder.empty() ? "" : std::format(" ({})", holder),
+            std::string_view(project.settings.cache_dir),
+            project.file_table.display(project.root));
+    } else {
+        Project::Opened opened;
+        follow({.commands = project.open_index(std::move(*lock), opened)});
+    }
+    serve();
+}
+
 async::task<> ServedProject::shutdown() {
     if(endpoint_recorded) {
-        index::remove_endpoint(project.settings.project.cache_dir);
+        index::remove_endpoint(project.settings.cache_dir);
         endpoint_recorded = false;
     }
+#ifndef _WIN32
+    if(!control_socket.empty()) {
+        fs::remove(control_socket);
+    }
+#endif
     bg_tasks.cancel();
     co_await bg_tasks.join();
     // Quiesce in-flight compilation and indexing first so the persisted
@@ -301,8 +345,7 @@ void ServedProject::adopt(Fid path_id) {
     // and its requests' PCH adoptions read, before its first compile too.
     project.graph.add(ast_node(path_id));
     documents[path_id] = {};
-    if(project.settings.project.readonly == ReadonlyMode::Off ||
-       server.own_context_only.contains(path_id)) {
+    if(readonly(path_id) == ReadonlyMode::Off || !server.shows_other_contexts(path_id)) {
         start_compiling(path_id);
     }
     // What the disk holds under the buffer: a later save or outside
@@ -356,8 +399,9 @@ void ServedProject::decide_compiling(Fid path_id) {
         return;
     }
     // Nothing indexed yet: reading this file is the reason to index it
-    // first — unless indexing is disabled or the file is no unit of the
-    // build (a header, which only the units reading it index), in which
+    // first — unless the background index has not started (its index waits
+    // for the writer lock) or the file is no unit of the build (a header,
+    // which only the units reading it index), in which
     // case no shard will arrive soon and only an AST can serve the
     // document. An index_first the background index cannot fulfill
     // starts compiling through the attempt-finished check.
@@ -373,7 +417,7 @@ bool ServedProject::look_for_database(bool force) {
         return false;
     }
     if(!force) {
-        auto poll = chrono::seconds(project.settings.tracker.workspace_poll_seconds);
+        auto poll = chrono::seconds(project.settings.poll_seconds);
         auto now = chrono::steady_clock::now();
         if(poll.count() == 0 || now < next_look) {
             return false;
@@ -384,7 +428,7 @@ bool ServedProject::look_for_database(bool force) {
         return false;
     }
     open();
-    server.update_owners();
+    server.update_owners_later();
     return true;
 }
 
@@ -408,7 +452,7 @@ void ServedProject::record_saved(Fid path_id) {
     //
     // The open files the save made stale show what their background run
     // finds as soon as it can (show_skipped_diagnostics).
-    if(project.settings.project.skip_header_bodies) {
+    if(!project.rules.parses_every_body()) {
         auto& background = project.background_index;
         for(auto& [open, document]: documents) {
             if(background.queue().pending_reason(open) && !background.queue().in_flight(open)) {
@@ -473,29 +517,24 @@ async::task<> ServedProject::checkpoint_task() {
 }
 
 void ServedProject::start_control_listener() {
-    constexpr llvm::StringLiteral host = "127.0.0.1";
-    auto acceptor = async::tcp::listen(host, 0, {}, server.loop);
-    std::optional<int> port;
-    if(acceptor) {
-        if(auto bound = acceptor->getsockname()) {
-            port = bound->port;
-        }
-    }
-    if(!port) {
-        LOG_WARN("Failed to start the control listener; `clice index` cannot ask this server");
+    auto& cache_dir = project.settings.cache_dir;
+    auto listener = control::listen(cache_dir, server.loop);
+    if(!listener) {
+        LOG_WARN("Failed to start the control channel, so `clice index` cannot ask this server: {}",
+                 listener.error());
         return;
     }
-    auto& cache_dir = project.settings.project.cache_dir;
     if(!index::write_endpoint(cache_dir,
                               {.pid = static_cast<std::uint32_t>(sys::pid()),
                                .version = std::string(clice::version),
-                               .host = host.str(),
-                               .port = *port})) {
+                               .socket = listener->name})) {
         return;
     }
     endpoint_recorded = true;
-    LOG_INFO("Control channel listening on {}:{}", host, *port);
-    bg_tasks.spawn(control::serve(*this, std::move(*acceptor)));
+    LOG_INFO("Control channel listening on {}", listener->name);
+    control_socket = std::move(listener->name);
+    control_directory = std::move(listener->directory);
+    bg_tasks.spawn(control::serve(*this, std::move(listener->acceptor)));
 }
 
 async::task<> ServedProject::sources_poll_task() {
@@ -503,7 +542,7 @@ async::task<> ServedProject::sources_poll_task() {
     // changed outside the editor (a git checkout, a generator) is seen at the
     // polls' pace (up to 30 s), unless a check reads it first; a change to
     // clice.toml when the editor saves it.
-    auto interval = chrono::seconds(project.settings.tracker.workspace_poll_seconds);
+    auto interval = chrono::seconds(project.settings.poll_seconds);
     while(true) {
         // Time is the feature: the workspace loop's pace.
         co_await async::sleep(interval);

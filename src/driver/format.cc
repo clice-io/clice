@@ -105,7 +105,7 @@ std::vector<Target> project_files(Project& project, llvm::ArrayRef<Fid> members)
     auto& files = project.file_table;
 
     CanonicalRef root = project.root;
-    auto cache_dir = project.settings.project.cache_identity;
+    auto cache_dir = project.settings.cache_identity;
     std::vector<CanonicalPath> skipped_dirs;
     auto skip = [&](CanonicalPath dir) {
         if(!ranges::contains(skipped_dirs, dir)) {
@@ -269,14 +269,19 @@ Result format_project(const Request& options) {
             // project's too.
             auto target = CanonicalPath(path);
             if(!path::is_within(target, root)) {
-                if(path::is_within(CanonicalPath(path.parent()), root)) {
-                    result.exit_code = 2;
-                    result.error = std::format("{}: links outside the project", path);
-                    return result;
-                }
-            } else if(project.rules.formattable(target)) {
-                files.push_back({.path = std::move(target), .name = path});
+                result.exit_code = 2;
+                result.error =
+                    path::is_within(CanonicalPath(path.parent()), root)
+                        ? std::format("{}: links outside the project", path)
+                        : std::format("{}: outside the project at {}", path, options.root);
+                return result;
             }
+            if(!project.rules.formattable(target)) {
+                result.exit_code = 2;
+                result.error = std::format("{}: a rule says `format = false`", path);
+                return result;
+            }
+            files.push_back({.path = std::move(target), .name = path});
         }
     }
     if(whole) {

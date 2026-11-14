@@ -319,11 +319,8 @@ struct WorkerPoolFixture {
         pool.scale_up_worker();
     }
 
-    bool start(std::uint32_t stateless = 2,
-               std::uint32_t stateful = 0,
-               std::uint32_t min_stateless = 0) {
+    bool start(std::uint32_t stateless = 2, std::uint32_t stateful = 0) {
         auto options = worker_options(tmp, stateless, stateful);
-        options.min_stateless = min_stateless;
         options.max_stateless = 8;
         options.build_deadline = pool.options.build_deadline;
         options.query_deadline = pool.options.query_deadline;
@@ -1639,22 +1636,34 @@ ZEST_CASE(RevivalGivesNothingBack) {
     ZEXPECT(done);
 }
 
-ZEST_CASE(FloorAboveStartupKept) {
-    // A floor configured above the startup count survives start(): once
-    // scale-up grew the pool to it, idle scale-down holds the configured
-    // warm set instead of shrinking back to startup.
+ZEST_CASE(StartsItsFloor) {
+    // The pool starts the floor of its stateless workers, and idle
+    // scale-down keeps them.
     WorkerPoolFixture f;
     f.run([&]() -> async::task<> {
-        ZASSERT(f.start(2, 0, /*min_stateless=*/4));
-        f.scale_up();
-        f.scale_up();
-        co_await f.serves(2);
-        co_await f.serves(3);
+        ZASSERT(f.start(4, 0));
+        ZEXPECT(f.stateless_count() == 4u);
+        for(std::size_t idx = 0; idx < 4; idx += 1) {
+            co_await f.serves(idx);
+        }
         f.sample(1ull << 40, 0, WorkerScheduler::idle_scale_down);
         for(std::size_t idx = 0; idx < 4; idx += 1) {
             ZEXPECT(f.state(idx) == WorkerPoolFixture::SlotState::Alive);
             ZEXPECT(!f.scaling_down(idx));
         }
+        co_await f.stop();
+    });
+}
+
+ZEST_CASE(StartsBelowBackgroundJobs) {
+    // The background jobs the pool may run at once do not start workers:
+    // only the floor does.
+    WorkerPoolFixture f;
+    f.run([&]() -> async::task<> {
+        auto options = worker_options(f.tmp, 4, 0);
+        options.min_stateless = 1;
+        ZASSERT(f.pool.start(options));
+        ZEXPECT(f.stateless_count() == 1u);
         co_await f.stop();
     });
 }

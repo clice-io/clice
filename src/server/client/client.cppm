@@ -235,9 +235,18 @@ private:
     /// Registers the handler of a request on a document: the user is
     /// active, the document resolves to its project, and `answer` — given
     /// the request's context, its parameters and the document — gets the
-    /// request unless it needs the document open and it is not.
+    /// request unless it needs the document open and it is not; its
+    /// answer is logged (logged).
     template <typename Params, typename Answer>
     void on_document(Answer answer, DocumentRequestOptions options = {});
+
+    /// `answer`, the request `method` on `file` told in the log once it
+    /// ends with what it waited for: at debug level, at info when it failed
+    /// or took over 200 ms.
+    RawResult logged(RawResult answer,
+                     std::string method,
+                     std::string file,
+                     std::shared_ptr<RequestWaits> waits);
 
     /// What answers a request on the open document now
     /// (ServedProject::pick_route); one the index answers, or nothing yet,
@@ -516,7 +525,17 @@ void LSPClient::on_document(Answer answer, DocumentRequestOptions options) {
                 return async::co_invoke([]() -> RawResult { co_return codec::raw_value{"null"}; });
             }
         }
-        return answer(ctx, params, std::move(document));
+        auto waits = std::make_shared<RequestWaits>();
+        document.ticket.waits = waits;
+        // A document that is no file of the server's — not a file URI, a
+        // second name whose text parted from the first's — has its URI's
+        // path alone.
+        auto file =
+            document.path_id.valid() ? server.files.display(document.path_id) : document.path;
+        return logged(answer(ctx, params, std::move(document)),
+                      std::string(ctx.method),
+                      std::move(file),
+                      std::move(waits));
     });
 }
 

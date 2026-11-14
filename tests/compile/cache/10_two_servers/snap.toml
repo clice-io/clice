@@ -1,4 +1,4 @@
-["two servers share the cache".changed]
+["a second window is refused".changed]
 errors = [
     {
         at = "return s.⟦x⟧;",
@@ -8,3 +8,11 @@ errors = [
         code = "err_no_member",
     },
 ]
+
+["a second window is refused".guidance]
+value = [
+    "Another clice process (pid #) keeps the index in ${WS}/.clice: nothing under ${WS} is served until it lets go and clice restarts",
+]
+
+["a second window is refused".refused]
+diagnostics = []

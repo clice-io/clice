@@ -81,7 +81,7 @@ void ServedProject::follow(const Affected& affected) {
     // The database gained or lost entries: an open document may belong to
     // another project now.
     if(!commands.added.empty() || !commands.removed.empty()) {
-        server.update_owners();
+        server.update_owners_later();
     }
     // A database found or a member recorded: the directories on the way to
     // it decide what loads too.
@@ -102,7 +102,7 @@ void ServedProject::recheck_choices() {
         }
     }
     if(flipped) {
-        server.update_owners();
+        server.update_owners_later();
     }
 }
 

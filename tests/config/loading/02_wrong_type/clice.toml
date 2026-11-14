@@ -1,2 +1,1 @@
-[project]
-enable_indexing = "yes"
+poll_seconds = "yes"

@@ -3,8 +3,10 @@ stdout = '''
 ${WS}/构建/compile_commands.json:
   directory: ${WS}/构建
   command:   ${WS}/missing-cc -std=c++20 @参数.rsp -DLABEL=你好 -c ../源码/主程序.cpp -o 主程序.o
-  resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 -I ${WS}/构建/../头文件 -D LABEL=你好 ${WS}/构建/../源码/主程序.cpp
+  resolved:  ${WS}/missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 -I ${WS}/构建/../头文件 -D LABEL=你好 ${WS}/构建/../源码/主程序.cpp
   error:     the compiler could not be queried: the compiler ${WS}/missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine
+
+settings:  the defaults
 '''
 stderr = "warning: Cannot ask the compiler for its default settings: the compiler missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands"
 exit = 0
@@ -34,6 +36,7 @@ stdout = '''
         "directory": "${WS}/构建",
         "arguments": [
           "${WS}/missing-cc",
+          "--no-default-config",
           "-fno-delayed-template-parsing",
           "-resource-dir",
           "${RESOURCE}",
@@ -46,6 +49,44 @@ stdout = '''
         ]
       },
       "toolchainError": "the compiler ${WS}/missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine"
+    }
+  ],
+  "settings": [
+    {
+      "name": "query_toolchain",
+      "value": "true"
+    },
+    {
+      "name": "background_index",
+      "value": "true"
+    },
+    {
+      "name": "skip_function_body",
+      "value": "unset"
+    },
+    {
+      "name": "index_function_body",
+      "value": "unset"
+    },
+    {
+      "name": "readonly",
+      "value": "off"
+    },
+    {
+      "name": "self_contained",
+      "value": "unset"
+    },
+    {
+      "name": "other_contexts",
+      "value": "true"
+    },
+    {
+      "name": "lint",
+      "value": "true"
+    },
+    {
+      "name": "format",
+      "value": "true"
     }
   ]
 }
@@ -61,6 +102,7 @@ stdout = '''
     "file": "../源码/主程序.cpp",
     "arguments": [
       "${WS}/missing-cc",
+      "--no-default-config",
       "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",
@@ -81,7 +123,7 @@ error: 1 of the entries stay driver commands: the warnings above say why
 exit = 1
 
 [test."$ clice command convert -- missing-cc -I头文件 -c 源码/主程序.cpp"]
-stdout = "missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -I ${WS}/头文件 ${WS}/源码/主程序.cpp"
+stdout = "missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -I ${WS}/头文件 ${WS}/源码/主程序.cpp"
 stderr = '''
 warning: Cannot ask the compiler for its default settings: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
 error: The command stays a driver command: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine

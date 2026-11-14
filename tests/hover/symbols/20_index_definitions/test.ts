@@ -8,12 +8,13 @@ const files = ["main.cpp", "math.cppm", "shapes.m"];
 // which need the AST. An Objective-C class shows its @interface, and its
 // @implementation where no @interface declares it.
 test(async (t) => {
-    const index = await t.start({ config: { project: { readonly: "on" } } });
+    const index = await t.start({ lastRule: { readonly: "on" } });
     for (const file of files) {
         index.open(file, { pull: false });
     }
     await index.sync();
-    const ast = await t.start({ config: { project: { readonly: "off" } } });
+    // Beside the first, which keeps the index, a cache of its own.
+    const ast = await t.start({ lastRule: { readonly: "off" }, cacheDir: ".clice-ast" });
     for (const file of files) {
         ast.open(file);
     }

@@ -39,7 +39,7 @@ test("the active one", async (t) => {
 // why it should on the file, until the active configuration is selected
 // again.
 test("a client without restarts, beside clice.toml", async (t) => {
-    t.disk.write("clice.toml", "[project]\nenable_indexing = false\n");
+    t.disk.write("clice.toml", "[[rules]]\nbackground_index = false\n");
     const s = await t.start({ config, capabilities: {} });
     expect(await s.switchConfiguration("release")).toEqual({ success: true, reason: null });
     await t.show("release", s.pushes("clice.toml"));

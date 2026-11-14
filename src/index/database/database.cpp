@@ -272,6 +272,23 @@ void make_sparse(llvm::StringRef path) {
     }
 }
 
+/// Why the disk under the database at `path` has no room for the lock
+/// file LMDB creates beside it; none when it has. LMDB sizes that file with
+/// ftruncate and maps it, so on a full disk its first write is a SIGBUS,
+/// not an error: as much is written for real first, then removed.
+std::error_code check_room_for_lock(llvm::StringRef path) {
+    auto probe = path.str() + "-probe";
+    auto file = fs::File::open(probe, {.write = true, .create = true, .truncate = true});
+    if(!file) {
+        return file.error();
+    }
+    // Over the lock file of 1024 readers (configure), 64 bytes each.
+    auto error = file->write(std::string(256 * 1024, '\0'));
+    file->close();
+    fs::remove(probe);
+    return error;
+}
+
 class LmdbDatabase final : public BlobDatabase {
 public:
     LmdbDatabase(MDB_env* env,
@@ -777,6 +794,12 @@ std::expected<std::unique_ptr<LmdbDatabase>, std::string> open_lmdb_env(llvm::St
         }
     } else {
         fs::File::open(path + "-open", {.write = true, .create = true});
+        if(!fs::exists(path + "-lock")) {
+            if(auto error = check_room_for_lock(path)) {
+                return std::unexpected(
+                    std::format("No room for the index database at {}: {}", path, error.message()));
+            }
+        }
     }
 
     // One recovery retry: confirmed corruption (or a meta mismatch) is
@@ -1045,10 +1068,10 @@ std::expected<std::unique_ptr<BlobDatabase>, std::string> open_database(CacheSto
     switch(filesystem_locality(store.base_dir())) {
         case FsLocality::Local: break;
         case FsLocality::Remote: {
-            return std::unexpected(
-                std::format("{} is on a remote filesystem, which the index database does not "
-                            "support",
-                            store.base_dir()));
+            return std::unexpected(std::format(
+                "The cache directory {} is on a remote filesystem, which the index database does "
+                "not support (set `cache_dir` in clice.toml to a directory on a local disk)",
+                store.root_dir()));
         }
         case FsLocality::Unknown: {
             LOG_WARN(

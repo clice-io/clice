@@ -14,7 +14,7 @@ const CAPABILITIES = {
 test(async (t) => {
     t.disk.database({ "main.cpp": [], "scratch.cpp": [] });
     const s = await t.start({
-        config: { project: { readonly: "auto" } },
+        lastRule: { readonly: "auto" },
         capabilities: CAPABILITIES,
     });
     await s.sync();

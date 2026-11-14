@@ -5,7 +5,7 @@ const NEW =
     "#ifndef LISTED\nint regen_fn() { return 1; }\n#else\nint listed_fn() { return 2; }\n#endif\n";
 
 test("database takes over, then drops", async (t) => {
-    const s = await t.start({ config: { project: { idle_timeout_ms: 10 } } });
+    const s = await t.start({ config: { workers: { background_delay_ms: 10 } } });
     s.open("src/a.cpp");
     t.disk.write("src/new.cpp", NEW);
     await s.diagnostics("src/new.cpp");

@@ -305,8 +305,9 @@ void CacheStore::write_ignore_markers(llvm::StringRef root) {
     // scans cache/. The known cost is that CACHEDIR-aware backups also
     // skip a config.toml kept here — git, which sees it, is the intended
     // preservation channel.
-    if(auto made = fs::create_directories(root); !made) {
-        LOG_WARN("Cannot create the cache directory {}: {}", root, made.error().message());
+    // A root that cannot be made is the store's to report: it cannot open
+    // there either.
+    if(!fs::create_directories(root)) {
         return;
     }
     auto write_marker = [](llvm::StringRef path, llvm::StringRef content) {
@@ -328,6 +329,9 @@ void CacheStore::write_ignore_markers(llvm::StringRef root) {
         }
     };
     write_marker(path::join(root, ".gitignore"), "*\n!config.toml\n");
+    // LIMITATION: Time Machine and iCloud read no CACHEDIR.TAG, so on macOS
+    // the precompiled files and the index are backed up and synced; the
+    // configuration guide advises a `cache_dir` under ~/Library/Caches.
     write_marker(path::join(root, "CACHEDIR.TAG"),
                  "Signature: 8a477f597d28d172789f06886806bc55\n"
                  "# This file marks a cache directory created by clice.\n"

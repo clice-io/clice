@@ -21,7 +21,7 @@ stdout = '''
 Indexed 0 translation units in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
-stderr = "warning: clice.toml:2:1: unknown field 'misspelled' at project"
+stderr = "warning: clice.toml:2:1: unknown field 'misspelled' at workers"
 exit = 0
 
 ["valid log levels"."stderr levels"]

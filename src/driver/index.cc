@@ -141,11 +141,11 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     // The machine is the run's: every logical core, while memory admits
     // the units.
     auto& batch = options.project;
-    bool started =
+    auto unstarted =
         start_batch(run, batch, batch.workers != 0 ? batch.workers : sys::parallelism(), "index");
     result.session_dir = run.session_dir;
-    if(!started) {
-        result.error = "the worker processes did not start";
+    if(!unstarted.empty()) {
+        result.error = std::move(unstarted);
         result.exit_code = 2;
         // A failed later spawn leaves earlier workers and their I/O tasks
         // live; unstopped they keep the batch event loop spinning and the
@@ -159,14 +159,12 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     });
 
     // The command's whole product is the persisted index: without a database
-    // (cache failed to open, another process holds the index writer lock,
+    // (cache failed to open, another process keeps the index writer lock,
     // or an unreadable header disabled persistence) the run would
     // only warm this process's memory and a rerun would start from
     // nothing — fail instead of pretending.
-    if(!project.database) {
-        result.error = std::format("Cannot persist the index at {}: {}",
-                                   std::string_view(project.settings.project.cache_dir),
-                                   opened.unwritable);
+    if(auto unwritable = co_await writes_index(project, opened); !unwritable.empty()) {
+        result.error = std::move(unwritable);
     } else if(opened.members.empty()) {
         result.error = std::format("Nothing to index: {}", project.why_no_members(batch.root));
     }
@@ -272,7 +270,7 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
         index_project({.root = std::move(root), .loaded = std::move(loaded), .workers = workers},
                       report_progress);
     if(!indexed) {
-        LOG_ERROR("{}", indexed.error());
+        LOG_ERROR("{}", indexed.error().message);
         return 2;
     }
     if(auto* server = std::get_if<ServerIndexed>(&*indexed)) {

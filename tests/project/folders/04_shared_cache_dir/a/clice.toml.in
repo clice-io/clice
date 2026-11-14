@@ -1,2 +1,1 @@
-[project]
 cache_dir = "${WS}/shared/.clice"

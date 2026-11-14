@@ -17,13 +17,15 @@ import time
 
 BOTS = {"chatgpt-codex-connector", "coderabbitai", "github-actions"}
 
-# <details> blocks whose summary matches are dropped with their content;
-# every other block is unwrapped so nested findings stay visible.
+# <details> blocks whose summary starts with one of these (after any emoji)
+# are dropped with their content; every other block — a per-file group such
+# as `support/foo.cpp (2)` or `docs/design.md (1)` included — is unwrapped so
+# nested findings stay visible.
 NOISE_DETAILS = re.compile(
-    r"Prompt for|About Codex|Walkthrough|Review details|Review info|Run configuration|Autofix"
-    r"|Commits|Configuration used|Files selected|Files ignored|Files skipped|Additional context"
-    r"|Additional comments|Learnings|Tips|Support|Docs|Pre-merge checks|Finishing touches"
-    r"|Comment @coderabbitai",
+    r"\W*(?:Prompt for|About Codex|Walkthrough|Review details|Review info|Run configuration"
+    r"|Autofix|Commits|Configuration used|Files selected|Files ignored|Files skipped"
+    r"|Additional context|Additional comments|Learnings|Tips|Support|Docs|Pre-merge checks"
+    r"|Finishing touches|Comment @coderabbitai)\b(?![./])",
     re.I,
 )
 
@@ -171,7 +173,7 @@ def fetch_reviews(owner, name, pr):
 def strip_details(text):
     def replace(match):
         summary = re.search(r"<summary>(.*?)</summary>", match.group(0), re.S)
-        if summary and NOISE_DETAILS.search(summary.group(1)):
+        if summary and NOISE_DETAILS.match(HTML_TAGS.sub("", summary.group(1))):
             return ""
         body = re.sub(r"<summary>(.*?)</summary>", r"\1\n", match.group(0), flags=re.S)
         return re.sub(r"</?details>", "", body)
@@ -241,7 +243,9 @@ def is_finding(review, cleaned):
 
 
 def truncate(text, limit):
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+    if not limit or len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
 
 
 def indent(text, prefix="    "):
@@ -259,8 +263,8 @@ def main():
     parser.add_argument(
         "--max-chars",
         type=int,
-        default=1500,
-        help="truncate each comment to this length",
+        default=4000,
+        help="truncate each comment or review body to this length (0: no limit)",
     )
     args = parser.parse_args()
 

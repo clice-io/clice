@@ -41,3 +41,24 @@ test("a database found later takes its files", async (t) => {
     expect(await s.poll("cdb")).toBe(1);
     await t.show("after", s.errors("alpha/extra.cpp"));
 });
+
+test("a file outside every folder opens neither", async (t) => {
+    t.disk.write("stray.h", "#pragma once\nint stray();\n");
+    const s = await t.start({ folders: ["plain", "alpha"] });
+    expect(await s.errors("stray.h")).toEqual([]);
+    await s.stop();
+    expect(exists(t, "plain/.clice")).toBe(false);
+    expect(exists(t, ".clice/cache")).toBe(false);
+});
+
+// A rule the editor sends applies to every folder: its default command
+// makes no folder a build of its own.
+test("the editor's default command opens no folder", async (t) => {
+    const s = await t.start({
+        folders: ["alpha", "plain"],
+        config: { rules: [{ default_command: "clang++ -std=c++20" }] },
+    });
+    await s.indexed();
+    await s.stop();
+    expect(exists(t, "plain/.clice")).toBe(false);
+});

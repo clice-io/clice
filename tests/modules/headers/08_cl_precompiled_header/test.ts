@@ -20,7 +20,7 @@ answers(
 );
 
 test("no errors", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("src/counting.cppm")).toEqual([]);
     expect(await s.errors("src/main.cpp")).toEqual([]);
 });

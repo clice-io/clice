@@ -29,7 +29,7 @@ describe("records", () => {
 
     test("config from options and toml", () => {
         recordConfig({
-            project: { readonly: "on" },
+            workers: { foreground: 1 },
             rules: [{ patterns: ["**"], append: ["-DX"] }],
         });
         recordToml(
@@ -45,9 +45,9 @@ describe("records", () => {
         expect(recorded("config")).toEqual([
             "default_configuration",
             "hover.show_aka",
-            "project.readonly",
             "rules.append",
             "rules.patterns",
+            "workers.foreground",
         ]);
     });
 

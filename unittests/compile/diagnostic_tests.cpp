@@ -145,8 +145,9 @@ int main() { return 0; }
 
 ZEST_CASE(NotesPlacedWhenShown) {
     /// A note in the diagnostic's own file is placed in the text compiled;
-    /// another file is read when the diagnostic is shown: one gone, or
-    /// shorter than the note's range, places nothing.
+    /// another file is read when the diagnostic is shown, and named as the
+    /// client knows it: one gone, or shorter than the note's range, places
+    /// nothing.
     std::string text = "int x;\n";
     auto starts = lsp::line_starts(text);
     PositionMap positions(text, starts);
@@ -162,11 +163,12 @@ ZEST_CASE(NotesPlacedWhenShown) {
         {.path = "/wide.h", .range = {20, 21}, .message = "past"},
         {.path = "/wide.h", .range = {4, 11},  .message = "here"},
     };
-    auto note_positions = [&](llvm::StringRef path) -> std::optional<PositionMap> {
+    auto note_file = [&](llvm::StringRef path) -> std::optional<feature::NoteFile> {
         if(path == "/gone.h") {
             return std::nullopt;
         }
-        return PositionMap(header, header_starts);
+        return feature::NoteFile{.shown = "/shown/wide.h",
+                                 .positions = PositionMap(header, header_starts)};
     };
 
     for(auto [encoding, end]: {
@@ -174,12 +176,8 @@ ZEST_CASE(NotesPlacedWhenShown) {
             std::pair{PositionEncoding::UTF16, 7u },
             std::pair{PositionEncoding::UTF32, 6u },
     }) {
-        auto shown = feature::to_protocol(diagnostic,
-                                          true,
-                                          encoding,
-                                          "/main.cpp",
-                                          positions,
-                                          note_positions);
+        auto shown =
+            feature::to_protocol(diagnostic, true, encoding, "/main.cpp", positions, note_file);
         ZEXPECT(shown.range.end.character == 5u);
         ZASSERT(shown.related_information);
         auto& related = *shown.related_information;
@@ -188,6 +186,7 @@ ZEST_CASE(NotesPlacedWhenShown) {
         ZEXPECT(related[0].location.uri == feature::to_uri("/main.cpp"));
         ZEXPECT(related[0].location.range.end.character == 5u);
         ZEXPECT(related[1].message == "here");
+        ZEXPECT(related[1].location.uri == feature::to_uri("/shown/wide.h"));
         ZEXPECT(related[1].location.range.end.character == end);
     }
 }

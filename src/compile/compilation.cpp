@@ -13,6 +13,7 @@ import :syntax.header_context;
 import :syntax.lexical_scan;
 import :syntax.position;
 import :syntax.preamble;
+import :vfs.file_system;
 
 namespace clice {
 
@@ -145,9 +146,11 @@ std::unique_ptr<clang::CompilerInvocation>
     // to it: in a long body (a test case of many checks), completion and
     // signature help analyze every earlier statement on each request, those
     // of blocks closed before the point too.
-    front_opts.SkipFunctionBodies = params.skip_bodies ||
-                                    params.kind == CompilationKind::Completion ||
-                                    params.instantiating.has_value();
+    front_opts.SkipFunctionBodies =
+        params.skip_bodies || params.kind == CompilationKind::Completion ||
+        params.instantiating.has_value() ||
+        ranges::any_of(params.function_bodies.rules,
+                       [](const FunctionBodyRules::Rule& rule) { return rule.skip == true; });
     // A precompiled header or module embedding its sources overrides them in
     // every compile reading it, where another holding the same files then
     // refuses to load. clice reads the files on disk and checks them for
@@ -453,16 +456,23 @@ public:
         return clang::MultiplexConsumer::HandleTopLevelDecl(group) && !found_enough();
     }
 
-    /// Asked under CompilationParams::skip_bodies and instantiating, and by
-    /// every completion's parse, which skips each body but the one holding
-    /// the point and a forwarding function's, whose body tells signature
-    /// help the constructor a call reaches.
+    /// Asked under CompilationParams::skip_bodies and instantiating, a rule
+    /// skipping bodies, and by every completion's parse, which skips each
+    /// body but the one holding the point and a forwarding function's,
+    /// whose body tells signature help the constructor a call reaches.
+    // LIMITATION: clang keeps the body of a constexpr function, never asking
+    // here, but not of a `[[msvc::constexpr]]` one: a constant expression
+    // calling such a function whose body is skipped fails. MSVC's STL marks
+    // only forwarding templates so (construct_at), which are kept.
     bool shouldSkipFunctionBody(clang::Decl* decl) final {
         if(unit.kind() == CompilationKind::Completion) {
             return !likely_forwarding(decl) &&
                    clang::MultiplexConsumer::shouldSkipFunctionBody(decl);
         }
         auto file = unit.produced_at(decl->getLocation()).file;
+        if(auto skips = unit.skips_bodies(file)) {
+            return *skips && !likely_forwarding(decl);
+        }
         if(auto& instantiating = unit.params.instantiating;
            instantiating && file == unit.focus_file().file()) {
             if(found_enough() || !instantiating->names) {
@@ -493,7 +503,8 @@ public:
             }
             return false;
         }
-        return unit.in_preamble(file) && !likely_forwarding(decl);
+        return (unit.params.skip_bodies || unit.params.instantiating) && unit.in_preamble(file) &&
+               !likely_forwarding(decl);
     }
 
     void HandleCXXImplicitFunctionInstantiation(clang::FunctionDecl* decl) final {
@@ -852,6 +863,49 @@ struct SystemHeaderPragma : clang::PragmaHandler {
     SilencedHeaders& silenced;
 };
 
+/// `#embed` reads a file through the one content clang keeps for it, which
+/// the file system serves as text, without its byte order mark, when an
+/// earlier lookup found the file without opening it. After `__has_embed`, a
+/// file with the mark that nothing has read or included, here or in the
+/// PCH, gets its bytes as that content, which a later `#include` of it
+/// reads too.
+class EmbeddedBytes : public clang::PPCallbacks {
+public:
+    explicit EmbeddedBytes(clang::Preprocessor& pp) : pp(pp) {}
+
+    void HasEmbed(clang::SourceLocation,
+                  llvm::StringRef,
+                  bool,
+                  clang::OptionalFileEntryRef file) override {
+        // Reading a pipe or a device would wait on it, or take a worker's
+        // standard input.
+        if(!file || file->isNamedPipe() || file->isDeviceFile()) {
+            return;
+        }
+        auto path = file->getFileEntry().tryGetRealPathName();
+        if(!vfs::starts_with_bom(path) || pp.alreadyIncluded(*file)) {
+            return;
+        }
+        auto& sources = pp.getSourceManager();
+        if(ranges::any_of(sources.fileinfo_begin(), sources.fileinfo_end(), [&](const auto& entry) {
+               return entry.first == *file;
+           })) {
+            return;
+        }
+        if(auto bytes = sources.getFileManager().getVirtualFileSystem().getBufferForFile(
+               path,
+               /*FileSize=*/-1,
+               /*RequiresNullTerminator=*/true,
+               /*IsVolatile=*/false,
+               /*IsText=*/false)) {
+            sources.overrideFileContents(*file, std::move(*bytes));
+        }
+    }
+
+private:
+    clang::Preprocessor& pp;
+};
+
 }  // namespace
 
 static void handle_system_header_pragmas(clang::Preprocessor& pp) {
@@ -960,6 +1014,8 @@ CompilationStatus CompilationUnit::run() {
 
     /// Add PPCallbacks to collect preprocessing information.
     instance->getPreprocessor().addPPCallbacks(directive_recorder());
+    instance->getPreprocessor().addPPCallbacks(
+        std::make_unique<EmbeddedBytes>(instance->getPreprocessor()));
     handle_system_header_pragmas(instance->getPreprocessor());
 
     // Past the end of the focus file clang instantiates the templates the
@@ -1044,6 +1100,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .tidy = built.tidy,
             .modular = built.modular,
             .skip_bodies = built.skip_bodies,
+            .function_bodies = built.function_bodies,
             .instantiating = built.instantiating,
             .stop = built.stop,
         };
@@ -1068,6 +1125,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .tidy = built.tidy,
             .modular = built.modular,
             .skip_bodies = built.skip_bodies,
+            .function_bodies = built.function_bodies,
             .instantiating = built.instantiating,
             .stop = built.stop,
         };

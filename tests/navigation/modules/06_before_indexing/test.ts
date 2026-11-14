@@ -6,7 +6,9 @@ import { test } from "@clice/tools/testing";
 // the index, which could otherwise index it before it opens: the request
 // reaches its compile.
 test("importer not indexed", async (t) => {
-    const s = await t.start({ config: { rules: [{ patterns: ["main.cpp"], index: false }] } });
+    const s = await t.start({
+        config: { rules: [{ patterns: ["main.cpp"], background_index: false }] },
+    });
     s.open("main.cpp");
     await t.show("before the index", s.definition(t.marker("use")));
     await s.indexed();
@@ -16,7 +18,9 @@ test("importer not indexed", async (t) => {
 // The interface a rule keeps out of the index: the build of its PCM, which
 // the importer's index waits on, indexes it all the same.
 test("importer indexed first", async (t) => {
-    const s = await t.start({ config: { rules: [{ patterns: ["math.cppm"], index: false }] } });
+    const s = await t.start({
+        config: { rules: [{ patterns: ["math.cppm"], background_index: false }] },
+    });
     await s.indexed();
     s.open("main.cpp");
     await t.show("definition", s.definition(t.marker("use")));

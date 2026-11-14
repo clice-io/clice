@@ -210,3 +210,13 @@ int add(int a, int b)
 ```
 '''
 range = "int ⟦add⟧(int a, int b);"
+
+["per file"."own add".hover]
+markdown = '''
+**function** `add`
+
+```cpp
+int add(int a, int b)
+```
+'''
+range = "return ⟦add⟧(x, x);"

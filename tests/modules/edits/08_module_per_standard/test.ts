@@ -22,7 +22,7 @@ test("changed on disk", async (t) => {
 // new one.
 test("entry added", async (t) => {
     t.disk.database({ "m.cppm": [], "older.cpp": [], "newer.cpp": ["-std=c++23"] });
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     // The messages name the module's file in the cache, whose name hashes
     // the copy's root: the codes say what refused it.
     await t.show(

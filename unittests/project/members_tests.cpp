@@ -237,36 +237,32 @@ ZEST_CASE(PatternRootSkipsNested) {
 
 ZEST_CASE(PatternRootsEnumerate) {
     /// Members are enumerated from where the patterns point, not from the
-    /// configuration file's directory: a configuration file under .clice/ covers
-    /// sources through `${workspace}` and `..` patterns alike, and a
-    /// pattern reaching outside the workspace is honoured too.
+    /// project root: through `${workspace}`, and from a pattern reaching
+    /// outside the project root with `..`.
     TempDir tmp;
-    tmp.touch("src/main.cpp", "int main() {}\n");
+    tmp.touch("app/src/main.cpp", "int main() {}\n");
     tmp.touch("lib/util.cpp", "");
-    tmp.touch("other/skip.cpp", "");
+    tmp.touch("app/other/skip.cpp", "");
 
     FileTable files;
-    Project project{files, CanonicalPath(Spelling::absolute(tmp.root))};
-    auto under_clice = [&](Rule rule) {
-        rule.directory = tmp.path(".clice");
-        return rule;
-    };
-    project.settings.rules.push_back(under_clice(
-        {.patterns = {"${workspace}/src/**"}, .default_command = std::string("clang++ -DSRC")}));
-    project.settings.rules.push_back(under_clice(
-        {.patterns = {"../lib/*.cpp"}, .default_command = std::string("clang++ -DLIB")}));
+    Project project{files, CanonicalPath(Spelling::absolute(tmp.path("app")))};
+    project.settings.rules.push_back(
+        {.patterns = {"${workspace}/src/**"}, .default_command = std::string("clang++ -DSRC")});
+    project.settings.rules.push_back(
+        {.patterns = {"../lib/*.cpp"}, .default_command = std::string("clang++ -DLIB")});
     activate(project);
     auto& compiled = project.settings.compiled_rules;
     ZASSERT(compiled.size() == 2U);
-    ZEXPECT(compiled[0].patterns[0].root == CanonicalPath(Spelling::absolute(tmp.path("src"))));
+    ZEXPECT(compiled[0].patterns[0].root == CanonicalPath(Spelling::absolute(tmp.path("app/src"))));
     ZEXPECT(compiled[1].patterns[0].root == CanonicalPath(Spelling::absolute(tmp.path("lib"))));
 
     auto members = project.members();
     ZASSERT(members.size() == 2U);
-    ZEXPECT(ranges::contains(members, files.intern(Spelling::absolute(tmp.path("src/main.cpp")))));
-    ZEXPECT(ranges::contains(members, files.intern(Spelling::absolute(tmp.path("lib/util.cpp")))));
     ZEXPECT(
-        project.candidates(files.intern(Spelling::absolute(tmp.path("other/skip.cpp")))).empty());
+        ranges::contains(members, files.intern(Spelling::absolute(tmp.path("app/src/main.cpp")))));
+    ZEXPECT(ranges::contains(members, files.intern(Spelling::absolute(tmp.path("lib/util.cpp")))));
+    ZEXPECT(project.candidates(files.intern(Spelling::absolute(tmp.path("app/other/skip.cpp"))))
+                .empty());
     auto util = project.candidates(files.intern(Spelling::absolute(tmp.path("lib/util.cpp"))));
     ZASSERT(util.size() == 1U);
     ZEXPECT(has_arg(project.commands.render_full(util.front().base), "LIB"));

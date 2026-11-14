@@ -26,8 +26,9 @@ std::string CommandEdits::key() const {
         key += '\0';
         append_section(edit.flags);
     }
-    append_section(extra_prepend);
-    append_section(extra_append);
+    append_section(extra.prepend);
+    append_section(extra.append);
+    append_section(extra.remove);
     key += query_toolchain ? 'q' : 'u';
     return key;
 }
@@ -212,10 +213,19 @@ CommandID
         }
     }
     auto entry_directory = Spelling::absolute(base.directory);
-    parse_edit(edits.extra_append, entry_directory, append_args);
+    if(!edits.extra.remove.empty()) {
+        auto removes = parse_removes(edits.extra.remove, entry_directory);
+        std::erase_if(append_args, [&](const LocalArg& local) {
+            return ranges::any_of(removes, [&](const RemovePattern& remove) {
+                return removes_arg(remove, local);
+            });
+        });
+        remove_args.insert(remove_args.end(), removes.begin(), removes.end());
+    }
+    parse_edit(edits.extra.append, entry_directory, append_args);
 
     std::vector<LocalArg> prepend_args;
-    parse_edit(edits.extra_prepend, entry_directory, prepend_args);
+    parse_edit(edits.extra.prepend, entry_directory, prepend_args);
 
     auto matches_remove = [&](const Arg& arg) {
         return ranges::any_of(remove_args, [&](const RemovePattern& remove) {

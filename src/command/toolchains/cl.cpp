@@ -122,6 +122,9 @@ async::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> 
     auto parsed = parse_cl_output(output->out);
 
     auto mode = cl_driver_mode(args[0], family);
+    if(!reads_clang_config(family)) {
+        mode.push_back(no_clang_config.str());
+    }
     auto clang_job = parse_clang_job(output->err);
     if(auto it = ranges::find(clang_job, "-resource-dir");
        it != clang_job.end() && std::next(it) != clang_job.end()) {

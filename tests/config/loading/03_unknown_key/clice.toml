@@ -1,3 +1,5 @@
-[project]
+[diagnostics]
 clang_tdy = true
-enable_indexing = false
+
+[[rules]]
+background_index = false

@@ -1,0 +1,7 @@
+[[rules]]
+patterns = ["third_party/**"]
+skip_function_body = true
+lint = false
+
+[[rules]]
+background_index = false

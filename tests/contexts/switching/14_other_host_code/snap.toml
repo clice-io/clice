@@ -94,3 +94,33 @@ other_contexts = false
 label = "fast_host.cpp"
 description = "${WS}/fast_host.cpp"
 host = "fast_host.cpp"
+
+["own context by rule"."by rule"]
+hover = {}
+
+["own context by rule"."by rule".context]
+automatic = true
+other_contexts = false
+
+["own context by rule"."by rule".context.context]
+label = "fast_host.cpp"
+description = "${WS}/fast_host.cpp"
+host = "fast_host.cpp"
+
+["own context by rule"."shown again".context]
+automatic = true
+
+["own context by rule"."shown again".context.context]
+label = "fast_host.cpp"
+description = "${WS}/fast_host.cpp"
+host = "fast_host.cpp"
+
+["own context by rule"."shown again".hover]
+markdown = '''
+**function** `slow_path`
+
+```cpp
+inline int slow_path()
+```
+'''
+range = "inline int ⟦slow_path⟧() {"

@@ -17,7 +17,7 @@ for (const shutdown of [false, true]) {
                 processId: editor.pid,
                 rootUri: s.uri(""),
                 capabilities: {},
-                initializationOptions: { project: { cache_dir: path.join(t.root, ".clice") } },
+                initializationOptions: { cache_dir: path.join(t.root, ".clice") },
             });
             await s.client.sendNotification(proto.InitializedNotification.type, {});
             if (shutdown) {

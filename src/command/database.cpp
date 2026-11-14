@@ -284,7 +284,11 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // The CDB poll's two-tick debounce keeps half-written files from being
     // read at all.
     std::vector<CompilationEntry> new_entries;
-    Normalizer normalizer{.commands = command_table, .files = file_table, .inputs = &source.inputs};
+    std::vector<std::string> unreadable;
+    Normalizer normalizer{.commands = command_table,
+                          .files = file_table,
+                          .inputs = &source.inputs,
+                          .unreadable = &unreadable};
 
     // A file several entries name, through links, is spelled as the first
     // names it, whose command is its default.
@@ -528,6 +532,16 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     ranges::sort(responses, {}, &LoadInput::file);
     auto duplicates = ranges::unique(responses, {}, &LoadInput::file);
     source.inputs.erase(duplicates.begin(), duplicates.end());
+    if(!unreadable.empty()) {
+        ranges::sort(unreadable);
+        unreadable.erase(ranges::unique(unreadable).begin(), unreadable.end());
+        LOG_GUIDANCE(
+            "The compilation database {} names response files that cannot be read, and the "
+            "commands naming them compile without their options: {}. A build may delete them "
+            "once it has run; build again to bring them back",
+            path,
+            llvm::join(unreadable, ", "));
+    }
     sort_entries();
     return count;
 }

@@ -226,7 +226,7 @@ SelectedCommand Project::select_command(Fid path_id, const CommandRequest& reque
         }
     }
     selection.candidate = *candidate;
-    selection.ref = apply_rules(path_id, *candidate, request.extra_prepend, request.extra_append);
+    selection.ref = apply_rules(path_id, *candidate, request.extra);
     return selection;
 }
 
@@ -375,8 +375,7 @@ std::optional<CommandRef> Project::pch_writer(Fid file,
             if(active) {
                 auto applied = edited_commands.apply(
                     writer.command,
-                    rule_edits(file, selection.candidate)
-                        .options(request.extra_prepend, request.extra_append));
+                    rule_edits(file, selection.candidate).options(request.extra));
                 return CommandRef{writer.file,
                                   applied,
                                   commands.input_kind(applied, file_table.resolve(writer.file)),

@@ -67,6 +67,19 @@ constexpr bool cl_mode(CompilerFamily family) {
     return family == CompilerFamily::MSVC || family == CompilerFamily::ClangCL;
 }
 
+/// What clang's own driver, reading another compiler's command, is told not
+/// to read: the configuration files of a clang beside the compiler (conda
+/// keeps its clang's `<triple>-clang++.cfg` next to its g++), which that
+/// compiler never reads.
+constexpr llvm::StringLiteral no_clang_config = "--no-default-config";
+
+/// Whether the compiler is a clang, whose configuration files are its own
+/// (no_clang_config).
+constexpr bool reads_clang_config(CompilerFamily family) {
+    return family == CompilerFamily::Clang || family == CompilerFamily::ClangCL ||
+           family == CompilerFamily::Intel;
+}
+
 /// The option-table visibility mask of a driver family: CL families see
 /// /U-, /D-style options; the rest exclude them so Unix absolute paths
 /// are not misparsed. None sees flang's.

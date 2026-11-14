@@ -20,7 +20,7 @@ answers(
 // The answers test's compile check reads the requested header's diagnostics
 // alone; this applies the host action and reads the host's own.
 test("host compiles", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: true } } });
+    const s = await t.start();
     await s.diagnostics("main.cpp");
     await s.diagnostics("widget.h");
     await s.indexed();
@@ -34,7 +34,7 @@ test("host compiles", async (t) => {
 // With no index to read other.cpp, nothing tells that it defines Widget::b:
 // its definition is still offered.
 test("no index", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await s.diagnostics("widget.h");
     await t.show("defined_elsewhere", s.codeActions(t.marker("defined_elsewhere")));
 });

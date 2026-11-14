@@ -1,28 +1,15 @@
-import { expect } from "vitest";
-import { test, type Serve } from "@clice/tools/testing";
+import { test } from "@clice/tools/testing";
 
-async function pchBuilds(s: Serve): Promise<number> {
-    await s.sync();
-    return (await s.counts()).pch;
-}
-
-test("two servers share the cache", async (t) => {
-    // Two editor windows on one project: one cache, two servers.
+// Two editor windows on one project: the second finds the index the first
+// keeps and serves nothing there, while the first serves on.
+test("a second window is refused", async (t) => {
     const first = await t.start();
-    expect(await first.errors("main.cpp")).toEqual([]);
-    const second = await t.start();
-    expect(await second.errors("main.cpp")).toEqual([]);
+    await first.diagnostics("main.cpp");
     t.disk.write("header.h", "#pragma once\n\nstruct Shared {\n    int y;\n};\n");
     await t.show("changed", first.errors("main.cpp"));
-    const changed = await first.errors("main.cpp");
-    expect(await second.errors("main.cpp")).toEqual(changed);
-    // Each built for itself, and neither spoiled the other's work.
-    expect({ first: await pchBuilds(first), second: await pchBuilds(second) }).toEqual({
-        first: 2,
-        second: 2,
-    });
-    await second.stop();
-    await first.restart();
-    expect(await first.errors("main.cpp")).toEqual(changed);
-    expect(await pchBuilds(first)).toBe(0);
+    const second = await t.start({ env: { CLICE_TEST_WRITER_WAIT_MS: "1000" } });
+    // Asked while the second waits for the index, answered once refused.
+    const refused = second.diagnostics("main.cpp");
+    await t.show("guidance", await second.guidance());
+    await t.show("refused", refused);
 });

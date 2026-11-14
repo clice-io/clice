@@ -6,6 +6,7 @@ stdout = '''
     "file": "kernels.cuh",
     "arguments": [
       "nvcc-missing",
+      "--no-default-config",
       "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",

@@ -18,7 +18,7 @@ test("the pchs index template bodies", async (t) => {
     // indexes of the target's PCH and of main.cpp's preamble, inside
     // templates nothing instantiates, which keep the bodies they read.
     const s = await t.start({
-        config: { project: { enable_indexing: false, skip_header_bodies: false } },
+        lastRule: { background_index: false, skip_function_body: false },
     });
     await s.diagnostics("src/main.cpp");
     await t.show("one", s.references(t.marker("use")));
@@ -31,10 +31,8 @@ test("deferral the command asks for", async (t) => {
     // stay blind: neither use of one() in an uninstantiated template is
     // found.
     const s = await t.start({
-        config: {
-            project: { enable_indexing: false },
-            rules: [{ patterns: ["**"], append: ["-fdelayed-template-parsing"] }],
-        },
+        config: { rules: [{ patterns: ["**"], append: ["-fdelayed-template-parsing"] }] },
+        lastRule: { background_index: false },
     });
     await t.show("main.cpp", s.diagnostics("src/main.cpp"));
     await t.show("call", s.hover(t.marker("call")));

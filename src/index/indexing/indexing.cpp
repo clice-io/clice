@@ -95,9 +95,7 @@ bool names_member_qualified(const SemanticNode& node) {
 Builder::Builder(CompilationUnit& unit, const TUIndexOptions& options) :
     unit(unit), focus_only(unit.kind() == CompilationKind::Content && !options.all_files),
     known_variants(options.known_variants), resolver(unit, {.only_instantiation = false}),
-    readable(unit.context(), {}), known_instantiations(options.known_instantiations),
-    standard_library(options.standard_library_instantiations),
-    library_bodies(options.library_bodies) {}
+    readable(unit.context(), {}), known_instantiations(options.known_instantiations) {}
 
 FileIndex* Builder::file_index(clang::FileID fid) {
     if(instantiation_entries) {
@@ -382,7 +380,7 @@ void Builder::see_from(const Semantics& semantics, std::uint32_t i) {
         return;
     }
     auto location = decl->getLocation();
-    if(unit.in_library(location) && !unit.focus_file().contains(unit.file_id(location))) {
+    if(!unit.indexes_bodies(location)) {
         place_resolver = nullptr;
         return;
     }
@@ -516,7 +514,7 @@ std::vector<std::byte> Builder::build() {
                              {.all_files = true,
                               .visit = [&](const Semantics& path,
                                            std::uint32_t index) { project_node(path, index); },
-                              .library_bodies = library_bodies}));
+                              .every_body = false}));
     } else {
         const auto& focus = unit.get<Semantics>();
         for(auto [index, entry]: views::enumerate(focus.node_entries())) {

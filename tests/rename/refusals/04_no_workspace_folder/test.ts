@@ -35,7 +35,7 @@ test("a declaration outside the project, not indexed", async (t) => {
     t.disk.database({ "app/main.cpp": [] }, "app");
     const s = await t.start({
         folders: ["app"],
-        config: { project: { enable_indexing: false } },
+        lastRule: { background_index: false },
     });
     s.open("app/main.cpp");
     await t.show("rename", s.rename(t.at("app/main.cpp", "int |compute(int x)"), "evaluate"));

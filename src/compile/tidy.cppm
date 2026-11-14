@@ -42,24 +42,24 @@ TidyResolution resolve_tidy_params(llvm::StringRef file);
 /// every edit, the slow and the never measured.
 std::vector<std::string> slow_checks(const TidyParams& params);
 
-/// The plan's compilation-affecting extra args, split for clang-tidy's
-/// own insertion points on the driver command: extra_args_before prepend
-/// right after the binary name, extra_args append at the end. Applied
+/// The plan's compilation-affecting args, at clang-tidy's own places on the
+/// driver command: extra_args_before prepend right after the binary name,
+/// extra_args append at the end, removed_args are taken out of it. Applied
 /// BEFORE toolchain resolution, so the driver itself interprets
 /// pass-throughs and driver-only options (-Wp,, -Xpreprocessor,
 /// --target) when it produces the cc1 line.
 struct CommandExtraArgs {
     std::vector<std::string> prepend;
     std::vector<std::string> append;
+    std::vector<std::string> remove;
 };
 
-/// Split the plan's extra args into the command-affecting halves. -W
-/// warning flags are withheld — they reach the diagnostics engine through
+/// The command-affecting args of `params`. -W warning flags among the extra
+/// args are withheld — they reach the diagnostics engine through
 /// apply_warning_options, where the Checks gate applies; on the command
 /// they would bypass it. -Wp,/-Wl,/-Wa, are driver pass-throughs, not
 /// warning flags, and stay in.
-CommandExtraArgs command_extra_args(llvm::ArrayRef<std::string> extra_args,
-                                    llvm::ArrayRef<std::string> extra_args_before);
+CommandExtraArgs command_extra_args(const TidyParams& params);
 
 /// The clang-tidy pass over one compile.
 class ClangTidyChecker {
