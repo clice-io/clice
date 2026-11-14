@@ -273,7 +273,7 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
                       report_progress);
     if(!indexed) {
         LOG_ERROR("{}", indexed.error());
-        return 1;
+        return 2;
     }
     if(auto* server = std::get_if<ServerIndexed>(&*indexed)) {
         // FIXME: the failed units come in the server's spelling of the
@@ -324,8 +324,8 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
     }
     if(result.damaged) {
         driver::println(
-            "Indexed {} in {:.1f}s, but the index database is damaged (see the "
-            "log): it is discarded, and the next `clice index` rebuilds the index.",
+            "Indexed {} in {:.1f}s, but the index database is damaged: it is discarded, "
+            "and the next `clice index` rebuilds the index.",
             counted(result.indexed_tus, "translation unit", "translation units"),
             result.seconds);
     } else {

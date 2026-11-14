@@ -30,3 +30,14 @@ clice <command> [<operation>] [<target>...] [--option...]
 - The target, the symbol or file an operation is about, follows the operation: `clice query references "shapes::Circle::area"`, `clice query document-symbols src/main.cpp`. A symbol is named by a [locator](./query.md#locators) wherever one is taken; a file by its path, relative to the current directory or absolute, as is every other path on the command line, such as a partition or an output directory.
 - Options come after the operation. An option takes several values by being repeated: `--scope 'src/**' --scope 'include/**'`.
 - `--workspace <dir>` names the project root; without it a command works on the project above the current directory, as git finds its repository: the nearest directory holding a `clice.toml`, a `.clice/config.toml` or a `compile_commands.json`, directly or in its `build/` directory, else the current directory itself (`inspect` looks up from the file, as the editor does). A configuration the command cannot take — a file that does not parse, a value of the wrong type, an option it cannot honor — fails it with exit code 2, each problem named with its place in the file; `--configuration <tag>` pins the build configuration over the selection persisted from the editor (see [switching configurations](../guide/configuration.md#switching-configurations)); `-j`, `--jobs <n>` is how many units or files `index`, `lint` and `format` work on at once; `CLICE_LOG_LEVEL` in the environment sets what is logged to stderr, warnings and errors by default (`serve`, whose stderr an editor shows, from `info`); the session logs of `serve`, `index` and `lint` keep `info` whatever it is.
+
+## Exit codes
+
+Every command ends with one of four exit codes, which its page details:
+
+| Code  | Meaning                                                                                                                                                                       |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`   | The command did what it was asked.                                                                                                                                            |
+| `1`   | It did it, and the answer is negative: lint findings, a file to format, a symbol or file not found, a rename conflict, a unit that failed to index.                            |
+| `2`   | It could not do it: the arguments or the configuration do not parse, there is nothing to work on (no project, no compilation database, no unit), the index cannot be opened. |
+| `130` | It was interrupted.                                                                                                                                                           |

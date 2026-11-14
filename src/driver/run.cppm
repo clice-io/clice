@@ -504,8 +504,8 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
     }
     if(result.damaged) {
         return std::unexpected(
-            "the index database is damaged (see the log); it is discarded, and the next `clice "
-            "index` rebuilds the index");
+            "the index database is damaged; it is discarded, and the next `clice index` "
+            "rebuilds the index");
     }
     return std::move(result.failed);
 }
