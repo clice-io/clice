@@ -285,7 +285,7 @@ inline IndexedTU index_file(TempDir& tmp,
 /// open_cache, and the project's database in the store.
 inline void open_store(TempDir& tmp, Project& project) {
     open_cache(tmp, project);
-    project.database = index::open_lmdb_database(*project.store, {});
+    project.database = index::open_lmdb_database(*project.store, {}).value_or(nullptr);
 }
 
 /// Plant a blob between sessions (no fixture may be alive — the writer
@@ -294,7 +294,7 @@ inline void
     inject_blob(TempDir& tmp, index::BlobKind kind, llvm::StringRef key, llvm::StringRef bytes) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ZASSERT(store);
-    auto db = index::open_lmdb_database(*store, {});
+    auto db = index::open_lmdb_database(*store, {}).value_or(nullptr);
     ZASSERT(db != nullptr);
     index::BlobDatabase::Blob blob{kind, key.str(), copy_bytes(bytes)};
     ZASSERT(db->write(blob, {}));

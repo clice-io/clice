@@ -128,7 +128,7 @@ struct OlderOpener {
 /// A database of 64 values on overflow pages, 56 of them removed again, so
 /// most of its pages are free.
 std::unique_ptr<index::BlobDatabase> sparse_database(CacheStore& store) {
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
     std::vector<index::BlobDatabase::Blob> blobs;
     llvm::SmallVector<index::BlobKey> removals;
@@ -151,7 +151,7 @@ ZEST_SUITE(IndexDatabase) {
 ZEST_CASE(WriteReadRoundTrip) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
 
     ZASSERT(db->write({blob(index::BlobKind::Shard, "a", large_value('a')),
@@ -173,7 +173,7 @@ ZEST_CASE(WriteReadRoundTrip) {
 ZEST_CASE(WriteRemoves) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
 
     ZASSERT(db->write({blob(index::BlobKind::TUManifest, "m1", "one"),
@@ -193,7 +193,7 @@ ZEST_CASE(WriteRemoves) {
 ZEST_CASE(KindsAreIsolated) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
 
     ZASSERT(db->write({blob(index::BlobKind::Shard, "same", "shard"),
@@ -214,7 +214,7 @@ ZEST_CASE(KindsAreIsolated) {
 ZEST_CASE(SnapshotPinsUntilAdvance) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
 
     ZASSERT(db->write({blob(index::BlobKind::Shard, "k", large_value('1'))}, {}));
@@ -243,7 +243,7 @@ ZEST_CASE(SnapshotPinsUntilAdvance) {
 ZEST_CASE(SmallValuesCopiedAligned) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
 
     ZASSERT(db->write({blob(index::BlobKind::TUManifest, "small", "tiny"),
@@ -269,11 +269,11 @@ ZEST_CASE(ReopenServesPersistedBlobs) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     {
-        auto db = index::open_database(store, {});
+        auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
         ZASSERT(db != nullptr);
         ZASSERT(db->write({blob(index::BlobKind::Members, "cdb", "snapshot")}, {}));
     }
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
     ZASSERT(db->read(index::BlobKind::Members, "cdb").buffer->getBuffer() == "snapshot");
 }
@@ -288,7 +288,7 @@ ZEST_CASE(CorruptDatabaseRebuilds) {
             !fs::write_file(path::join(directory, "index.mdb"),
                             "this is not an lmdb file, not even close, but long enough to map"));
     }
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
     ZASSERT(!db->contains(index::BlobKind::Members, "cdb"));
     ZASSERT(db->write({blob(index::BlobKind::Members, "cdb", "fresh")}, {}));
@@ -297,7 +297,7 @@ ZEST_CASE(CorruptDatabaseRebuilds) {
 /// A database of `count` large blobs written over several commits, so
 /// its pages run well past the two meta pages; returns the file's path.
 std::string populated_database(CacheStore& store, int count) {
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
     for(int i = 0; i < count; i += 1) {
         ZASSERT(db->write({blob(index::BlobKind::Shard, std::to_string(i), large_value('t'))}, {})
@@ -341,10 +341,10 @@ ZEST_CASE(ForeignDatabaseRebuilds) {
     write_foreign_meta(file);
     {
         auto store = open_store(tmp, "lmdb", /*read_only=*/true);
-        ZEXPECT(index::open_database(store, {}) == nullptr);
+        ZEXPECT(!index::open_database(store, {}));
     }
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
     ZEXPECT(!db->contains(index::BlobKind::Shard, "0"));
     ZEXPECT(!db->corrupted());
@@ -355,7 +355,7 @@ ZEST_CASE(TruncatedDatabaseRebuilds) {
     auto store = open_store(tmp, "lmdb");
     truncate_to_meta(populated_database(store, 8));
 
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
     ZASSERT(!db->contains(index::BlobKind::Shard, "7"));
     ZASSERT(db->write({blob(index::BlobKind::Members, "cdb", "fresh")}, {}));
@@ -368,7 +368,7 @@ ZEST_CASE(TruncatedDatabaseRebuilds) {
 /// each kind spans several leaf pages, the paths' between the files' and
 /// the symbols'.
 std::string small_records_database(CacheStore& store, int count) {
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
     std::vector<index::BlobDatabase::Blob> blobs;
     for(int i = 0; i < count; i += 1) {
@@ -429,7 +429,7 @@ ZEST_CASE(ScanMeetsDamage) {
     }
     swap_page_keys(file, 'Y');
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
     ZEXPECT(db->count(index::BlobKind::File) == 2000u);
     ZEXPECT(!db->corrupted());
@@ -444,7 +444,7 @@ ZEST_CASE(ReadOnlyRefusesTruncated) {
         truncate_to_meta(populated_database(store, 8));
     }
     auto store = open_store(tmp, "ws", /*read_only=*/true);
-    ZASSERT(index::open_database(store, {}) == nullptr);
+    ZASSERT(!index::open_database(store, {}));
 }
 
 ZEST_CASE(ReadOnlyRefusesEmpty) {
@@ -457,7 +457,7 @@ ZEST_CASE(ReadOnlyRefusesEmpty) {
     ZASSERT(!fs::write_file(file, ""));
     auto store = open_store(tmp, "ws", /*read_only=*/true);
     ZASSERT(index::database_exists(store, {}));
-    ZASSERT(index::open_database(store, {}) == nullptr);
+    ZASSERT(!index::open_database(store, {}));
     auto status = fs::status(file);
     ZASSERT(status);
     ZASSERT(status->size == 0U);
@@ -473,7 +473,7 @@ ZEST_CASE(WritesCoverFreedTail) {
     {
         auto store = open_store(tmp, "lmdb");
         file = path::join(index::database_directory(store, {}), "index.mdb");
-        auto db = index::open_database(store, {});
+        auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
         ZASSERT(db != nullptr);
         auto advance_snapshot = [&] {
             ZASSERT(db->advance_read_snapshot());
@@ -507,7 +507,7 @@ ZEST_CASE(WritesCoverFreedTail) {
     ZEXPECT(status->size >= (info.me_last_pgno + 1) * db_stat.ms_psize);
 
     auto store = open_store(tmp, "lmdb", /*read_only=*/true);
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
     ZASSERT(db->contains(index::BlobKind::Members, "cdb"));
 }
@@ -515,7 +515,7 @@ ZEST_CASE(WritesCoverFreedTail) {
 ZEST_CASE(DefaultOpenFileBounded) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
     ZASSERT(db->write({blob(index::BlobKind::Members, "cdb", "x")}, {}));
 
@@ -532,7 +532,7 @@ ZEST_CASE(OverflowFailsThenGrows) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     // Small enough that a handful of large values exhausts it.
-    auto db = index::open_lmdb_database(store, {}, 256 * 1024);
+    auto db = index::open_lmdb_database(store, {}, 256 * 1024).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
 
     std::vector<index::BlobDatabase::Blob> puts;
@@ -563,7 +563,7 @@ ZEST_CASE(ReadOnlyMissingDatabase) {
     // A reader before any writer ran has nothing to read: persistence is
     // disabled rather than creating an index.mdb a read-only session must
     // not leave behind.
-    auto db = index::open_database(store, {}, /*read_only=*/true);
+    auto db = index::open_database(store, {}, /*read_only=*/true).value_or(nullptr).value_or(nullptr);
     ZASSERT(db == nullptr);
     ZASSERT(!fs::exists(index::database_directory(store, {})));
 }
@@ -572,12 +572,12 @@ ZEST_CASE(ReadOnlyServesExisting) {
     TempDir tmp;
     {
         auto store = open_store(tmp, "ws");
-        auto db = index::open_database(store, {});
+        auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
         ZASSERT(db != nullptr);
         ZASSERT(db->write({blob(index::BlobKind::Header, "header", "gg")}, {}));
     }
     auto store = open_store(tmp, "ws", /*read_only=*/true);
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
     ZASSERT(db->contains(index::BlobKind::Header, "header"));
     ZASSERT(db->read(index::BlobKind::Header, "header").buffer->getBuffer() == "gg");
@@ -587,13 +587,13 @@ ZEST_CASE(CondemnedDeletesOnClose) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     {
-        auto db = index::open_database(store, {});
+        auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
         ZASSERT(db != nullptr);
         ZASSERT(db->write({blob(index::BlobKind::Members, "cdb", "bytes")}, {}));
         db->condemn();
     }
     ZASSERT(!fs::exists(path::join(index::database_directory(store, {}), "index.mdb")));
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
     ZASSERT(!db->contains(index::BlobKind::Members, "cdb"));
 }
@@ -609,8 +609,8 @@ ZEST_CASE(DatabasePerConfiguration) {
     ZEXPECT(path::parent(directory) == path::join(store.base_dir(), "index"));
     ZEXPECT(path::filename(directory).starts_with("release~"));
 
-    auto debug = index::open_database(store, {"debug"});
-    auto release = index::open_database(store, {"release"});
+    auto debug = index::open_database(store, {"debug"}).value_or(nullptr).value_or(nullptr);
+    auto release = index::open_database(store, {"release"}).value_or(nullptr).value_or(nullptr);
     ZASSERT(debug != nullptr);
     ZASSERT(release != nullptr);
     ZASSERT(debug->write({blob(index::BlobKind::Header, "header", "d")}, {}));
@@ -680,13 +680,13 @@ ZEST_CASE(DatabaseBlockedByFile) {
     auto directory = index::database_directory(store, {"x"});
     ZASSERT(fs::create_directories(path::parent(directory)));
     ZASSERT(!fs::write_file(directory, "x"));
-    ZASSERT(index::open_database(store, {"x"}) == nullptr);
+    ZASSERT(!index::open_database(store, {"x"}));
 }
 
 ZEST_CASE(OutstandingSnapshotsStack) {
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
-    auto db = index::open_database(store, {});
+    auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(db != nullptr);
 
     ZASSERT(db->write({blob(index::BlobKind::Shard, "k", large_value('1'))}, {}));
@@ -734,7 +734,7 @@ ZEST_CASE(CompactCopyShrinksFile) {
     // The reopened handle writes on, and the next open reads the copy.
     ZASSERT(db->write({blob(index::BlobKind::Header, "header", "gg")}, {}));
     db.reset();
-    auto again = index::open_database(store, {});
+    auto again = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(again != nullptr);
     ZEXPECT(again->contains(index::BlobKind::Header, "header"));
     ZEXPECT(again->contains(index::BlobKind::Shard, "63"));
@@ -807,7 +807,7 @@ ZEST_CASE(ReaderHoldsOpenLock) {
     {
         auto store = open_store(tmp, "lmdb");
         file = path::join(index::database_directory(store, {}), "index.mdb");
-        auto db = index::open_database(store, {});
+        auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
         ZASSERT(db != nullptr);
         ZASSERT(db->write({blob(index::BlobKind::Header, "header", "gg")}, {}));
     }
@@ -821,7 +821,7 @@ ZEST_CASE(ReaderHoldsOpenLock) {
         return free;
     };
     auto store = open_store(tmp, "lmdb", /*read_only=*/true);
-    auto reader = index::open_database(store, {});
+    auto reader = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
     ZASSERT(reader != nullptr);
     ZEXPECT(!exclusive_free());
     reader.reset();
@@ -835,18 +835,18 @@ ZEST_CASE(OpenRemovesStaleCopy) {
     {
         auto store = open_store(tmp, "lmdb");
         file = path::join(index::database_directory(store, {}), "index.mdb");
-        auto db = index::open_database(store, {});
+        auto db = index::open_database(store, {}).value_or(nullptr).value_or(nullptr);
         ZASSERT(db != nullptr);
         ZASSERT(db->write({blob(index::BlobKind::Header, "header", "gg")}, {}));
     }
     ZASSERT(!fs::write_file(file + "-compact", "partial"));
     {
         auto store = open_store(tmp, "lmdb", /*read_only=*/true);
-        ZASSERT(index::open_database(store, {}) != nullptr);
+        ZASSERT(index::open_database(store, {}).has_value());
         ZEXPECT(fs::exists(file + "-compact"));
     }
     auto store = open_store(tmp, "lmdb");
-    ZASSERT(index::open_database(store, {}) != nullptr);
+    ZASSERT(index::open_database(store, {}).has_value());
     ZEXPECT(!fs::exists(file + "-compact"));
 }
 
