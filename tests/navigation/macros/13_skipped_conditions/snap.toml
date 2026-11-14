@@ -1,0 +1,15 @@
+[answers.definition]
+definition = ["#define ⟦B⟧ 1"]
+references = ["#define ⟦B⟧ 1", "#elifdef ⟦B⟧", "#elif ⟦B⟧", "#ifdef ⟦B⟧"]
+
+[answers.elifdef]
+definition = ["#define ⟦B⟧ 1"]
+references = ["#define ⟦B⟧ 1", "#elifdef ⟦B⟧", "#elif ⟦B⟧", "#ifdef ⟦B⟧"]
+
+[answers.elif]
+definition = ["#define ⟦B⟧ 1"]
+references = ["#define ⟦B⟧ 1", "#elifdef ⟦B⟧", "#elif ⟦B⟧", "#ifdef ⟦B⟧"]
+
+[answers.nested]
+definition = ["#define ⟦B⟧ 1"]
+references = ["#define ⟦B⟧ 1", "#elifdef ⟦B⟧", "#elif ⟦B⟧", "#ifdef ⟦B⟧"]

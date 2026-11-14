@@ -9,7 +9,7 @@ workspace_symbols = [
 
 ["empty at first"."$ clice index"]
 stderr = "error: request failed: nothing to index: the running clice server's build has no translation units"
-exit = 1
+exit = 2
 
 ["empty at first"."$ clice index #2"]
 stdout = "Indexed through the running clice server (pid #)."

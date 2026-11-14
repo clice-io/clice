@@ -10,7 +10,7 @@ stdout = '''
 file ${WS}/util.h
   blob=# B  content size=111  content hash=#e95b3c83f713268a
   variants=1
-    #6aa0e7dd094b51d8  contributed by 1 unit
+    #d4175f8c726b43c2  contributed by 1 unit
       ${WS}/main.cpp
   symbols=8  local symbols=4  occurrences=12  relations=16
     Callee=1
@@ -19,10 +19,10 @@ file ${WS}/util.h
     Definition=5
     Reference=6
     TypeDefinition=2
-    local #6f467c243a36aaa2  kind=Type  name=P
-    local #a5464685e2caf263  kind=Type  name=C
-    local #bad926d7a1a6cee3  kind=Parameter  name=c
-    local #d9a00eae474b65d7  kind=Parameter  name=p
+    local #0ae726a731ba84b9  kind=Parameter  name=c
+    local #46e95a82684a11f3  kind=Parameter  name=p
+    local #56fe7e02a5788a46  kind=Type  name=P
+    local #bef5f800d164c3d8  kind=Type  name=C
 '''
 exit = 0
 
@@ -31,7 +31,7 @@ stdout = '''
 file ${WS}/wrap.h
   blob=# B  content size=121  content hash=#dbe19b955d3425f7
   variants=1
-    #f7c0d506c84dad4d  contributed by 1 unit
+    #f83e4da599e91dc8  contributed by 1 unit
       ${WS}/main.cpp
   symbols=7  local symbols=4  occurrences=11  relations=15
     Callee=1
@@ -40,10 +40,10 @@ file ${WS}/wrap.h
     Definition=5
     Reference=5
     TypeDefinition=2
-    local #20efbda22bb946d7  kind=Type  name=P
-    local #31f72b66220a06e9  kind=Parameter  name=p
-    local #c5e3cba16d80e315  kind=Type  name=C
-    local #f663b2abe56d5b57  kind=Parameter  name=c
+    local #23102aef8a987d7b  kind=Parameter  name=p
+    local #51b73590f8091540  kind=Type  name=P
+    local #85fc27dbf3467dfe  kind=Parameter  name=c
+    local #ff8498369cc2b666  kind=Type  name=C
 '''
 exit = 0
 
@@ -52,7 +52,7 @@ stdout = '''
 file ${WS}/relay.h
   blob=# B  content size=89  content hash=#2aeef4eb0422525e
   variants=1
-    #f4e2f83d367c7e02  contributed by 1 unit
+    #e7a6af92394790e6  contributed by 1 unit
       ${WS}/main.cpp
   symbols=6  local symbols=2  occurrences=8  relations=11
     Callee=1
@@ -61,7 +61,7 @@ file ${WS}/relay.h
     Definition=3
     Reference=4
     TypeDefinition=1
-    local #2363ba3a6ef4553c  kind=Type  name=C
-    local #9c6fdcc54b04ad66  kind=Parameter  name=c
+    local #73910e3de9c90bdc  kind=Type  name=C
+    local #b82583ca2d14593e  kind=Parameter  name=c
 '''
 exit = 0

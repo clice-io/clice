@@ -47,8 +47,8 @@ stdout = '''
       "interfaceEntities": 2,
       "implementationEntities": 0,
       "sample": [
-        "Clock::size",
-        "Clock"
+        "Clock",
+        "Clock::size"
       ]
     },
     {
@@ -57,8 +57,8 @@ stdout = '''
       "interfaceEntities": 2,
       "implementationEntities": 0,
       "sample": [
-        "length",
-        "Str"
+        "Str",
+        "length"
       ]
     },
     {
@@ -67,8 +67,8 @@ stdout = '''
       "interfaceEntities": 1,
       "implementationEntities": 1,
       "sample": [
-        "twice",
-        "Clock"
+        "Clock",
+        "twice"
       ]
     },
     {
@@ -258,8 +258,8 @@ stdout = '''
       "interfaceEntities": 2,
       "implementationEntities": 0,
       "sample": [
-        "Clock::size",
-        "Clock"
+        "Clock",
+        "Clock::size"
       ]
     },
     {
@@ -268,8 +268,8 @@ stdout = '''
       "interfaceEntities": 2,
       "implementationEntities": 0,
       "sample": [
-        "length",
-        "Str"
+        "Str",
+        "length"
       ]
     },
     {
@@ -443,8 +443,8 @@ stdout = '''
       "interfaceEntities": 2,
       "implementationEntities": 0,
       "sample": [
-        "length",
-        "Str"
+        "Str",
+        "length"
       ]
     },
     {

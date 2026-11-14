@@ -170,6 +170,11 @@ void ServedProject::open() {
         for(auto& [path_id, document]: documents) {
             open_files.emplace_back(project.file_table.resolve(path_id));
         }
+        // LIMITATION: the load runs on the event loop, so the server answers
+        // nothing while it runs, not even what the master alone answers
+        // (`#include` completion), and a large project added while running (a
+        // new workspace folder, a file of another project) stalls every
+        // project for its load.
         auto opened = project.open({
             .configuration = configuration,
             .cache = Project::OpenOptions::Cache::Write,
@@ -494,11 +499,31 @@ void ServedProject::start_control_listener() {
 }
 
 async::task<> ServedProject::sources_poll_task() {
+    // LIMITATION: clice registers no workspace/didChangeWatchedFiles: a file
+    // changed outside the editor (a git checkout, a generator) is seen at the
+    // polls' pace (up to 30 s), unless a check reads it first; a change to
+    // clice.toml when the editor saves it.
     auto interval = chrono::seconds(project.settings.tracker.workspace_poll_seconds);
     while(true) {
         // Time is the feature: the workspace loop's pace.
         co_await async::sleep(interval);
         co_await poll_sources();
+        auto affected = project.ask_compilers_again(open_files());
+        if(!affected) {
+            continue;
+        }
+        // One whose first compile is still in flight may have resolved its
+        // command before the answer.
+        for(auto& [path_id, document]: documents) {
+            auto& latest = document.latest;
+            if((!latest ||
+                (latest->output && !latest->output->diagnostics.query_failure.empty())) &&
+               !ranges::contains(affected->stale, path_id)) {
+                affected->stale.push_back(path_id);
+            }
+        }
+        follow(*affected);
+        server.hooks.happened(LoopEvent::CompilersAnswered);
     }
 }
 

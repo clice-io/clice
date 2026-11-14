@@ -16,7 +16,7 @@ stdout = '''
         "locator": "scale",
         "name": "scale",
         "kind": "Function",
-        "symbol": "#7443d398c6f2a263",
+        "symbol": "#4dec092aa59fa14a",
         "newName": "resize",
         "edits": 4,
         "conflicts": [],
@@ -78,7 +78,7 @@ stdout = '''
   "result": {
     "name": "scale",
     "kind": "Function",
-    "symbol": "#e4d8e937e2717771",
+    "symbol": "#3333d979512f6c74",
     "documentation": null,
     "definition": {
       "file": "${WS}/main.cpp",
@@ -92,7 +92,7 @@ stdout = '''
 '''
 exit = 0
 
-["renames one overload"."$ clice refactor rename \"#e4d8e937e2717771\" resize --dry-run"]
+["renames one overload"."$ clice refactor rename \"#3333d979512f6c74\" resize --dry-run"]
 stdout = '''
 {
   "result": {
@@ -100,10 +100,10 @@ stdout = '''
     "renames": [
       {
         "line": null,
-        "locator": "#e4d8e937e2717771",
+        "locator": "#3333d979512f6c74",
         "name": "scale",
         "kind": "Function",
-        "symbol": "#e4d8e937e2717771",
+        "symbol": "#3333d979512f6c74",
         "newName": "resize",
         "edits": 1,
         "conflicts": [],
@@ -156,7 +156,7 @@ stdout = '''
   "result": {
     "name": "scale",
     "kind": "Function",
-    "symbol": "#7443d398c6f2a263",
+    "symbol": "#4dec092aa59fa14a",
     "documentation": null,
     "definition": {
       "file": "${WS}/main.cpp",
@@ -176,7 +176,7 @@ stdout = '''
   "result": {
     "name": "scale",
     "kind": "Function",
-    "symbol": "#e4d8e937e2717771",
+    "symbol": "#3333d979512f6c74",
     "documentation": null,
     "definition": {
       "file": "${WS}/main.cpp",
@@ -198,10 +198,10 @@ stdout = '''
     "renames": [
       {
         "line": 1,
-        "locator": "#7443d398c6f2a263",
+        "locator": "#4dec092aa59fa14a",
         "name": "scale",
         "kind": "Function",
-        "symbol": "#7443d398c6f2a263",
+        "symbol": "#4dec092aa59fa14a",
         "newName": "resize",
         "edits": 3,
         "conflicts": [],
@@ -211,10 +211,10 @@ stdout = '''
       },
       {
         "line": 2,
-        "locator": "#e4d8e937e2717771",
+        "locator": "#3333d979512f6c74",
         "name": "scale",
         "kind": "Function",
-        "symbol": "#e4d8e937e2717771",
+        "symbol": "#3333d979512f6c74",
         "newName": "resize",
         "edits": 2,
         "conflicts": [],
@@ -271,10 +271,10 @@ stdout = '''
     "renames": [
       {
         "line": 1,
-        "locator": "#7443d398c6f2a263",
+        "locator": "#4dec092aa59fa14a",
         "name": "scale",
         "kind": "Function",
-        "symbol": "#7443d398c6f2a263",
+        "symbol": "#4dec092aa59fa14a",
         "newName": "grow",
         "edits": 2,
         "conflicts": [
@@ -286,10 +286,10 @@ stdout = '''
       },
       {
         "line": 2,
-        "locator": "#e4d8e937e2717771",
+        "locator": "#3333d979512f6c74",
         "name": "scale",
         "kind": "Function",
-        "symbol": "#e4d8e937e2717771",
+        "symbol": "#3333d979512f6c74",
         "newName": "shrink",
         "edits": 1,
         "conflicts": [

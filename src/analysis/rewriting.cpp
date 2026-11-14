@@ -13,6 +13,14 @@ namespace {
 
 constexpr auto posix = path::Style::Posix;
 
+/// Whether clang lexes `text` as one identifier: a letter of any script
+/// counts, as clang takes it.
+bool identifier(llvm::StringRef text) {
+    Lexer lexer(text, dialect_of());
+    auto token = lexer.advance();
+    return token.is_identifier() && token.range.begin == 0 && token.range.end == text.size();
+}
+
 /// A partition name for the file at `path`: its path under `base` when it is
 /// there, else its whole path, without the extension, each segment made an
 /// identifier.
@@ -28,10 +36,13 @@ std::string partition_name(llvm::StringRef path, llvm::StringRef base) {
     llvm::SmallVector<std::string> names;
     for(auto segment: segments) {
         std::string name;
-        for(auto c: segment) {
-            name += llvm::isAlnum(c) || c == '_' ? c : '_';
+        while(!segment.empty()) {
+            auto length = std::max(1u, llvm::getNumBytesForUTF8(segment.front()));
+            auto character = segment.take_front(length);
+            segment = segment.drop_front(character.size());
+            name += identifier(("_" + character).str()) ? character : llvm::StringRef("_");
         }
-        if(name.empty() || llvm::isDigit(name.front())) {
+        if(!identifier(name)) {
             name.insert(name.begin(), '_');
         }
         if(is_keyword(name)) {
@@ -194,9 +205,38 @@ struct Rewriter {
                (partition.kinds[module] == ModuleKind::Program || kept.contains(file));
     }
 
-    std::string partition_of(std::uint32_t file) const {
-        auto& primary = partition.primaries[partition.module_of[file]];
-        return partition_name(facts.files[file].path, path::parent(primary, posix));
+    /// Each rewritten header's partition name, unique in its module, by the
+    /// header and by the path of the unit it becomes.
+    llvm::DenseMap<std::uint32_t, std::string> partition_names{};
+    llvm::StringMap<std::string> partition_units{};
+
+    const std::string& partition_of(std::uint32_t file) const {
+        return partition_names.find(file)->second;
+    }
+
+    /// Name the partitions of the rewritten headers by their paths, in path
+    /// order: two whose paths give one name (`a-b.h` and `a_b.h`) tell
+    /// themselves apart by a number.
+    void name_partitions() {
+        std::vector<std::uint32_t> headers;
+        for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+            if(rewritten(file) && header(file)) {
+                headers.push_back(file);
+            }
+        }
+        ranges::sort(headers, {}, [&](std::uint32_t file) { return facts.files[file].path; });
+        std::set<std::pair<std::uint32_t, std::string>> taken;
+        for(auto file: headers) {
+            auto module = partition.module_of[file];
+            auto& primary = partition.primaries[module];
+            auto name = partition_name(facts.files[file].path, path::parent(primary, posix));
+            auto unique = name;
+            for(int n = 2; !taken.emplace(module, unique).second; n += 1) {
+                unique = std::format("{}_{}", name, n);
+            }
+            partition_units[with_extension(facts.files[file].path, "cppm")] = unique;
+            partition_names[file] = std::move(unique);
+        }
     }
 
     /// The header a file using what `file` declares includes.
@@ -310,13 +350,10 @@ struct Draft {
     llvm::DenseSet<std::uint32_t> partitions;
 
     /// Headers that stay headers, to include: the ones it names or takes
-    /// macros from without including them, and those of the partitions it
-    /// reaches only through another partition.
+    /// macros from without including them.
     std::set<std::uint32_t> needed;
 
-    /// The headers that stay headers it includes itself, and the lines doing
-    /// so.
-    std::set<std::uint32_t> textual;
+    /// The lines including the headers that stay headers.
     llvm::DenseSet<std::uint32_t> textual_lines;
 
     std::set<std::uint32_t> macro_headers;
@@ -327,6 +364,12 @@ struct Draft {
 
     /// It uses macros of modules the rewrite leaves as they are.
     bool library_macros = false;
+
+    /// As a module unit, it opens a global module fragment: for what stays
+    /// included or moves there.
+    bool opens_fragment() const {
+        return fragment_code || !needed.empty() || !macro_headers.empty();
+    }
 };
 
 }  // namespace
@@ -365,6 +408,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
 
     auto units = module_units(facts, partition);
     Rewriter rewriter{.facts = facts, .partition = partition, .units = units};
+    rewriter.name_partitions();
     for(std::uint32_t module = 0; module < interfaces.size(); module += 1) {
         if(partition.kinds[module] == ModuleKind::Wrapped) {
             for(auto& header: interfaces[module].textual) {
@@ -541,7 +585,6 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                         if(target == none || !rewriter.textual(target)) {
                             break;
                         }
-                        draft.textual.insert(target);
                         draft.textual_lines.insert(line);
                         // In the purview its declarations would be attached to
                         // the module.
@@ -605,16 +648,18 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         draft.partitions.erase(file);
     }
 
-    // Clang takes no declaration in the global module fragment of an
-    // implementation partition as reachable from a unit importing it through
-    // another partition, though the standard has that unit import it too:
-    // the unit includes the textual headers such a partition does itself.
+    // clang bug: clang takes no declaration in the global module fragment of
+    // an implementation partition as reachable from a unit importing it
+    // through another partition, though the standard has that unit import it
+    // too: the unit imports such a partition itself
+    // (clice-io/clice#1057 item 11).
     for(auto& [file, draft]: drafts) {
         if(!rewriter.rewritten(file)) {
             continue;
         }
         llvm::DenseSet<std::uint32_t> reached(draft.partitions.begin(), draft.partitions.end());
         llvm::SmallVector<std::uint32_t> pending(draft.partitions.begin(), draft.partitions.end());
+        llvm::SmallVector<std::uint32_t> fragments;
         while(!pending.empty()) {
             auto& through = drafts.at(pending.pop_back_val());
             for(auto next: through.partitions) {
@@ -622,15 +667,12 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                     continue;
                 }
                 pending.push_back(next);
-                if(units[next].kind == Unit::Kind::Internal) {
-                    for(auto header: drafts.at(next).textual) {
-                        if(!ranges::contains(facts.files[file].includes, header)) {
-                            draft.needed.insert(header);
-                        }
-                    }
+                if(units[next].kind == Unit::Kind::Internal && drafts.at(next).opens_fragment()) {
+                    fragments.push_back(next);
                 }
             }
         }
+        draft.partitions.insert(fragments.begin(), fragments.end());
     }
 
     llvm::StringSet<> primaries;
@@ -679,7 +721,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         // A module unit opens a global module fragment only for what stays
         // included or moves there, which may name what the wrapped modules
         // declare and test their macros: the prelude comes first.
-        auto fragment = draft.fragment_code || !draft.needed.empty() || !macro_includes.empty();
+        auto fragment = draft.opens_fragment();
         if(!module_unit) {
             lines.push_back(prelude);
         } else if(fragment) {
@@ -797,7 +839,10 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         std::vector<std::string> lines{std::format("export module {};", entry.name), ""};
         for(auto* group: {&entry.interfaces, &entry.partitions}) {
             for(auto& path: *group) {
-                auto name = partition_name(path, path::parent(entry.primary, posix));
+                auto unit = rewriter.partition_units.find(path);
+                auto name = unit != rewriter.partition_units.end()
+                                ? unit->second
+                                : partition_name(path, path::parent(entry.primary, posix));
                 if(auto [it, inserted] = names.try_emplace(name, path); !inserted) {
                     return std::unexpected(std::format("{} and {} are both partition {} of {}",
                                                        it->second,

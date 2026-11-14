@@ -47,8 +47,8 @@ stdout = '''
       "interfaceEntities": 2,
       "implementationEntities": 0,
       "sample": [
-        "Clock::size",
-        "Clock"
+        "Clock",
+        "Clock::size"
       ]
     },
     {
@@ -57,8 +57,8 @@ stdout = '''
       "interfaceEntities": 2,
       "implementationEntities": 0,
       "sample": [
-        "length",
-        "Str"
+        "Str",
+        "length"
       ]
     },
     {
@@ -67,8 +67,8 @@ stdout = '''
       "interfaceEntities": 0,
       "implementationEntities": 3,
       "sample": [
-        "Logger",
         "Clock::size",
+        "Logger",
         "Logger::clock"
       ]
     },
@@ -183,7 +183,7 @@ stdout = '''
   "to": "util",
   "entities": [
     {
-      "id": "#602700486b07890d",
+      "id": "#0def7cb222c5d223",
       "entity": "Clock",
       "owner": "util/clock.h",
       "users": [
@@ -192,7 +192,7 @@ stdout = '''
       "interface": true
     },
     {
-      "id": "#bfff4877bb1fba15",
+      "id": "#1b6e5b7d87974731",
       "entity": "twice",
       "owner": "util/strops.h",
       "users": [
@@ -205,14 +205,14 @@ stdout = '''
 '''
 exit = 0
 
-["moved declarations"."$ clice analyze modules edge core util --move-entity \"#602700486b07890d=core/clock.h\""]
+["moved declarations"."$ clice analyze modules edge core util --move-entity \"#0def7cb222c5d223=core/clock.h\""]
 stdout = '''
 {
   "from": "core",
   "to": "util",
   "entities": [
     {
-      "id": "#bfff4877bb1fba15",
+      "id": "#1b6e5b7d87974731",
       "entity": "twice",
       "owner": "util/strops.h",
       "users": [
@@ -232,7 +232,7 @@ stdout = '''
   "to": "core",
   "entities": [
     {
-      "id": "#478ec97a46ae1c6f",
+      "id": "#420db0ed7345959b",
       "entity": "Str",
       "owner": "core/str.h",
       "users": [
@@ -241,7 +241,7 @@ stdout = '''
       "interface": true
     },
     {
-      "id": "#b244f96089a92435",
+      "id": "#d69f5b35b3206fc4",
       "entity": "length",
       "owner": "core/str.h",
       "users": [
@@ -261,7 +261,7 @@ stdout = '''
   "to": "meta",
   "entities": [
     {
-      "id": "#602700486b07890d",
+      "id": "#0def7cb222c5d223",
       "entity": "Clock",
       "owner": "meta/clock.h",
       "users": [
@@ -288,7 +288,7 @@ stdout = '''
   "to": "util",
   "entities": [
     {
-      "id": "#602700486b07890d",
+      "id": "#0def7cb222c5d223",
       "entity": "Clock",
       "owner": "util/clock.h",
       "users": [

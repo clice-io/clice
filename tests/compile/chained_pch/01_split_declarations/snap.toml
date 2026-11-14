@@ -997,7 +997,7 @@ stdout = '''
   "result": {
     "name": "move",
     "kind": "Function",
-    "symbol": "#9d562403fe609ade",
+    "symbol": "#42092b6624be7099",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1025,7 +1025,7 @@ stdout = '''
   "result": {
     "name": "move",
     "kind": "Function",
-    "symbol": "#46f8f1fcf0389bbe",
+    "symbol": "#ebb260bbeb796684",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -1053,7 +1053,7 @@ stdout = '''
   "result": {
     "name": "scale",
     "kind": "Function",
-    "symbol": "#72d8278d67bdf498",
+    "symbol": "#a31dfd778bdc477f",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1087,7 +1087,7 @@ stdout = '''
   "result": {
     "name": "red",
     "kind": "EnumMember",
-    "symbol": "#7c5a84159e8b1849",
+    "symbol": "#058eaf1c0767d3e2",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -1115,7 +1115,7 @@ stdout = '''
   "result": {
     "name": "report",
     "kind": "Function",
-    "symbol": "#9acd35056f14daf8",
+    "symbol": "#61e259f763284050",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1149,7 +1149,7 @@ stdout = '''
   "result": {
     "name": "Size",
     "kind": "Struct",
-    "symbol": "#ff2c4f6de1fb583e",
+    "symbol": "#cb1d796eef0d2411",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1189,7 +1189,7 @@ stdout = '''
   "result": {
     "name": "x",
     "kind": "Field",
-    "symbol": "#be5be7db5c97908a",
+    "symbol": "#6b4e5616a26714cd",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -1217,7 +1217,7 @@ stdout = '''
   "result": {
     "name": "area",
     "kind": "Method",
-    "symbol": "#c0e2440a8fb54846",
+    "symbol": "#3cbd050db827556b",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -1251,7 +1251,7 @@ stdout = '''
   "result": {
     "name": "base_area",
     "kind": "Function",
-    "symbol": "#98018d67d6e43a72",
+    "symbol": "#92e2a32a33818507",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1279,7 +1279,7 @@ stdout = '''
   "result": {
     "name": "count",
     "kind": "Variable",
-    "symbol": "#b55ef864c7f2abee",
+    "symbol": "#f37a429233bd2a90",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1313,7 +1313,7 @@ stdout = '''
   "result": {
     "name": "limit",
     "kind": "Variable",
-    "symbol": "#88315f9c88005880",
+    "symbol": "#6818d364df451149",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1341,7 +1341,7 @@ stdout = '''
   "result": {
     "name": "local_bonus",
     "kind": "Function",
-    "symbol": "#843382fc2fca3292 path:${WS}/include/extra.h",
+    "symbol": "#42f7fc184bf99e63 path:${WS}/include/extra.h",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -1369,7 +1369,7 @@ stdout = '''
   "result": {
     "name": "local_seed",
     "kind": "Function",
-    "symbol": "#47d11d795b674d79 path:${WS}/include/base.h",
+    "symbol": "#e653991efa5e7414 path:${WS}/include/base.h",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1403,7 +1403,7 @@ stdout = '''
   "result": {
     "name": "area",
     "kind": "Method",
-    "symbol": "#e73e38d51c1057aa",
+    "symbol": "#90548ac3f44c46c2",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1438,7 +1438,7 @@ stdout = '''
   "result": {
     "name": "move",
     "kind": "Function",
-    "symbol": "#9d562403fe609ade",
+    "symbol": "#42092b6624be7099",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1466,7 +1466,7 @@ stdout = '''
   "result": {
     "name": "move",
     "kind": "Function",
-    "symbol": "#46f8f1fcf0389bbe",
+    "symbol": "#ebb260bbeb796684",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -1494,7 +1494,7 @@ stdout = '''
   "result": {
     "name": "scale",
     "kind": "Function",
-    "symbol": "#72d8278d67bdf498",
+    "symbol": "#a31dfd778bdc477f",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1528,7 +1528,7 @@ stdout = '''
   "result": {
     "name": "red",
     "kind": "EnumMember",
-    "symbol": "#7c5a84159e8b1849",
+    "symbol": "#058eaf1c0767d3e2",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -1556,7 +1556,7 @@ stdout = '''
   "result": {
     "name": "report",
     "kind": "Function",
-    "symbol": "#9acd35056f14daf8",
+    "symbol": "#61e259f763284050",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1590,7 +1590,7 @@ stdout = '''
   "result": {
     "name": "Size",
     "kind": "Struct",
-    "symbol": "#ff2c4f6de1fb583e",
+    "symbol": "#cb1d796eef0d2411",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1630,7 +1630,7 @@ stdout = '''
   "result": {
     "name": "x",
     "kind": "Field",
-    "symbol": "#be5be7db5c97908a",
+    "symbol": "#6b4e5616a26714cd",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -1658,7 +1658,7 @@ stdout = '''
   "result": {
     "name": "area",
     "kind": "Method",
-    "symbol": "#c0e2440a8fb54846",
+    "symbol": "#3cbd050db827556b",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -1692,7 +1692,7 @@ stdout = '''
   "result": {
     "name": "base_area",
     "kind": "Function",
-    "symbol": "#98018d67d6e43a72",
+    "symbol": "#92e2a32a33818507",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1720,7 +1720,7 @@ stdout = '''
   "result": {
     "name": "count",
     "kind": "Variable",
-    "symbol": "#b55ef864c7f2abee",
+    "symbol": "#f37a429233bd2a90",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1754,7 +1754,7 @@ stdout = '''
   "result": {
     "name": "limit",
     "kind": "Variable",
-    "symbol": "#88315f9c88005880",
+    "symbol": "#6818d364df451149",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1782,7 +1782,7 @@ stdout = '''
   "result": {
     "name": "local_bonus",
     "kind": "Function",
-    "symbol": "#843382fc2fca3292 path:${WS}/include/extra.h",
+    "symbol": "#42f7fc184bf99e63 path:${WS}/include/extra.h",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -1810,7 +1810,7 @@ stdout = '''
   "result": {
     "name": "local_seed",
     "kind": "Function",
-    "symbol": "#47d11d795b674d79 path:${WS}/include/base.h",
+    "symbol": "#e653991efa5e7414 path:${WS}/include/base.h",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1844,7 +1844,7 @@ stdout = '''
   "result": {
     "name": "area",
     "kind": "Method",
-    "symbol": "#e73e38d51c1057aa",
+    "symbol": "#90548ac3f44c46c2",
     "references": [
       {
         "file": "${WS}/include/base.h",

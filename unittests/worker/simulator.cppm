@@ -2,6 +2,7 @@ module clice:unittests.worker.simulator;
 
 import :support.prelude;
 import :unittests.worker.workloads;
+import :worker.resources;
 import :worker.scheduler;
 
 namespace clice::testing {
@@ -25,7 +26,7 @@ struct SimMachine {
     /// without swap; otherwise every worker slows, as on macOS's compressor.
     bool oom_kills = true;
 
-    /// macOS keeps a larger reserve: decompression starts near 20% free.
+    /// macOS's reserve (memory_reserve).
     bool mac_reserve = false;
 };
 
@@ -130,10 +131,7 @@ inline std::uint64_t others_at(const SimMachine& machine, double t) {
 }
 
 inline std::uint64_t reserve(const SimMachine& machine) {
-    if(machine.mac_reserve) {
-        return std::max<std::uint64_t>(1536 * MiB, machine.memory / 10);
-    }
-    return std::max<std::uint64_t>(512 * MiB, machine.memory / 20);
+    return memory_reserve(machine.memory, machine.mac_reserve);
 }
 
 }  // namespace sim
@@ -436,6 +434,7 @@ inline SimResult simulate(const SimSpec& spec) {
             auto bytes = used();
             sample.headroom = bytes < machine.memory ? machine.memory - bytes : 0;
             sample.reserve = sim::reserve(machine);
+            std::vector<WorkerSample> workers;
             for(std::size_t slot = 0; slot < procs.size(); slot += 1) {
                 auto& proc = procs[slot];
                 if(proc.alive || proc.ready_at || proc.exit_at) {
@@ -443,7 +442,7 @@ inline SimResult simulate(const SimSpec& spec) {
                 }
                 // The pool samples the workers in service.
                 if(proc.alive && !proc.kill) {
-                    sample.workers.push_back({
+                    workers.push_back({
                         .slot = slot,
                         .memory = proc.job ? sim::memory_at(proc.job->peak, proc.job->progress)
                                            : sim::base,
@@ -451,7 +450,7 @@ inline SimResult simulate(const SimSpec& spec) {
                     });
                 }
             }
-            core.sample(std::move(sample), now);
+            core.sample(sample, workers, now);
             run();
             next_sample = t + duration<double>(core.sample_interval()).count();
         }

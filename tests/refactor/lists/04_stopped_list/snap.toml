@@ -29,7 +29,7 @@ stdout = '''
         "locator": "compute",
         "name": "compute",
         "kind": "Function",
-        "symbol": "#0129094638d1b328",
+        "symbol": "#5ed96e37759646ef",
         "newName": "evaluate",
         "edits": 4,
         "conflicts": [
@@ -44,7 +44,7 @@ stdout = '''
         "locator": "Widget",
         "name": "Widget",
         "kind": "Struct",
-        "symbol": "#5b52580eb5b8875a",
+        "symbol": "#4932b6c3474fa669",
         "newName": "evaluate",
         "edits": 5,
         "conflicts": [
@@ -163,7 +163,7 @@ stdout = '''
         "locator": "compute",
         "name": "compute",
         "kind": "Function",
-        "symbol": "#0129094638d1b328",
+        "symbol": "#5ed96e37759646ef",
         "newName": "evaluate",
         "edits": 4,
         "conflicts": [],

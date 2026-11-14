@@ -719,9 +719,9 @@ private:
         take_range(taken_source_range(N), self);
     }
 
-    /// clang finds a binary operator's ends by recursing down its operands,
-    /// quadratic over a chain like `a + b + c + ...`. The operands popped
-    /// first, so a nested operator's range is already known.
+    /// clang bug: clang finds a binary operator's ends by recursing down its
+    /// operands, quadratic over a chain like `a + b + c + ...`. The operands
+    /// popped first, so a nested operator's range is already known.
     clang::SourceRange operator_range(const clang::BinaryOperator* op) {
         auto known = [&](const clang::Expr* expr) -> std::optional<clang::SourceRange> {
             if(auto it = operator_ranges.find(expr->IgnoreImpCasts());
@@ -2145,6 +2145,10 @@ void stmt_references(const clang::Stmt* S,
                           CRS->getKeywordLoc());
         return;
     }
+    // LIMITATION: a RecoveryExpr carries no name: a variable whose type
+    // failed to resolve (a misspelled type, a missing include) has no
+    // reference at its uses, so no navigation from them; a lookup by name
+    // would be a guess, and clice does not guess.
 }
 
 /// The references a token spells, as name occurrences.

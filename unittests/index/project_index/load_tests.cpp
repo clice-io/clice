@@ -673,7 +673,8 @@ ZEST_CASE(ReadOnlyKeepsDisk) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ZASSERT(store);
     f.project.store.emplace(std::move(*store));
-    f.project.database = index::open_database(*f.project.store, {}, /*read_only=*/true);
+    f.project.database =
+        index::open_database(*f.project.store, {}, /*read_only=*/true).value_or(nullptr);
     ZASSERT(f.project.database != nullptr);
     f.load();
 

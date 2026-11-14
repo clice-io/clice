@@ -240,7 +240,7 @@ int run_view(const ModelOptions& model, const WeightOptions* weights, View view)
             failure.candidates = std::move(candidates);
         }
         print_json(failure);
-        return 1;
+        return project.index.damaged() ? 2 : 1;
     }
     auto& facts = loaded->facts;
     auto partition = analysis::partition(facts, *spec);

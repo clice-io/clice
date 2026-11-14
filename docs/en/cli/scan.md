@@ -10,7 +10,7 @@ The build is the one its compilation databases list: the databases the rules nam
 
 `--runs <n>` times the scan: each run loads the build from scratch and scans it (cold, as at startup), then scans it again over what the first scan kept (warm, as after a database reload), and prints both times; the last line gives their minimum and median.
 
-The exit code is 0 after a scan; 1 when there is nothing to scan (the project root or the configuration does not exist, or no database is found or lists a file) or the arguments ask for two outputs at once or for no run; 2 when they do not parse.
+The exit code is 0 after a scan; 2 when there is nothing to scan (the project root or the configuration does not exist, or no database is found or lists a file), when the arguments ask for two outputs at once or for no run, or when they do not parse.
 
 ## Examples
 

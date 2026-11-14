@@ -105,7 +105,7 @@ stdout = '''
   "result": {
     "name": "base_use",
     "kind": "Function",
-    "symbol": "#9b0a005da09cab85",
+    "symbol": "#b774e11212029cc1",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -144,7 +144,7 @@ stdout = '''
   "result": {
     "name": "base_use",
     "kind": "Function",
-    "symbol": "#9b0a005da09cab85",
+    "symbol": "#b774e11212029cc1",
     "references": [
       {
         "file": "${WS}/include/base.h",

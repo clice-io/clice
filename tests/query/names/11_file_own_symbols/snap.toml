@@ -17,7 +17,7 @@ stdout = '''
         "file": "${WS}/local.cpp",
         "line": 1,
         "container": null,
-        "symbol": "#2b6730af87013000 path:${WS}/local.cpp"
+        "symbol": "#eb5afa7496695c67 path:${WS}/local.cpp"
       }
     ]
   },

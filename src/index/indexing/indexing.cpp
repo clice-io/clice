@@ -106,6 +106,10 @@ FileIndex* Builder::file_index(clang::FileID fid) {
     if(focus_only && fid != unit.focus_file().file() && !module_files.contains(fid)) {
         return nullptr;
     }
+    // LIMITATION: what the host's context declares is the host's to index:
+    // with indexing off, or before the background index reaches a closed
+    // host, a header compiled in its context finds no definition of what the
+    // host's earlier includes declare (hover still shows it).
     if(unit.from_context(fid)) {
         return nullptr;
     }
@@ -502,6 +506,10 @@ std::vector<std::byte> Builder::build() {
     // files that expand its macros; the instantiations are a walk of
     // their own in either shape.
     std::optional<Semantics> whole;
+    // LIMITATION: the whole-TU shape walks every header the unit includes in
+    // full, and only on writing finds most of them equal to the stored ones
+    // (known_variants): a full index takes up to several times clangd's,
+    // which indexes each header once per project.
     if(!focus_only) {
         whole.emplace(
             Semantics::build(unit,
@@ -513,8 +521,10 @@ std::vector<std::byte> Builder::build() {
         const auto& focus = unit.get<Semantics>();
         for(auto [index, entry]: views::enumerate(focus.node_entries())) {
             // Macros are projected from the directives below; includes
-            // and imports have their own pipelines.
-            if(entry.node.is_ast()) {
+            // and imports have their own pipelines. What an explicit
+            // instantiation's members hold is the instantiations' walk's,
+            // as in the whole-TU shape, which meets them there alone.
+            if(entry.node.is_ast() && !entry.flags.in_instantiation) {
                 project_node(focus, static_cast<std::uint32_t>(index));
             }
         }
@@ -539,8 +549,10 @@ std::vector<std::byte> Builder::build() {
             project_bases(record);
         }
     }
-    // What a preamble's macros expand to is the background index's to
-    // resolve: the preamble's own index carries what it instantiates alone,
+    // LIMITATION: what a preamble's macros expand to is the background
+    // index's to resolve: with indexing off, or before the background index
+    // reaches the file, an open file misses the names its headers' macros
+    // expand to. The preamble's own index carries what it instantiates alone,
     // which the compile loading its PCH never instantiates again.
     if(unit.kind() != CompilationKind::Preamble) {
         project_expansions();
@@ -754,6 +766,12 @@ std::vector<std::byte> Builder::build() {
     blob.paths = std::move(tree.paths);
     blob.content_hashes = std::move(tree.content_hashes);
     blob.nodes = std::move(tree.nodes);
+    for(auto& link: tree.links) {
+        blob.link_files.push_back(link.file);
+        blob.link_lines.push_back(link.line);
+        blob.link_columns.push_back(link.column);
+        blob.link_targets.push_back(std::move(link.target));
+    }
     blob.absent = unit.absent();
     llvm::SmallVector<SymbolHash> table;
     for(auto& [hash, symbol]: symbols) {

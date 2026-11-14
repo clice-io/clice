@@ -88,6 +88,13 @@ private:
         return location;
     }
 
+    clang::MacroInfo* definition(llvm::StringRef name) {
+        auto& pp = unit.instance->getPreprocessor();
+        auto& identifiers = pp.getIdentifierTable();
+        auto known = identifiers.find(name);
+        return known == identifiers.end() ? nullptr : pp.getMacroInfo(known->getValue());
+    }
+
     /// A system header's directives test what its platform and the user
     /// configure: none is a name of the project.
     void add_unresolved(clang::SourceLocation location) {
@@ -114,10 +121,10 @@ private:
     /// with their arguments (`__has_include(<x>)`). Of a condition the
     /// preprocessor `evaluated`, those it found defined are left out, their
     /// expansions recorded them, as is `defined`'s operand, which Defined
-    /// sees.
+    /// sees. Of one it did not, a name defined there references that
+    /// definition (add_tested).
     void add_unresolved(clang::FileID fid, llvm::ArrayRef<Token> condition, bool evaluated) {
-        auto& pp = unit.instance->getPreprocessor();
-        auto& identifiers = pp.getIdentifierTable();
+        auto& identifiers = unit.instance->getPreprocessor().getIdentifierTable();
         auto content = unit.file_content(fid);
         for(std::size_t i = 0; i < condition.size(); i += 1) {
             auto& token = condition[i];
@@ -131,13 +138,12 @@ private:
                     i += 1;
                 }
                 if(!evaluated && i + 1 < condition.size() && condition[i + 1].is_identifier()) {
-                    add_unresolved(unit.create_location(fid, condition[i + 1].range.begin));
+                    add_tested(fid, condition[i + 1], content);
                 }
                 i += 1;
                 continue;
             }
-            auto known = identifiers.find(name);
-            auto* macro = known == identifiers.end() ? nullptr : pp.getMacroInfo(known->getValue());
+            auto* macro = definition(name);
             if(macro && macro->isBuiltinMacro()) {
                 if(i + 1 < condition.size() && condition[i + 1].kind == clang::tok::l_paren) {
                     std::uint32_t depth = 0;
@@ -154,9 +160,23 @@ private:
                 }
                 continue;
             }
-            if(!evaluated || !macro) {
+            if(!evaluated) {
+                add_tested(fid, token, content);
+            } else if(!macro) {
                 add_unresolved(unit.create_location(fid, token.range.begin));
             }
+        }
+    }
+
+    /// A macro name a condition the preprocessor did not evaluate tests: it
+    /// references the definition the name has there, the preprocessor's
+    /// still, since no directive of a skipped block runs.
+    void add_tested(clang::FileID fid, const Token& name, llvm::StringRef content) {
+        auto location = unit.create_location(fid, name.range.begin);
+        if(auto* macro = definition(name.text(content))) {
+            add_macro(macro, MacroRef::Ref, location);
+        } else {
+            add_unresolved(location);
         }
     }
 
@@ -230,6 +250,7 @@ public:
         unit.collected_directives[prev_fid].includes.emplace_back(Include{
             .fid = {},
             .location = include_tok.getLocation(),
+            .macro_braces = macro_braces.lookup(prev_fid),
         });
     }
 
@@ -451,11 +472,13 @@ public:
             auto name = keyword.text(content);
             if(name == "if" || name == "elif") {
                 add_unresolved(fid, spelled, /*evaluated=*/false);
-            } else if(ranges::contains(
-                          std::array{"define", "undef", "ifdef", "ifndef", "elifdef", "elifndef"},
-                          name) &&
-                      !spelled.empty() && spelled.front().is_identifier()) {
+            } else if(spelled.empty() || !spelled.front().is_identifier()) {
+                continue;
+            } else if(name == "define" || name == "undef") {
                 add_unresolved(unit.create_location(fid, spelled.front().range.begin));
+            } else if(ranges::contains(std::array{"ifdef", "ifndef", "elifdef", "elifndef"},
+                                       name)) {
+                add_tested(fid, spelled.front(), content);
             }
         }
     }
@@ -478,8 +501,17 @@ public:
                       const clang::MacroDefinition& definition,
                       clang::SourceRange range,
                       const clang::MacroArgs* args) override {
-        if(auto def = definition.getMacroInfo()) {
-            add_macro(def, MacroRef::Ref, name.getLocation());
+        auto def = definition.getMacroInfo();
+        if(!def) {
+            return;
+        }
+        add_macro(def, MacroRef::Ref, name.getLocation());
+        std::int32_t braces = 0;
+        for(auto& token: def->tokens()) {
+            braces += token.is(clang::tok::l_brace) ? 1 : token.is(clang::tok::r_brace) ? -1 : 0;
+        }
+        if(braces != 0) {
+            macro_braces[unit.produced_at(name.getLocation()).file] += braces;
         }
     }
 
@@ -510,6 +542,9 @@ private:
 
     /// The macro names recorded where an argument spells them.
     llvm::DenseSet<std::pair<const clang::MacroInfo*, clang::SourceLocation>> written_arguments;
+
+    /// Each file's braces the macros it expanded so far open, net.
+    llvm::DenseMap<clang::FileID, std::int32_t> macro_braces;
 };
 
 std::unique_ptr<clang::PPCallbacks> CompilationUnit::directive_recorder() {

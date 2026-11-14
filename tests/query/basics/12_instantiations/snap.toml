@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "open",
     "kind": "Method",
-    "symbol": "#66ed736b7a4ce853",
+    "symbol": "#d5936eb98e669dd1",
     "references": [
       {
         "file": "${WS}/main.cpp",
@@ -51,25 +51,25 @@ stdout = '''
       "kind": "Method",
       "file": "${WS}/main.cpp",
       "line": 3,
-      "symbol": "#66ed736b7a4ce853"
+      "symbol": "#d5936eb98e669dd1"
     },
     "callers": [
-      {
-        "name": "measure",
-        "signature": "(T &item)",
-        "kind": "Function",
-        "file": "${WS}/measure.h",
-        "line": 4,
-        "symbol": "#64a3c7bc5112a824",
-        "via": "instantiation"
-      },
       {
         "name": "twice",
         "signature": "(T &item, Box &box)",
         "kind": "Function",
         "file": "${WS}/main.cpp",
         "line": 8,
-        "symbol": "#395c652bed3c1db9"
+        "symbol": "#2f7e45a1226fa2de"
+      },
+      {
+        "name": "measure",
+        "signature": "(T &item)",
+        "kind": "Function",
+        "file": "${WS}/measure.h",
+        "line": 4,
+        "symbol": "#43a3e46351e06f6d",
+        "via": "instantiation"
       }
     ],
     "callees": []
@@ -85,7 +85,7 @@ stdout = '''
   "result": {
     "name": "reset",
     "kind": "Function",
-    "symbol": "#e241f31da004350a",
+    "symbol": "#c8fd46bdc716df43",
     "references": [
       {
         "file": "${WS}/box.h",

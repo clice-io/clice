@@ -165,8 +165,8 @@ void ProjectIndex::for_each_importer(Fid input, llvm::function_ref<void(Fid)> vi
     }
 }
 
-std::vector<ResolvedInclude> ProjectIndex::resolved_includes(Fid file) const {
-    // Every consumer applies the includes to content the serving shard
+std::vector<ResolvedLink> ProjectIndex::resolved_links(Fid file) const {
+    // Every consumer applies the links to content the serving shard
     // matches, so a resolution counts only at the shard's content
     // generation — a unit that indexed an older revision would place its
     // lines in text that moved.
@@ -175,24 +175,25 @@ std::vector<ResolvedInclude> ProjectIndex::resolved_includes(Fid file) const {
     if(!found) {
         return {};
     }
-    std::vector<ResolvedInclude> includes;
-    llvm::DenseSet<std::pair<std::uint32_t, std::uint32_t>> seen;
+    std::vector<ResolvedLink> links;
+    std::set<LinkEdge> seen;
     for(auto& resolution: found->resolutions) {
         if(resolution.content != indexed->content_hash()) {
             continue;
         }
         for(auto edge: resolution.edges) {
-            auto target = fid_of(edge.second);
+            auto target = fid_of(edge.target);
             if(target.valid() && seen.insert(edge).second) {
-                includes.push_back(
-                    {.line = edge.first, .target = std::string(files.resolve(target))});
+                links.push_back({.line = edge.line,
+                                 .column = edge.column,
+                                 .target = std::string(files.resolve(target))});
             }
         }
     }
-    ranges::stable_sort(includes, [](const ResolvedInclude& lhs, const ResolvedInclude& rhs) {
-        return lhs.line < rhs.line;
+    ranges::stable_sort(links, {}, [](const ResolvedLink& link) {
+        return std::pair(link.line, link.column);
     });
-    return includes;
+    return links;
 }
 
 const Shard* ProjectIndex::shard(Fid file) const {

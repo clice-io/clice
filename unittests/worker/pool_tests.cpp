@@ -123,16 +123,18 @@ struct WorkerPoolFixture {
     void sample(std::uint64_t headroom = 1ull << 40,
                 std::uint64_t memory = 0,
                 chrono::milliseconds later = {}) {
-        SchedulerSample sample{.headroom = headroom, .reserve = 512ull << 20};
+        std::vector<WorkerSample> workers;
         for(std::size_t idx = 0; idx < pool.stateless_workers.size(); idx += 1) {
             auto& w = pool.stateless_workers[idx];
             if(w.state == SlotState::Alive) {
                 w.memory = memory;
-                sample.workers.push_back({.slot = idx, .memory = memory});
+                workers.push_back({.slot = idx, .memory = memory});
             }
         }
-        sample.stateless_processes = sample.workers.size();
-        pool.scheduler.sample(std::move(sample), WorkerPool::now() + later);
+        SchedulerSample sample{.headroom = headroom,
+                               .reserve = 512ull << 20,
+                               .stateless_processes = workers.size()};
+        pool.scheduler.sample(sample, workers, WorkerPool::now() + later);
         pool.execute();
     }
 

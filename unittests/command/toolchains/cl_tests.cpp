@@ -84,6 +84,17 @@ ZEST_CASE(CLWarningsStayWarnings) {
     ZEXPECT(contains(f.resolve(add("b.cpp", {clang_cl.c_str(), "/WX"})), "-Werror"));
 }
 
+ZEST_CASE(CLRuntimeChecks) {
+    // cl defines __MSVC_RUNTIME_CHECKS for its runtime checks; clang-cl
+    // ignores /RTC and defines nothing.
+    auto cl = fake_cl();
+    auto argv = f.resolve(add("a.cpp", {cl.c_str(), "/RTC1"}));
+    ZEXPECT(adjacent(argv, "-D", "__MSVC_RUNTIME_CHECKS"));
+    auto clang_cl = fake_cl("clang-cl");
+    argv = f.resolve(add("b.cpp", {clang_cl.c_str(), "/RTC1"}));
+    ZEXPECT(!adjacent(argv, "-D", "__MSVC_RUNTIME_CHECKS"));
+}
+
 ZEST_CASE(CLToolsetHeaders) {
     // A cl.exe compiles with the headers of its own toolset, not the
     // newest one installed, outside a developer prompt.

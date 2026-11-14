@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "Holder",
     "kind": "Struct",
-    "symbol": "#b9ddd5b92359f6ae",
+    "symbol": "#23edebfb714be1f1",
     "references": [
       {
         "file": "${WS}/main.cpp",
@@ -33,7 +33,7 @@ stdout = '''
   "result": {
     "name": "Holder<bool>",
     "kind": "Struct",
-    "symbol": "#fa05ea6f87683b82",
+    "symbol": "#b67e031abdbe98ac",
     "references": [
       {
         "file": "${WS}/main.cpp",
@@ -61,7 +61,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 2,
         "container": null,
-        "symbol": "#b9ddd5b92359f6ae"
+        "symbol": "#23edebfb714be1f1"
       },
       {
         "name": "Holder<bool>",
@@ -70,7 +70,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 7,
         "container": null,
-        "symbol": "#fa05ea6f87683b82"
+        "symbol": "#b67e031abdbe98ac"
       }
     ]
   },

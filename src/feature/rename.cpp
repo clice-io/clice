@@ -376,11 +376,14 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
                    found->group,
                    target->symbol.symbol.hash,
                    [](const index::IndexQuery::Located& member) { return member.symbol.hash; })) {
+                std::array names{query.qualified_name(found->symbol.symbol.hash, file),
+                                 query.qualified_name(target->symbol.symbol.hash, file)};
+                ranges::sort(names);
                 return std::unexpected(std::format(
                     "the name here resolves to `{}` and `{}`; rename them to one name in one "
                     "list of renames, or one of them from its declaration",
-                    query.qualified_name(found->symbol.symbol.hash, file),
-                    query.qualified_name(target->symbol.symbol.hash, file)));
+                    names[0],
+                    names[1]));
             }
             continue;
         }
@@ -933,6 +936,10 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                     if(symbol.name == old_name) {
                         continue;
                     }
+                    // LIMITATION: the index tells no overloads apart by their
+                    // parameters: a function renamed onto another with the same
+                    // parameters makes a redefinition, yet the rename only warns
+                    // of the clash instead of refusing.
                     plan.warnings.push_back(
                         std::format("`{}` already names a function in the same scope ({}): the "
                                     "renamed function overloads it, which fails to build in C or "
@@ -940,8 +947,10 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                                     std::string_view(new_name),
                                     where(other.site)));
                 } else if(local) {
-                    // Other locals clash only within one block, and the index
-                    // records no blocks.
+                    // LIMITATION: other locals clash only within one block, and
+                    // the index records no blocks: a local renamed to the name of
+                    // a parameter or another local in its scope, or a function to
+                    // a name a caller's local hides, is renamed and fails to build.
                     if(symbol.kind == root.kind &&
                        (root.kind == SymbolKind::Parameter || root.kind == SymbolKind::Label)) {
                         plan.conflicts.push_back(

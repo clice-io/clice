@@ -1,0 +1,2 @@
+# No compilation database: only the rule gives src/main.cpp its command.
+databases = {}

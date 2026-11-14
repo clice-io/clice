@@ -20,6 +20,10 @@ struct ChainEntry {
     /// The 1-based line of the directive entering the next file, when the
     /// host's include tree tells; 0 picks among the directives naming it.
     std::uint32_t line = 0;
+
+    /// The braces the macros the file expanded before that directive open,
+    /// net (IncludeNode::macro_braces), which its text does not show.
+    std::int32_t macro_braces = 0;
 };
 
 /// Resolve an include directive of a file in `includer_dir`, which was
@@ -90,7 +94,10 @@ using SynthesizedFiles = std::vector<SynthesizedFile>;
 /// functions read members declared after them. Braces count lexically,
 /// both branches of a conditional: a brace a macro writes is not counted,
 /// so a closing one never closes and the suffix takes the rest of the
-/// file, while a class a macro opens ends at the header's text. The focus
+/// file, while a class a macro opens ends at the header's text. A chain
+/// file cut outside every brace of its text but inside a scope its macros
+/// opened (ChainEntry::macro_braces) is all open before the cut and all
+/// suffix after it. The focus
 /// file always includes the suffix, if only an empty one. Each fragment
 /// starts with a #line marker; a cut inside #if blocks opens matching
 /// `#if 1`s, and a suffix fragment ending inside #if blocks closes them.

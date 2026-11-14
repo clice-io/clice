@@ -41,13 +41,12 @@ struct Core {
     }
 
     void sample(std::uint64_t headroom,
-                std::vector<SchedulerSample::Worker> workers = {},
+                std::vector<WorkerSample> workers = {},
                 std::uint64_t reserve = 512 * MiB) {
-        scheduler.sample({.headroom = headroom,
-                          .reserve = reserve,
-                          .stateless_processes = processes,
-                          .workers = std::move(workers)},
-                         now);
+        scheduler.sample(
+            {.headroom = headroom, .reserve = reserve, .stateless_processes = processes},
+            workers,
+            now);
         take();
     }
 
@@ -271,6 +270,7 @@ ZEST_CASE(SwappingStopsNewest) {
     core.submit(2, Priority::Low);
     core.scheduler.sample(
         {.headroom = 8 * GiB, .reserve = 512 * MiB, .swapping = true, .stateless_processes = 2},
+        {},
         core.now);
     core.take();
     auto kills = core.all<scheduler::Kill>();
@@ -283,6 +283,7 @@ ZEST_CASE(LoneUnitSwapsOn) {
     core.submit(1, Priority::Low);
     core.scheduler.sample(
         {.headroom = 8 * GiB, .reserve = 512 * MiB, .swapping = true, .stateless_processes = 1},
+        {},
         core.now);
     core.take();
     ZEXPECT(core.all<scheduler::Kill>().empty());

@@ -100,6 +100,8 @@ When preamble content changes, the new PCH uses a different hash for its filenam
 
 The preamble boundary is determined through lexical scanning: the project's `Lexer` scans line by line from the start of the file, identifying preprocessor directives beginning with `#` and `module;` global module fragment declarations. Scanning stops at the first line of non-preprocessor content, or in a global module fragment at the module declaration, and the byte offset at that point is returned as the boundary.
 
+The preamble also ends before a `#pragma` push it does not pop (`push_macro`, `pack(push)`, `clang attribute push`, `GCC visibility push`, `clang assume_nonnull begin`): a PCH keeps none of these stacks, so the body's pop would find nothing. In a global module fragment, a push followed by an include of the fragment leaves no preamble at all: the body would parse the include's declarations ahead of the module declaration.
+
 This lexer-based detection does not require starting a full preprocessor and is very fast.
 
 ### Preamble Completeness Check

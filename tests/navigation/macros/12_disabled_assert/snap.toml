@@ -1,0 +1,8 @@
+[answers.definition]
+definition = ["int ⟦limit⟧ = 10;"]
+references = ["int ⟦limit⟧ = 10;"]
+
+[answers.use]
+wrong = "limit names the variable above, yet goes nowhere: under NDEBUG the assert's argument is never compiled, and clice does not guess what it would name"
+definition = []
+references = []

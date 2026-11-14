@@ -913,20 +913,23 @@ void FactsBuilder::read_specializations() {
         if(facts.entities[entity].owner == file) {
             continue;
         }
+        std::uint32_t line = 0;
+        if(auto it = sites.find(specialization); it != sites.end()) {
+            if(auto site =
+                   ranges::find_if(it->second, [&](const Site& site) { return site.file == file; });
+               site != it->second.end()) {
+                line = site->line;
+            }
+        }
         if(ranges::none_of(facts.specializations, [&](const Specialization& known) {
                return known.primary == entity && known.file == file;
            })) {
-            std::uint32_t line = 0;
-            if(auto it = sites.find(specialization); it != sites.end()) {
-                if(auto site = ranges::find_if(it->second,
-                                               [&](const Site& site) { return site.file == file; });
-                   site != it->second.end()) {
-                    line = site->line;
-                }
-            }
             facts.specializations.push_back({.primary = entity, .file = file, .line = line});
         }
         auto& use = raw[file][primary];
+        if(use.count == 0) {
+            use.line = line;
+        }
         use.count += 1;
         use.strong = true;
     }

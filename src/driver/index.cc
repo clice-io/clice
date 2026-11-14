@@ -82,9 +82,20 @@ void report_progress(BatchRun& run, const BatchOptions& options) {
     }
     auto failed = ranges::count_if(background.last_attempts(),
                                    [](const auto& entry) { return entry.second.failed; });
-    options.on_progress({.completed = pass.completed,
-                         .total = pass.total,
-                         .failed = static_cast<std::size_t>(failed)});
+    BatchProgress progress{.completed = pass.completed,
+                           .total = pass.total,
+                           .failed = static_cast<std::size_t>(failed)};
+    auto now = chrono::steady_clock::now();
+    for(auto [unit, since]: run.project.compiling) {
+        if(now - since > BatchProgress::slow_after) {
+            progress.slow.push_back({
+                .unit = run.project.file_table.display(unit),
+                .seconds = chrono::duration_cast<chrono::seconds>(now - since).count(),
+            });
+        }
+    }
+    ranges::sort(progress.slow, ranges::greater{}, &BatchProgress::Slow::seconds);
+    options.on_progress(progress);
 }
 
 /// A paced report on top of the pass boundaries: one unit can take
@@ -134,7 +145,8 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
         start_batch(run, batch, batch.workers != 0 ? batch.workers : sys::parallelism(), "index");
     result.session_dir = run.session_dir;
     if(!started) {
-        result.exit_code = 1;
+        result.error = "the worker processes did not start";
+        result.exit_code = 2;
         // A failed later spawn leaves earlier workers and their I/O tasks
         // live; unstopped they keep the batch event loop spinning and the
         // command hangs instead of exiting.
@@ -152,15 +164,14 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     // only warm this process's memory and a rerun would start from
     // nothing — fail instead of pretending.
     if(!project.database) {
-        LOG_ERROR("Cannot persist the index at {}: the warning above says why; fix that and rerun",
-                  std::string_view(project.settings.project.cache_dir));
-        result.exit_code = 1;
-        co_await shutdown(run);
-        co_return;
+        result.error = std::format("Cannot persist the index at {}: {}",
+                                   std::string_view(project.settings.project.cache_dir),
+                                   opened.unwritable);
+    } else if(opened.members.empty()) {
+        result.error = std::format("Nothing to index: {}", project.why_no_members(batch.root));
     }
-    if(opened.members.empty()) {
-        LOG_ERROR("Nothing to index: {}", project.why_no_members(batch.root));
-        result.exit_code = 1;
+    if(result.error) {
+        result.exit_code = 2;
         co_await shutdown(run);
         co_return;
     }
@@ -198,6 +209,9 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
     result.unsaved = project.has_unsaved_state();
+    if(!project.save_error.empty()) {
+        result.save_error = project.save_error;
+    }
     if(interrupted) {
         result.interrupted = true;
         result.exit_code = 130;
@@ -247,18 +261,19 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
     auto started = chrono::steady_clock::now();
     auto report_progress = [&](const BatchProgress& progress) {
         driver::println(stderr,
-                        "progress {}/{} units, {} failed, {:.0f}s elapsed",
+                        "progress {}/{} units, {} failed, {:.0f}s elapsed{}",
                         progress.completed,
                         progress.total,
                         progress.failed,
-                        chrono::duration<double>(chrono::steady_clock::now() - started).count());
+                        chrono::duration<double>(chrono::steady_clock::now() - started).count(),
+                        progress.slow_units());
     };
     auto indexed =
         index_project({.root = std::move(root), .loaded = std::move(loaded), .workers = workers},
                       report_progress);
     if(!indexed) {
         LOG_ERROR("{}", indexed.error());
-        return 1;
+        return 2;
     }
     if(auto* server = std::get_if<ServerIndexed>(&*indexed)) {
         // FIXME: the failed units come in the server's spelling of the
@@ -285,17 +300,23 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
         print_json(result);
         return result.exit_code;
     }
+    // What a save refused, when one did.
+    auto refused = result.save_error ? std::format(": {}", *result.save_error) : std::string();
     if(result.interrupted) {
         if(result.unsaved) {
             driver::println(
-                "Indexing interrupted; part of the progress could not be persisted "
-                "(see the log). Rerun `clice index` to resume.");
+                "Indexing interrupted; part of the progress could not be persisted{}. "
+                "Rerun `clice index` to resume.",
+                refused);
         } else {
             driver::println("Indexing interrupted; progress saved. Rerun `clice index` to resume.");
         }
         return result.exit_code;
     }
     if(!result.completed) {
+        if(result.error) {
+            LOG_ERROR("{}", *result.error);
+        }
         if(!result.session_dir.empty()) {
             driver::println("Session log: {}", result.session_dir);
         }
@@ -303,8 +324,8 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
     }
     if(result.damaged) {
         driver::println(
-            "Indexed {} in {:.1f}s, but the index database is damaged (see the "
-            "log): it is discarded, and the next `clice index` rebuilds the index.",
+            "Indexed {} in {:.1f}s, but the index database is damaged: it is discarded, "
+            "and the next `clice index` rebuilds the index.",
             counted(result.indexed_tus, "translation unit", "translation units"),
             result.seconds);
     } else {
@@ -346,7 +367,7 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
         }
     }
     if(result.unsaved) {
-        driver::println("Part of the index could not be persisted (see the log).");
+        driver::println("Part of the index could not be persisted{}.", refused);
     }
     if(!result.session_dir.empty()) {
         driver::println("Session log: {}", result.session_dir);
@@ -1044,10 +1065,9 @@ int read_index(const ProjectOptions& where, Run run) {
     auto opened = open_index(root,
                              std::move(loaded),
                              Project::OpenOptions::Load::Rules,
-                             {},
                              /*check_disk=*/false);
     if(!opened) {
-        return 1;
+        return print_error(opened.error());
     }
     auto& project = (*opened)->project;
     auto rc = run(project);

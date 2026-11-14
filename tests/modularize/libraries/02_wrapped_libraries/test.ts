@@ -8,13 +8,6 @@ import { modularize, test, type TestContext } from "@clice/tools/testing";
 // std for the standard library and keeps the C library headers.
 const ARGS = "--scope app/** --scope third/** --std stdmod";
 
-// One worker: which header provides fake_widen, declared both in
-// <cwide.h> and in a fragment widen.h pastes, depends on the order the
-// units are indexed in (analyze/dependencies/06_unit_order).
-async function indexed(t: TestContext): Promise<void> {
-    await t.cli("index --jobs 1");
-}
-
 /// A copy of a run's output directory, as another machine's run left it.
 function copy(t: TestContext, from: string, to: string): void {
     for (const file of [...t.disk.list(`${from}/**`), `${from}/.modularize`]) {
@@ -23,7 +16,7 @@ function copy(t: TestContext, from: string, to: string): void {
 }
 
 test("library interfaces", async (t) => {
-    await indexed(t);
+    await t.cli("index");
     await t.cli(`analyze modules interface alpha ${ARGS} --partition partition.json`);
     await t.cli(`analyze modules interface beta ${ARGS} --partition partition.json`);
 });
@@ -34,13 +27,13 @@ test("library interfaces", async (t) => {
 // direct.cpp's <cwin.h> brings fake_word, and widen.h declares fake_widen
 // itself, in a fragment it pastes.
 test("C library kept headers", async (t) => {
-    await indexed(t);
+    await t.cli("index");
     await t.cli(`analyze modules interface libc ${ARGS} --partition partition.json`);
     await t.cli(`analyze modules interface std ${ARGS} --partition partition.json`);
 });
 
 test("writes the wrapping", async (t) => {
-    await indexed(t);
+    await t.cli("index");
     // Nothing a run did not write is touched.
     t.disk.write("wrap/custom.cppm", "export module custom;\n");
     await t.cli(`modularize ${ARGS} --partition partition.json --out wrap`);
@@ -85,7 +78,7 @@ function secondConfiguration(t: TestContext): void {
 // under its condition, with the standard library's module sources and the
 // include roots of the first run, which the others are copies of.
 test("merges configurations", async (t) => {
-    await indexed(t);
+    await t.cli("index");
     const one = await t.cli(`modularize ${ARGS} --partition partition.json --out wrap`);
     secondConfiguration(t);
     const merged = await t.cli("modularize merge merges/two.json --out merged");
@@ -119,7 +112,7 @@ test("merges configurations", async (t) => {
 });
 
 test("partition errors", async (t) => {
-    await indexed(t);
+    await t.cli("index");
     for (const partition of [
         "external",
         "cycle",

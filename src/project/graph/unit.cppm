@@ -2,6 +2,7 @@ module clice:project.graph.unit;
 
 import :compile.compilation;
 import :feature.diagnostics;
+import :project.command;
 import :support.prelude;
 import :vfs.cache_store;
 import :worker.protocol;
@@ -36,6 +37,11 @@ struct UnitRequest {
 
     /// A tidy pass under this frozen configuration.
     std::optional<tidy::TidyParams> tidy;
+
+    /// The unit's own database entry to compile under, as a context choice
+    /// names it (ContextChoice::base): a lint run checks every entry. None
+    /// for the one resolve_command picks.
+    std::optional<ContextChoice> entry;
 
     /// Whether the index the compile built no longer describes the unit when
     /// it would merge (ReindexQueue::outdated): a newer content-level

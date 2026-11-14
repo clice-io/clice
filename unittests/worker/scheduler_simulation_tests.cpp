@@ -159,6 +159,24 @@ ZEST_CASE(MacProject) {
     ZEXPECT(result.min_headroom > 0);
 }
 
+/// A 36 GiB Mac with 6 workers whose other programs hold 24 GiB, as a
+/// laptop's do, indexing units of about a gigabyte: MLIR's at twice their
+/// size. The reserve does not grow with the machine.
+ZEST_CASE(MacLaptop) {
+    std::vector<UnitLoad> units;
+    for(auto unit: mlir_mac) {
+        units.push_back({.seconds = 2 * unit.seconds, .peak = 2 * unit.peak});
+    }
+    auto spec = on_mac(units, 24 * GiB);
+    spec.machine.memory = 36 * GiB;
+    spec.machine.physical = 6;
+    spec.machine.logical = 6;
+    spec.scheduler = {.background_jobs = 6, .max_workers = 6};
+    auto result = expect_near_known(spec, 1.1);
+    ZEXPECT(result.min_headroom > 0);
+    ZEXPECT(result.memory_killed.empty());
+}
+
 /// Small units first teach the session a small estimate; the heavy ones
 /// after them are stopped before memory runs out.
 ZEST_CASE(MacSmallThenHeavy) {

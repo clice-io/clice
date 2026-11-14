@@ -169,13 +169,16 @@ Result<std::vector<index::IndexQuery::Located>> resolve(Context& ctx, index::Loc
     return candidates;
 }
 
-/// Several symbols where one is wanted: listed for the caller to pick by
-/// locator.
+/// Several symbols where one is wanted: listed by place for the caller to
+/// pick by locator.
 std::unexpected<std::string> ambiguous(Context& ctx,
                                        llvm::ArrayRef<index::IndexQuery::Located> candidates) {
     for(auto& candidate: candidates) {
         ctx.candidates.push_back(symbol_entry(ctx, candidate));
     }
+    ranges::sort(ctx.candidates, {}, [](const SymbolEntry& entry) {
+        return std::tie(entry.file, entry.line, entry.symbol);
+    });
     return std::unexpected(
         std::format("ambiguous: {} symbols match; name one by the `symbol` of a candidate",
                     candidates.size()));
@@ -272,6 +275,12 @@ Result<RenameTarget> target_of(Context& ctx, index::Locator locator) {
     if(!candidates) {
         return std::unexpected(candidates.error());
     }
+    // The first by place stands for an overload set.
+    ranges::sort(*candidates, {}, [](const index::IndexQuery::Located& candidate) {
+        return std::tie(candidate.site.path,
+                        candidate.site.begin.line,
+                        candidate.site.begin.column);
+    });
     std::vector<RenameTarget> targets;
     for(auto& candidate: *candidates) {
         // A constructor of a class found, a macro's linked definition: the
@@ -309,12 +318,20 @@ Result<RenameTarget> target_of(Context& ctx, index::Locator locator) {
     return merged;
 }
 
+/// In file and line order: what the index visits first decides no order.
+void sort_by_place(std::vector<GraphEntry>& entries) {
+    ranges::sort(entries, {}, [](const GraphEntry& entry) {
+        return std::tie(entry.file, entry.line, entry.name, entry.symbol);
+    });
+}
+
 std::vector<GraphEntry> graph_entries(llvm::ArrayRef<index::IndexQuery::Located> symbols) {
     std::vector<GraphEntry> entries;
     entries.reserve(symbols.size());
     for(auto& located: symbols) {
         entries.push_back(graph_entry<GraphEntry>(located));
     }
+    sort_by_place(entries);
     return entries;
 }
 
@@ -341,6 +358,7 @@ std::vector<GraphEntry> graph_entries(llvm::ArrayRef<CallEdge> edges) {
         entry.via =
             via_of(instantiated ? index::SiteOrigin::Instantiation : index::SiteOrigin::Written);
     }
+    sort_by_place(entries);
     return entries;
 }
 

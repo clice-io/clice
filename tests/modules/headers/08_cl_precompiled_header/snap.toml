@@ -1,0 +1,19 @@
+["every unit compiles".interface.hover]
+markdown = '''
+**method** `next` · struct `pch::Counter`
+
+```cpp
+int next()
+```
+'''
+range = "return counter.⟦next⟧();"
+
+["every unit compiles".importer.hover]
+markdown = '''
+**method** `next` · struct `pch::Counter`
+
+```cpp
+int next()
+```
+'''
+range = "return counter.⟦next⟧() + twice();"

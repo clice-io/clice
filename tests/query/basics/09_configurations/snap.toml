@@ -17,7 +17,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 2,
         "container": null,
-        "symbol": "#9be809ea5b8417d9"
+        "symbol": "#e1dd23dc1f48db0f"
       }
     ]
   },
@@ -29,12 +29,11 @@ exit = 0
 [test."$ clice query symbol-search debug_only"]
 stdout = '''
 {
-  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
+  "error": "No index cache at ${WS}/.clice/cache/v15/index/debug~50f0a9a717df05f7; run `clice index` first",
   "stale": []
 }
 '''
-stderr = "error: No index cache at .clice/cache/v15/index/debug~50f0a9a717df05f7; run `clice index` first"
-exit = 1
+exit = 2
 
 [test."$ clice index"]
 stdout = '''
@@ -55,7 +54,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 4,
         "container": null,
-        "symbol": "#02a1ff6ce8621992"
+        "symbol": "#bb54b5924f948513"
       }
     ]
   },

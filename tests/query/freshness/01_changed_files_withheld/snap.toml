@@ -8,7 +8,7 @@ exit = 0
 [test."$ clice query definition compute"]
 stdout = '''
 {
-  "error": "symbol not found",
+  "error": "symbol not found; 1 file left out, changed since the last index: rerun with --fresh",
   "stale": [
     "${WS}/main.cpp"
   ]
@@ -19,7 +19,7 @@ exit = 1
 [test."$ clice query definition new.cpp:1:5"]
 stdout = '''
 {
-  "error": "symbol not found",
+  "error": "symbol not found; 1 file not in the index: run `clice index`",
   "stale": [
     "${WS}/new.cpp"
   ]
@@ -50,21 +50,21 @@ stdout = '''
         "kind": "Function",
         "startLine": 2,
         "endLine": 2,
-        "symbol": "#5c1bf8ca24c752f7"
+        "symbol": "#5a9f3eb9a242c3a6"
       },
       {
         "name": "Animal",
         "kind": "Struct",
         "startLine": 3,
         "endLine": 3,
-        "symbol": "#a1654fc0dd5efb6c"
+        "symbol": "#f606d498f8e65200"
       },
       {
         "name": "~Animal",
         "kind": "Method",
         "startLine": 3,
         "endLine": 3,
-        "symbol": "#2dbb9112f1fa26ec"
+        "symbol": "#639c4e796c371fe0"
       }
     ]
   },

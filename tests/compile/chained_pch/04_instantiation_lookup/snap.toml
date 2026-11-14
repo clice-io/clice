@@ -572,7 +572,7 @@ stdout = '''
   "result": {
     "name": "make",
     "kind": "Function",
-    "symbol": "#903860494d920af6",
+    "symbol": "#34a85d8b7130e74b",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -612,7 +612,7 @@ stdout = '''
   "result": {
     "name": "size",
     "kind": "Method",
-    "symbol": "#2aa2ee9c03bebac4",
+    "symbol": "#091d52dd9d6ea196",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -640,7 +640,7 @@ stdout = '''
   "result": {
     "name": "apply",
     "kind": "Function",
-    "symbol": "#fbfbf17025f87518",
+    "symbol": "#7a4781dfc1869947",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -698,7 +698,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#7e62fe4108f3584c",
+    "symbol": "#d9cc1011e282ba69",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -733,7 +733,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#740245a53d76071b",
+    "symbol": "#699146ed0e58dc87",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -768,7 +768,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#cc7abf9bf99c2654",
+    "symbol": "#4fac09989d15f721",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -810,7 +810,7 @@ stdout = '''
   "result": {
     "name": "make",
     "kind": "Function",
-    "symbol": "#903860494d920af6",
+    "symbol": "#34a85d8b7130e74b",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -850,7 +850,7 @@ stdout = '''
   "result": {
     "name": "size",
     "kind": "Method",
-    "symbol": "#2aa2ee9c03bebac4",
+    "symbol": "#091d52dd9d6ea196",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -878,7 +878,7 @@ stdout = '''
   "result": {
     "name": "apply",
     "kind": "Function",
-    "symbol": "#fbfbf17025f87518",
+    "symbol": "#7a4781dfc1869947",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -936,7 +936,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#7e62fe4108f3584c",
+    "symbol": "#d9cc1011e282ba69",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -971,7 +971,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#740245a53d76071b",
+    "symbol": "#699146ed0e58dc87",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1006,7 +1006,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#cc7abf9bf99c2654",
+    "symbol": "#4fac09989d15f721",
     "references": [
       {
         "file": "${WS}/include/base.h",

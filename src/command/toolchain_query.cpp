@@ -58,7 +58,13 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
                             target));
         }
         if(bare) {
-            return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
+            // Meson's database names a bare cl or clang-cl, on PATH only in a
+            // developer prompt.
+            search.directories = {visual_studio_bin(path::stem(driver, path::Style::Windows))};
+            if(search.directories[0].empty() || sys::find_program(found, name, search)) {
+                return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
+            }
+            return found;
         }
         return std::unexpected(std::format("Driver {} not found or not executable", name));
     }
@@ -99,9 +105,23 @@ UnknownNames unknown_names(const Job& job) {
 
 /// Whether a driver option names one of `unknown`: the CPU of -mcpu,
 /// -march and AVR's -mmcu (`-mcpu=cortex-a72+crc` names cortex-a72,
-/// `native` this machine's), the tuning CPU of -mtune, the ABI of -mabi.
+/// `native` this machine's), the tuning CPU of -mtune, the ABI of -mabi,
+/// passed as is or through clang-cl's `/clang:` or `-Xarch_<arch>`.
 bool names_unknown(const cli::ParsedArg& arg,
                    const std::set<std::pair<unsigned, std::string>>& unknown) {
+    std::string_view passed;
+    if(arg.id == clang_options::OPT__SLASH_clang) {
+        passed = arg.values[0];
+    } else if(arg.id == clang_options::OPT_Xarch__ && arg.values.size() == 2) {
+        passed = arg.values[1];
+    }
+    if(!passed.empty()) {
+        std::array argv = {passed};
+        auto inner = *clang_options::table()
+                          .parse(argv, {.visibility = family_visibility(CompilerFamily::Clang)})
+                          .begin();
+        return inner && names_unknown(*inner, unknown);
+    }
     unsigned given = 0;
     switch(arg.id) {
         case clang_options::OPT_mcpu_EQ:
@@ -134,6 +154,10 @@ static async::task<std::expected<Job, std::string>> ask_compiler(std::vector<std
         co_return co_await ask_nvcc(args, command, input, kind, cwd);
     }
     co_return co_await ask_gcc_style(std::move(args), command, driver_tokens, cwd);
+}
+
+bool driver_found(const QuerySpec& spec) {
+    return find_driver(spec.argv[0], spec.cwd).has_value();
 }
 
 async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
@@ -173,16 +197,17 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
         co_return std::move(read_as_clang(std::move(args), option_family(command), spec.cwd).job);
     }
     // Lets tests stand in a hung compiler without waiting out the bound.
-    chrono::milliseconds bound = chrono::seconds(5);
+    chrono::milliseconds bound = chrono::seconds(20);
     if(auto ms = env_integer("CLICE_TEST_QUERY_BOUND_MS")) {
         bound = chrono::milliseconds(*ms);
     }
     auto compiler = args[0];
     std::size_t driver_tokens = command.family == CompilerFamily::Zig ? 2 : 1;
     // Hang detection: a query answers in well under a second, a cold
-    // Windows start in a few; a compiler or wrapper that never exits (one
-    // reading its input, a hung network mount) would block the query's
-    // caller for good. The cancel kills it with what it started.
+    // Windows start in a few, more while the scanner reads the driver beside
+    // other starting work (over 5 on CI runners); a compiler or wrapper that
+    // never exits (one reading its input, a hung network mount) would block
+    // the query's caller for good. The cancel kills it with what it started.
     auto asked = co_await async::with_timeout(ask_compiler(std::move(args),
                                                            command,
                                                            std::string(input->path()),
@@ -259,7 +284,7 @@ ClangReading read_as_clang(std::vector<std::string> args,
                         flags[parsed->index]);
                 }
                 argv.insert(argv.end(), flags.begin() + next, flags.begin() + parsed->index);
-                next = parsed->index + 1;
+                next = parsed->next_index;
                 dropped = true;
             }
         }

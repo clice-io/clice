@@ -10,6 +10,8 @@ The program's own code can follow: modules the partition marks for rewriting hav
 
 Every fact comes from the persisted index, as [`clice analyze modules interface`](./analyze.md#modules) reports it: run `clice index` first. The command writes files and prints what the build needs; it never edits a build file.
 
+The answer is one JSON object, or `{"error": "...", "stale": [...]}` with exit code 1 when no plan can be made (a partition file that does not parse or a partition it rejects, an index missing some units, a file it would overwrite), or 2 when the arguments do not parse, `--partition` or `--out` is missing, or the project or its index cannot be read.
+
 ## Partition
 
 The partition file groups files into modules by globs over paths relative to the project root (absolute ones outside it), first match wins. Files no glob claims are the program's and stay headers.
@@ -203,7 +205,7 @@ tests/modularize/program/01_one_module
 - Every program compilation imports every module and replays every macro header, whichever libraries it included before.
 - The standard library module is libc++'s.
 - Only the files the index holds are rewritten: a source no compilation of the indexed configuration enters, as another platform's, keeps its includes.
-- Clang does not take the global module fragment of an implementation partition as reachable from a unit importing it through another partition, though the standard has that unit import it too. A rewritten file therefore includes the headers that stay headers which such partitions include, and parses them again.
+- Clang does not take the global module fragment of an implementation partition as reachable from a unit importing it through another partition, though the standard has that unit import it too. A rewritten file therefore imports such a partition itself as well.
 - An include of a rewritten header under a preprocessor condition becomes an unconditional import.
 - A header compiles once as a partition: one whose declarations differ by includer, or that tests a macro its includers define, keeps one reading only. `clice analyze modules obstacles` lists such headers to clear first.
 - An include of a file outside the scope stays where it is written; past the leading directives it lands in the purview, attaching what it declares to the module.

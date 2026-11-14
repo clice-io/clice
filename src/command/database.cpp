@@ -250,6 +250,16 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     std::vector<CompilationEntry> new_entries;
     Normalizer normalizer{.commands = command_table, .files = file_table, .inputs = &source.inputs};
 
+    // A file several entries name, through links, is spelled as the first
+    // names it, whose command is its default.
+    // LIMITATION: across databases the last loaded spells it, whichever
+    // ranks first: two build directories whose databases name one source
+    // through different links compile it under the first's command from
+    // the other's path. A reload naming a source through another link, its
+    // command the same, changes no command: an open document compiles
+    // under the new name only at its next edit.
+    llvm::DenseSet<Fid> named;
+
     // A database written inside Cygwin or MSYS2 (CMake run from their shell)
     // spells its paths POSIX-style: the mount table of the runtime on PATH,
     // found at the first such entry, maps the entries so spelled.
@@ -411,10 +421,10 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         bool c_family = is_c_family_file(file_ref);
 
         auto file = spelled(file_ref, directory, normalizer.mounts);
-        auto path_id = file_table.intern_spelled(file);
-        llvm::StringRef spelling = file.str() != llvm::StringRef(file_table.resolve(path_id))
-                                       ? command_table.intern(file)
-                                       : llvm::StringRef();
+        auto path_id = file_table.intern(file);
+        if(named.insert(path_id).second) {
+            file_table.intern_entry(file);
+        }
 
         kotatsu::string_list_ref tokens =
             command ? normalizer.split(*command, views, args) : kotatsu::string_list_ref(args);
@@ -434,11 +444,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
            (!c_family && !command_table.forces_c_family(*normalized))) {
             continue;
         }
-        new_entries.push_back({.file = path_id,
-                               .command = *normalized,
-                               .source = id,
-                               .ordinal = index,
-                               .spelling = spelling});
+        new_entries.push_back(
+            {.file = path_id, .command = *normalized, .source = id, .ordinal = index});
     }
 
     if(skipped != 0) {
@@ -523,15 +530,6 @@ llvm::ArrayRef<CompilationEntry> CompilationDatabase::pch_writers(Fid pch) const
     auto it = writers.find(pch);
     return it != writers.end() ? llvm::ArrayRef<CompilationEntry>(it->second)
                                : llvm::ArrayRef<CompilationEntry>();
-}
-
-llvm::StringRef CompilationDatabase::spelling(Fid file) const {
-    for(auto& entry: candidate_entries(file)) {
-        if(!entry.spelling.empty()) {
-            return entry.spelling;
-        }
-    }
-    return file_table.resolve(file);
 }
 
 std::optional<CompilationEntry>

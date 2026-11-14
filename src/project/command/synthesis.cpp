@@ -19,7 +19,7 @@ Memo<Fid, HeaderContext>::Entry Project::synthesize(Fid header,
     if(auto* entry = contexts.lookup(files, header)) {
         auto& known = entry->result;
         if(known.host == host.file && known.command == command_hash && known.chain == host.chain &&
-           known.lines == host.lines) {
+           known.lines == host.lines && known.macro_braces == host.macro_braces) {
             return *entry;
         }
     }
@@ -28,6 +28,7 @@ Memo<Fid, HeaderContext>::Entry Project::synthesize(Fid header,
         .command = command_hash,
         .chain = host.chain,
         .lines = host.lines,
+        .macro_braces = host.macro_braces,
     };
     auto& chain = host.chain;
 
@@ -82,8 +83,10 @@ Memo<Fid, HeaderContext>::Entry Project::synthesize(Fid header,
         }
         contents.push_back(std::move(observed->text));
         spellings.push_back(files.spelling(chain[i]));
-        entries.push_back(
-            {.path = spellings.back(), .content = contents.back(), .line = host.lines[i]});
+        entries.push_back({.path = spellings.back(),
+                           .content = contents.back(),
+                           .line = host.lines[i],
+                           .macro_braces = host.macro_braces[i]});
         files.disk.observe(chain[i], observed->obs);
         inputs.push_back(
             {.file = chain[i], .version = files.intern_version(chain[i], observed->obs.hash)});

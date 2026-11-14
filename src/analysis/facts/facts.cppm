@@ -105,8 +105,8 @@ struct Entity {
     SymbolKind kind;
 
     /// The file providing it: a header defining it, else a header
-    /// declaring it, else the source defining it; the first by path among
-    /// equals.
+    /// declaring it, the one most of the files naming it include, else the
+    /// source defining it; the first by path among equals.
     std::uint32_t owner = 0;
 
     /// The file declaring it, whose index holds it: the owner, or the

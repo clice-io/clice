@@ -844,6 +844,22 @@ tests/navigation/macros/10_header_variants
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: partial -->
+
+**Disabled assertions**
+
+The names inside a disabled `assert` go nowhere
+
+Under `NDEBUG`, `assert(...)` expands to nothing and its argument is never
+compiled: the names it spells have no definition to go to and are not among
+the references. clice does not guess what they would name.
+
+```case
+tests/navigation/macros/12_disabled_assert
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Implicit targets
@@ -1685,6 +1701,9 @@ Quotes, wildcards, scopes and filters narrow a search
 `"process"` matches the whole name only and `proc*` whatever it globs;
 `io::*` lists a namespace's members and `io::**` its whole subtree;
 `kind:function` keeps one kind. Terms combine, separated by spaces.
+VS Code's symbol search sends only the first term of a query and filters the
+answers by it: there, terms after the first, and a filter alone, find
+nothing.
 
 ```case
 tests/workspace_symbols/queries/04_query_syntax

@@ -190,7 +190,7 @@ ZEST_CASE(HungQueryStopped) {
     };
     auto [stopped] = async::run(ended(id));
     ZEXPECT(*stopped);
-    auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
+    auto rendered = f.toolchain.render(ref, f.db.files().spelling(ref.file));
     ZEXPECT(adjacent(rendered.argv, "-triple", "x86_64-unknown-linux-gnu"));
 }
 
@@ -217,6 +217,47 @@ ZEST_CASE(FailedQueryRetries) {
     ZEXPECT(resolution->query_failure == "");
 }
 
+ZEST_CASE(FailedQueryAskedAgain) {
+    // A compiler installed once its query failed answers when asked again
+    // past the cooldown: its commands' queries no longer failed.
+    f.toolchain.set_failed_retry(chrono::seconds(0));
+    auto a = add("a.cpp", {tmp.c_path("clang"), "-std=c++17"});
+    ZEXPECT(!f.failure(a).empty());
+    ZEXPECT(f.toolchain.query_failed(a.command, a.language));
+    ZEXPECT(!f.toolchain.retry_failed());
+
+    auto driver = fake_clang(clang_job);
+    ZEXPECT(f.toolchain.retry_failed());
+    ZEXPECT(!f.toolchain.query_failed(a.command, a.language));
+    ZEXPECT(!f.toolchain.retry_failed());
+}
+
+ZEST_CASE(AnsweredOnResolve) {
+    // A compiler answering when a command needs it, past the cooldown, is
+    // reported by the next retry, which asks nothing itself.
+    f.toolchain.set_failed_retry(chrono::seconds(0));
+    auto a = add("a.cpp", {tmp.c_path("clang"), "-std=c++17"});
+    ZEXPECT(!f.failure(a).empty());
+    auto driver = fake_clang(clang_job);
+    ZEXPECT(f.toolchain.resolve(a.command, a.language).has_value());
+    ZEXPECT(!f.toolchain.query_failed(a.command, a.language));
+    ZEXPECT(f.toolchain.retry_failed());
+    ZEXPECT(!f.toolchain.retry_failed());
+}
+
+ZEST_CASE(FailingDriverLeftToResolve) {
+    // A driver that runs and fails is asked again only by a command that
+    // needs it: the retry would otherwise wait on one that hangs.
+    f.toolchain.set_failed_retry(chrono::seconds(0));
+    auto driver = fake_driver("clang", "exit 1\n");
+    auto ref = add("a.cpp", {driver.c_str()});
+    ZEXPECT(!f.failure(ref).empty());
+    ZASSERT(fs::remove(driver));
+    auto answering = fake_clang(clang_job);
+    ZEXPECT(!f.toolchain.retry_failed());
+    ZEXPECT(f.toolchain.query_failed(ref.command, ref.language));
+}
+
 ZEST_CASE(FailedQueryUnqueried) {
     // A compiler that cannot be queried is read as an unqueried one is: by
     // clang's own driver, for the target its name sets, without the CPU
@@ -224,13 +265,13 @@ ZEST_CASE(FailedQueryUnqueried) {
     // with -mabi=lp64).
     auto ref = add("a.c", {tmp.c_path("aarch64-linux-gnu-gcc"), "-mabi=lp64", "-c"});
     ZEXPECT(llvm::StringRef(f.failure(ref)).contains("not found"));
-    auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
+    auto rendered = f.toolchain.render(ref, f.db.files().spelling(ref.file));
     ZEXPECT(llvm::StringRef(rendered.query_failure).contains("not found"));
     ZEXPECT(adjacent(rendered.argv, "-triple", "aarch64-unknown-linux-gnu"));
     ZEXPECT(!contains(rendered.argv, "lp64"));
 
     /// The driver command it reads goes without the ABI name too.
-    auto driver = f.toolchain.render_for_clang(ref, f.db.spelling(ref.file));
+    auto driver = f.toolchain.render_for_clang(ref, f.db.files().spelling(ref.file));
     ZEXPECT(contains(driver, "--target=aarch64-linux-gnu"));
     ZEXPECT(contains(driver, "-fno-delayed-template-parsing"));
     ZEXPECT(!contains(driver, "-mabi=lp64"));
@@ -240,11 +281,11 @@ ZEST_CASE(ReadAsClangTarget) {
     // clang's own driver reads a command for the target its compiler's
     // name sets, unless the command names one.
     auto ref = add("a.c", {tmp.c_path("riscv32-wch-elf-gcc"), "-mcmodel=medany", "-c"});
-    auto argv = f.toolchain.render_for_clang(ref, f.db.spelling(ref.file));
+    auto argv = f.toolchain.render_for_clang(ref, f.db.files().spelling(ref.file));
     ZEXPECT(contains(argv, "--target=riscv32-wch-elf"));
 
     auto own = add("b.c", {tmp.c_path("riscv32-wch-elf-gcc"), "-target", "riscv64-unknown-elf"});
-    argv = f.toolchain.render_for_clang(own, f.db.spelling(own.file));
+    argv = f.toolchain.render_for_clang(own, f.db.files().spelling(own.file));
     ZEXPECT(!contains(argv, "--target=riscv32-wch-elf"));
     ZEXPECT(adjacent(argv, "-target", "riscv64-unknown-elf"));
 }
@@ -255,13 +296,13 @@ ZEST_CASE(ReadAsClangSpellings) {
     // the ISA string, the two-core tuning form keeps its first core.
     auto riscv =
         add("a.c", {tmp.c_path("riscv32-wch-elf-gcc"), "-march=rv32imc_zba_xw", "-mabi=ilp32"});
-    ZEXPECT(contains(f.toolchain.render_for_clang(riscv, f.db.spelling(riscv.file)),
+    ZEXPECT(contains(f.toolchain.render_for_clang(riscv, f.db.files().spelling(riscv.file)),
                      "-march=rv32imc_zba"));
     ZEXPECT(contains(f.read_as_clang(riscv), "+zba"));
 
     auto arm = add("b.c", {tmp.c_path("aarch64-linux-gnu-gcc"), "-mcpu=cortex-a72.cortex-a53"});
-    ZEXPECT(
-        contains(f.toolchain.render_for_clang(arm, f.db.spelling(arm.file)), "-mcpu=cortex-a72"));
+    ZEXPECT(contains(f.toolchain.render_for_clang(arm, f.db.files().spelling(arm.file)),
+                     "-mcpu=cortex-a72"));
     ZEXPECT(adjacent(f.read_as_clang(arm), "-target-cpu", "cortex-a72"));
 }
 
@@ -271,15 +312,25 @@ ZEST_CASE(UnknownTargetNamesDropped) {
     // -march; one -mabi overriding another goes, and then so does that.
     auto x86 =
         add("a.c", {tmp.c_path("x86_64-linux-gnu-gcc"), "-march=x86-64-v3", "-mtune=x86-64-v3"});
-    auto argv = f.toolchain.render_for_clang(x86, f.db.spelling(x86.file));
+    auto argv = f.toolchain.render_for_clang(x86, f.db.files().spelling(x86.file));
     ZEXPECT(contains(argv, "-march=x86-64-v3"));
     ZEXPECT(!contains(argv, "-mtune=x86-64-v3"));
     ZEXPECT(adjacent(f.read_as_clang(x86), "-target-cpu", "x86-64-v3"));
 
     auto abi = add("b.c", {tmp.c_path("aarch64-linux-gnu-gcc"), "-mabi=ilp64x", "-mabi=lp64"});
-    argv = f.toolchain.render_for_clang(abi, f.db.spelling(abi.file));
+    argv = f.toolchain.render_for_clang(abi, f.db.files().spelling(abi.file));
     ZEXPECT(!contains(argv, "-mabi=lp64"));
     ZEXPECT(!contains(argv, "-mabi=ilp64x"));
+
+    // Passed through to clang, it goes all the same, with what passes it.
+    auto xarch =
+        add("c.c", {tmp.c_path("x86_64-linux-gnu-gcc"), "-Xarch_x86_64", "-mtune=x86-64-v3"});
+    argv = f.toolchain.render_for_clang(xarch, f.db.files().spelling(xarch.file));
+    ZEXPECT(!contains(argv, "-Xarch_x86_64"));
+    ZEXPECT(!contains(argv, "-mtune=x86-64-v3"));
+    auto cl = add("d.c", {tmp.c_path("clang-cl"), "/clang:-mtune=x86-64-v3"});
+    argv = f.toolchain.render_for_clang(cl, f.db.files().spelling(cl.file));
+    ZEXPECT(!contains(argv, "/clang:-mtune=x86-64-v3"));
 }
 
 ZEST_CASE(WarmPartialFailure) {
@@ -492,13 +543,14 @@ ZEST_CASE(OtherBuiltinHeadersStay) {
     ZEXPECT(ours[1] == "-internal-isystem"sv);
     ZEXPECT(ours[2] == theirs);
 
-    auto hidden = f.toolchain.render(ref, f.db.spelling(ref.file)).hidden;
+    auto hidden = f.toolchain.render(ref, f.db.files().spelling(ref.file)).hidden;
     ZEXPECT(hidden.hides(path::join(theirs, "stddef.h")));
     ZEXPECT(!hidden.hides(path::join(theirs, "xray", "xray_interface.h")));
 
     /// A command another tool reads, which could not hide them, leaves
     /// them out.
-    auto converted = f.toolchain.render(ref, f.db.spelling(ref.file), {.shadowed_dirs = false});
+    auto converted =
+        f.toolchain.render(ref, f.db.files().spelling(ref.file), {.shadowed_dirs = false});
     ZEXPECT(!contains(converted.argv, theirs));
     ZEXPECT(adjacent(converted.argv, "-internal-isystem", builtin_headers));
 }
@@ -521,7 +573,7 @@ ZEST_CASE(AliasedBuiltinHeaders) {
         theirs)));
     auto ref = add("a.cpp", {driver.c_str()});
     ZASSERT(f.toolchain.resolve(ref.command, ref.language));
-    auto hidden = f.toolchain.render(ref, f.db.spelling(ref.file)).hidden;
+    auto hidden = f.toolchain.render(ref, f.db.files().spelling(ref.file)).hidden;
     ZEXPECT(hidden.hides(path::join(theirs, "stddef.h")));
 }
 

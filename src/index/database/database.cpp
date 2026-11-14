@@ -743,17 +743,17 @@ std::expected<MetaCheck, Corruption>
     return mdb_txn_commit(wtxn) == 0 ? MetaCheck::Ok : MetaCheck::Transient;
 }
 
-std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
-                                            std::size_t initial_mapsize,
-                                            bool read_only) {
+std::expected<std::unique_ptr<LmdbDatabase>, std::string> open_lmdb_env(llvm::StringRef directory,
+                                                                        std::size_t initial_mapsize,
+                                                                        bool read_only) {
     auto path = path::join(directory, lmdb_file_name);
 
     // LMDB takes an empty file for a new database and writes its first
     // pages, which a read-only open cannot.
     if(read_only) {
         if(auto status = fs::status(path); status && status->size == 0) {
-            LOG_WARN("Index database at {} is empty; run `clice index` to build it", path);
-            return nullptr;
+            return std::unexpected(
+                std::format("Index database at {} is empty; run `clice index` to build it", path));
         }
     }
 
@@ -773,8 +773,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
     if(read_only) {
         open_lock = OpenLock::acquire(path, OpenLock::Kind::Shared, /*wait=*/true);
         if(!open_lock) {
-            LOG_WARN("Cannot lock {}-open for reading", path);
-            return nullptr;
+            return std::unexpected(std::format("Cannot lock {}-open for reading", path));
         }
     } else {
         fs::File::open(path + "-open", {.write = true, .create = true});
@@ -788,6 +787,8 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
     // same discipline the loader applies to an unreadable header.
     bool repaired = false;
     int reopens = 0;
+    // Why the last attempt gave up.
+    std::string why;
     while(true) {
         // Giving up must not leave behind a file this attempt created
         // (make_sparse and mdb_env_open both create on demand): a later
@@ -804,9 +805,9 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
         }
         MDB_env* env = nullptr;
         if(int rc = mdb_env_create(&env)) {
-            LOG_WARN("Failed to create the index database environment: {}", mdb_strerror(rc));
             discard_created();
-            return nullptr;
+            return std::unexpected(
+                std::format("Cannot create the index database environment: {}", mdb_strerror(rc)));
         }
         configure(env, mapsize);
         // LIMITATION: a reader takes LMDB's own lock too, so a database
@@ -819,7 +820,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
         auto fail = [&](int rc, llvm::StringRef stage) {
             mdb_env_close(env);
             if(read_only && is_corruption(rc)) {
-                LOG_WARN(
+                why = std::format(
                     "Index database at {} is damaged ({} failed: {}); run `clice index` to "
                     "repair it",
                     path,
@@ -836,12 +837,10 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
                 repaired = true;
                 return true;
             }
-            LOG_WARN(
-                "Cannot open the index database at {} ({} failed: {}); "
-                "index persistence is disabled for this session",
-                path,
-                stage,
-                mdb_strerror(rc));
+            why = std::format("Cannot open the index database at {} ({} failed: {})",
+                              path,
+                              stage,
+                              mdb_strerror(rc));
             discard_created();
             return false;
         };
@@ -850,7 +849,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             if(fail(rc, "open")) {
                 continue;
             }
-            return nullptr;
+            return std::unexpected(std::move(why));
         }
         if(!read_only) {
             clear_dead_readers(env);
@@ -879,26 +878,25 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             if(fail(rc, "snapshot")) {
                 continue;
             }
-            return nullptr;
+            return std::unexpected(std::move(why));
         }
         if(read_only) {
             if(auto [length, declared] = coverage(env); length < declared) {
                 mdb_txn_abort(txn);
                 mdb_env_close(env);
-                LOG_WARN(
-                    "Index database at {} is shorter than its pages ({} of {}); run "
-                    "`clice index` to repair it",
-                    path,
-                    format_bytes(length),
-                    format_bytes(declared));
-                return nullptr;
+                return std::unexpected(
+                    std::format("Index database at {} is shorter than its pages ({} of {}); run "
+                                "`clice index` to repair it",
+                                path,
+                                format_bytes(length),
+                                format_bytes(declared)));
             }
         } else if(int cover_rc = cover_declared_pages(env)) {
             mdb_txn_abort(txn);
             if(fail(cover_rc, "cover")) {
                 continue;
             }
-            return nullptr;
+            return std::unexpected(std::move(why));
         }
         MDB_dbi dbi;
         if(int dbi_rc = mdb_dbi_open(txn, nullptr, 0, &dbi)) {
@@ -906,7 +904,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             if(fail(dbi_rc, "dbi")) {
                 continue;
             }
-            return nullptr;
+            return std::unexpected(std::move(why));
         }
         auto meta = check_meta(env, dbi, txn, read_only);
         if(!meta) {
@@ -914,7 +912,7 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             if(fail(meta.error().rc, "meta")) {
                 continue;
             }
-            return nullptr;
+            return std::unexpected(std::move(why));
         }
         switch(*meta) {
             case MetaCheck::Ok: break;
@@ -922,18 +920,16 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
                 mdb_txn_abort(txn);
                 mdb_env_close(env);
                 if(read_only) {
-                    LOG_WARN(
+                    return std::unexpected(std::format(
                         "Index database at {} was written by another version of clice; run "
                         "`clice index` to rebuild it",
-                        path);
-                    return nullptr;
+                        path));
                 }
                 if(repaired) {
-                    LOG_WARN(
+                    return std::unexpected(std::format(
                         "Cannot replace the index database at {}, which another version of clice "
-                        "wrote; index persistence is disabled for this session",
-                        path);
-                    return nullptr;
+                        "wrote",
+                        path));
                 }
                 LOG_INFO("Index database at {} was written by another version of clice; rebuilding",
                          path);
@@ -944,12 +940,9 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
             case MetaCheck::Transient: {
                 mdb_txn_abort(txn);
                 mdb_env_close(env);
-                LOG_WARN(
-                    "Cannot validate the index database at {}; "
-                    "index persistence is disabled for this session",
-                    path);
                 discard_created();
-                return nullptr;
+                return std::unexpected(
+                    std::format("Cannot validate the index database at {}", path));
             }
         }
         return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), std::move(open_lock));
@@ -1019,44 +1012,43 @@ bool database_exists(const CacheStore& store, const DatabaseKey& key) {
     return fs::exists(path::join(database_directory(store, key), lmdb_file_name));
 }
 
-std::unique_ptr<BlobDatabase> open_lmdb_database(CacheStore& store,
-                                                 const DatabaseKey& key,
-                                                 std::size_t initial_mapsize,
-                                                 bool read_only) {
+std::expected<std::unique_ptr<BlobDatabase>, std::string>
+    open_lmdb_database(CacheStore& store,
+                       const DatabaseKey& key,
+                       std::size_t initial_mapsize,
+                       bool read_only) {
     read_only = read_only || store.read_only();
     auto directory = database_directory(store, key);
     if(read_only) {
         if(!database_exists(store, key)) {
-            return nullptr;
+            return std::unexpected(std::format("No index database at {}", directory));
         }
     } else if(auto made = fs::create_directories(directory); !made) {
-        LOG_WARN("Cannot create the index database directory {}: {}",
-                 directory,
-                 made.error().message());
-        return nullptr;
+        return std::unexpected(std::format("Cannot create the index database directory {}: {}",
+                                           directory,
+                                           made.error().message()));
     }
     auto db = open_lmdb_env(directory, initial_mapsize, read_only);
     if(!db) {
-        return nullptr;
+        return std::unexpected(std::move(db.error()));
     }
     LOG_INFO("Index database: {}", directory);
-    return db;
+    return std::move(*db);
 }
 
-std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
-                                            const DatabaseKey& key,
-                                            bool read_only) {
+std::expected<std::unique_ptr<BlobDatabase>, std::string> open_database(CacheStore& store,
+                                                                        const DatabaseKey& key,
+                                                                        bool read_only) {
     // FIXME: no index persistence on remote filesystems (NFS, SMB, WSL drvfs):
     // their locking and cache coherence differ too much to trust LMDB or one
     // untested fallback there, so such sessions keep the index in memory.
     switch(filesystem_locality(store.base_dir())) {
         case FsLocality::Local: break;
         case FsLocality::Remote: {
-            LOG_WARN(
-                "{} is on a remote filesystem, which the index database does not "
-                "support; index persistence is disabled for this session",
-                store.base_dir());
-            return nullptr;
+            return std::unexpected(
+                std::format("{} is on a remote filesystem, which the index database does not "
+                            "support",
+                            store.base_dir()));
         }
         case FsLocality::Unknown: {
             LOG_WARN(

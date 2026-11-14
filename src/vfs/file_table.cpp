@@ -45,7 +45,20 @@ Fid FileTable::intern(const Spelling& path) {
 
 Fid FileTable::intern_spelled(const Spelling& path) {
     auto fid = intern(path);
-    spell_as(fid, path);
+    if(!entry_named.contains(fid) && llvm::StringRef(path) != llvm::StringRef(resolve(fid))) {
+        spelled.try_emplace(fid, path.str());
+    }
+    return fid;
+}
+
+Fid FileTable::intern_entry(const Spelling& path) {
+    auto fid = intern(path);
+    entry_named.insert(fid);
+    if(llvm::StringRef(path) != llvm::StringRef(resolve(fid))) {
+        spelled.insert_or_assign(fid, path.str());
+    } else {
+        spelled.erase(fid);
+    }
     return fid;
 }
 
@@ -69,12 +82,6 @@ std::optional<Fid> FileTable::find(const Spelling& path) const {
         return std::nullopt;
     }
     return it->second;
-}
-
-void FileTable::spell_as(Fid fid, const Spelling& path) {
-    if(llvm::StringRef(path) != llvm::StringRef(resolve(fid))) {
-        spelled.try_emplace(fid, path.str());
-    }
 }
 
 Spelling FileTable::spelling(Fid fid) const {

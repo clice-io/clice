@@ -145,7 +145,7 @@ void time_scans(std::unique_ptr<OpenedProject> first,
 int run(Scan& opts) {
     if(opts.runs && opts.json) {
         LOG_ERROR("--runs prints times, --json the graph: pass one of them");
-        return 1;
+        return 2;
     }
     auto read = read_project(opts.where);
     if(!read) {
@@ -155,7 +155,7 @@ int run(Scan& opts) {
     auto first = open_at(root, loaded, {});
     if(first->opened.members.empty()) {
         LOG_ERROR("Nothing to scan: {}", first->project.why_no_members(root));
-        return 1;
+        return 2;
     }
     auto output = describe(*first);
     if(opts.json) {

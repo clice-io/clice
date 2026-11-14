@@ -1,4 +1,4 @@
-["library interfaces"."$ clice index --jobs 1"]
+["library interfaces"."$ clice index"]
 stdout = '''
 Indexed 3 translation units in #s: 19 file shards (# KB), 45 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
@@ -199,7 +199,7 @@ stdout = '''
 '''
 exit = 0
 
-["C library kept headers"."$ clice index --jobs 1"]
+["C library kept headers"."$ clice index"]
 stdout = '''
 Indexed 3 translation units in #s: 19 file shards (# KB), 45 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
@@ -291,6 +291,12 @@ stdout = '''
         "name": "fake_wide",
         "file": "third/libc/cdual.h",
         "used": false,
+        "form": 0
+      },
+      {
+        "name": "fake_widen",
+        "file": "third/libc/cwide.h",
+        "used": true,
         "form": 0
       },
       {
@@ -401,7 +407,7 @@ stdout = '''
 '''
 exit = 0
 
-["writes the wrapping"."$ clice index --jobs 1"]
+["writes the wrapping"."$ clice index"]
 stdout = '''
 Indexed 3 translation units in #s: 19 file shards (# KB), 45 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
@@ -901,7 +907,7 @@ exit = 0
  #include "macros.h"
 '''
 
-["merges configurations"."$ clice index --jobs 1"]
+["merges configurations"."$ clice index"]
 stdout = '''
 Indexed 3 translation units in #s: 19 file shards (# KB), 45 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
@@ -2316,7 +2322,7 @@ stdout = '''
 '''
 exit = 1
 
-["partition errors"."$ clice index --jobs 1"]
+["partition errors"."$ clice index"]
 stdout = '''
 Indexed 3 translation units in #s: 19 file shards (# KB), 45 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
@@ -2420,7 +2426,7 @@ stdout = '''
   "stale": []
 }
 '''
-exit = 1
+exit = 2
 
 ["partition errors"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json --out wrap --configuration nowhere"]
 stdout = '''

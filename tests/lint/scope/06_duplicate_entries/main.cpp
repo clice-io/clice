@@ -1,6 +1,6 @@
 // Pins a file the database lists twice, under different commands, as a build
 // compiling it for two targets does: each command makes a translation unit
-// of its own, with a finding of its own.
+// of its own, with a finding of its own, the second's naming its entry.
 #ifdef FAST
 double fast_ratio(int done, int total) {
     return done / total;

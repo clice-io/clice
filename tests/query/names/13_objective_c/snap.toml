@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "Shape",
     "kind": "Class",
-    "symbol": "#fbd764220a6273b7",
+    "symbol": "#5f2edf58fab32f38",
     "documentation": "A shape on the canvas.",
     "definition": {
       "file": "${WS}/main.m",
@@ -31,7 +31,7 @@ stdout = '''
   "result": {
     "name": "setX:y:",
     "kind": "Method",
-    "symbol": "#db012a39567dd9cd",
+    "symbol": "#07295075d25473c9",
     "references": [
       {
         "file": "${WS}/main.m",
@@ -59,7 +59,7 @@ stdout = '''
   "result": {
     "name": "draw",
     "kind": "Method",
-    "symbol": "#f0a3de877b386c8a",
+    "symbol": "#4291859e31134c0b",
     "references": [
       {
         "file": "${WS}/main.m",

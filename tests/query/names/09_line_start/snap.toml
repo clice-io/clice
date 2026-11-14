@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "value",
     "kind": "Function",
-    "symbol": "#2282827d1139ff33",
+    "symbol": "#798e3126da48e267",
     "references": [
       {
         "file": "${WS}/main.cpp",

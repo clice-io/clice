@@ -1,7 +1,47 @@
 [test."$ clice lint --jobs 2"]
-wrong = "the build compiles main.cpp twice, and only its first command is checked: the division the second one compiles goes unreported, which clang-tidy reports"
 stdout = '''
 ${WS}/main.cpp:6:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division]
-Linted 1 translation unit in #s: 1 finding.
+${WS}/main.cpp:10:12: warning: result of integer division used in a floating point context; possible loss of precision [bugprone-integer-division] (entry 2 of ${WS}/main.cpp)
+Linted 2 translation units in #s: 2 findings.
+'''
+exit = 1
+
+[test."$ clice lint --json --jobs 2"]
+stdout = '''
+{
+  "exitCode": 1,
+  "interrupted": false,
+  "completed": true,
+  "checkedTus": 2,
+  "failedTus": 0,
+  "findings": [
+    {
+      "file": "${WS}/main.cpp",
+      "line": 6,
+      "column": 12,
+      "error": false,
+      "compilerError": false,
+      "message": "result of integer division used in a floating point context; possible loss of precision",
+      "check": "bugprone-integer-division",
+      "notes": []
+    },
+    {
+      "file": "${WS}/main.cpp",
+      "line": 10,
+      "column": 12,
+      "error": false,
+      "compilerError": false,
+      "message": "result of integer division used in a floating point context; possible loss of precision",
+      "check": "bugprone-integer-division",
+      "notes": [],
+      "entry": {
+        "file": "${WS}/main.cpp",
+        "index": 2
+      }
+    }
+  ],
+  "unsaved": false,
+  "seconds": "#"
+}
 '''
 exit = 1

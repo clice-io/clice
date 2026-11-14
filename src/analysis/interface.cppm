@@ -135,10 +135,10 @@ struct Interface {
     std::vector<InterfaceHeader> textual_uses;
 
     /// TU-local entities its headers share with other wrapped modules, from
-    /// a header their fragments include alike (`<emmintrin.h>`'s intrinsics):
-    /// clang mangles internal linkage alike across modules, so an importer
-    /// of both defines each twice under one name. Such modules have to be
-    /// one.
+    /// a header their fragments include alike (`<emmintrin.h>`'s intrinsics).
+    /// clang bug: clang mangles internal linkage alike across modules, so an
+    /// importer of both defines each twice under one name. Such modules have
+    /// to be one (clice-io/clice#1057 item 10).
     std::vector<InterfaceSharedLocal> shared_locals;
 
     /// Macros other modules use and those their directives expand, in the

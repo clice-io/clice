@@ -1,0 +1,111 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 3 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --partition partition.json --out wrap"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [],
+    "modules": [],
+    "mirrors": [],
+    "macros": "macros.h",
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [
+      {
+        "name": "app.core",
+        "primary": "app/core/module.cppm",
+        "interfaces": [
+          "app/core/text-data.cppm",
+          "app/core/text_data.cppm"
+        ],
+        "partitions": [],
+        "sources": [],
+        "imports": []
+      }
+    ],
+    "importers": [
+      "app/main.cpp"
+    ],
+    "macros": [],
+    "removed": [
+      "app/core/text-data.h",
+      "app/core/text_data.h"
+    ],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --partition partition.json --out wrap".files]
+"app/core/module.cppm" = '''
++export module app.core;
++
++export import :text_data;
++export import :text_data_2;
+'''
+"app/core/text-data.cppm" = '''
++export module app.core:text_data;
++
++export {
++
++namespace core {
++
++struct Text {
++    int size() const {
++        return 1;
++    }
++};
++
++}  // namespace core
++}
+'''
+"app/core/text-data.h" = "(removed)"
+"app/core/text_data.cppm" = '''
++export module app.core:text_data_2;
++
++export {
++
++namespace core {
++
++struct Data {
++    int count() const {
++        return 2;
++    }
++};
++
++}  // namespace core
++}
+'''
+"app/core/text_data.h" = "(removed)"
+"app/main.cpp" = '''
++#include "wrap/prelude.h"
+ // Two headers whose paths give one partition name: the second by path
+ // takes a number.
+-#include "core/text-data.h"
+-#include "core/text_data.h"
++import app.core;
+
+ int main() {
+'''
+"wrap/.modularize" = '''
++macros.h
++prelude.h
+'''
+"wrap/macros.h" = '''
++#pragma once
++
+'''
+"wrap/prelude.h" = '''
++#pragma once
++
++#include "macros.h"
+'''

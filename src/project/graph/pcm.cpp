@@ -599,8 +599,13 @@ async::task<Imports> Project::scan_imports(Fid path_id,
         auto started_at = chrono::duration_cast<chrono::milliseconds>(
                               chrono::system_clock::now().time_since_epoch())
                               .count();
-        auto scanned = co_await async::queue(
-            [&] { return scan_precise(argv, resolution.directory, content, std::move(vfs)); });
+        // Taken here: a reset of the graph on the loop while the scan runs
+        // on the pool moves the cache's owner out and back, the cache
+        // itself staying.
+        auto& cache = *dep_graph.directives;
+        auto scanned = co_await async::queue([&] {
+            return scan_precise(cache, argv, resolution.directory, content, std::move(vfs));
+        });
         scan = {.directives = directives,
                 .bound = bound,
                 .arguments = arguments_hash,
@@ -638,6 +643,9 @@ async::task<Imports> Project::scan_imports(Fid path_id,
     };
     for(auto& name: scan.imports) {
         auto providers = dep_graph.lookup_module(name);
+        // LIMITATION: of several files providing one name, the nearest by
+        // directory wins before any of its contexts is checked: a nearer one
+        // the importer can read no context of beats a farther one it can.
         imports.declared.push_back(
             providers.empty() ? unresolved_import(name)
                               : module_build(nearest_provider(file_table, providers, path_id),
@@ -680,6 +688,9 @@ NodeId Project::module_build(Fid module, Fid importer, const Resolution& command
             readable = &context;
         }
     }
+    // LIMITATION: with no context the importer can read, the import shows
+    // clang's own refusal, which names the option and the PCM's cache path,
+    // not the module's entries that differ in it.
     if(!readable || readable->id == 0) {
         return module_node(module);
     }

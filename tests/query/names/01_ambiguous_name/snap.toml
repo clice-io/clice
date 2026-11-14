@@ -14,19 +14,19 @@ stdout = '''
       "name": "measure",
       "signature": "() const",
       "kind": "Method",
-      "file": "${WS}/src/circle.cpp",
-      "line": 5,
-      "container": "shapes::Circle",
-      "symbol": "#c9fbbb30710c2348"
+      "file": "${WS}/include/shapes/shape.h",
+      "line": 9,
+      "container": "shapes::Shape",
+      "symbol": "#f65062f3aa2f39e4"
     },
     {
       "name": "measure",
       "signature": "() const",
       "kind": "Method",
-      "file": "${WS}/include/shapes/shape.h",
-      "line": 9,
-      "container": "shapes::Shape",
-      "symbol": "#a34efd0bdb38a12d"
+      "file": "${WS}/src/circle.cpp",
+      "line": 5,
+      "container": "shapes::Circle",
+      "symbol": "#a759f2e00cefff10"
     }
   ],
   "stale": []

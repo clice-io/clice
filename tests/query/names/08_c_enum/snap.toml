@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "red",
     "kind": "EnumMember",
-    "symbol": "#c51d828ab4ca5235",
+    "symbol": "#e95e5f4b750fab0f",
     "references": [
       {
         "file": "${WS}/a.c",

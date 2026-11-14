@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "foo",
     "kind": "Method",
-    "symbol": "#c9a164fdb055ace8",
+    "symbol": "#bdb628c7598163cc",
     "references": [
       {
         "file": "${WS}/main.cpp",
@@ -34,7 +34,7 @@ stdout = '''
   "result": {
     "name": "bar",
     "kind": "Method",
-    "symbol": "#f50155a3c1ec9558",
+    "symbol": "#b8a25c4745585a87",
     "references": [
       {
         "file": "${WS}/main.cpp",

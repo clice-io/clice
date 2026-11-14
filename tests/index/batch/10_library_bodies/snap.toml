@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#e0a9e5cbcaeac7ae",
+    "symbol": "#29c887fa32fe43be",
     "references": [],
     "total": 0
   },
@@ -33,7 +33,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#e0a9e5cbcaeac7ae",
+    "symbol": "#29c887fa32fe43be",
     "references": [
       {
         "file": "${WS}/system/lib.h",

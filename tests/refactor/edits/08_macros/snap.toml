@@ -16,7 +16,7 @@ stdout = '''
         "locator": "LIMIT",
         "name": "LIMIT",
         "kind": "Macro",
-        "symbol": "#3565fc03a0b2345b",
+        "symbol": "#42ed78e2e30fcd49",
         "newName": "CAPACITY",
         "edits": 6,
         "conflicts": [],
