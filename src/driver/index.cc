@@ -270,7 +270,7 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
         index_project({.root = std::move(root), .loaded = std::move(loaded), .workers = workers},
                       report_progress);
     if(!indexed) {
-        LOG_ERROR("{}", indexed.error());
+        LOG_ERROR("{}", indexed.error().message);
         return 2;
     }
     if(auto* server = std::get_if<ServerIndexed>(&*indexed)) {
