@@ -216,7 +216,7 @@ async function startServer(dir: string, file: string, env: Record<string, string
     const checkFailed = () => {
         const failure = FAILED.exec(readLog());
         if (failure) {
-            throw new Error(`${file}: ${failure[0]}`);
+            throw new Error(`${file}: ${failure[0]}\n${logTail()}`);
         }
     };
     try {

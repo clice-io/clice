@@ -160,6 +160,34 @@ auto specialization_args(const clang::NamedDecl& decl, const Options& options) -
     return text;
 }
 
+/// `type`, or the dependent specialization of a builtin template
+/// (`__make_integer_seq`) its aliases stand for, rebuilt as one parsed here.
+/// clang reads such a specialization back from a PCH as an alias of its
+/// canonical form, whose parameters print nameless (`value-parameter-0-0`):
+/// desugared, it would go on to that form.
+static clang::QualType builtin_specialization(clang::ASTContext& context, clang::QualType type) {
+    for(auto current = type;;) {
+        const auto* specialization = current->getAs<clang::TemplateSpecializationType>();
+        if(!specialization) {
+            return type;
+        }
+        if(llvm::isa_and_present<clang::BuiltinTemplateDecl>(
+               specialization->getTemplateName().getAsTemplateDecl())) {
+            if(!specialization->isTypeAlias() || !specialization->isDependentType()) {
+                return type;
+            }
+            return context.getTemplateSpecializationType(clang::ElaboratedTypeKeyword::None,
+                                                         specialization->getTemplateName(),
+                                                         specialization->template_arguments(),
+                                                         /*CanonicalArgs=*/{});
+        }
+        if(!specialization->isTypeAlias()) {
+            return type;
+        }
+        current = specialization->getAliasedType();
+    }
+}
+
 /// A simple wrapper for `clang::desugarForDiagnostic` that provides optional
 /// semantic.
 static std::optional<clang::QualType> desugar(clang::ASTContext& context, clang::QualType type) {
@@ -175,7 +203,8 @@ static std::optional<clang::QualType> desugar(clang::ASTContext& context, clang:
         }
     }
     bool should_aka = false;
-    auto desugared = clang::desugarForDiagnostic(context, type, should_aka);
+    auto desugared =
+        clang::desugarForDiagnostic(context, builtin_specialization(context, type), should_aka);
     if(!should_aka) {
         return std::nullopt;
     }
