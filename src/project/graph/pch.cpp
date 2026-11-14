@@ -318,6 +318,12 @@ PCHRequest Project::declared_pch_request(const CommandRef& unit) {
     //
     // The key names the build but the file's content, which the build's
     // inputs cover, its own source among them.
+    // LIMITATION: a writer's whole source goes in (`/Yc` stops at its
+    // through-header in cl), and a reader parses from its start, its
+    // through-header again (`/Yu` skips to past it): a `/Yc` source with
+    // code of its own after the header, or a through-header with no guard,
+    // reports redefinitions. CMake's PCHs force their header in (`/FI`) and
+    // guard it, and so do Visual Studio's stdafx.h and pch.h.
     auto declared = [&](const CommandRef& command) {
         auto rendered = render(command);
         PCHRequest request{

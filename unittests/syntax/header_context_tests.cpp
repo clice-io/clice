@@ -902,6 +902,28 @@ int main() {}
 #endif
 )");
 
+    // A brace of the text inside the scope a macro opened: the whole host
+    // still splits at the scope, END_API in the suffix.
+    host.content = R"(#define BEGIN_API namespace api {
+#define END_API }
+BEGIN_API
+using Word = unsigned;
+struct Packet {
+#include "decls.h"
+};
+END_API
+)";
+    host.line = 6;
+    result = synthesize_context({host}, "/proj/decls.h", map_resolver(mapping));
+    ZASSERT(result);
+    ZEXPECT(flatten(*result, result->prefix) == "#line 1 \"/proj/main.cpp\"\n");
+    ZEXPECT(flatten(*result, suffix_path(result->files)) == R"(#if __INCLUDE_LEVEL__ == 1
+#line 7 "/proj/main.cpp"
+};
+END_API
+#endif
+)");
+
     // The text closing the scope a macro opened leaves none open.
     host.content = R"(#define BEGIN_API namespace api {
 BEGIN_API

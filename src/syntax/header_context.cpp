@@ -449,11 +449,11 @@ std::optional<SynthesizedContext>
                                               snapshot_path);
         };
         auto cut = place_cut(lexical, entry.content, matched.offset);
-        // Outside every brace of the text, inside a scope a macro opened:
-        // where the scope opens and where its closing macro lies, the text
-        // does not tell, so all of it before the cut is open and all after
-        // it the suffix.
-        bool macro_scope = cut.braces <= 0 && cut.braces + entry.macro_braces > 0;
+        // Inside a scope a macro opened, braces of the text inside it or
+        // not: where the scope opens and where its closing macro lies, the
+        // text does not tell, so all of it before the cut is open and all
+        // after it the suffix.
+        bool macro_scope = entry.macro_braces > 0 && cut.braces + entry.macro_braces > 0;
         if(macro_scope) {
             cut.top = 0;
             cut.top_conditionals = 0;

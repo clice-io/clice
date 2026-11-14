@@ -16,7 +16,7 @@ test(async (t) => {
     const indexed = (await s.counts()).files["main.cpp"]?.index ?? 0;
 
     const name = process.platform === "win32" ? "clang++.exe" : "clang++";
-    const compiler = (process.env.PATH ?? "")
+    const compiler = (process.env["PATH"] ?? "")
         .split(path.delimiter)
         .map((dir) => path.join(dir, name))
         .find((file) => fs.existsSync(file));

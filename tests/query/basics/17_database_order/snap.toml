@@ -1,0 +1,163 @@
+[test."$ clice index --jobs 1"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query file-deps shared.h --direction includers"]
+stdout = '''
+{
+  "result": {
+    "file": "${WS}/shared.h",
+    "includes": [],
+    "includers": [
+      {
+        "path": "${WS}/alpha.cpp",
+        "depth": 1
+      },
+      {
+        "path": "${WS}/zeta.cpp",
+        "depth": 1
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query impact-analysis shared.h"]
+stdout = '''
+{
+  "result": {
+    "directDependents": [
+      "${WS}/alpha.cpp",
+      "${WS}/zeta.cpp"
+    ],
+    "transitiveDependents": [],
+    "affectedModules": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query call-graph twice --direction callers"]
+stdout = '''
+{
+  "result": {
+    "root": {
+      "name": "twice",
+      "signature": "(int x)",
+      "kind": "Function",
+      "file": "${WS}/shared.h",
+      "line": 3,
+      "symbol": "#47b3cbe2c9c9c087"
+    },
+    "callers": [
+      {
+        "name": "alpha",
+        "signature": "()",
+        "kind": "Function",
+        "file": "${WS}/alpha.cpp",
+        "line": 3,
+        "symbol": "#c48b0aac187ddc9f"
+      },
+      {
+        "name": "zeta",
+        "signature": "()",
+        "kind": "Function",
+        "file": "${WS}/zeta.cpp",
+        "line": 3,
+        "symbol": "#c8aa36b3f44282eb"
+      }
+    ],
+    "callees": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice index --jobs 1 #2"]
+stdout = '''
+Indexed 2 translation units in #s: 3 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query file-deps shared.h --direction includers #2"]
+stdout = '''
+{
+  "result": {
+    "file": "${WS}/shared.h",
+    "includes": [],
+    "includers": [
+      {
+        "path": "${WS}/alpha.cpp",
+        "depth": 1
+      },
+      {
+        "path": "${WS}/zeta.cpp",
+        "depth": 1
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query impact-analysis shared.h #2"]
+stdout = '''
+{
+  "result": {
+    "directDependents": [
+      "${WS}/alpha.cpp",
+      "${WS}/zeta.cpp"
+    ],
+    "transitiveDependents": [],
+    "affectedModules": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query call-graph twice --direction callers #2"]
+stdout = '''
+{
+  "result": {
+    "root": {
+      "name": "twice",
+      "signature": "(int x)",
+      "kind": "Function",
+      "file": "${WS}/shared.h",
+      "line": 3,
+      "symbol": "#47b3cbe2c9c9c087"
+    },
+    "callers": [
+      {
+        "name": "alpha",
+        "signature": "()",
+        "kind": "Function",
+        "file": "${WS}/alpha.cpp",
+        "line": 3,
+        "symbol": "#c48b0aac187ddc9f"
+      },
+      {
+        "name": "zeta",
+        "signature": "()",
+        "kind": "Function",
+        "file": "${WS}/zeta.cpp",
+        "line": 3,
+        "symbol": "#c8aa36b3f44282eb"
+      }
+    ],
+    "callees": []
+  },
+  "stale": []
+}
+'''
+exit = 0

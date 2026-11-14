@@ -205,8 +205,10 @@ struct Rewriter {
                (partition.kinds[module] == ModuleKind::Program || kept.contains(file));
     }
 
-    /// Each rewritten header's partition name, unique in its module.
+    /// Each rewritten header's partition name, unique in its module, by the
+    /// header and by the path of the unit it becomes.
     llvm::DenseMap<std::uint32_t, std::string> partition_names{};
+    llvm::StringMap<std::string> partition_units{};
 
     const std::string& partition_of(std::uint32_t file) const {
         return partition_names.find(file)->second;
@@ -232,6 +234,7 @@ struct Rewriter {
             for(int n = 2; !taken.emplace(module, unique).second; n += 1) {
                 unique = std::format("{}_{}", name, n);
             }
+            partition_units[with_extension(facts.files[file].path, "cppm")] = unique;
             partition_names[file] = std::move(unique);
         }
     }
@@ -836,7 +839,10 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         std::vector<std::string> lines{std::format("export module {};", entry.name), ""};
         for(auto* group: {&entry.interfaces, &entry.partitions}) {
             for(auto& path: *group) {
-                auto name = partition_name(path, path::parent(entry.primary, posix));
+                auto unit = rewriter.partition_units.find(path);
+                auto name = unit != rewriter.partition_units.end()
+                                ? unit->second
+                                : partition_name(path, path::parent(entry.primary, posix));
                 if(auto [it, inserted] = names.try_emplace(name, path); !inserted) {
                     return std::unexpected(std::format("{} and {} are both partition {} of {}",
                                                        it->second,
