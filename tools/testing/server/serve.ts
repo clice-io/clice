@@ -113,6 +113,9 @@ export interface WorkerFault {
     input?: true;
 }
 
+/// Where the last rule withLastRule writes into a settings file starts.
+const LAST_RULE_MARK = "\n# The test's last rule.\n";
+
 /// `config` with `last`, a rule for every file, after the rules `config`
 /// passes; without those, `last` goes after the rules of the settings file
 /// in `root`, written into it so that the server reads them from the file
@@ -131,12 +134,12 @@ export function withLastRule(
         if (!fs.existsSync(file)) {
             continue;
         }
-        const text = fs.readFileSync(file, "utf8");
-        const table = `\n${stringify({ rules: [last] })}`;
-        // A restart starts with the rule already there.
-        if (text.endsWith(table)) {
-            return config;
-        }
+        // The rule an earlier server of the test wrote goes: each server
+        // ends the file with its own.
+        const written = fs.readFileSync(file, "utf8");
+        const mark = written.indexOf(LAST_RULE_MARK);
+        const text = mark === -1 ? written : written.slice(0, mark);
+        const table = `${LAST_RULE_MARK}${stringify({ rules: [last] })}`;
         // A file that does not parse, or whose rules are no table array,
         // keeps its error as written: the rule goes to the configuration.
         try {
@@ -144,7 +147,9 @@ export function withLastRule(
         } catch {
             break;
         }
-        fs.writeFileSync(file, text + table);
+        if (text + table !== written) {
+            fs.writeFileSync(file, text + table);
+        }
         return config;
     }
     return { ...config, rules: [last] };

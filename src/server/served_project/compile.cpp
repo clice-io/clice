@@ -317,6 +317,10 @@ async::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> sessio
     if(!loaded.is_set()) {
         co_await loaded.wait();
     }
+    // Refused while the compile waited for the project's index.
+    if(broken()) {
+        co_return false;
+    }
 
     // A document closed or moved to another project never compiles here
     // again, and the join below cannot tell: a closed one's generation

@@ -1209,6 +1209,10 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     if(!loaded.is_set()) {
         co_await loaded.wait();
     }
+    // Refused while the request waited for the project's index.
+    if(broken()) {
+        co_return empty_value<Result>();
+    }
     auto resolution =
         co_await project.resolve_with_trees(path_id, [&] { return command_request(path_id); });
     params.directory = resolution.directory;

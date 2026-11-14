@@ -286,8 +286,10 @@ ZEST_CASE(BornValidDefaults) {
     ZEXPECT(settings.workers.foreground == 2u);
     ZEXPECT(std::holds_alternative<Automatic>(settings.workers.background));
     ZEXPECT(std::holds_alternative<Automatic>(settings.workers.max));
-    ZEXPECT(settings.workers.background_count() == auto_background_count());
-    ZEXPECT(settings.workers.background_count() >= 2u);
+    // Never more than max: a machine of one core runs one.
+    ZEXPECT(settings.workers.background_count() ==
+            std::min(auto_background_count(), auto_max_count()));
+    ZEXPECT(auto_background_count() >= 2u);
     ZEXPECT(settings.workers.max_count() == auto_max_count());
     ZEXPECT(settings.workers.background_delay_ms == 3000u);
     ZEXPECT(settings.poll_seconds == 30u);
