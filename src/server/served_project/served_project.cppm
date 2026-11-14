@@ -496,7 +496,7 @@ public:
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The attempts themselves finish in TaskGraph::shutdown — the
     /// interruption is what keeps that finish prompt (an attempt's stateful
-    /// send carries the interrupt, not its advisory token: contract 2 wants
+    /// send carries the interrupt, not its advisory token: contract 1 wants
     /// the real reply, and the interrupt makes it arrive early).
     async::task<> stop_compiles();
 

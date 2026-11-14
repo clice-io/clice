@@ -602,7 +602,7 @@ ZEST_CASE(InflightSkipsCheck) {
 }
 
 /// ============================================================================
-///                     Edge publication (contract 14)
+///                     Edge publication (contract 4)
 /// ============================================================================
 ///
 /// An edge takes effect for invalidation and interest the moment depend()

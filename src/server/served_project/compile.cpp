@@ -205,7 +205,7 @@ void ServedProject::edited(Session& session) {
     auto path_id = session.path_id;
     project.graph.invalidate(ast_node(path_id));
     // The attempt still observes the real reply to its cancelled send
-    // (crash accounting depends on it — contract 2).
+    // (crash accounting depends on it — contract 1).
     if(auto it = compile_interrupts.find(path_id); it != compile_interrupts.end()) {
         it->second->cancel();
     }
@@ -413,7 +413,7 @@ struct ServedProject::CompileAttempt {
     void assemble(std::vector<feature::FileDiagnostic>& diagnostics);
 
     /// Install the compile's products with no suspension before the result
-    /// becomes visible (contract 16): a joiner must never see Success before
+    /// becomes visible (contract 6): a joiner must never see Success before
     /// the latest compile describes the buffer it compiled. One invalidated
     /// mid-flight commits the same products as bounded staleness — recorded,
     /// published, but not current — and reports Stale so waiters drive the
@@ -740,7 +740,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
 
     // The send carries the interrupt, not the attempt's advisory token: the
     // master must observe the request's real result — the crash accounting
-    // below depends on it (contract 2) — and a cancelled send still awaits
+    // below depends on it (contract 1) — and a cancelled send still awaits
     // the worker's answer. Only an edit, a choice change or a stop
     // interrupts the parse (see edited, choice_changed and stop_compiles),
     // and the stale reply is discarded at the validity gate below. A death
@@ -751,7 +751,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
     // Crash accounting runs even for outdated attempts: the crash came from
     // content this document dispatched, and skipping it would let a poison
     // file dodge its stop by being edited between dispatch and the crash
-    // response (contract 12).
+    // response (contract 3).
     bool retry_without_suspect = false;
     bool died = false;
     auto interrupt = std::make_unique<async::cancellation_source>();

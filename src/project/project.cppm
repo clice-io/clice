@@ -932,7 +932,7 @@ struct Project {
 
     /// The crash of the key's last build, while the inputs it is known to have
     /// read hold: an attempt's crash is recorded whatever became of the request
-    /// that spawned it (contract 12), and every consumer that finds it books it
+    /// that spawned it (contract 3), and every consumer that finds it books it
     /// against its own document instead of burning a worker of its own. One
     /// document's records cannot contain it alone: the PCH is shared.
     const FailureRecord* pch_build_crash(llvm::StringRef pch_key);
@@ -1161,7 +1161,7 @@ struct Project {
     /// an anomaly. The interest class is read at dispatch time: a foreground
     /// waiter may have joined after the attempt started. The advisory token
     /// rides into the pool, which cancels the request over IPC while this frame
-    /// keeps awaiting the real reply (contract 2). The reply of a build that
+    /// keeps awaiting the real reply (contract 1). The reply of a build that
     /// succeeded; else the attempt's result — Stale for a build the attempt
     /// withdrew, which is no decision on it.
     async::task<std::expected<worker::PrecompiledBuildResult, Result>>
@@ -1228,7 +1228,7 @@ struct Project {
     /// second call waits for the first to end.
     async::task<> stop_feeding();
 
-    /// The shutdown once its owner's compiles are quiesced (contract 11):
+    /// The shutdown once its owner's compiles are quiesced (contract 2):
     /// stop feeding the workers and wait for the include-tree runs, wind
     /// down the graph's attempts, save a last time and close the cache
     /// store.
