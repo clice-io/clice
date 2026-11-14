@@ -250,6 +250,17 @@ struct Project {
     /// or a member appears, not on saves like the dependency graph's.
     std::uint64_t commands_epoch = 1;
 
+    /// list_contexts's last answer for each file, and the epochs it read.
+    struct ListedContexts {
+        std::uint64_t context_epoch = 0;
+
+        std::uint64_t commands_epoch = 0;
+
+        std::vector<ListedContext> items;
+    };
+
+    llvm::DenseMap<Fid, ListedContexts> listed_contexts;
+
     /// What the project knows of the headers borrowing a unit's command.
     Hosting hosting;
 
@@ -840,7 +851,8 @@ struct Project {
     /// The contexts a file can compile in, in this project: its hosts, ranked,
     /// each with the commands it gives and the places it enters the header at,
     /// then the file's own database entries. Contexts compiling the same under
-    /// one command list once.
+    /// one command list once. Remembered until the state it reads changes
+    /// (context_epoch, commands_epoch).
     std::vector<ListedContext> list_contexts(Fid file);
 
     /// The listing's item for the context the file compiles in as `resolution`

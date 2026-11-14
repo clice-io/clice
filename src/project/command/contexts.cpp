@@ -148,7 +148,14 @@ struct SavedChoices {
 }  // namespace
 
 std::vector<ListedContext> Project::list_contexts(Fid file) {
-    std::vector<ListedContext> items;
+    // A header's hosts number in the thousands, each tree read anew.
+    ListedContexts listed{.context_epoch = context_epoch(), .commands_epoch = commands_epoch};
+    if(auto known = listed_contexts.find(file);
+       known != listed_contexts.end() && known->second.context_epoch == listed.context_epoch &&
+       known->second.commands_epoch == listed.commands_epoch) {
+        return known->second.items;
+    }
+    auto& items = listed.items;
 
     // Contexts that would produce identical compilation results are
     // collapsed: identical canonical flags mean an identical compile
@@ -195,7 +202,9 @@ std::vector<ListedContext> Project::list_contexts(Fid file) {
             items.push_back(own_item(*this, file, i, own));
         }
     }
-    return items;
+    auto result = items;
+    listed_contexts[file] = std::move(listed);
+    return result;
 }
 
 std::optional<ListedContext> Project::current_context_item(Fid file, const Resolution& resolution) {
