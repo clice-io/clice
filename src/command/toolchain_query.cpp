@@ -197,7 +197,7 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
         co_return std::move(read_as_clang(std::move(args), option_family(command), spec.cwd).job);
     }
     // Lets tests stand in a hung compiler without waiting out the bound.
-    chrono::milliseconds bound = chrono::seconds(20);
+    chrono::milliseconds bound = chrono::seconds(10);
     if(auto ms = env_integer("CLICE_TEST_QUERY_BOUND_MS")) {
         bound = chrono::milliseconds(*ms);
     }
