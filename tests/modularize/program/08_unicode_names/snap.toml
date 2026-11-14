@@ -93,9 +93,11 @@ exit = 0
 '''
 "app/core/文本.h" = "(removed)"
 "app/main.cpp" = '''
++#include "wrap/prelude.h"
+ // Two headers whose names are letters clang takes in an identifier but no
+ // ASCII ones: each partition keeps its file's name.
 -#include "core/文本.h"
 -#include "core/数据.h"
-+#include "wrap/prelude.h"
 +import app.core;
 
  int main() {

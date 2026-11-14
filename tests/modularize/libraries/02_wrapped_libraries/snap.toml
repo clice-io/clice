@@ -2426,7 +2426,7 @@ stdout = '''
   "stale": []
 }
 '''
-exit = 1
+exit = 2
 
 ["partition errors"."$ clice modularize --scope \"app/**\" --scope \"third/**\" --std stdmod --partition partition.json --out wrap --configuration nowhere"]
 stdout = '''
