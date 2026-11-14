@@ -477,10 +477,11 @@ export class Perf {
     }
 
     /// One session per server: the files opened in turn and edited twice
-    /// each, then switched through twice; with `churn` a branch switch (50
-    /// sources no tab shows and 10 headers the open files include changed
-    /// on disk, then changed back) and the database rewritten unchanged,
-    /// each until the servers settle; then every file closed.
+    /// each, then switched through twice; with `churn` a change of 50
+    /// sources no tab shows and 10 headers the open files include made
+    /// through the editor (each opened, changed, saved and closed), then
+    /// undone the same way, and the database rewritten unchanged, each until
+    /// the servers settle; then every file closed.
     async session(files: readonly string[], options: { churn?: boolean } = {}): Promise<void> {
         const churned = options.churn === false ? [] : await this.churnFiles(files);
         await this.each("session", `${String(files.length)} files`, {}, async (s) => {
@@ -566,26 +567,21 @@ export class Perf {
         };
         process.once("exit", restore);
         try {
-            for (const [phase, write] of [
-                [
-                    "checkout",
-                    (file: string) => {
-                        fs.appendFileSync(path.join(this.root, file), "\n// perf churn\n");
-                    },
-                ],
-                [
-                    "checkout_back",
-                    (file: string) => {
-                        fs.writeFileSync(path.join(this.root, file), original.get(file) ?? "");
-                    },
-                ],
+            for (const [phase, text] of [
+                ["checkout", (before: string) => `${before}\n// perf churn\n`],
+                ["checkout_back", (before: string) => before],
             ] as const) {
                 const cpu = s.cpu();
                 const begun = nowMs();
                 for (const file of files) {
-                    write(file);
+                    const target = path.join(this.root, file);
+                    const content = text(original.get(file)?.toString("utf8") ?? "");
+                    const [uri] = s.client.open(target);
+                    s.client.change(uri, 1, content);
+                    fs.writeFileSync(target, content);
+                    s.client.save(uri);
+                    s.client.close(uri);
                 }
-                this.notify(s, files);
                 await s.measure(`${phase}_semantic_tokens`, () =>
                     s.client.semanticTokensFull(first),
                 );
