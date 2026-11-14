@@ -521,8 +521,10 @@ std::vector<std::byte> Builder::build() {
         const auto& focus = unit.get<Semantics>();
         for(auto [index, entry]: views::enumerate(focus.node_entries())) {
             // Macros are projected from the directives below; includes
-            // and imports have their own pipelines.
-            if(entry.node.is_ast()) {
+            // and imports have their own pipelines. What an explicit
+            // instantiation's members hold is the instantiations' walk's,
+            // as in the whole-TU shape, which meets them there alone.
+            if(entry.node.is_ast() && !entry.flags.in_instantiation) {
                 project_node(focus, static_cast<std::uint32_t>(index));
             }
         }
