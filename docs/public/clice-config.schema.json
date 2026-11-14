@@ -165,7 +165,7 @@
                             "maximum": 4294967295
                         }
                     ],
-                    "description": "The most compiles the background index runs at once: \"auto\", half the machine's physical cores and at least 2, or a number, at least 1. Raising it speeds a first index up on a big machine.",
+                    "description": "The most compiles the background index runs at once, never more than `max`: \"auto\", half the machine's physical cores and at least 2, or a number, at least 1. Raising it speeds a first index up on a big machine.",
                     "default": "auto"
                 },
                 "max": {

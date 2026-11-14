@@ -254,6 +254,7 @@ void ServedProject::serve() {
 async::task<> ServedProject::open_index_task() {
     auto lock = co_await project.wait_for_writer();
     if(!lock) {
+        project.index_waits = false;
         index_kept_elsewhere = true;
         auto holder = index::WriterLock::holder(project.settings.cache_dir);
         LOG_GUIDANCE(

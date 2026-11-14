@@ -9,7 +9,8 @@ test(async (t) => {
     const index = await t.start({ lastRule: { readonly: "on" } });
     index.open("main.cpp", { pull: false });
     await index.sync();
-    const ast = await t.start({ lastRule: { readonly: "off" } });
+    // Beside the first, which keeps the index, a cache of its own.
+    const ast = await t.start({ lastRule: { readonly: "off" }, cacheDir: ".clice-ast" });
     ast.open("main.cpp");
     await ast.sync();
     for (const name of markers) {

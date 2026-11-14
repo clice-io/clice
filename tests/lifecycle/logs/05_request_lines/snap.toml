@@ -1,0 +1,22 @@
+["a request kept waiting for its compile".waited.hover]
+markdown = '''
+**function** `add`
+
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int main() { return ⟦add⟧(1, 2); }"
+
+["a request kept waiting for its compile"."at once".hover]
+markdown = '''
+**function** `add`
+
+```cpp
+int add(int a, int b)
+```
+'''
+range = "int ⟦add⟧(int a, int b) { return a + b; }"
+
+["a request kept waiting for its compile".logged]
+value = ["textDocument/hover on main.cpp answered in # ms, # ms of it waiting for its compile"]

@@ -28,3 +28,6 @@ references = ["common.h │ int ⟦helper⟧(int x);", "int ⟦helper⟧(int x) 
 workspace_symbols = [
     { name = "twice(int x)", kind = "Function", at = "third_party/lib.cppm │ export int ⟦twice⟧(int x) {" },
 ]
+
+["rule added across a restart".skipped]
+diagnostics = []

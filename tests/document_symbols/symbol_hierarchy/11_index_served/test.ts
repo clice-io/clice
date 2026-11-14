@@ -9,7 +9,8 @@ test("outline", async (t) => {
     index.open("main.cpp", { pull: false });
     index.open("demo.cppm", { pull: false });
     await index.sync();
-    const ast = await t.start({ lastRule: { readonly: "off" } });
+    // Beside the first, which keeps the index, a cache of its own.
+    const ast = await t.start({ lastRule: { readonly: "off" }, cacheDir: ".clice-ast" });
     ast.open("main.cpp");
     ast.open("demo.cppm");
     await ast.sync();

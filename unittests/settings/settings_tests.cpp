@@ -1020,7 +1020,8 @@ types = "unlimited"
     auto& settings = loaded.settings;
     ZASSERT(std::holds_alternative<std::uint32_t>(settings.workers.background));
     ZEXPECT(std::get<std::uint32_t>(settings.workers.background) == 6u);
-    ZEXPECT(settings.workers.background_count() == 6u);
+    // Never more than max, the machine's cores here.
+    ZEXPECT(settings.workers.background_count() == std::min(6u, auto_max_count()));
     ZEXPECT(std::holds_alternative<Automatic>(settings.workers.max));
     ZEXPECT(settings.workers.max_count() == auto_max_count());
     ZEXPECT(std::holds_alternative<NoLimit>(settings.references.limit));
@@ -1037,6 +1038,7 @@ types = "unlimited"
     ZEXPECT(overlaid.issues.empty());
     ZEXPECT(std::holds_alternative<Automatic>(overlaid.settings.workers.background));
     ZEXPECT(overlaid.settings.workers.max_count() == 3u);
+    ZEXPECT(overlaid.settings.workers.background_count() == std::min(auto_background_count(), 3u));
     ZEXPECT(at_most(overlaid.settings.references.limit) == 50u);
 }
 

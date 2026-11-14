@@ -13,7 +13,8 @@ test(async (t) => {
         index.open(file, { pull: false });
     }
     await index.sync();
-    const ast = await t.start({ lastRule: { readonly: "off" } });
+    // Beside the first, which keeps the index, a cache of its own.
+    const ast = await t.start({ lastRule: { readonly: "off" }, cacheDir: ".clice-ast" });
     for (const file of files) {
         ast.open(file);
     }

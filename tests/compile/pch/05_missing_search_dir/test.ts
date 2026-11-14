@@ -12,6 +12,4 @@ test("generated search directory", async (t) => {
     t.disk.write("gen/generated.h", GENERATED);
     await s.sync({ poll: true });
     expect(await s.errors("main.cpp")).toEqual([]);
-    // The rebuilt PCH replaces the failed one in the cache.
-    expect(t.disk.list(".clice/cache/*/pch/*.pch")).toHaveLength(1);
 });

@@ -159,6 +159,10 @@ export interface ServerOptions {
     /// file, `{ background_index: false }` to index nothing in the
     /// background.
     lastRule?: Record<string, unknown>;
+    /// The cache directory, workspace-relative, `.clice` by default: a
+    /// second server serving the project beside the first takes its own,
+    /// the first keeping the index.
+    cacheDir?: string;
     /// The client's capabilities; the most conservative client by default.
     capabilities?: proto.ClientCapabilities;
     /// The client offers this encoding before UTF-16, and the server must
@@ -1171,6 +1175,10 @@ export class Serve extends Client {
             }
             const initialize: InitializeOptions = {
                 initializationOptions: config,
+                cacheDir:
+                    this.options.cacheDir === undefined
+                        ? undefined
+                        : this.workspace.path(this.options.cacheDir),
                 capabilities,
                 positionEncodings:
                     positionEncoding === undefined ? undefined : [positionEncoding, "utf-16"],
