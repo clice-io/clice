@@ -14,7 +14,7 @@ stdout = '''
   "annotations": [],
   "uses": [
     {
-      "module": "app",
+      "module": "lib",
       "entities": [
         "widen"
       ]
@@ -23,7 +23,7 @@ stdout = '''
   "usedBy": [],
   "affinity": [
     {
-      "module": "app",
+      "module": "lib",
       "entities": 1
     }
   ]
@@ -48,7 +48,7 @@ stdout = '''
   "annotations": [],
   "uses": [
     {
-      "module": "app",
+      "module": "lib",
       "entities": [
         "widen"
       ]
@@ -57,7 +57,7 @@ stdout = '''
   "usedBy": [],
   "affinity": [
     {
-      "module": "app",
+      "module": "lib",
       "entities": 1
     }
   ]
