@@ -601,7 +601,7 @@ async::task<Imports> Project::scan_imports(Fid path_id,
                               .count();
         auto scanned = co_await async::queue(
             [&] {
-                return scan_precise(dep_graph.directives,
+                return scan_precise(*dep_graph.directives,
                                     argv,
                                     resolution.directory,
                                     content,

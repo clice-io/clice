@@ -148,7 +148,7 @@ ResolveFn make_resolver(CompilationDatabase& cdb, Toolchain& toolchain, Dependen
         auto& entry = candidates.front();
         auto ref = database_command(cdb, entry);
 
-        auto scan_result = scan_precise(graph.directives,
+        auto scan_result = scan_precise(*graph.directives,
                                         toolchain.render(ref, cdb.files().spelling(ref.file)).argv,
                                         cdb.commands().get(entry.command).directory);
 
