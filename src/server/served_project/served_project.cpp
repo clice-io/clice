@@ -411,7 +411,7 @@ bool ServedProject::look_for_database(bool force) {
         return false;
     }
     open();
-    server.update_owners();
+    server.update_owners_later();
     return true;
 }
 

@@ -60,7 +60,7 @@ exit = 1
 ["refuses a writer it cannot ask"."$ clice query symbol-search compute --fresh"]
 stdout = '''
 {
-  "error": "indexing failed; see the log",
+  "error": "another clice process (pid #) holds the index writer lock at ${WS}/.clice; retry when it is done",
   "stale": []
 }
 '''

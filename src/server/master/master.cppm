@@ -184,10 +184,14 @@ public:
     /// the one pick_owner picks now, else the first.
     ServedProject& owner_of(Fid path_id);
 
-    /// Every open document that pick_owner now gives to another project
-    /// moves there (change_owner); one it gives none moves to the rootless
-    /// project, made on the loop's next turn.
+    /// Every open document that document_owner now gives to another project
+    /// moves there (change_owner).
     void update_owners();
+
+    /// update_owners on the loop's next turn: asked from a project's own
+    /// work, which may run while the projects are walked, where making the
+    /// rootless project would move them.
+    void update_owners_later();
 
     /// A project's indexing progress moved: fold every project's pass
     /// into index_progress and tell the client.
@@ -501,10 +505,6 @@ private:
     /// rootless project, made for it — a file outside every folder that no
     /// project compiles borrows nothing of theirs.
     ServedProject& document_owner(Fid path_id);
-
-    /// Make, configure and, once the server is ready, start the rootless
-    /// project.
-    ServedProject& serve_outside_folders();
 
     /// Move the document to `to`: its generation moves on, so what a
     /// request computed under the old owner is void, the old owner releases

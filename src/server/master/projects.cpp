@@ -84,10 +84,6 @@ ServedProject& MasterServer::document_owner(Fid path_id) {
     if(auto* owner = pick_owner(path_id)) {
         return *owner;
     }
-    return serve_outside_folders();
-}
-
-ServedProject& MasterServer::serve_outside_folders() {
     LOG_INFO("Serving the files outside every folder");
     auto project = make_project(CanonicalPath());
     projects.push_back(project);
@@ -148,31 +144,22 @@ void MasterServer::update_owners() {
     if(lifecycle != ServerLifecycle::Ready) {
         return;
     }
-    bool outside = false;
     for(auto& [path_id, document]: documents) {
         if(!document.owner) {
             continue;
         }
-        auto* to = pick_owner(path_id);
-        if(!to) {
-            outside = true;
-        } else if(to != document.owner) {
-            change_owner(document, *to);
+        if(auto& to = document_owner(path_id); &to != document.owner) {
+            change_owner(document, to);
             replace_shown(document);
         }
     }
-    // The caller may be walking the projects: the rootless project joins
-    // them on the loop's next turn.
-    if(outside) {
-        bg_tasks.spawn([](MasterServer& server) -> async::task<> {
-            co_await async::yield();
-            if(ranges::none_of(server.projects,
-                               [](auto& project) { return project->project.root.empty(); })) {
-                server.serve_outside_folders();
-            }
-            server.update_owners();
-        }(*this));
-    }
+}
+
+void MasterServer::update_owners_later() {
+    bg_tasks.spawn([](MasterServer& server) -> async::task<> {
+        co_await async::yield();
+        server.update_owners();
+    }(*this));
 }
 
 void MasterServer::change_owner(Document& document, ServedProject& to) {

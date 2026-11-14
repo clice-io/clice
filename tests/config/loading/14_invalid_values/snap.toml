@@ -35,7 +35,16 @@ pushes = [
 ]
 
 ["worker count"."clice.toml"]
-pushes = [[]]
+pushes = [
+    [
+        {
+            at = "max = ⟦0⟧",
+            severity = "error",
+            message = 'a worker count must be at least 1, or "auto" at workers.max',
+            source = "clice",
+        },
+    ],
+]
 
 [limit."clice.toml"]
 pushes = [

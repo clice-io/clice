@@ -214,7 +214,8 @@ struct BatchResult {
     std::string session_dir;
 
     /// Why a run that never started indexing could not write the index
-    /// (writes_index).
+    /// (writes_index); the log and the exit code report it.
+    KANNOTATE(&unwritable, skip = true)
     std::string unwritable;
 
     /// Index state remained that the final save could not commit; a rerun

@@ -686,6 +686,11 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
                     issues.push_back(make_issue(severity, path, error, &*parsed));
                 });
         }
+        // A table yields its keys in name order; the problems read in the
+        // file's.
+        ranges::stable_sort(issues, {}, [](const SettingsIssue& issue) {
+            return std::pair(issue.line, issue.column);
+        });
         layered = std::move(decoded);
         break;
     }

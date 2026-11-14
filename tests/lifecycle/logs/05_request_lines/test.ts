@@ -17,7 +17,8 @@ function hovers(t: TestContext): string[] {
 }
 
 test("a request kept waiting for its compile", async (t) => {
-    const s = await t.start();
+    // Without an index to answer from, the hover waits for the compile.
+    const s = await t.start({ lastRule: { background_index: false } });
     const park = await s.park("compile", "main.cpp", { at: "worker" });
     s.open("main.cpp", { pull: false });
     const hover = s.hover(t.at("main.cpp", "return |add"));
