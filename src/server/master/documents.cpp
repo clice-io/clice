@@ -201,7 +201,7 @@ void MasterServer::close_document(Fid path_id, llvm::StringRef spelling) {
     }
 }
 
-void MasterServer::save_document(Fid path_id, bool pushed) {
+void MasterServer::save_document(Fid path_id) {
     // The user's retry: whatever crashed on the saved document runs again
     // on its next request.
     if(auto* document = find_document(path_id); document && document->owner) {
@@ -218,11 +218,6 @@ void MasterServer::save_document(Fid path_id, bool pushed) {
     // After the changes: a file the graph did not know has had its
     // includers rescanned, so a host that includes it is in sight.
     owner_of(path_id).record_saved(path_id);
-    auto* document = find_document(path_id);
-    if(pushed && document && document->owner && document->owner->compiles(*document->session) &&
-       !document->owner->current(path_id)) {
-        document->owner->request_compile(document->session);
-    }
 }
 
 }  // namespace clice

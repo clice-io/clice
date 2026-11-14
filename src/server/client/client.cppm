@@ -72,7 +72,9 @@ public:
     void index_changed(llvm::ArrayRef<Fid> files);
 
     /// Ask a pulling client to pull every document's diagnostics again; a
-    /// pull answered meanwhile is no report it holds any more.
+    /// pull answered meanwhile is no report it holds any more. To a client
+    /// that does not pull, the open documents a change left stale compile
+    /// again, and push.
     void refresh_diagnostics();
 
     /// Show a second name's diagnostics: the first name's while their texts

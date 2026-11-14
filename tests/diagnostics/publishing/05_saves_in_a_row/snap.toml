@@ -1,0 +1,15 @@
+[test.opened]
+pushes = [[]]
+
+[test.saved]
+pushes = [[], []]
+
+[test.builds.main]
+compile = 3
+pch = 3
+publish = 2
+
+[test.builds.other]
+compile = 1
+pch = 0
+publish = 1

@@ -5,6 +5,7 @@ import :feature.protocol;
 import :server.client;
 import :server.master;
 import :server.served_project;
+import :server.session;
 import :support.json;
 import :support.logging;
 import :syntax.source_text;
@@ -107,8 +108,34 @@ std::string LSPClient::divergence_message(const MasterServer::SecondName& second
         server.files.display(second.buffer.path_id));
 }
 
+/// Compile the open documents a change left stale. On the loop's next turn:
+/// the change may still be cascading (a request's own check invalidates the
+/// document once more after the change it found), and would overtake a
+/// compile started amid it.
+static async::task<> compile_stale(MasterServer& server) {
+    std::vector<std::shared_ptr<Session>> stale;
+    for(auto& [path_id, document]: server.documents) {
+        if(document.owner && document.owner->compiles(*document.session) &&
+           !document.owner->current(path_id)) {
+            stale.push_back(document.session);
+        }
+    }
+    // A compile's own check may move a document to another project.
+    for(auto& session: stale) {
+        if(auto* document = server.find_document(session->path_id);
+           document && document->owner && document->session == session) {
+            document->owner->request_compile(session);
+        }
+    }
+    co_return;
+}
+
 void LSPClient::refresh_diagnostics() {
-    if(pull_diagnostics && diagnostic_refresh) {
+    if(!pull_diagnostics) {
+        server.loop.schedule(compile_stale(server));
+        return;
+    }
+    if(diagnostic_refresh) {
         // The client pulls every document again: no report it pulled is
         // one it holds any more.
         pulled.clear();
