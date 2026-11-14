@@ -47,7 +47,7 @@ A rule with `background_index = false` keeps its units out; they still compile w
 
 Every file a compilation database lists is a unit, a header too: one the
 build lists (as some generators do) compiles and indexes on its own, beside
-the sources including it. A rule over `**/*.h` with `index = false` keeps
+the sources including it. A rule over `**/*.h` with `background_index = false` keeps
 those out.
 
 ```case

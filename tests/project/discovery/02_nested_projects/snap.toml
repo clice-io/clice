@@ -61,7 +61,7 @@ stdout = '''
   "failed": [],
   "tooBig": [],
   "compiledWithErrors": [],
-  "sessionDir": "${WS}/.clice/logs/${SESSION}",
+  "sessionDir": "",
   "unsaved": false,
   "damaged": false,
   "seconds": "#"
