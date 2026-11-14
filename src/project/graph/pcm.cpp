@@ -638,6 +638,9 @@ async::task<Imports> Project::scan_imports(Fid path_id,
     };
     for(auto& name: scan.imports) {
         auto providers = dep_graph.lookup_module(name);
+        // LIMITATION: of several files providing one name, the nearest by
+        // directory wins before any of its contexts is checked: a nearer one
+        // the importer can read no context of beats a farther one it can.
         imports.declared.push_back(
             providers.empty() ? unresolved_import(name)
                               : module_build(nearest_provider(file_table, providers, path_id),
@@ -680,6 +683,9 @@ NodeId Project::module_build(Fid module, Fid importer, const Resolution& command
             readable = &context;
         }
     }
+    // LIMITATION: with no context the importer can read, the import shows
+    // clang's own refusal, which names the option and the PCM's cache path,
+    // not the module's entries that differ in it.
     if(!readable || readable->id == 0) {
         return module_node(module);
     }

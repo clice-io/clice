@@ -134,11 +134,12 @@ bool is_template_parameter(const clang::Decl* decl) {
                      clang::TemplateTemplateParmDecl>(decl);
 }
 
-/// The declaration context an entity is named in. A template parameter
-/// of a class template may report an implicit deduction guide: clang
-/// builds the copy deduction candidate on the parameter list of whichever
-/// redeclaration it looked up, and adopting that list re-parents its
-/// parameters into the guide the first time the unit uses CTAD.
+/// The declaration context an entity is named in.
+/// clang bug: a template parameter of a class template may report an
+/// implicit deduction guide: clang builds the copy deduction candidate on
+/// the parameter list of whichever redeclaration it looked up, and adopting
+/// that list re-parents its parameters into the guide the first time the
+/// unit uses CTAD.
 const clang::DeclContext* context_of(const clang::Decl* decl) {
     const clang::DeclContext* context = decl->getDeclContext();
     /// An Objective-C class's members are named in the class wherever they

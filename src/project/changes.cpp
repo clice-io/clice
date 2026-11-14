@@ -249,6 +249,10 @@ llvm::SmallVector<Fid> Project::readers(Fid file) const {
         }
     };
     index.for_each_contribution(file, [&](Fid unit, std::uint64_t) { add(unit); });
+    // LIMITATION: with indexing off there are no absent lookups: a header
+    // created after the scan of a closed host whose `#include` missed it (a
+    // generated `.inc`) has no host, and compiles alone with false errors,
+    // until the host changes.
     index.for_each_absent_lookup(file, add);
     index.for_each_importer(file, add);
     for(auto& [module, entry]: pcms) {

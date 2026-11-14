@@ -530,6 +530,10 @@ inline std::expected<std::unique_ptr<OpenedProject>, ProjectError>
         }
         failed = std::move(*refreshed);
     }
+    // LIMITATION: without --fresh the compilation database is not checked
+    // against the index: after a change to compile_commands.json or
+    // clice.toml alone, the sources unchanged, queries answer from the old
+    // commands' index and report nothing stale.
     auto opened = open_index(root, std::move(loaded), load);
     if(opened) {
         (*opened)->failed = std::move(failed);

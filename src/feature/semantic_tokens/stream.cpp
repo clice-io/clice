@@ -581,6 +581,10 @@ private:
                 } else if(spelling == "if" || spelling == "elif") {
                     directive = Directive::Condition;
                 } else {
+                    // LIMITATION: the macro of `#include HEADER` is colored by
+                    // the AST alone, which holds no expansion of it in a
+                    // preamble the server compiles into a PCH: there the
+                    // macro gets no token.
                     directive = Directive::Other;
                 }
                 break;

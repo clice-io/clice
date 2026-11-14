@@ -672,6 +672,10 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
         }
     };
 
+    // LIMITATION: nvcc's version macros (`__CUDACC_VER_*`) pass on: under
+    // nvcc 12.8 or later, code taking their `>= 12.8` branch (CUTLASS) names
+    // `__NV_ATOMIC_RELAXED`, defined by a CUDA header that clang's CUDA
+    // wrapper headers replace, and reports it undeclared.
     auto harvest_defines = [](llvm::ArrayRef<std::string> tokens, std::vector<std::string>& out) {
         for(llvm::StringRef token: tokens) {
             if(!token.consume_front("-D"))

@@ -250,11 +250,15 @@ struct Project {
     /// or a member appears, not on saves like the dependency graph's.
     std::uint64_t commands_epoch = 1;
 
-    /// list_contexts's last answer for each file, and the epochs it read.
+    /// list_contexts's last answer for each file, and the generations of
+    /// what it read: the include graph, trees and checks (context_epoch),
+    /// the commands, and the index's trees.
     struct ListedContexts {
         std::uint64_t context_epoch = 0;
 
         std::uint64_t commands_epoch = 0;
+
+        std::uint64_t manifests = 0;
 
         std::vector<ListedContext> items;
     };
@@ -852,7 +856,7 @@ struct Project {
     /// each with the commands it gives and the places it enters the header at,
     /// then the file's own database entries. Contexts compiling the same under
     /// one command list once. Remembered until the state it reads changes
-    /// (context_epoch, commands_epoch).
+    /// (ListedContexts).
     std::vector<ListedContext> list_contexts(Fid file);
 
     /// The listing's item for the context the file compiles in as `resolution`

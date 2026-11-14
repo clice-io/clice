@@ -319,7 +319,6 @@ stdout = '''
 exit = 1
 
 ["one scope"."$ clice refactor rename area volume --dry-run"]
-wrong = "`volume` takes the same parameters as `area`, so the rename makes a redefinition, which does not compile, and it only warns"
 stdout = '''
 {
   "result": {

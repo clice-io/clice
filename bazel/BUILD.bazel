@@ -14,6 +14,9 @@ config_setting(
 )
 
 # The LLVM and clang libraries clice links; each brings what it depends on.
+# LIMITATION: no target's MC layer is linked, so MS-style inline assembly
+# (`__asm { ... }`, 32-bit MSVC targets only) is an error ("no targets are
+# registered") in its file and every includer, and its references are lost.
 LLVM_LIBRARIES = [
     "LLVMFrontendOpenMP",
     "LLVMOption",

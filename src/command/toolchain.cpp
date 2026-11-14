@@ -381,7 +381,11 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
     // LIMITATION: so do Apple clang's own cc1 flags (-clang-vendor-feature=,
     // -fno-odr-hash-protocols), and the macros only its fork predefines
     // (TARGET_OS_ARROW, __ARM_ARCH_8_3__) stay undefined; code testing
-    // them is rare, and no difference has been seen.
+    // them is rare, and no difference has been seen. Under Intel's oneAPI
+    // 2024.2 a SYCL kernel given as an unnamed lambda is an error, as the
+    // cc1 flag of Intel's clang allowing it is not ours, and under 2025.0 a
+    // SYCL header's bfloat16 is an incomplete type: one false error each in
+    // a SYCL project; 2025.1 and later are clean.
     auto parse_options = cli::ParseOptions{.visibility = clang_options::CC1Option};
     std::vector<cli::ParsedArg> kept;
     llvm::StringRef triple;

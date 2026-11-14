@@ -216,11 +216,10 @@ std::unique_ptr<clang::CompilerInvocation>
 
         case CompilationKind::Completion: {
             front_opts.OutputFile.clear();
-            // A completion reports no diagnostics, and it cuts the body it
-            // completes in short without the error that keeps clang's
-            // analysis-based warnings off a broken body: the thread-safety
-            // analysis (-Wthread-safety, as abseil builds) crashes on what
-            // is left.
+            // clang bug: the thread-safety analysis (-Wthread-safety, as
+            // abseil builds) crashes on the body a completion cuts short,
+            // which lacks the error that keeps clang's analysis-based warnings
+            // off a broken body. A completion reports no diagnostics.
             invocation->getDiagnosticOpts().IgnoreWarnings = true;
             // The parse stops at the cursor, so a body the command defers
             // would never be parsed and nothing in it would complete.
@@ -349,7 +348,8 @@ bool macro_spells(clang::Preprocessor& pp,
 }
 
 /// Leave preferred_name out of the class templates a preamble declares and
-/// out of their specializations (CompilationParams::modular).
+/// out of their specializations.
+/// clang bug: see CompilationParams::modular (clice-io/clice#1057 item 15).
 static void drop_preferred_names(clang::ASTContext& context) {
     llvm::SmallVector<clang::DeclContext*> contexts{context.getTranslationUnitDecl()};
     while(!contexts.empty()) {
@@ -379,6 +379,11 @@ public:
     }
 
     void collect_decl(clang::Decl* decl) {
+        // LIMITATION: where the name is written decides: a declaration the
+        // focus file starts and an included file names and finishes (isl's
+        // `static Widget*` then `#include "rest.inc"`) is not the focus
+        // file's, so what the focus file writes in it gets no semantic token,
+        // hover or open-file index entry.
         if(!unit.focus_file().contains(unit.produced_at(decl->getLocation()).file) &&
            !unit.encloses_focus_file(decl)) {
             return;
@@ -531,9 +536,10 @@ public:
         if(unit.params.modular) {
             drop_preferred_names(context);
         }
-        // The PCH writer stores each import with the location where the
-        // preprocessor made its module visible, and the reader skips the
-        // imports without one; a C++20 import is made visible by Sema alone.
+        // clang bug: the PCH writer stores each import with the location where
+        // the preprocessor made its module visible, and the reader skips the
+        // imports without one; a C++20 import is made visible by Sema alone
+        // (clice-io/clice#1057 item 12).
         if(writes_pch(unit.params.kind)) {
             auto& pp = unit.instance->getPreprocessor();
             for(auto* import: context.local_imports()) {
@@ -541,23 +547,24 @@ public:
             }
         }
         auto& deferred = unit.instance->getSema().LateParsedTemplateMap;
-        // Instantiating one deferred template of an imported PCH or module
-        // reads all of that file's deferred bodies into Sema, and the writer
-        // would store them again: clang reads such a copy back against the
-        // wrong file and crashes. The file they came from keeps them.
+        // clang bug: instantiating one deferred template of an imported PCH or
+        // module reads all of that file's deferred bodies into Sema, and the
+        // writer would store them again: clang reads such a copy back against
+        // the wrong file and crashes. The file they came from keeps them
+        // (clice-io/clice#1057 item 14).
         if(writes_output(unit.params.kind)) {
             deferred.remove_if([](const auto& entry) { return entry.first->isFromASTFile(); });
         }
-        // clang ends a deferred definition's range before its body, and
-        // moves the end only when it parses the body: an edit by that range
-        // would cut the body off.
+        // clang bug: a deferred definition's range ends before its body, and
+        // clang moves the end only when it parses the body: an edit by that
+        // range would cut the body off (clice-io/clice#1057 item 25).
         for(auto& [function, late]: deferred) {
             if(function->isLateTemplateParsed()) {
                 late->D->getAsFunction()->setRangeEnd(late->Toks.back().getLocation());
             }
         }
-        // A reader takes the last source location entry of the first AST
-        // file it loads to reach the end of the address space
+        // clang bug: a reader takes the last source location entry of the
+        // first AST file it loads to reach the end of the address space
         // (SourceManager::isOffsetInFileID): were that entry the file's last
         // macro expansion, an expression written as that macro would never
         // end where the expansion does, and its spelling would be lost
@@ -958,9 +965,9 @@ CompilationStatus CompilationUnit::run() {
     // Upstream FrontendAction::Execute() always returns success: errors go
     // through diagnostics.
     llvm::cantFail(action->Execute());
-    // The parser frees its scopes when the parse ends, and Sema goes on
-    // pointing at the translation unit's: a declaration the reader loads
-    // later, for a lookup on the finished AST, would be added to freed
+    // clang bug: the parser frees its scopes when the parse ends, and Sema
+    // goes on pointing at the translation unit's: a declaration the reader
+    // loads later, for a lookup on the finished AST, would be added to freed
     // memory.
     if(instance->hasSema()) {
         instance->getSema().TUScope = nullptr;

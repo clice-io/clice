@@ -139,8 +139,9 @@ void Lexer::lex(Token& token) {
     auto offset = raw_token.getLocation().getRawEncoding() - fake_loc.getRawEncoding();
     token.range = LocalSourceRange{offset, offset + raw_token.getLength()};
 
-    // clang's raw lexer drops a block comment left open (one being typed)
-    // and goes on to the end of the file: it is a comment to the end.
+    // clang bug: clang's raw lexer drops a block comment left open (one
+    // being typed) and goes on to the end of the file: it is a comment to
+    // the end.
     if(token.is_eof() && lexer->inKeepCommentMode()) {
         auto rest = content.substr(lexed_end);
         auto at = rest.find_first_not_of(" \t\r\n\f\v");

@@ -152,6 +152,10 @@ std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, Comp
 
 std::vector<std::string> clang_argv(llvm::ArrayRef<std::string> args,
                                     llvm::ArrayRef<std::string> mode) {
+    // LIMITATION: code relying on deferred template parsing (a template body
+    // naming what is declared below it, which clang-cl accepts) reports false
+    // errors on MSVC targets until the user adds -fdelayed-template-parsing.
+    //
     // Before C++20, clang defers template bodies on MSVC targets so that
     // code written for MSVC's lookup rules compiles, but a deferred body has
     // no AST: every feature inside it goes blind. Placed before the

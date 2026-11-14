@@ -104,6 +104,10 @@ std::optional<Candidate> Project::borrowed_command(Fid file, bool provisional) {
     }
 
     // The closest unit in the directory tree, then by name.
+    // LIMITATION: among units equally near, the first by path wins, not the
+    // one whose command suits the file best: a file in a new directory can
+    // borrow an unrelated directory's command; a rule's default command
+    // picks one explicitly.
     return borrowed(**ranges::min_element(units, {}, [&](const Command* command) {
         return std::tuple(path::tree_distance(path, unit_path(command)), unit_path(command));
     }));

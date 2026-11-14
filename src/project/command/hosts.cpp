@@ -121,6 +121,9 @@ HostSearch Project::find_chosen_host(Fid header, const ContextChoice& choice) {
 }
 
 HostSearch Project::find_ranked_host(Fid header) {
+    // LIMITATION: a host with several commands (one per build configuration)
+    // is tried under the first that fits alone: a header that only another of
+    // its commands includes is hosted elsewhere, or not at all.
     for(auto host: ranked_hosts(header)) {
         if(auto found = enter_at(*this, header, host, candidates(header, host).front(), 0)) {
             return std::move(*found);

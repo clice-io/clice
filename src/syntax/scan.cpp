@@ -192,10 +192,11 @@ public:
     }
 
     /// Lexed by clang's ordinary lexer, not from its directives: the scanned
-    /// file is the text being typed, and the directives lexer breaks on
-    /// half-typed directives (an `#if(` cut off at the end of the buffer,
-    /// `import <header>;`) where the ordinary lexer reports an error — the
-    /// scan runs in the master process, where a crash ends the server.
+    /// file is the text being typed.
+    /// clang bug: the directives lexer breaks on half-typed directives (an
+    /// `#if(` cut off at the end of the buffer, `import <header>;`) where the
+    /// ordinary lexer reports an error — the scan runs in the master process,
+    /// where a crash ends the server (clice-io/clice#1057 item 16).
     clang::OptionalFileEntryRef scanned;
 
 private:

@@ -615,10 +615,11 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         draft.partitions.erase(file);
     }
 
-    // Clang takes no declaration in the global module fragment of an
-    // implementation partition as reachable from a unit importing it through
-    // another partition, though the standard has that unit import it too:
-    // the unit imports such a partition itself.
+    // clang bug: clang takes no declaration in the global module fragment of
+    // an implementation partition as reachable from a unit importing it
+    // through another partition, though the standard has that unit import it
+    // too: the unit imports such a partition itself
+    // (clice-io/clice#1057 item 11).
     for(auto& [file, draft]: drafts) {
         if(!rewriter.rewritten(file)) {
             continue;

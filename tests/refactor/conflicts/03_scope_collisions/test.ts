@@ -13,6 +13,7 @@ test("one scope", async (t) => {
     await t.cli("refactor rename alpha beta --dry-run");
     await t.cli("refactor rename volume LIMIT --dry-run");
     // Another function's name with the same parameters: a redefinition.
+    // clice does not refuse this rename: it only warns of the clash.
     await t.cli("refactor rename area volume --dry-run");
 });
 

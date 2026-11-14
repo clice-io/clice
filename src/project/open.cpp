@@ -288,6 +288,10 @@ Project::Opened Project::open(const OpenOptions& options) {
         auto above = databases_above(CanonicalRef(file).parent(), root);
         nearby.append(above.begin(), above.end());
     }
+    // LIMITATION: nothing of the load is kept for the next start: every start
+    // reads the databases again, queries the compilers again (one process per
+    // command group, the slowest on Windows) and scans every file again, for
+    // seconds before the first answer on a project of LLVM's size.
     switch(options.load) {
         case Load::Rules: break;
         case Load::Databases: load_sources(*this, nearby); break;

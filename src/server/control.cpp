@@ -101,6 +101,10 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
             // Not current after the pass: the attempt failed, or the serving
             // side vetoed it (an open buffer diverged from the disk) and the
             // shard still describes older bytes.
+            // LIMITATION: only the members themselves are checked, not what
+            // they include: with a member open (its run vetoed) and a header it
+            // includes changed on disk, the run succeeds without the header's
+            // new symbols; later queries list the header as stale.
             for(auto file: files) {
                 auto* shard = srv.project.index.shard(file);
                 auto disk = srv.project.file_table.disk.current(file);

@@ -149,10 +149,13 @@ struct SavedChoices {
 
 std::vector<ListedContext> Project::list_contexts(Fid file) {
     // A header's hosts number in the thousands, each tree read anew.
-    ListedContexts listed{.context_epoch = context_epoch(), .commands_epoch = commands_epoch};
+    ListedContexts listed{.context_epoch = context_epoch(),
+                          .commands_epoch = commands_epoch,
+                          .manifests = index.manifest_generation()};
     if(auto known = listed_contexts.find(file);
        known != listed_contexts.end() && known->second.context_epoch == listed.context_epoch &&
-       known->second.commands_epoch == listed.commands_epoch) {
+       known->second.commands_epoch == listed.commands_epoch &&
+       known->second.manifests == listed.manifests) {
         return known->second.items;
     }
     auto& items = listed.items;

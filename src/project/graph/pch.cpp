@@ -310,6 +310,12 @@ std::shared_ptr<worker::PreambleIndex> PCHEntry::load_index() {
 }
 
 PCHRequest Project::declared_pch_request(const CommandRef& unit) {
+    // LIMITATION: the declared header has one build for every use: it keeps
+    // function bodies, so the editor's compiles over it instantiate more
+    // (three times as much in LLVM's Sema), and it keeps preferred_name, so a
+    // unit of the target that imports a module not built over it
+    // (`import std`) can read `std::string_view` as two types.
+    //
     // The key names the build but the file's content, which the build's
     // inputs cover, its own source among them.
     auto declared = [&](const CommandRef& command) {
@@ -391,10 +397,7 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     // includes, are inputs of the PCH: it depends on what their PCMs were
     // built from, and keys on which PCMs those are — a module that gains or
     // loses its PCM, or whose provider or command changes, starts a new
-    // PCH. A PCH loses the imports of a module unit's global module
-    // fragment: the module declaration past it takes the fragment for
-    // absent and hides what the fragment made visible. Such a preamble
-    // goes without one.
+    // PCH.
     std::string pcm_keys;
     llvm::SmallVector<NodeId> modules;
     bool imported = false;
@@ -412,6 +415,13 @@ PreamblePCH Project::preamble_pch(Fid path_id,
         }
         pcm_keys.push_back('\0');
     }
+    // clang bug: a PCH loses the imports of a module unit's global module
+    // fragment: the module declaration past it takes the fragment for absent
+    // and hides what the fragment made visible. Such a preamble goes without
+    // one (clice-io/clice#1057 item 13).
+    // LIMITATION: a module unit whose global module fragment imports, often
+    // through a header it includes (as clice's own units do), parses its
+    // fragment again on every edit.
     if(imported && imports.module_unit) {
         LOG_DEBUG("No PCH for {}: its global module fragment imports", path);
         return {.partial = partial};
@@ -526,6 +536,10 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
     if(auto unit = pch_writer(file, resolution)) {
         declared = declared_pch_request(*unit);
     }
+    // LIMITATION: on a cold cache, a file's first open waits for the declared
+    // header's build, with function bodies, and for the writing unit's index:
+    // seconds on a large target (LLVM's cmake_pch.hxx) before the first
+    // diagnostics.
     if(declared && (declared->writer || imports.modular())) {
         auto key = declared->pch_key;
         switch(co_await wait(std::move(*declared))) {
