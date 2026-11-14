@@ -178,8 +178,15 @@ auto objc_overridden(const clang::ObjCMethodDecl& method) -> const clang::ObjCMe
 /// base constructor `using Base::Base` names.
 auto constructor_of(const clang::CXXConstructExpr* construct) -> const clang::CXXConstructorDecl*;
 
+/// The specializations of `templated` its calls instantiated: those a call
+/// references, and those whose body failed to instantiate for the call,
+/// which it leaves unreferenced. Never an explicit specialization.
+auto instantiations(const clang::FunctionTemplateDecl& templated)
+    -> llvm::SmallVector<clang::FunctionDecl*, 4>;
+
 /// If exactly one non-explicit specialization of the templated decl
-/// exists, return it, nullptr otherwise.
+/// exists, return it, nullptr otherwise; of a function template, the one
+/// call that succeeded, or that failed when none succeeded.
 auto only_instantiation(clang::NamedDecl* templated_decl) -> clang::NamedDecl*;
 
 /// Same for a parameter of a function template: the corresponding

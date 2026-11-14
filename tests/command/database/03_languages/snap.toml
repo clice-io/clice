@@ -42,8 +42,8 @@ stdout = '''
 ]
 '''
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: nvcc-missing; clang's own driver reads its commands
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: the compiler nvcc-missing is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
 warning: clang's driver, reading the command of nvcc-missing: cannot find libdevice for sm_52; provide path to different CUDA installation via '--cuda-path', or pass '-nocudalib' to build without linking with libdevice
 warning: clang's driver, reading the command of nvcc-missing: cannot find CUDA installation; provide its path via '--cuda-path', or pass '-nocudainc' to build without CUDA includes
 warning: clang's driver, reading the command of nvcc-missing: cannot find CUDA installation; provide its path via '--cuda-path', or pass '-nocudainc' to build without CUDA includes

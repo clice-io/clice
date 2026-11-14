@@ -604,6 +604,11 @@ public:
             return;
         }
 
+        // LIMITATION: Sema leaves out an overload whose return type fails to
+        // substitute for the arguments written so far: before the first one,
+        // `optional<W>::emplace(` lists only the `initializer_list` overload
+        // when `W` has no default constructor, libstdc++'s `enable_if_t` on the
+        // pack failing for an empty one.
         help.signatures.reserve(candidate_count);
         start(sema.getASTContext());
         call_scope = sema.CurContext;

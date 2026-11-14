@@ -44,6 +44,10 @@
   "contributes": {
     "languages": [
       {
+        "id": "cpp",
+        "firstLine": "^.*-\\*- C\\+\\+ -\\*-|^// \\S+ (standard|internal) header"
+      },
+      {
         "id": "opencl",
         "aliases": [
           "OpenCL"
@@ -233,7 +237,7 @@
       },
       {
         "command": "clice.switchSourceHeader",
-        "title": "Switch Source/Header",
+        "title": "Switch Header and Source (Module Interface and Implementation)",
         "category": "clice"
       },
       {
@@ -1132,12 +1136,22 @@
         {
           "command": "clice.switchSourceHeader",
           "when": "editorLangId in clice.languages",
-          "group": "navigation@1.9"
+          "group": "0_clice@1"
         },
         {
           "command": "clice.switchContext",
+          "when": "editorLangId in clice.languages && clice.contextChoices",
+          "group": "0_clice@2"
+        },
+        {
+          "command": "clice.switchConfiguration",
+          "when": "editorLangId in clice.languages && clice.configurations",
+          "group": "0_clice@3"
+        },
+        {
+          "command": "clice.showCompileCommand",
           "when": "editorLangId in clice.languages",
-          "group": "clice@1"
+          "group": "0_clice@4"
         }
       ],
       "view/title": [

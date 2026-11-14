@@ -36,6 +36,56 @@ bool follows_access_operator(llvm::StringRef text,
            !(before.kind == clang::tok::period && before.range.end == last.range.begin);
 }
 
+std::optional<WrittenScope> written_scope(llvm::StringRef text,
+                                          std::uint32_t begin,
+                                          const clang::LangOptions& dialect) {
+    auto line_begin = logical_line_begin(text, begin);
+    auto line = text.substr(line_begin);
+    auto end = begin - static_cast<std::uint32_t>(line_begin);
+    llvm::SmallVector<Token> tokens;
+    Lexer lexer(line, dialect);
+    for(auto token = lexer.advance(); !token.is_eof() && token.range.end <= end;
+        token = lexer.advance()) {
+        if(!token.is_eod()) {
+            tokens.push_back(token);
+        }
+    }
+    // Back from the name: `::`, then a name before each `::` but a leading
+    // one.
+    auto& words = keywords(dialect);
+    auto names = [&](const Token& token) {
+        return token.is_identifier() &&
+               keyword_kind(token.text(line), words) == clang::tok::identifier;
+    };
+    WrittenScope scope;
+    auto rest = llvm::ArrayRef(tokens);
+    if(rest.empty() || rest.back().kind != clang::tok::coloncolon || rest.back().range.end != end) {
+        return std::nullopt;
+    }
+    while(!rest.empty() && rest.back().kind == clang::tok::coloncolon) {
+        rest = rest.drop_back();
+        if(rest.empty() || !names(rest.back())) {
+            // A `::` no name precedes starts at the global scope, but after
+            // a template's arguments or a parenthesized type, a type's.
+            if(!rest.empty() && (rest.back().kind == clang::tok::greater ||
+                                 rest.back().kind == clang::tok::r_paren ||
+                                 rest.back().kind == clang::tok::r_square)) {
+                return std::nullopt;
+            }
+            scope.global = true;
+            return scope;
+        }
+        scope.segments.insert(scope.segments.begin(), rest.back().text(line));
+        rest = rest.drop_back();
+    }
+    // A member access names a class's scope.
+    if(!rest.empty() &&
+       (rest.back().kind == clang::tok::period || rest.back().kind == clang::tok::arrow)) {
+        return std::nullopt;
+    }
+    return scope;
+}
+
 std::vector<WrittenDesignator> written_designators(llvm::StringRef text,
                                                    std::uint32_t offset,
                                                    const clang::LangOptions& dialect) {

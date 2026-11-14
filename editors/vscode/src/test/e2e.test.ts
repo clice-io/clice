@@ -1,5 +1,6 @@
 import * as assert from "assert";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
@@ -61,51 +62,13 @@ function until<T>(
 
 type Writable<T> = { -readonly [K in keyof T]: T[K] };
 
-/// What the extension shows the user beside the editor: its language status
-/// items and the Compilation Contexts view, watched through the API it
-/// creates them with, which this test shares with it.
+/// The Compilation Contexts view the extension registers, watched through
+/// the API it registers it with, which this test shares with it.
 class Shown implements vscode.Disposable {
-    private readonly changed = new vscode.EventEmitter<void>();
-    /// Fires when an item changes, appears or goes.
-    readonly onDidChange = this.changed.event;
-    private readonly items = new Map<string, vscode.LanguageStatusItem>();
     private readonly restore: (() => void)[] = [];
     contexts: vscode.TreeDataProvider<vscode.TreeItem> | undefined;
 
     constructor() {
-        const languages = vscode.languages as Writable<typeof vscode.languages>;
-        const create = languages.createLanguageStatusItem;
-        languages.createLanguageStatusItem = (id, selector) => {
-            const item = create(id, selector);
-            const fire = () => {
-                this.changed.fire();
-            };
-            const watched = new Proxy(item, {
-                get: (target, key) => {
-                    if (key === "dispose") {
-                        return () => {
-                            if (this.items.get(id) === watched) {
-                                this.items.delete(id);
-                            }
-                            target.dispose();
-                            fire();
-                        };
-                    }
-                    const value: unknown = Reflect.get(target, key);
-                    return typeof value === "function"
-                        ? (value as (this: unknown, ...args: unknown[]) => unknown).bind(target)
-                        : value;
-                },
-                set: (target, key, value) => {
-                    Reflect.set(target, key, value);
-                    fire();
-                    return true;
-                },
-            });
-            this.items.set(id, watched);
-            fire();
-            return watched;
-        };
         const window = vscode.window as Writable<typeof vscode.window>;
         const register = window.registerTreeDataProvider;
         window.registerTreeDataProvider = <T>(id: string, provider: vscode.TreeDataProvider<T>) => {
@@ -115,27 +78,14 @@ class Shown implements vscode.Disposable {
             return register(id, provider);
         };
         this.restore.push(() => {
-            languages.createLanguageStatusItem = create;
             window.registerTreeDataProvider = register;
         });
-    }
-
-    /// The language status item `id` once `ready` holds of it (undefined
-    /// while it is hidden).
-    async status(
-        id: string,
-        ready: (item: vscode.LanguageStatusItem | undefined) => boolean,
-        what: string,
-    ): Promise<vscode.LanguageStatusItem | undefined> {
-        await until([this.onDidChange], () => ready(this.items.get(id)), what);
-        return this.items.get(id);
     }
 
     dispose() {
         for (const restore of this.restore) {
             restore();
         }
-        this.changed.dispose();
     }
 }
 
@@ -339,6 +289,135 @@ suite("clice E2E", function () {
         );
     });
 
+    // The headers of libstdc++, libc++ and the MSVC STL have no extension;
+    // their first line says what they are.
+    test("standard library headers open as C++", async function () {
+        if (path.basename(root) !== "01_hello_world") {
+            this.skip();
+        }
+        const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "clice-headers-"));
+        try {
+            const firsts = [
+                "// <vector> -*- C++ -*-",
+                "// -*- C++ -*-",
+                "// vector standard header",
+            ];
+            for (const [index, first] of firsts.entries()) {
+                const file = path.join(scratch, `header${String(index)}`);
+                fs.writeFileSync(file, `${first}\n#pragma once\n`);
+                const header = await vscode.workspace.openTextDocument(file);
+                assert.strictEqual(header.languageId, "cpp", first);
+            }
+        } finally {
+            fs.rmSync(scratch, { recursive: true, force: true });
+        }
+    });
+
+    test("a header name retyped after matching nothing asks again", async function () {
+        this.timeout(90 * 1000);
+        if (path.basename(root) !== "01_hello_world") {
+            this.skip();
+        }
+        const scratch = fs.realpathSync.native(
+            fs.mkdtempSync(path.join(os.tmpdir(), "clice-includes-")),
+        );
+        // A file without an extension is taken for a header in a directory
+        // named `include`, as a library's are.
+        const include = path.join(scratch, "include");
+        fs.mkdirSync(include);
+        fs.writeFileSync(path.join(include, "zebra.h"), "#pragma once\n");
+        fs.writeFileSync(path.join(include, "zebra"), "#pragma once\n");
+        fs.writeFileSync(path.join(include, "notes.txt"), "notes\n");
+        const uri = vscode.Uri.file(path.join(include, "main.cpp"));
+        fs.writeFileSync(uri.fsPath, "\n");
+        const middleware = client().current.middleware;
+        const provide = middleware.provideCompletionItem;
+        assert.ok(provide, "the extension has a completion middleware");
+        // Each answer VS Code got: the request's number, where it asked, the
+        // items' labels and details.
+        const answers: {
+            request: number;
+            column: number;
+            items: { label: string; detail: string | undefined }[];
+        }[] = [];
+        let requests = 0;
+        const answered = new vscode.EventEmitter<void>();
+        middleware.provideCompletionItem = async (document, at, context, token, next) => {
+            const request = requests;
+            requests += 1;
+            const answer = await provide(document, at, context, token, next);
+            // A request typing overtook answers nothing VS Code shows.
+            if (token.isCancellationRequested) {
+                return answer;
+            }
+            const items = Array.isArray(answer) ? answer : (answer?.items ?? []);
+            answers.push({
+                request,
+                column: at.character,
+                items: items.map((item) => ({
+                    label: typeof item.label === "string" ? item.label : item.label.label,
+                    detail: item.detail,
+                })),
+            });
+            answered.fire();
+            return answer;
+        };
+        // The items of the answer VS Code asks for once `text` is typed.
+        const type = async (text: string) => {
+            const first = requests;
+            await vscode.commands.executeCommand("type", { text });
+            const column = vscode.window.activeTextEditor?.selection.active.character;
+            const answer = () =>
+                answers.find((found) => found.request >= first && found.column === column);
+            await until([answered.event], () => answer() !== undefined, `answer after ${text}`);
+            return answer()?.items ?? [];
+        };
+        // VS Code suggests as you type only outside a string, which a header
+        // name is once its line is tokenized, and the line of a document
+        // just opened may not be yet. With those suggestions off everywhere,
+        // only trigger characters and incomplete lists ask, as in a header
+        // name.
+        const editor = vscode.workspace.getConfiguration("editor");
+        await editor.update(
+            "quickSuggestions",
+            { other: "off", comments: "off", strings: "off" },
+            vscode.ConfigurationTarget.Global,
+        );
+        try {
+            const opened = await vscode.workspace.openTextDocument(uri);
+            const shown = await vscode.window.showTextDocument(opened);
+            await vscode.commands.executeCommand("type", { text: "#include " });
+            const listed = (items: { label: string }[]) => items.map((item) => item.label);
+            const all = await type('"');
+            // A header without an extension is marked one for its icon; a
+            // file the server takes for no header is not.
+            const detail = (label: string) => all.find((item) => item.label === label)?.detail;
+            assert.ok(listed(all).includes("zebra"));
+            assert.strictEqual(detail("zebra"), ".h");
+            assert.strictEqual(detail("zebra.h"), undefined);
+            assert.strictEqual(detail("notes.txt"), undefined);
+            assert.ok(listed(await type("z")).includes("zebra.h"));
+            assert.deepStrictEqual(await type("q"), [], "no header name holds `zq`");
+
+            // Typed over the selected misspelling.
+            shown.selection = new vscode.Selection(0, 11, 0, 12);
+            assert.ok(listed(await type("e")).includes("zebra.h"));
+
+            // Deleted back to the quote and typed again.
+            assert.deepStrictEqual(await type("q"), [], "no header name holds `zeq`");
+            for (let deleted = 0; deleted < 3; deleted += 1) {
+                await vscode.commands.executeCommand("deleteLeft");
+            }
+            assert.ok(listed(await type("z")).includes("zebra.h"));
+        } finally {
+            await editor.update("quickSuggestions", undefined, vscode.ConfigurationTarget.Global);
+            middleware.provideCompletionItem = provide;
+            answered.dispose();
+            await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+            fs.rmSync(scratch, { recursive: true, force: true });
+        }
+    });
+
     test("compilation contexts", async function () {
         this.timeout(180 * 1000);
         const contexts = scenario.contexts;
@@ -348,17 +427,10 @@ suite("clice E2E", function () {
         const uri = opened().uri.toString();
         const current = () =>
             client().sendRequest<CurrentContextResult>("clice/currentContext", { uri });
-        const status = (text: string, detail: (detail: string) => boolean = () => true) =>
-            shown.status(
-                "clice.context",
-                (item) => item?.text === text && detail(item.detail ?? ""),
-                `context status "${text}"`,
-            );
 
         const automatic = await current();
         assert.ok(automatic.automatic, "no choice is in force at first");
         assert.strictEqual(relative(automatic.context?.uri ?? ""), contexts.automatic);
-        await status("auto");
         const query = await client().sendRequest<QueryContextResult>("clice/queryContext", { uri });
         assert.strictEqual(query.total, contexts.total);
 
@@ -387,22 +459,18 @@ suite("clice E2E", function () {
         assert.ok(!switched.automatic, "the switched host is the user's choice");
         assert.strictEqual(relative(switched.context?.uri ?? ""), contexts.other);
         assert.strictEqual(document.languageId, "cpp", "the switch keeps the document as it was");
-        await status("selected");
 
         // Beside its own context, the file shows the code its other contexts
         // compile until the user hides it.
         assert.ok(switched.otherContexts, "other contexts show by default");
         await switchContext(labelled((label) => label.endsWith("Hide other contexts")));
         assert.ok(!(await current()).otherContexts, "other contexts hidden");
-        await status("selected", (detail) => detail.endsWith(", other contexts hidden"));
         await switchContext(labelled((label) => label.endsWith("Show other contexts")));
         assert.ok((await current()).otherContexts, "other contexts shown again");
-        await status("selected", (detail) => !detail.endsWith(", other contexts hidden"));
 
         await vscode.window.showTextDocument(opened());
         await vscode.commands.executeCommand("clice.resetContext");
         assert.ok((await current()).automatic, "the reset leaves the automatic context");
-        await status("auto");
     });
 
     test("the Compilation Contexts view", async function () {
@@ -491,13 +559,6 @@ suite("clice E2E", function () {
         if (counterpart === undefined) {
             this.skip();
         }
-        const manifest = extension().packageJSON as {
-            contributes: { menus: { "editor/context": { command: string; group?: string }[] } };
-        };
-        const menu = manifest.contributes.menus["editor/context"].find(
-            ({ command }) => command === "clice.switchSourceHeader",
-        );
-        assert.ok(menu?.group?.startsWith("navigation@"), "the editor menu offers the command");
         const active = () => relative(vscode.window.activeTextEditor?.document.uri ?? "");
         await vscode.window.showTextDocument(opened());
 
@@ -538,12 +599,6 @@ suite("clice E2E", function () {
             assert.strictEqual(relative(current.command.from ?? ""), command.from);
         }
         await vscode.window.showTextDocument(opened());
-        await shown.status(
-            "clice.compileCommand",
-            (item) => item?.text === command.source,
-            `compile command status "${command.source}"`,
-        );
-
         await vscode.commands.executeCommand("clice.showCompileCommand");
         const shownCommand = vscode.window.activeTextEditor?.document;
         assert.strictEqual(shownCommand?.uri.scheme, "clice-command");
@@ -569,8 +624,8 @@ suite("clice E2E", function () {
         const commands = new Set(await vscode.commands.getCommands(true));
         assert.ok(commands.has("clice.showCompileCommand"));
         assert.ok(commands.has("clice.switchContext"));
-        // The language status and the Compilation Contexts view show what
-        // these did.
+        // The Compilation Contexts view and the commands' own answers show
+        // what these did.
         assert.ok(!commands.has("clice.showCurrentContext"));
         assert.ok(!commands.has("clice.queryContexts"));
     });
@@ -692,15 +747,8 @@ suite("clice E2E", function () {
                     uri,
                 })
             ).active;
-        const status = (name: string) =>
-            shown.status(
-                "clice.configuration",
-                (item) => item?.text === name,
-                `configuration status "${name}"`,
-            );
         await vscode.window.showTextDocument(opened());
         assert.strictEqual(await active(), configurations.active);
-        await status(configurations.active);
 
         // The server takes the choice at its next start, which it asks for.
         const switched = restarted(`restart under ${configurations.switch}`);
@@ -710,7 +758,6 @@ suite("clice E2E", function () {
         );
         await switched;
         assert.strictEqual(await active(), configurations.switch);
-        await status(configurations.switch);
         assert.deepStrictEqual(await errors(opened().uri), [], `${scenario.file} has errors`);
 
         const restored = restarted(`restart under ${configurations.active}`);

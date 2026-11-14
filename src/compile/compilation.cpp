@@ -141,6 +141,10 @@ std::unique_ptr<clang::CompilerInvocation>
     front_opts.PrintSupportedCPUs = false;
     front_opts.PrintEnabledExtensions = false;
     front_opts.PrintSupportedExtensions = false;
+    // LIMITATION: the function the completion point is in is parsed whole up
+    // to it: in a long body (a test case of many checks), completion and
+    // signature help analyze every earlier statement on each request, those
+    // of blocks closed before the point too.
     front_opts.SkipFunctionBodies = params.skip_bodies ||
                                     params.kind == CompilationKind::Completion ||
                                     params.instantiating.has_value();
@@ -261,6 +265,10 @@ void CompilationUnit::run_tidy() {
         LLVM_BUILTIN_TRAP;
     }
 
+    // LIMITATION: the checks run to their end, with no time limit for any one
+    // of them, and an edit cancels the compile only once they finished: with
+    // tidy on in the editor, a heavy `.clang-tidy` makes each compile of a
+    // large focus file several times slower (clangd's too).
     checker->finder.matchAST(context);
 
     /// XXX: This is messy: clang-tidy checks flush some diagnostics at EOF.
@@ -436,7 +444,7 @@ public:
             return false;
         }
 
-        return clang::MultiplexConsumer::HandleTopLevelDecl(group) && !instantiation_found;
+        return clang::MultiplexConsumer::HandleTopLevelDecl(group) && !found_enough();
     }
 
     /// Asked under CompilationParams::skip_bodies and instantiating, and by
@@ -451,8 +459,8 @@ public:
         auto file = unit.produced_at(decl->getLocation()).file;
         if(auto& instantiating = unit.params.instantiating;
            instantiating && file == unit.focus_file().file()) {
-            if(instantiation_found || !instantiating->names) {
-                return instantiation_found;
+            if(found_enough() || !instantiating->names) {
+                return found_enough();
             }
             bool may = may_instantiate(decl, instantiating->point);
             // A template's body is parsed, as its use may need it; one that
@@ -618,15 +626,21 @@ private:
     void notice(const clang::FunctionDecl* function) {
         auto& instantiating = unit.params.instantiating;
         auto* pattern = function->getTemplateInstantiationPattern();
-        if(!instantiating || !instantiating->templated || instantiation_found || !pattern) {
+        if(!instantiating || !instantiating->templated || found_enough() || !pattern) {
             return;
         }
         auto& sources = unit.context().getSourceManager();
         auto focus = unit.focus_file().file();
         auto declared = sources.getDecomposedExpansionLoc(pattern->getLocation());
         auto called = sources.getDecomposedExpansionLoc(function->getPointOfInstantiation());
-        instantiation_found = declared == std::pair(focus, *instantiating->templated) &&
-                              called.first == focus && called.second > instantiating->point;
+        if(declared == std::pair(focus, *instantiating->templated) && called.first == focus &&
+           called.second > instantiating->point) {
+            found_calls.insert(function);
+        }
+    }
+
+    bool found_enough() const {
+        return found_calls.size() == CompilationParams::Instantiating::limit;
     }
 
     /// Whether `word` is one of instantiating_names, or a macro whose
@@ -653,8 +667,9 @@ private:
     /// What each macro definition gave names, until a name is added.
     llvm::DenseMap<const clang::MacroInfo*, bool> spelling_macros;
 
-    /// A call past the point instantiated the template looked for.
-    bool instantiation_found = false;
+    /// The instantiations of the template looked for that calls past the
+    /// point made.
+    llvm::SmallPtrSet<const clang::FunctionDecl*, 8> found_calls;
 };
 
 class CompilationUnit::ParseAction final : public clang::WrapperFrontendAction {

@@ -312,10 +312,20 @@ std::vector<IndexQuery::Located> search(const IndexQuery& index,
     return results;
 }
 
-Completables completables(const IndexQuery& index, llvm::StringRef prefix, std::uint32_t limit) {
+Completables completables(const IndexQuery& index,
+                          llvm::StringRef prefix,
+                          std::uint32_t limit,
+                          llvm::ArrayRef<llvm::StringRef> scope,
+                          bool absolute) {
+    std::vector<Locator::Segment> segments;
+    for(auto segment: scope) {
+        segments.push_back({.name = segment.str()});
+    }
     // Of the kinds a namespace's names have: a class's members, which a
     // scope's subtree holds more of, would crowd them out of the ranking.
     Locator query{
+        .scope = std::move(segments),
+        .absolute = absolute,
         .pattern = prefix.str(),
         .kinds = {SymbolKind::Macro,
                   SymbolKind::Namespace,
@@ -329,6 +339,7 @@ Completables completables(const IndexQuery& index, llvm::StringRef prefix, std::
                   SymbolKind::Variable,
                   SymbolKind::Concept},
         .nameable_only = true,
+        .qualified_lookup = absolute || !scope.empty(),
     };
     // The names completion does not offer (a class's members) take places
     // in the ranking: it is fetched wider than the names wanted.

@@ -113,6 +113,9 @@ export function registerInactiveRegions(
         next: DocumentSemanticsTokensEditsSignature,
     ) => Promise<vscode.SemanticTokens | vscode.SemanticTokensEdits | null | undefined>;
 } {
+    // LIMITATION: with semantic highlighting off
+    // (`editor.semanticHighlighting.enabled: false`), VS Code pulls no tokens,
+    // so this middleware never runs and `#if 0` blocks are not dimmed.
     const dimming = () =>
         vscode.window.createTextEditorDecorationType({
             opacity: String(

@@ -55,6 +55,10 @@ struct TidyParams {
     /// interactive command is never rewritten.
     std::vector<std::string> extra_args;
     std::vector<std::string> extra_args_before;
+
+    /// The editor shape also runs the checks not known to be fast
+    /// (tidy::slow_checks).
+    bool slow_checks = false;
 };
 
 class ClangTidyChecker;
@@ -221,10 +225,12 @@ struct CompilationParams {
     /// instantiated: with `names`, it skips the focus file's function bodies
     /// as well, but those of templates and of a class's members, the one
     /// holding `point`, and those naming one of `names` or a template whose
-    /// body does. Once a call past the point instantiates the template
-    /// declared at `templated` it skips every body, and stops after the
-    /// declaration holding the call.
+    /// body does. Once calls past the point instantiate the template
+    /// declared at `templated` `limit` times it skips every body, and stops
+    /// after the declaration holding the last call.
     struct Instantiating {
+        constexpr static std::uint32_t limit = 8;
+
         std::uint32_t point = 0;
         std::optional<llvm::StringSet<>> names;
         std::optional<std::uint32_t> templated;
@@ -582,7 +588,8 @@ public:
     auto diagnostics() -> llvm::ArrayRef<Diagnostic>;
 
     /// The findings of a batch clang-tidy run, the compiler's diagnostics
-    /// among them, as clang-tidy reports them; taken once.
+    /// among them, as clang-tidy reports them but in the words diagnostics()
+    /// gives them; taken once.
     auto take_tidy_findings() -> std::vector<clang::tidy::ClangTidyError>;
 
     /// The top-level declarations the focus file writes or that enclose it
@@ -810,6 +817,10 @@ private:
     llvm::BumpPtrAllocator path_storage;
 
     std::vector<Diagnostic> collected_diagnostics;
+
+    /// The compiler's messages clice words otherwise in collected_diagnostics,
+    /// as clang formats them, each with clice's words.
+    llvm::StringMap<std::string> reworded;
 
     std::vector<clang::Decl*> collected_decls;
 

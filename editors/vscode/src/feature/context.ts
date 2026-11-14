@@ -2,11 +2,9 @@ import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
 import { LANGUAGES } from "../languages";
-import { LanguageStatus } from "./status";
 // Protocol shapes come from the shared definition in tools/protocol —
 // type-only, so the extension bundle carries no runtime dependency on it.
 import type {
-    CompileCommand,
     ContextItem,
     CurrentContextResult,
     QueryContextResult,
@@ -218,61 +216,36 @@ class OutlineRefresher implements vscode.Disposable {
     }
 }
 
-/** The compilation context of the active editor: a language status item
- * telling who picked it, the Explorer's view of the contexts to switch
- * between, and the commands switching them. Each refresh also shows the
- * command the context gives the file (`showCommand`). */
-export function registerCompilationContext(
-    client: ClientHandle,
-    ext: vscode.ExtensionContext,
-    showCommand: (command: CompileCommand | null) => void,
-) {
-    const status = new LanguageStatus("clice.context", "clice: compilation context");
-    const switchContext: vscode.Command = { title: "Switch", command: "clice.switchContext" };
-
+/** The compilation context of the active editor: the Explorer's view of
+ * the contexts to switch between, and the commands switching them, which
+ * the view and the editor's context menu offer while the file has a choice
+ * (`clice.contextChoices`). */
+export function registerCompilationContext(client: ClientHandle, ext: vscode.ExtensionContext) {
     const tree = new ContextTreeProvider(client);
     const outline = new OutlineRefresher();
     outline.refresh();
 
-    function showStatus(editor: vscode.TextEditor | undefined, current: CurrentContextResult) {
+    function showChoices(editor: vscode.TextEditor | undefined, current: CurrentContextResult) {
         // The active editor may have moved on while the request was in
-        // flight; the label must not describe a different document.
+        // flight; the key must not describe a different document.
         if (vscode.window.activeTextEditor !== editor) {
             return;
         }
-        showCommand(current.command);
-        // A file with nothing to choose from has no context to tell of.
         const choices = !current.automatic || tree.count() > 1;
         void vscode.commands.executeCommand("setContext", "clice.contextChoices", choices);
-        if (!choices) {
-            status.hide();
-            return;
-        }
-        // The item's label can run to every flag of a command; the text only
-        // says who picked the context, the detail names it.
-        const picked =
-            (current.automatic ? "picked automatically" : "chosen") +
-            (current.otherContexts ? "" : ", other contexts hidden");
-        status.show(
-            current.automatic ? "auto" : "selected",
-            current.context ? `${current.context.label}, ${picked}` : picked,
-            switchContext,
-        );
     }
 
     async function refresh(editor: vscode.TextEditor | undefined) {
         const result = await tree.refresh(editor);
         if (result === undefined) {
-            // Superseded — the newer refresh owns the status bar too.
+            // Superseded — the newer refresh owns the key too.
             return;
         }
         if (result === null) {
             void vscode.commands.executeCommand("setContext", "clice.contextChoices", false);
-            status.hide();
-            showCommand(null);
             return;
         }
-        showStatus(editor, result);
+        showChoices(editor, result);
     }
 
     /// The context in use changed with the text unchanged.
@@ -505,7 +478,7 @@ export function registerCompilationContext(
         }
     }
 
-    async function updateStatus(editor: vscode.TextEditor | undefined) {
+    async function updateChoices(editor: vscode.TextEditor | undefined) {
         if (!isCppEditor(editor)) {
             return;
         }
@@ -523,11 +496,10 @@ export function registerCompilationContext(
             await refresh(editor);
             return;
         }
-        showStatus(editor, current);
+        showChoices(editor, current);
     }
 
     ext.subscriptions.push(
-        status,
         outline,
         // A compile of the active file can change what it compiles under —
         // a self-containment check's result, a choice the server dropped —
@@ -538,7 +510,7 @@ export function registerCompilationContext(
                 editor &&
                 event.uris.some((uri) => uri.toString() === editor.document.uri.toString())
             ) {
-                void updateStatus(editor);
+                void updateChoices(editor);
             }
         }),
         vscode.workspace.onDidSaveTextDocument(() => void refresh(vscode.window.activeTextEditor)),

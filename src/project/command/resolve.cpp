@@ -8,6 +8,7 @@ import :support.logging;
 import :syntax.header_context;
 import :syntax.include_resolver;
 import :syntax.lexer;
+import :syntax.scan;
 import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
@@ -238,6 +239,19 @@ Rendered Project::render(const CommandRef& ref, const RenderOptions& options) {
         result.query_failure = std::move(rendered.query_failure);
     }
     return result;
+}
+
+ScanResult Project::declared_module(const CommandRef& command, llvm::StringRef text) {
+    auto rendered = render(command);
+    std::vector<const char*> argv;
+    argv.reserve(rendered.arguments.size());
+    for(auto& argument: rendered.arguments) {
+        argv.push_back(argument.c_str());
+    }
+    return scan_module_decl(argv,
+                            rendered.directory,
+                            text,
+                            llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden)));
 }
 
 Resolution Project::resolve_command(Fid path_id, const CommandRequest& request) {

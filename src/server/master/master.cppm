@@ -264,7 +264,10 @@ public:
     /// knowing the file cascades if it changed. A save is also when users
     /// expect everything to be current: the files every open document's
     /// compile depends on, installed headers included, are looked at too.
-    void save_document(Fid path_id);
+    /// For a client that only takes pushed diagnostics (`pushed`), which
+    /// asks for nothing that compiles after an edit, a compiled document
+    /// whose text its last compile did not see compiles, and pushes.
+    void save_document(Fid path_id, bool pushed);
 
     // contexts.cpp
 

@@ -962,6 +962,11 @@ private:
     /// of a multi-root workspace may hold no C or C++ at all.
     bool commands_missing = false;
 
+    /// The clang-tidy Checks lists whose slow checks a guidance has named,
+    /// each once: those the editor leaves out while
+    /// `slow_clang_tidy_checks` is unset.
+    llvm::StringSet<> named_slow_checks;
+
     bool endpoint_recorded = false;
 
     bool metadata_flush_scheduled = false;
@@ -1184,6 +1189,11 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     params.arguments = resolution.arguments;
     params.settings = project.settings;
 
+    // LIMITATION: a completion, or another request built here, right after
+    // an edit of the preamble (a comment there included) waits for the whole
+    // PCH to build again, seconds over a standard library's headers, and once
+    // per keystroke when the editor cancels nothing.
+    //
     // The scan and the PCH run under the request's command with the text it
     // compiles, so an unsaved `import m;` builds its PCM before the parse
     // needs it. An import that did not build is the parse's to report; none

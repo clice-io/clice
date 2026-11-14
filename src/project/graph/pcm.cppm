@@ -8,6 +8,7 @@ import :support.failure;
 import :support.prelude;
 import :vfs.file_table;
 import :vfs.ids;
+import :worker.protocol;
 
 namespace clice {
 
@@ -31,6 +32,11 @@ struct ModuleBuildFailed {
     /// An import's PCM left the disk under the build: the failure says
     /// nothing of the module, and the next wait builds both again.
     bool import_lost = false;
+
+    /// Where the unit's own build met the first of its errors, the record's
+    /// cause, and how many it met; none for a crash or an import's failure.
+    std::optional<worker::LocatedMessage> first_error;
+    std::uint32_t error_count = 0;
 };
 
 /// The PCM of a C++20 module unit under one of its commands, shared across

@@ -29,8 +29,9 @@ pushes = [
         {
             at = "⟦⟧int add(int a, int b) {",
             severity = "warning",
-            message = "clice's worker crashed while completing code in this file (${CRASH}). Code completion is paused here until this file or a header it includes changes, or until you save it.",
+            message = "clice's worker crashed while completing code in this file (${CRASH}). Code completion is paused here until this file or a header it includes changes, or until you save it. This is a bug in clice: please report it at https://github.com/clice-io/clice/issues, with the crash report from the log directory ${WS}/.clice/logs/${SESSION}.",
             source = "clice",
+            code = "worker-crash",
         },
         {
             at = "int x = ⟦ad⟧;",

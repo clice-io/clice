@@ -1,5 +1,6 @@
 module clice;
 
+import :feature.diagnostics;
 import :support.logging;
 import :support.process;
 import :support.text;
@@ -693,19 +694,25 @@ void WorkerPool::give_up_slot(std::size_t index, bool stateful) {
     w.revive_at = chrono::steady_clock::now() + options.revive_after;
     if(capacity(stateful) == 0) {
         auto seconds = chrono::duration_cast<chrono::seconds>(options.revive_after).count();
+        auto report = std::format(
+            "This is a bug in clice: please report it at {}, with the crash reports from {}",
+            feature::issue_tracker,
+            options.session_dir.empty() ? std::string("clice's log")
+                                        : std::format("the log directory {}", options.session_dir));
         if(stateful) {
             LOG_GUIDANCE(
                 "clice's workers for open files keep crashing and are stopped for {} seconds: "
-                "compiles of the open files wait until then. The server log has the crash reports",
-                seconds);
+                "compiles of the open files wait until then. {}",
+                seconds,
+                report);
         } else {
             // Queued requests fail now instead of waiting for a dispatch.
             fail_pending_requests();
             LOG_GUIDANCE(
                 "clice's background workers keep crashing and are stopped for {} seconds: "
-                "completion, signature help, formatting and indexing wait until then. The "
-                "server log has the crash reports",
-                seconds);
+                "completion, signature help, formatting and indexing wait until then. {}",
+                seconds,
+                report);
         }
     }
 }

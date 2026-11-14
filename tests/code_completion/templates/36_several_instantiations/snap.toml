@@ -1,0 +1,65 @@
+[answers.call_before_point.completion]
+items = [
+    { label = "size() const", kind = "Method", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.overloads_differ.completion]
+items = [
+    { label = "at(int index)", kind = "Method", detail = "int" },
+    { label = "at(long index) const", kind = "Method", detail = "int" },
+    { label = "size() const", kind = "Method", detail = "int" },
+    { label = "data()", kind = "Method", detail = "int *" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.dependent_scope.completion]
+items = [
+    { label = "at(int index)", kind = "Method", detail = "int" },
+    { label = "at(long index) const", kind = "Method", detail = "int" },
+    { label = "data()", kind = "Method", detail = "int *" },
+    { label = "size() const", kind = "Method", detail = "int" },
+    { label = "size_type", kind = "TypeParameter" },
+    { label = "operator=(…) +1 overload", kind = "Method" },
+]
+
+[answers.taken_branch.completion]
+items = [
+    { label = "at(int index)", kind = "Method", detail = "int" },
+    { label = "data()", kind = "Method", detail = "int *" },
+    { label = "push_back(int value)", kind = "Method", detail = "void" },
+    { label = "size() const", kind = "Method", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.other_branch.completion]
+items = [
+    { label = "data()", kind = "Method", detail = "int *" },
+    { label = "at(long index) const", kind = "Method", detail = "int" },
+    { label = "first(int count) const", kind = "Method", detail = "Span" },
+    { label = "size() const", kind = "Method", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.past_eight.completion]
+items = [
+    { label = "extra", kind = "Field", detail = "int" },
+    { label = "value", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.non_class.completion]
+items = []
+
+[answers.passed_lambda.completion]
+items = [
+    { label = "get(int, double = 1.0)", kind = "Method", detail = "int" },
+    { label = "get(…) +1 overload", kind = "Method" },
+    { label = "template", kind = "Keyword" },
+]
+
+[answers.generic_lambda.completion]
+items = [
+    { label = "size() const", kind = "Method", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]

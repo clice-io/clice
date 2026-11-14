@@ -1,0 +1,17 @@
+[answers.macro_condition.completion]
+items = [
+    { label = "amount", kind = "Field", detail = "int" },
+    { label = "total() const", kind = "Method", detail = "int" },
+]
+
+[answers.requires_typename.completion]
+items = [
+    { label = "Value", kind = "Class" },
+    { label = "holder<class T>", kind = "Class" },
+]
+
+[answers.namespace_scope.completion]
+items = [
+    { label = "Value", kind = "Class" },
+    { label = "holder<class T>", kind = "Class" },
+]

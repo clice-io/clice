@@ -1,24 +1,24 @@
 ["cross gcc"."$ clice command convert -- riscv32-wch-elf-gcc -march=rv32imc_zba_xw -mabi=ilp32 -msmall-data-limit=8 -c main.c"]
 stdout = "riscv32-wch-elf-gcc --target=riscv32-wch-elf -fno-delayed-template-parsing -resource-dir ${RESOURCE} -march=rv32imc_zba -mabi=ilp32 -msmall-data-limit=8 ${WS}/main.c"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: riscv32-wch-elf-gcc; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: the compiler riscv32-wch-elf-gcc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
 warning: clang takes no RISC-V extension xw (LLVM has none, or an experimental one): it reads -march=rv32imc_zba_xw without it
-error: The command stays a driver command: Cannot find driver: riscv32-wch-elf-gcc
+error: The command stays a driver command: the compiler riscv32-wch-elf-gcc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["cross gcc"."$ clice command convert -- aarch64-none-elf-gcc -mcpu=cortex-a72.cortex-a53 -mabi=lp64 -c main.c"]
 stdout = "aarch64-none-elf-gcc --target=aarch64-none-elf -fno-delayed-template-parsing -resource-dir ${RESOURCE} -mcpu=cortex-a72 ${WS}/main.c"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: aarch64-none-elf-gcc; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: aarch64-none-elf-gcc
+warning: Cannot ask the compiler for its default settings: the compiler aarch64-none-elf-gcc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler aarch64-none-elf-gcc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["gcc modules"."$ clice command convert -- missing-g++ -std=c++20 -fmodules -c main.cpp"]
 stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-g++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-g++
+warning: Cannot ask the compiler for its default settings: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1

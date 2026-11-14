@@ -9,6 +9,7 @@ import :feature.code_completion;
 import :feature.documentation;
 import :index.query.locate;
 import :semantic.comment;
+import :semantic.decls;
 import :semantic.display;
 import :semantic.identity;
 import :semantic.template_resolver;
@@ -67,6 +68,13 @@ struct AtPointFinder : clang::RecursiveASTVisitor<AtPointFinder> {
         return true;
     }
 
+    bool VisitIfStmt(clang::IfStmt* branch) {
+        if(branch->isConstexpr() && (holds(branch->getThen()) || holds(branch->getElse()))) {
+            constexpr_branch = true;
+        }
+        return true;
+    }
+
     bool VisitCXXDependentScopeMemberExpr(clang::CXXDependentScopeMemberExpr* access) {
         if(at(access->getMemberLoc())) {
             member = access;
@@ -101,6 +109,8 @@ struct AtPointFinder : clang::RecursiveASTVisitor<AtPointFinder> {
     clang::CXXDependentScopeMemberExpr* member = nullptr;
 
     clang::NestedNameSpecifierLoc qualifier;
+
+    bool constexpr_branch = false;
 };
 
 /// The dependent expression at the completion point as the whole buffer's
@@ -114,7 +124,42 @@ struct AtPoint {
 
     /// Of a name a dependent scope qualifies, in an expression or a type.
     clang::NestedNameSpecifierLoc qualifier;
+
+    /// The point is in a branch of an `if constexpr`, which an instantiation
+    /// may discard.
+    bool constexpr_branch = false;
 };
+
+/// Whether `instantiation` discards the code at `loc`, a branch of an
+/// `if constexpr` it does not take, which its body keeps empty. A body Sema
+/// deferred is instantiated here.
+static bool discards(clang::Sema& sema,
+                     clang::FunctionDecl& instantiation,
+                     clang::SourceLocation loc) {
+    sema.InstantiateFunctionDefinition(instantiation.getPointOfInstantiation(), &instantiation);
+    auto& sources = sema.getSourceManager();
+    auto discarded = [&](this auto& self, const clang::Stmt* stmt) -> bool {
+        if(!stmt) {
+            return false;
+        }
+        if(auto* branch = llvm::dyn_cast<clang::IfStmt>(stmt); branch && branch->isConstexpr()) {
+            for(const auto* taken: {branch->getThen(), branch->getElse()}) {
+                auto* block = llvm::dyn_cast_or_null<clang::CompoundStmt>(taken);
+                if(block && block->body_empty() &&
+                   sources.isPointWithin(loc, block->getBeginLoc(), block->getEndLoc())) {
+                    return true;
+                }
+            }
+        }
+        for(const auto* child: stmt->children()) {
+            if(self(child)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    return discarded(instantiation.getBody());
+}
 
 /// A second compile of the whole buffer a completion runs on, for what only
 /// the code after the completion point tells. Its parse reads a name at the
@@ -125,9 +170,10 @@ public:
     explicit WholeBuffer(const CompilationParams& completion);
 
     /// The expression at the point, the template `templated` around it
-    /// instantiated as the code after the point first does: the compile
-    /// skips the focus file's function bodies but those that may instantiate
-    /// it, and stops at the call that does (CompilationParams::Instantiating).
+    /// instantiated as the code after the point does: the compile skips the
+    /// focus file's function bodies but those that may instantiate it, and
+    /// stops once calls instantiated it CompilationParams::Instantiating::limit
+    /// times.
     /// For the variable of a range-based `for`, `loop`, the statement there
     /// alone tells. None when nothing after the point calls the template, as
     /// `completion` has the macros before it, when the compile did not
@@ -231,6 +277,7 @@ auto WholeBuffer::instantiated(const clang::NamedDecl* templated,
         .context = finder.context,
         .member = finder.member,
         .qualifier = finder.qualifier,
+        .constexpr_branch = finder.constexpr_branch,
     };
 }
 
@@ -753,6 +800,42 @@ bool unqualified_name(clang::CodeCompletionContext& context) {
     }
 }
 
+/// The namespace the qualifier of the name being completed names, outermost
+/// first, inline and anonymous ones left out: as Sema resolves it, or as the
+/// text spells it while no declaration of it is visible (`std::` before any
+/// standard header). None for an unqualified name, and one a class
+/// qualifies.
+std::optional<std::vector<std::string>> qualifying_namespace(clang::Sema& sema,
+                                                             clang::CodeCompletionContext& context,
+                                                             llvm::StringRef content,
+                                                             std::uint32_t name) {
+    auto spec = context.getCXXScopeSpecifier();
+    if(!spec || (*spec)->isEmpty()) {
+        return std::nullopt;
+    }
+    if((*spec)->isInvalid()) {
+        auto written = written_scope(content, name, sema.getLangOpts());
+        if(!written) {
+            return std::nullopt;
+        }
+        return written->segments | views::transform(&llvm::StringRef::str) |
+               ranges::to<std::vector>();
+    }
+    auto* scope = sema.computeDeclContext(**spec);
+    if(!scope || !scope->isFileContext()) {
+        return std::nullopt;
+    }
+    std::vector<std::string> segments;
+    for(; !scope->isTranslationUnit(); scope = scope->getParent()) {
+        if(auto* space = llvm::dyn_cast<clang::NamespaceDecl>(scope);
+           space && !space->isInline() && !space->isAnonymousNamespace()) {
+            segments.push_back(space->getName().str());
+        }
+    }
+    ranges::reverse(segments);
+    return segments;
+}
+
 /// Whether `offset` of `content` lies in a global module fragment: after a
 /// leading `module;`, before the module declaration.
 bool in_global_fragment(llvm::StringRef content,
@@ -1118,6 +1201,17 @@ public:
                 typed_names = TypedNames::open(unit.sema(), typed);
             }
         }
+        // A tentative parse reaching the point mostly runs a completion of
+        // its recovery, whose names ProcessCodeCompleteResults drops: with
+        // nothing typed, Sema would read every name the loaded files
+        // declare for it. Sema asks the consumer whether to read them after
+        // it asks for the allocator, so that completion runs through
+        // `unloaded`, which reads none.
+        auto& completion = unit.sema().CodeCompletion();
+        if(whole_buffer && !typed_names && !processing && completion.CodeCompleter == this &&
+           unit.sema().getPreprocessor().isBacktrackEnabled()) {
+            completion.CodeCompleter = &unloaded;
+        }
         return info.getAllocator();
     }
 
@@ -1235,8 +1329,11 @@ public:
     /// Completes against what the code after the point instantiates
     /// `templated` with, as the compile of the whole buffer (WholeBuffer)
     /// sees it: the member access or the scope at the point found there,
-    /// resolved through the template's only instantiation, and completed by
-    /// its Sema. Whether that produced the reply. For the variable of a
+    /// resolved through an instantiation of the template, and completed by
+    /// its Sema. A function template instantiated more than once lists the
+    /// names every instantiation has, of at most
+    /// CompilationParams::Instantiating::limit of those that do not discard
+    /// the point. Whether that produced the reply. For the variable of a
     /// range-based `for` it is the statement there that tells, which the
     /// completion's own parse leaves unfinished.
     bool complete_instantiated(const clang::NamedDecl* templated,
@@ -1246,18 +1343,91 @@ public:
         if(!found) {
             return false;
         }
-        auto& other = found->unit.sema();
-        auto& ast = found->unit.context();
+        auto* pattern = enclosing_template(found->context);
+        auto calls = pattern ? decls::instantiations(*pattern->getDescribedFunctionTemplate())
+                             : llvm::SmallVector<clang::FunctionDecl*, 4>();
+        // LIMITATION: a generic lambda inside a function template is never
+        // instantiated itself, only the copies in the template's
+        // instantiations are: in its body, a name of the template's
+        // parameters completes through the template's only instantiation, and
+        // to nothing when the template has several.
+        if(calls.size() < 2) {
+            return complete_through(*found, nullptr, preferred, options, output, documented);
+        }
+        if(found->constexpr_branch) {
+            auto loc = found->member ? found->member->getMemberLoc() : found->qualifier.getEndLoc();
+            llvm::erase_if(calls, [&](clang::FunctionDecl* call) {
+                return discards(found->unit.sema(), *call, loc);
+            });
+        }
+        if(calls.empty()) {
+            return false;
+        }
+        calls.truncate(
+            std::min<std::size_t>(calls.size(), CompilationParams::Instantiating::limit));
+        // Each instantiation lists all its names: the reply's limit cuts the
+        // names they share.
+        auto every = options;
+        every.limit = 0;
+        auto name_of = [](const protocol::CompletionItem& item) -> llvm::StringRef {
+            return item.filter_text ? *item.filter_text : item.label;
+        };
+        std::vector<protocol::CompletionItem> items;
+        std::vector<const clang::NamedDecl*> described;
+        std::set<std::pair<std::string, std::string>> listed;
+        llvm::StringMap<std::size_t> having;
+        for(auto* call: calls) {
+            std::vector<protocol::CompletionItem> offered;
+            std::vector<const clang::NamedDecl*> offered_described;
+            if(!complete_through(*found, call, preferred, every, offered, offered_described)) {
+                return false;
+            }
+            llvm::StringSet<> names;
+            for(auto&& [item, decl]: views::zip(offered, offered_described)) {
+                names.insert(name_of(item));
+                auto& details = item.label_details;
+                auto overload = details && details->detail ? *details->detail : std::string();
+                if(listed.emplace(item.label, std::move(overload)).second) {
+                    items.push_back(std::move(item));
+                    described.push_back(decl);
+                }
+            }
+            for(auto& name: names) {
+                having[name.getKey()] += 1;
+            }
+        }
+        output.clear();
+        documented.clear();
+        for(auto&& [item, decl]: views::zip(items, described)) {
+            if(having.lookup(name_of(item)) == calls.size()) {
+                output.push_back(std::move(item));
+                documented.push_back(decl);
+            }
+        }
+        return true;
+    }
+
+    /// One completion of complete_instantiated at `found`, the parameters of
+    /// the template around it bound to `instantiation`'s arguments, or to
+    /// its only instantiation's without one, into `items`.
+    bool complete_through(const AtPoint& found,
+                          const clang::FunctionDecl* instantiation,
+                          clang::QualType preferred,
+                          const CodeCompletionOptions& run_options,
+                          std::vector<protocol::CompletionItem>& items,
+                          std::vector<const clang::NamedDecl*>& described) {
+        auto& other = found.unit.sema();
+        auto& ast = found.unit.context();
 
         const static CompileCompletion none;
         bool includes = false;
         bool more = false;
-        Builder nested(found->unit,
+        Builder nested(found.unit,
                        offset,
                        encoding,
-                       output,
-                       documented,
-                       options,
+                       items,
+                       described,
+                       run_options,
                        client,
                        none,
                        nullptr,
@@ -1271,16 +1441,16 @@ public:
         auto& completion = other.CodeCompletion();
         auto* consumer = completion.CodeCompleter;
         completion.CodeCompleter = &nested;
-        clang::Sema::ContextRAII entered(other, found->context);
+        clang::Sema::ContextRAII entered(other, found.context);
         // Where the parse stood, as far as Sema asks: whether the context is
         // a template.
         clang::Scope scope(nullptr,
                            clang::Scope::FnScope | clang::Scope::DeclScope,
                            other.getDiagnostics());
-        scope.setEntity(found->context);
-        types::TemplateResolver resolver(ast);
+        scope.setEntity(found.context);
+        types::TemplateResolver resolver(ast, {.instantiation = instantiation});
         bool answered = false;
-        if(auto* access = found->member) {
+        if(auto* access = found.member) {
             auto loc = access->getMemberLoc();
             auto object = resolver.member_object(access->getBase(), access->isArrow());
             auto* tag = object.isNull() ? nullptr : resolver.resolve_tag(object);
@@ -1291,9 +1461,9 @@ public:
                        : nullptr) {
                 answered = nested.complete_members(other, &scope, loc, record, object, {});
             }
-        } else if(auto qualifier = found->qualifier.getNestedNameSpecifier();
+        } else if(auto qualifier = found.qualifier.getNestedNameSpecifier();
                   qualifier.getKind() == clang::NestedNameSpecifier::Kind::Type) {
-            auto range = found->qualifier.getSourceRange();
+            auto range = found.qualifier.getSourceRange();
             auto* tag = resolver.resolve_tag(clang::QualType(qualifier.getAsType(), 0));
             tag = tag ? definition(other, range.getEnd(), tag) : nullptr;
             if(tag) {
@@ -1344,6 +1514,9 @@ public:
                 }
                 object = resolver.member_object(base, arrow);
                 tag = object.isNull() ? nullptr : resolver.resolve_tag(object);
+                // LIMITATION: only the specializations declared before the
+                // point count: a class that one declared after it may replace
+                // lists the primary template's members.
                 /// A class another specialization may replace once the
                 /// template is instantiated is the instantiation's to tell.
                 if(auto* templated = around_template(sema.CurContext);
@@ -1445,9 +1618,39 @@ public:
         // lookahead reached the block: the scope a preamble's PCH leaves
         // differs from the one a whole parse does.
         auto* lexer = sema.getPreprocessor().getCurrentFileLexer();
+        bool unloaded_reply = std::exchange(unloaded_run, false);
         if(context.getKind() == clang::CodeCompletionContext::CCC_Recovery ||
            (lexer && lexer->isLexingRawMode())) {
             return;
+        }
+        auto processed = llvm::make_scope_exit([&, was = processing] { processing = was; });
+        processing = true;
+        // A tentative parse that keeps what it parsed at the point
+        // (`requires { typename lib:: }`) made the completion that stands
+        // through `unloaded`: the names of a namespace qualifying it come
+        // again, read.
+        if(unloaded_reply && !resolving) {
+            if(auto spec = context.getCXXScopeSpecifier();
+               spec &&
+               (*spec)->getScopeRep().getKind() == clang::NestedNameSpecifier::Kind::Namespace) {
+                auto qualifier = **spec;
+                if(replace([&] {
+                       sema.CodeCompletion().CodeCompleteQualifiedId(
+                           sema.getCurScope(),
+                           qualifier,
+                           /*EnteringContext=*/false,
+                           context.isUsingDeclaration(),
+                           /*IsAddressOfOperand=*/false,
+                           /*IsInDeclarationContext=*/false,
+                           /*BaseType=*/{},
+                           context.getPreferredType());
+                   })) {
+                    return;
+                }
+            }
+            // LIMITATION: any other completion a tentative parse keeps lists
+            // no name of the loaded files when nothing is typed; none is
+            // known to.
         }
 
         if(resolving) {
@@ -1460,7 +1663,7 @@ public:
             more_names = typed_names && typed_names->more();
         }
 
-        if(candidate_count == 0) {
+        if(candidate_count == 0 && names.candidates.empty()) {
             return;
         }
 
@@ -1941,6 +2144,10 @@ public:
                         display::type(sema.getASTContext(), type, display_options).text;
                 }
             }
+            // LIMITATION: a function passed where a parameter takes a
+            // `std::function` still gets its parentheses, as in clangd; a
+            // variable holding a callable that returns one object pointer is
+            // called where another object pointer is expected.
             auto preferred = context.getPreferredType();
             if(is_callable) {
                 insert_call(item,
@@ -1962,6 +2169,9 @@ public:
                       llvm::isa<clang::ClassTemplateDecl,
                                 clang::TypeAliasTemplateDecl,
                                 clang::VarTemplateDecl>(declaration)) {
+                // LIMITATION: a class template given as a template template
+                // argument (`Use<Vec|>`) gets its arguments too
+                // (`Vec<${1:class T}>`), which the argument must not have.
                 auto snippet = build_snippet(ccs);
                 // Every parameter defaulted: nothing to fill in, but the
                 // name alone does not name a type.
@@ -2239,8 +2449,13 @@ public:
 
         // The names of other namespaces the prefix matches, with the
         // qualifier they need, or with the `import` or the `#include` the
-        // file needs to reach them.
-        if(options.all_scopes && !prefix.spelling.empty() && !resolving && unqualified) {
+        // file needs to reach them; after a qualifier naming a namespace,
+        // those of it the file does not reach yet, the name alone.
+        auto qualifying = unqualified
+                              ? std::nullopt
+                              : qualifying_namespace(sema, context, content, prefix.typed.begin);
+        if(options.all_scopes && !prefix.spelling.empty() && !resolving &&
+           (unqualified || qualifying)) {
             more_names = more_names || names.more_candidates;
             auto& ast = sema.getASTContext();
             // The namespaces around the completion point, outermost first: a
@@ -2379,7 +2594,9 @@ public:
                     }
                 }
             };
-            scan(ast.getTranslationUnitDecl());
+            if(unqualified) {
+                scan(ast.getTranslationUnitDecl());
+            }
 
             auto import_at = action::import_insertion(content, sema.getLangOpts());
             llvm::StringRef own = module ? module->getTopLevelModuleName() : "";
@@ -2430,6 +2647,9 @@ public:
                    })) {
                     continue;
                 }
+                if(qualifying && (candidate.macro || !ranges::equal(segments, *qualifying))) {
+                    continue;
+                }
                 // Sema offers the macros defined here already, and no
                 // include brings back one the file undefined; a macro is no
                 // declaration to look up.
@@ -2451,6 +2671,10 @@ public:
                 }
                 if(scope) {
                     auto found = visible(scope, candidate.name);
+                    // After a qualifier, Sema listed what the file reaches.
+                    if(qualifying && !found.empty()) {
+                        continue;
+                    }
                     for(auto* decl: found) {
                         decl = decl->getUnderlyingDecl();
                         if(offered.contains(decl->getCanonicalDecl()) ||
@@ -2494,23 +2718,26 @@ public:
                         continue;
                     }
                 }
-                std::size_t shared = 0;
-                while(shared < segments.size() && shared < around.size() &&
-                      segments[shared] == around[shared]->getName()) {
-                    shared += 1;
-                }
+                // The written qualifier names its scope already.
                 std::string qualifier;
-                if(shared < segments.size() ? shadowed(segments[shared], shared)
-                                            : !candidate.macro && named_here(candidate.name)) {
-                    // C names it by no other spelling.
-                    if(!language.CPlusPlus) {
-                        continue;
+                if(!qualifying) {
+                    std::size_t shared = 0;
+                    while(shared < segments.size() && shared < around.size() &&
+                          segments[shared] == around[shared]->getName()) {
+                        shared += 1;
                     }
-                    qualifier = "::";
-                    shared = 0;
-                }
-                for(const auto& segment: views::drop(segments, shared)) {
-                    qualifier += segment + "::";
+                    if(shared < segments.size() ? shadowed(segments[shared], shared)
+                                                : !candidate.macro && named_here(candidate.name)) {
+                        // C names it by no other spelling.
+                        if(!language.CPlusPlus) {
+                            continue;
+                        }
+                        qualifier = "::";
+                        shared = 0;
+                    }
+                    for(const auto& segment: views::drop(segments, shared)) {
+                        qualifier += segment + "::";
+                    }
                 }
                 Candidate item{
                     .label = qualifier + candidate.name,
@@ -2520,6 +2747,9 @@ public:
                     .relevance = 0.25F * priority_weight(clang::CCP_Declaration),
                 };
                 bool function = candidate.kind == protocol::CompletionItemKind::Function;
+                // LIMITATION: an overload only the index knows, of a name the
+                // file already sees, joins that name's bundle: accepting the
+                // bundle adds no #include for it.
                 if(options.bundle_overloads && function) {
                     item.bundle = item.label;
                 }
@@ -2717,6 +2947,53 @@ private:
 
     clang::CodeCompletionTUInfo info;
 
+    /// The consumer Sema completes through in a tentative parse
+    /// (getAllocator): Builder's results, none of the loaded files' names
+    /// read.
+    class Unloaded final : public clang::CodeCompleteConsumer {
+    public:
+        explicit Unloaded(Builder& builder) :
+            clang::CodeCompleteConsumer(without_external(builder.CodeCompleteOpts)),
+            builder(builder) {}
+
+        /// A completion starting: one Sema left without a reply did not
+        /// swap the builder back.
+        clang::CodeCompletionAllocator& getAllocator() final {
+            builder.unit.sema().CodeCompletion().CodeCompleter = &builder;
+            return builder.getAllocator();
+        }
+
+        clang::CodeCompletionTUInfo& getCodeCompletionTUInfo() final {
+            return builder.info;
+        }
+
+        void ProcessCodeCompleteResults(clang::Sema& sema,
+                                        clang::CodeCompletionContext context,
+                                        clang::CodeCompletionResult* candidates,
+                                        unsigned candidate_count) final {
+            sema.CodeCompletion().CodeCompleter = &builder;
+            builder.unloaded_run = true;
+            builder.ProcessCodeCompleteResults(sema, context, candidates, candidate_count);
+        }
+
+    private:
+        static clang::CodeCompleteOptions without_external(clang::CodeCompleteOptions options) {
+            options.LoadExternal = false;
+            return options;
+        }
+
+        Builder& builder;
+    };
+
+    Unloaded unloaded{*this};
+
+    /// The completion being processed ran through `unloaded`.
+    bool unloaded_run = false;
+
+    /// A reply is being processed: the completions it runs itself go
+    /// through no `unloaded`.
+    bool processing = false;
+
     bool resolving = false;
 
     bool resolved_candidates = false;
@@ -2782,6 +3059,10 @@ auto code_complete(CompilationParams params,
         items = std::move(kept);
         documented = std::move(kept_documented);
     }
+    // LIMITATION: every listed item's documentation is read on each request,
+    // its header lexed again for the comment: in a large file that is some
+    // 20 ms of a completion, 40 to 70 with nothing typed, and part of why it
+    // trails clangd's. A lazy completionItem/resolve would spare it.
     for(auto [item, decl]: views::zip(items, documented)) {
         if(!decl) {
             continue;

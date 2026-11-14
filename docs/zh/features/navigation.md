@@ -472,13 +472,13 @@ tests/navigation/references/06_access_kinds
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#177 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **引用的上下文**
 
 每条引用传给编辑器时只是一个位置，不附带包含它的函数
 
-对于声明支持该扩展的客户端，clangd 会通过扩展字段（`containerName`）附上所在的函数；clice 尚未读取这一声明。`clice query references` 会给出每条引用所在的函数。
+`clice query references` 会给出每条引用所在的函数。
 
 ```case
 tests/navigation/references/07_enclosing_functions
@@ -1442,11 +1442,11 @@ tests/document_highlights/symbols/03_macros
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1921 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **控制流关键字**
 
-尚不会高亮显示 `break` 或 `continue` 所离开的循环
+`break` 或 `continue` 不会高亮显示它所离开的循环
 
 ```case
 tests/document_highlights/symbols/08_control_flow
@@ -1492,7 +1492,7 @@ tests/document_highlights/access_kinds/03_reference_arguments
 
 通过 `object.member` 写入时，会写入成员并读取对象
 
-指定初始化器（designated initializer）或构造函数的成员初始化器会引用字段名称，但不算作写入。匿名联合体的字段与其他字段一样高亮显示。
+指定初始化器（designated initializer）或构造函数的成员初始化器会写入字段。匿名联合体的字段与其他字段一样高亮显示。
 
 ```case
 tests/document_highlights/access_kinds/06_member_access
@@ -1716,7 +1716,7 @@ tests/workspace_symbols/projects/03_worktree_copies
 
 ## 切换源文件／头文件
 
-打开与当前文件配对的文件：头文件的源文件、源文件的头文件、模块接口的实现单元、实现单元的接口。在 VS Code 中，可以从编辑器的右键菜单选择 **Switch Source/Header**，也可以按 `Alt+O`，或在命令面板中运行 **clice: Switch Source/Header**；Neovim 中是 `:LspCliceSwitchSourceHeader`，命令行上则由 `clice query counterparts <file>` 给出同样的答案。Zed 不允许扩展添加命令，它自带的 _switch source header_ 只适用于 clangd。
+打开与当前文件配对的文件：头文件的源文件、源文件的头文件、模块接口的实现单元、实现单元的接口。在 VS Code 中，可以从编辑器的右键菜单选择 **Switch Header and Source (Module Interface and Implementation)**，也可以按 `Alt+O`，或在命令面板中运行 **clice: Switch Header and Source (Module Interface and Implementation)**；Neovim 中是 `:LspCliceSwitchSourceHeader`，命令行上则由 `clice query counterparts <file>` 给出同样的答案。Zed 不允许扩展添加命令，它自带的 _switch source header_ 只适用于 clangd。
 
 候选文件来自构建和索引已经掌握的信息，因此给出答案无需编译任何东西：另一侧的同名文件（位于该文件自己的目录中，或者位于工作区的其他位置、但两者之间有包含关系）、一方声明而另一方定义的那些声明，以及模块声明。每个候选都附有理由。最佳候选是唯一的候选，或者胜过其余每个候选时，编辑器会直接打开它。胜过对方需要同时满足：在共享声明和同名这两项理由中，对方具备的它都具备；共享声明不比对方少；并且理由比对方多一项，或者在双方都有共享声明时达到对方的两倍，或者在双方都没有共享声明时具备对方没有的模块配对。否则编辑器会列出这些候选，供用户挑选。
 

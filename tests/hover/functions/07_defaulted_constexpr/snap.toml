@@ -1,0 +1,29 @@
+[answers.constructor.hover]
+markdown = '''
+**method** `Point` · struct `Point`
+
+```cpp
+constexpr Point() = default
+```
+'''
+range = "constexpr ⟦Point⟧() = default;"
+
+[answers.equal.hover]
+markdown = '''
+**method** `operator==` · struct `Point`
+
+```cpp
+constexpr bool operator==(const Point&) const = default
+```
+'''
+range = "constexpr bool operator⟦==⟧(const Point&) const = default;"
+
+[answers.unwritten.hover]
+markdown = '''
+**method** `Plain` · struct `Plain`
+
+```cpp
+Plain() = default
+```
+'''
+range = "⟦Plain⟧() = default;"

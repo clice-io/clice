@@ -10,6 +10,7 @@ import :support.logging;
 import :support.text;
 import :syntax.dependency_graph;
 import :vfs.file_table;
+import :vfs.path;
 
 namespace clice {
 
@@ -338,6 +339,41 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
              report.scan_cache_hits,
              includes,
              counted(modules, "module", "modules"));
+    if(!report.missing.empty()) {
+        constexpr std::size_t named = 5;
+        auto paths = report.missing | views::take(named) |
+                     views::transform([&](Fid file) { return file_table.display(file); });
+        bool one = report.missing.size() == 1;
+        LOG_WARN(
+            "{} the compile commands name {} not exist ({}{}): the database is older than "
+            "the tree, or the build writes {} later",
+            counted(report.missing.size(), "file", "files"),
+            one ? "does" : "do",
+            llvm::join(paths, ", "),
+            report.missing.size() > named ? ", ..." : "",
+            one ? "it" : "them");
+    }
+    auto not_utf8 = report.not_utf8 | views::filter([&](Fid file) {
+                        return !root.empty() && path::is_within(file_table.resolve(file), root);
+                    }) |
+                    ranges::to<std::vector>();
+    if(!not_utf8.empty()) {
+        constexpr std::size_t named = 5;
+        auto paths = not_utf8 | views::take(named) |
+                     views::transform([&](Fid file) { return file_table.display(file); });
+        bool one = not_utf8.size() == 1;
+        LOG_GUIDANCE(
+            "{} of the project {} not UTF-8 ({}{}): clice reads source as UTF-8, so "
+            "positions in {} land off and {} non-ASCII text shows garbled; save {} as "
+            "UTF-8",
+            counted(not_utf8.size(), "file", "files"),
+            one ? "is" : "are",
+            llvm::join(paths, ", "),
+            not_utf8.size() > named ? ", ..." : "",
+            one ? "it" : "them",
+            one ? "its" : "their",
+            one ? "it" : "them");
+    }
     changes.scan = std::move(report);
     return changes;
 }

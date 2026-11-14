@@ -282,7 +282,7 @@ exit = 0
   `value`. `parts` picks an answer's optional parts (a completion's
   `insert`, `filter`, `edit`, `edits`, `documentation`; a symbol's `detail`, `range`; a hint's `kind`,
   `padding`, `links`). Everything shown reads the copy's root `${WS}`, a
-  worker's cause of death `${CRASH}`.
+  worker's cause of death `${CRASH}`, a session's log directory `${SESSION}`.
 - **Commands** are a block under the command line, `$ clice …`: `stdout`
   (JSON pretty-printed), `stderr` (a log line only at warning and above, as
   `warning: …`), `exit` (or `killed` and the signal), and `files`, each file

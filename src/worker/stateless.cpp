@@ -119,20 +119,49 @@ static std::expected<std::string, std::string> precompiled_output(llvm::StringRe
     return path;
 }
 
+/// The errors a unit compiled with, each at the start of the range clang
+/// marks, as collect_errors takes them. One no file on disk holds (the
+/// command line's, the built-in buffer's) has no place.
+static std::vector<worker::LocatedMessage> located_errors(CompilationUnit& unit) {
+    std::vector<worker::LocatedMessage> errors;
+    for(auto& diag: unit.diagnostics()) {
+        if(diag.id.level < DiagnosticLevel::Error ||
+           (unit.skips_bodies() && ranges::contains(unused_declaration_warnings, diag.id.value))) {
+            continue;
+        }
+        auto& error = errors.emplace_back(worker::LocatedMessage{.message = diag.message});
+        if(diag.fid.isValid() && !unit.is_builtin_file(diag.fid)) {
+            auto position =
+                unit.positions(diag.fid).position(diag.range.begin, PositionEncoding::UTF8);
+            error.file = unit.file_path(diag.fid).str();
+            error.line = position->line + 1;
+            error.column = position->character + 1;
+            error.offset = diag.range.begin;
+        }
+    }
+    return errors;
+}
+
+/// The messages of `errors`, one after another.
+static std::string joined(llvm::ArrayRef<worker::LocatedMessage> errors) {
+    return llvm::join(errors | views::transform(&worker::LocatedMessage::message), "; ");
+}
+
 /// The reply of a finished PCH or PCM build, `result` holding the index it
 /// sends. Success hands the master the path to commit; failure removes the
 /// half-written file and classifies the errors — `internal_error` marks a
 /// failure of the worker's own I/O, never the user's code, and must not be
 /// downgraded to an expected build failure. Either way the reply carries
 /// the build's inputs.
-static worker::PrecompiledBuildResult finish_precompiled(worker::PrecompiledBuildResult result,
-                                                         llvm::StringRef label,
-                                                         bool success,
-                                                         const std::string& tmp_path,
-                                                         std::int64_t started_at,
-                                                         const auto& deps,
-                                                         llvm::ArrayRef<std::string> errors,
-                                                         bool internal_error) {
+static worker::PrecompiledBuildResult
+    finish_precompiled(worker::PrecompiledBuildResult result,
+                       llvm::StringRef label,
+                       bool success,
+                       const std::string& tmp_path,
+                       std::int64_t started_at,
+                       const auto& deps,
+                       llvm::ArrayRef<worker::LocatedMessage> errors,
+                       bool internal_error) {
     result.started_at = started_at;
     result.deps = deps;
     if(success) {
@@ -146,8 +175,7 @@ static worker::PrecompiledBuildResult finish_precompiled(worker::PrecompiledBuil
     // unwritable or full mid-session) counts as the user's error: the master keeps
     // the failure on unchanged inputs until a consumer is saved.
     result.has_user_errors = !internal_error && !errors.empty();
-    result.error =
-        errors.empty() ? std::format("{} compilation failed", label) : llvm::join(errors, "; ");
+    result.error = errors.empty() ? std::format("{} compilation failed", label) : joined(errors);
     if(result.has_user_errors) {
         result.first_error = errors.front();
     }
@@ -212,9 +240,9 @@ static worker::PrecompiledBuildResult
     auto started_at = unit->started_at().count();
     auto deps = precompiled_deps(*unit, params.whole_file);
 
-    std::vector<std::string> errors;
+    std::vector<worker::LocatedMessage> errors;
     if(!success)
-        errors = collect_errors(*unit);
+        errors = located_errors(*unit);
 
     worker::PrecompiledBuildResult result;
     bool internal_error = false;
@@ -247,7 +275,7 @@ static worker::PrecompiledBuildResult
         if(auto error = write_preamble_index(as_chars(blob), params.indexing.output_path)) {
             success = false;
             internal_error = true;
-            errors = {std::move(*error)};
+            errors = {worker::LocatedMessage{.message = std::move(*error)}};
         }
     }
     auto state_write_ms = state_write_timer.ms();
@@ -267,7 +295,7 @@ static worker::PrecompiledBuildResult
         LOG_WARN("The PCH of {} failed to build in {} ms: {}",
                  params.file,
                  timer.ms(),
-                 llvm::join(errors, "; "));
+                 joined(errors));
     }
     return finish_precompiled(std::move(result),
                               "PCH",
@@ -307,9 +335,9 @@ static worker::PrecompiledBuildResult
     auto started_at = unit->started_at().count();
     auto deps = precompiled_deps(*unit, true);
 
-    std::vector<std::string> errors;
+    std::vector<worker::LocatedMessage> errors;
     if(!success)
-        errors = collect_errors(*unit);
+        errors = located_errors(*unit);
 
     worker::PrecompiledBuildResult result;
     std::size_t index_bytes = 0;
@@ -342,7 +370,7 @@ static worker::PrecompiledBuildResult
         LOG_WARN("Module {} failed to build in {} ms: {}",
                  params.module_name,
                  timer.ms(),
-                 llvm::join(errors, "; "));
+                 joined(errors));
     }
     return finish_precompiled(std::move(result),
                               "PCM",
@@ -399,27 +427,6 @@ static void collect_tidy_diagnostics(CompilationUnit& unit,
             diagnostic.notes.push_back(locate(note));
         }
     }
-}
-
-/// The errors a unit compiled with, each at the start of the range clang
-/// marks. One no file on disk holds (the command line's, the built-in
-/// buffer's) has no place.
-static std::vector<worker::LocatedMessage> located_errors(CompilationUnit& unit) {
-    std::vector<worker::LocatedMessage> errors;
-    for(auto& diag: unit.diagnostics()) {
-        if(diag.id.level < DiagnosticLevel::Error) {
-            continue;
-        }
-        auto& error = errors.emplace_back(worker::LocatedMessage{.message = diag.message});
-        if(diag.fid.isValid() && !unit.is_builtin_file(diag.fid)) {
-            auto position =
-                unit.positions(diag.fid).position(diag.range.begin, PositionEncoding::UTF8);
-            error.file = unit.file_path(diag.fid).str();
-            error.line = position->line + 1;
-            error.column = position->character + 1;
-        }
-    }
-    return errors;
 }
 
 static worker::IncludeTreeResult

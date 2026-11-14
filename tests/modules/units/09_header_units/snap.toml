@@ -3,16 +3,16 @@ errors = [
     {
         at = 'import ⟦"local.h"⟧;',
         severity = "error",
-        message = 'header units are not supported; "local.h" is not imported',
-        source = "clang",
-        code = "err_header_import_not_header_unit",
+        message = 'clice does not build header units, so "local.h" is not imported; #include it instead',
+        source = "clice",
+        code = "header-unit",
     },
     {
         at = "import ⟦<⟧util.h>;",
         severity = "error",
-        message = "header units are not supported; <util.h> is not imported",
-        source = "clang",
-        code = "err_header_import_not_header_unit",
+        message = "clice does not build header units, so <util.h> is not imported; #include it instead",
+        source = "clice",
+        code = "header-unit",
     },
     {
         at = "return ⟦local⟧() + util();",

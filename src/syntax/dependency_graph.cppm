@@ -274,6 +274,12 @@ struct ScanReport {
     std::size_t scan_cache_hits = 0;
 
     std::size_t waves = 0;
+
+    /// The files to scan that do not exist on disk, in scan order.
+    std::vector<Fid> missing;
+
+    /// The files scanned whose text is not UTF-8, in scan order.
+    std::vector<Fid> not_utf8;
 };
 
 /// Run the wavefront BFS scan from `units` — the translation units to scan,

@@ -1028,6 +1028,10 @@ private:
     std::vector<std::pair<std::uint32_t, std::uint32_t>> entries;
 };
 
+// LIMITATION: while a member access is typed (`return copy.`), clang's parser
+// drops the whole expression, so the map has no node for the object before
+// the dot: it loses its color, hover and navigation on every `.` until the
+// member's name is written, as in clangd (clice-io/clice#1057, item 24).
 Semantics Semantics::build(CompilationUnit& unit, SemanticsOptions options) {
     Semantics semantics;
     SemanticsBuilder::build(semantics, unit, options);
@@ -2231,7 +2235,13 @@ llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semant
 
 bool is_written(const Semantics& semantics, std::uint32_t index) {
     auto& entry = semantics.node(index);
+    if(auto* init = entry.node.get<clang::CXXCtorInitializer>()) {
+        return init->isAnyMemberInitializer();
+    }
     auto* expr = entry.node.get<clang::Expr>();
+    if(llvm::isa_and_present<clang::DesignatedInitExpr>(expr)) {
+        return true;
+    }
     if(!llvm::isa_and_present<clang::DeclRefExpr,
                               clang::MemberExpr,
                               clang::ObjCIvarRefExpr,

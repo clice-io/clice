@@ -109,6 +109,20 @@ tests/compile/encoding/02_line_endings
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**其他编码**
+
+以 UTF-8 以外的编码保存的文件按 UTF-8 读取，clice 会点名提示一次
+
+这类文件中超出 ASCII 的字节不是有效的 UTF-8：编辑器把每个这样的字节显示为替换字符，同一行中位于其后的位置都会错位。clice 加载项目时，会把它发现的非 UTF-8 文件列出一次；把这些文件另存为 UTF-8 即可解决。
+
+```case
+tests/compile/encoding/03_legacy_bytes
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 磁盘上的文件变化

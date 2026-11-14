@@ -91,7 +91,7 @@ void LSPClient::register_document_sync() {
         if(!path) {
             return;
         }
-        srv.save_document(srv.files.intern(*path));
+        srv.save_document(srv.files.intern(*path), !pull_diagnostics);
 
         LOG_INFO("Saved {}", *path);
     });

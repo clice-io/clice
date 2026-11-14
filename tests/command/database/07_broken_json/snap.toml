@@ -1,0 +1,11 @@
+[command."$ clice command convert compile_commands.json"]
+stderr = '''
+warning: The compilation database compile_commands.json is not valid JSON at line 3, column 69 (the JSON document has an improper structure: missing or superfluous commas, braces, missing keys, etc); it is not loaded
+error: compile_commands.json cannot be loaded; the warning above says why
+'''
+exit = 1
+
+[editor.guidance]
+value = [
+    "The compilation database ${WS}/compile_commands.json is not valid JSON at line 3, column 69 (the JSON document has an improper structure: missing or superfluous commas, braces, missing keys, etc); it is not loaded",
+]

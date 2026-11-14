@@ -1,0 +1,70 @@
+[answers.qualified.completion]
+items = [
+    {
+        label = "vector",
+        kind = "Class",
+        insert = "vector<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-10", text = '#include "containers.h"' },
+        ],
+    },
+]
+
+[answers.global.completion]
+items = [
+    {
+        label = "vector",
+        kind = "Class",
+        insert = "vector<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-11", text = '#include "containers.h"' },
+        ],
+    },
+]
+
+[answers.nested.completion]
+items = [
+    {
+        label = "Vessel",
+        kind = "Class",
+        insert = "Vessel",
+        edits = [
+            { at = "⟦⟧ @-12", text = '#include "containers.h"' },
+        ],
+    },
+]
+
+[answers.namespace_alias.completion]
+items = []
+
+[answers.macro_qualifier.completion]
+items = [
+    {
+        label = "vector",
+        kind = "Class",
+        insert = "vector<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧ @-14", text = '#include "containers.h"' },
+        ],
+    },
+]
+
+[answers.undeclared_namespace.completion]
+items = [
+    {
+        label = "Gadget",
+        kind = "Class",
+        insert = "Gadget",
+        edits = [
+            { at = "⟦⟧ @-15", text = '#include "gadgets.h"' },
+        ],
+    },
+]
+
+[answers.class_scope.completion]
+items = [
+    { label = "vessel_count", kind = "Variable", detail = "int", insert = "vessel_count" },
+]

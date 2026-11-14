@@ -4,6 +4,7 @@ import :compile.diagnostic;
 import :feature.diagnostics;
 import :feature.protocol;
 import :support.json;
+import :support.text;
 import :syntax.lexer;
 import :vfs.path;
 
@@ -216,6 +217,9 @@ private:
         if(request != main.notes.end()) {
             return relocate(main, diagnostic, request->range, DiagnosticOrigin::Template);
         }
+        if(main.requested) {
+            return relocate(main, diagnostic, *main.requested, DiagnosticOrigin::Template);
+        }
         bool in_context = unit.from_context(main.fid);
         if(main.error_by_default) {
             if(in_context) {
@@ -351,7 +355,7 @@ auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic> {
     auto focus = unit.focus_file();
     Presenter presenter(unit);
     for(const auto& main: unit.diagnostics()) {
-        bool skippable = !focus.contains(main.fid) ||
+        bool skippable = !focus.contains(main.fid) || main.requested ||
                          ranges::any_of(main.notes,
                                         [](const Diagnostic& note) {
                                             return instantiation_note(note.id.value);
@@ -410,18 +414,44 @@ auto shown_diagnostics(const CompileDiagnostics& compiled, const DiagnosticsOpti
     // never gets the note, and neither does a guessed command that worked.
     // The includer's own code compiles under its own command: what it
     // misses, no command for the file would find.
+    bool not_found = ranges::any_of(diagnostics, is_file_not_found);
     auto source = compiled.source;
-    if(source != CommandSource::Database && source != CommandSource::Default &&
-       ranges::any_of(diagnostics, is_file_not_found)) {
+    if(source != CommandSource::Database && source != CommandSource::Default && not_found) {
+        auto command = source == CommandSource::Fallback
+                           ? std::string("a default command")
+                           : std::format("the command of {}", compiled.command_of);
+        std::string message;
+        if(compiled.outside_project) {
+            message = std::format(
+                "This file lies outside the project, so clice compiles it with {}, which may miss "
+                "its include paths.",
+                command);
+        } else if(source == CommandSource::Host) {
+            message = std::format(
+                "This header compiles under the command of {}, which includes it, and some of "
+                "its includes are not found there: {} likely misses them as well.",
+                compiled.command_of,
+                compiled.command_of);
+        } else {
+            message = std::format(
+                "compile_commands.json has no entry for this file, so clice compiles it with {}, "
+                "which may miss its include paths. Add the file to the build and regenerate "
+                "compile_commands.json, or give it a command with a `default_command` rule in "
+                "clice.toml.",
+                command);
+        }
         warn("inferred-compile-command",
-             std::format("No compilation database entry for this file (compile command was {}), "
-                         "so some includes may not be found. Configure compile_commands.json for "
-                         "accurate diagnostics.",
-                         source == CommandSource::Fallback ? "synthesized from defaults"
-                         : source == CommandSource::Borrowed
-                             ? "borrowed from a nearby translation unit"
-                             : "inferred from an including file"),
+             std::move(message),
              "https://docs.clice.io/clice/guide/quick-start#project-setup");
+    }
+    // A database written before the build directory was removed, or on
+    // another machine.
+    if(!compiled.missing_directory.empty() && not_found) {
+        warn("missing-directory",
+             std::format("This file's compile command runs in {}, which does not exist, so the "
+                         "paths it gives relative to it find nothing: regenerate "
+                         "compile_commands.json.",
+                         compiled.missing_directory));
     }
     // The includer context the header needed but could not get: the
     // diagnostics below miss what it provides.
@@ -436,9 +466,10 @@ auto shown_diagnostics(const CompileDiagnostics& compiled, const DiagnosticsOpti
     // (system headers, macros, the default standard) is clang's idea of it.
     if(!compiled.query_failure.empty()) {
         warn("toolchain-query-failed",
-             std::format("The compiler of this file's compile command could not be queried ({}), "
-                         "so clang read the command on its own: system headers, predefined macros "
-                         "and the default standard may differ from the compiler's.",
+             std::format("clice cannot ask the compiler of this file's compile command for its "
+                         "settings: {}. clang read the command on its own, so system headers, "
+                         "predefined macros and the default standard may differ from the "
+                         "compiler's.",
                          compiled.query_failure));
     }
     return diagnostics;
@@ -502,19 +533,26 @@ const ModuleFailure* explain_failed_import(std::string& message,
         return nullptr;
     }
     llvm::ArrayRef<std::string> chain = failure->chain;
-    message.clear();
-    for(const auto& module: chain.take_front(failure->cycle.value_or(chain.size()))) {
-        message += std::format("could not build module '{}': ", module);
-    }
+    auto path = [](llvm::ArrayRef<std::string> modules) {
+        return llvm::join(modules, " → ");
+    };
+    // The module that does not build, and the imports that reach it.
+    auto failed = failure->cycle.value_or(chain.size() - 1);
     if(failure->cycle) {
-        auto cycle = chain.drop_front(*failure->cycle);
-        message += std::format("cyclic dependency in module '{}': ", cycle.front());
-        for(const auto& module: cycle) {
-            message += std::format("{} -> ", module);
-        }
-        message += cycle.front();
+        auto cycle = chain.drop_front(failed);
+        message = std::format("module '{}' does not build: its imports cycle back to it ({} → {})",
+                              cycle.front(),
+                              path(cycle),
+                              cycle.front());
     } else {
-        message += failure->error;
+        message = std::format("module '{}' does not build: {}", chain.back(), failure->error);
+        if(failure->more_errors != 0) {
+            message += std::format(" (and {})",
+                                   counted(failure->more_errors, "more error", "more errors"));
+        }
+    }
+    if(failed != 0) {
+        message += std::format("; imported through {}", path(chain.take_front(failed + 1)));
     }
     return &*failure;
 }
@@ -526,11 +564,12 @@ void explain_failed_imports(std::vector<FileDiagnostic>& diagnostics,
             continue;
         }
         if(auto* failure = explain_failed_import(diagnostic.message, failures)) {
-            // As clang codes it: a cycle only where the imported module is
-            // on it, not built where the message starts with one that is not.
-            diagnostic.id = failure->cycle == 0 ? clang::diag::err_module_cycle
-                                                : clang::diag::err_module_not_built;
-            diagnostic.code = failure->cycle == 0 ? "err_module_cycle" : "err_module_not_built";
+            diagnostic.source = DiagnosticSource::Clice;
+            diagnostic.id = 0;
+            diagnostic.code = failure->cycle ? "module-cycle" : "module-not-built";
+            if(failure->error_at) {
+                diagnostic.notes.push_back(*failure->error_at);
+            }
         }
     }
 }
@@ -553,11 +592,18 @@ FileDiagnostic ambiguous_module(const ModuleChoice& choice, llvm::StringRef text
     return warning;
 }
 
-FileDiagnostic invalid_tidy_config(llvm::StringRef error) {
+FileDiagnostic invalid_tidy_config(const tidy::TidyResolution& resolution) {
     auto warning = file_warning(
         std::format("clang-tidy does not run on this file until its configuration parses. {}",
-                    error));
+                    resolution.error));
     warning.code = "invalid-clang-tidy-config";
+    for(const auto& location: resolution.locations) {
+        warning.notes.push_back({
+            .path = location.path,
+            .range = {location.offset, location.offset},
+            .message = location.message,
+        });
+    }
     return warning;
 }
 
@@ -568,7 +614,7 @@ FileDiagnostic index_unavailable(llvm::StringRef cause) {
         cause));
 }
 
-FileDiagnostic crash_note(const CrashNote& note) {
+FileDiagnostic crash_note(const CrashNote& note, llvm::StringRef reports) {
     // The work that crashed, and the feature it stops.
     auto [work, stopped] = [&]() -> std::pair<llvm::StringRef, llvm::StringRef> {
         switch(note.kind) {
@@ -602,13 +648,21 @@ FileDiagnostic crash_note(const CrashNote& note) {
                                 : "until this file or a header it includes changes, or until you "
                                   "save it";
     auto repeats = note.count > 1 ? std::format(" {} times in a row", note.count) : std::string();
-    return file_warning(
-        std::format("clice's worker crashed{} while {} this file ({}). {} paused here {}.",
+    auto report =
+        reports.empty() ? std::string("clice's log") : std::format("the log directory {}", reports);
+    auto warning = file_warning(
+        std::format("clice's worker crashed{} while {} this file ({}). {} paused here {}. This is "
+                    "a bug in clice: please report it at {}, with the crash report from {}.",
                     repeats,
                     work,
                     note.cause,
                     stopped,
-                    retry));
+                    retry,
+                    issue_tracker,
+                    report));
+    warning.code = "worker-crash";
+    warning.link = issue_tracker.str();
+    return warning;
 }
 
 FileDiagnostic unsaved_inputs_note(llvm::ArrayRef<std::string> files) {
@@ -696,7 +750,9 @@ protocol::Diagnostic to_protocol(
 }
 
 static bool counts_as_error(DiagnosticSource source, std::uint32_t id, DiagnosticLevel level) {
-    return source == DiagnosticSource::Clang &&
+    // clice's own errors are the compiler's it words itself: an import that
+    // failed.
+    return source != DiagnosticSource::ClangTidy &&
            (level >= DiagnosticLevel::Error || id == clang::diag::warn_decl_in_param_list);
 }
 

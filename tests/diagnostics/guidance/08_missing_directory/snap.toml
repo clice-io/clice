@@ -1,0 +1,24 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = '⟦⟧#include "answer.h"',
+        severity = "warning",
+        message = "This file's compile command runs in ${WS}/out/gone, which does not exist, so the paths it gives relative to it find nothing: regenerate compile_commands.json.",
+        source = "clice",
+        code = "missing-directory",
+    },
+    {
+        at = '#include ⟦"answer.h"⟧',
+        severity = "error",
+        message = "'answer.h' file not found",
+        source = "clang",
+        code = "err_pp_file_not_found",
+    },
+    {
+        at = "return ⟦answer⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'answer'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]

@@ -678,6 +678,9 @@ std::string template_head(CompilationUnit& unit,
     // written: a name in them that does not resolve where the definition goes
     // (outside its namespace, past an `#undef`) breaks the build.
     if(auto* requires_clause = params->getRequiresClause()) {
+        // LIMITATION: a requires-clause a macro writes (`template <class T>
+        // REQUIRES(Small<T>) struct Holder`) is left out, and clang rejects the
+        // definition this head opens; the action should not be offered then.
         if(auto text = spelled_text(unit, requires_clause->getSourceRange())) {
             os << " requires " << *text;
         }
@@ -732,6 +735,9 @@ std::vector<PrintedName> printed_names(llvm::StringRef text, const clang::LangOp
 }
 
 std::optional<LocalSourceRange> editable_range(CompilationUnit& unit, clang::SourceRange range) {
+    // LIMITATION: no action edits code written in a macro argument: `auto` in
+    // `WRAP(auto q = make_widget();)` gets no "Replace 'auto'", though a node
+    // written whole in an argument expanded once could take one.
     if(range.getBegin().isMacroID() || range.getEnd().isMacroID()) {
         return std::nullopt;
     }

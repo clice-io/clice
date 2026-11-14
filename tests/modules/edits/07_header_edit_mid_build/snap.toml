@@ -3,8 +3,8 @@ errors = [
     {
         at = "import ⟦A;⟧",
         severity = "error",
-        message = "could not build module 'A': no member named 'helper' in the global namespace",
-        source = "clang",
-        code = "err_module_not_built",
+        message = "module 'A' does not build: no member named 'helper' in the global namespace",
+        source = "clice",
+        code = "module-not-built",
     },
 ]

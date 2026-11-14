@@ -10,7 +10,6 @@ import :index.shard;
 import :index.query.site;
 import :index.symbol;
 import :index.search.locator;
-import :index.query.text;
 import :semantic.symbol;
 import :syntax.source_text;
 import :vfs.file_table;
@@ -56,11 +55,11 @@ std::optional<index::LineColumn> after_members(const index::IndexQuery& query,
                            [&](const index::SymbolInfo& each) { return each.hash == container; })) {
             return true;
         }
-        auto definition = index::declared_text(query, hash, host, RelationKind::Definition);
-        if(!definition) {
+        auto extent = index::extent_of(*source, relation);
+        if(!extent) {
             return true;
         }
-        auto end = definition->extent.end;
+        auto end = extent->end;
         if(!after || std::pair(end.line, end.column) > std::pair(after->line, after->column)) {
             after = end;
         }
@@ -184,7 +183,11 @@ auto resolve_actions(std::vector<CodeAction> actions,
             if(auto after = inputs.query && request->container != 0
                                 ? after_members(*inputs.query, inputs.host, request->container)
                                 : std::nullopt) {
-                insertion = HostInsertion{.at = *after, .text = "\n\n" + text};
+                // The definition it follows ends in its own line break.
+                insertion = HostInsertion{
+                    .at = *after,
+                    .text = "\n\n" + llvm::StringRef(text).rtrim('\n').str(),
+                };
             } else if(auto* host_text = inputs.host_text()) {
                 auto content = host_text->text();
                 insertion = HostInsertion{

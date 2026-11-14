@@ -1,0 +1,24 @@
+["host member defined twice"."db.h"]
+diagnostics = []
+
+["host member defined twice"."db.cpp text"]
+value = '''
+#include "db.h"
+
+void Db::open() {
+}
+
+void Db::close() {
+}
+
+int helper_one() {
+    return 1;
+}
+
+int helper_two() {
+    return 2;
+}
+'''
+
+["host member defined twice"."db.cpp"]
+errors = []

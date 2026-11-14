@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "${WS}/out/gone",
+    "file": "${WS}/main.cpp",
+    "arguments": ["clang++", "-I../../include", "-c", "${WS}/main.cpp"]
+  }
+]

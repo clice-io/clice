@@ -15,9 +15,9 @@
         {
             at = "import ⟦deps;⟧",
             severity = "error",
-            message = "could not build module 'deps': 'missing/blob.h' file not found",
-            source = "clang",
-            code = "err_module_not_built",
+            message = "module 'deps' does not build: 'missing/blob.h' file not found",
+            source = "clice",
+            code = "module-not-built",
         },
     ],
 ]
@@ -40,9 +40,9 @@
         {
             at = "import ⟦deps;⟧",
             severity = "error",
-            message = "could not build module 'deps': 'missing/blob.h' file not found",
-            source = "clang",
-            code = "err_module_not_built",
+            message = "module 'deps' does not build: 'missing/blob.h' file not found",
+            source = "clice",
+            code = "module-not-built",
         },
     ],
     [],

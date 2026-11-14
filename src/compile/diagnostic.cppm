@@ -30,12 +30,14 @@ struct DiagnosticID {
     /// The source of diagnostic.
     DiagnosticSource source;
 
-    /// The clang-tidy check that reported it, or the compiler's warning
-    /// option that controls it (`unused-variable`); empty for neither.
+    /// The clang-tidy check that reported it, clice's code for one clice
+    /// words itself (`header-unit`), or the compiler's warning option that
+    /// controls it (`unused-variable`); empty for none.
     llvm::StringRef name;
 
-    /// The code an editor shows it by: the check, `-W` and the warning
-    /// option, else clang's name for it (`err_undeclared_var_use`).
+    /// The code an editor shows it by: the check or clice's code, `-W` and
+    /// the warning option, else clang's name for it
+    /// (`err_undeclared_var_use`).
     std::string diagnostic_code() const;
 
     /// Whether this diagnostic reports a failure to read a prebuilt
@@ -72,6 +74,11 @@ struct Diagnostic {
 
     /// The notes clang attached to it, in order.
     std::vector<Diagnostic> notes;
+
+    /// Where the focus file asks for the template instantiation it arose
+    /// in, the innermost such request; none outside an instantiation. clang
+    /// notes the requests with an instantiation's first diagnostic alone.
+    std::optional<LocalSourceRange> requested;
 };
 
 }  // namespace clice

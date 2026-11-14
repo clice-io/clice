@@ -22,10 +22,10 @@ for (const positionEncoding of ENCODINGS) {
     const name = positionEncoding ?? "utf-16";
     const options = positionEncoding ? { positionEncoding } : {};
 
-    // A crash completing code republishes what the file shows, after an
-    // edit no compile has caught up with: the push names the version it
-    // compiled and places the error in that text. A first crash after an
-    // unsaved edit stays silent, so the edit is saved.
+    // A crash completing code republishes what the file shows: the push
+    // names the version it compiled and places the error in that text. A
+    // first crash after an unsaved edit stays silent, so the edit is saved,
+    // which compiles it for a client that only takes pushes.
     test(`push ${name}`, async (t) => {
         const s = await t.start({
             config: QUIET,

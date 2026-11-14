@@ -197,7 +197,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         why,
         std::move(known),
         before,
-        [&](FailureRecord record, Inputs inputs) {
+        [&](FailureRecord record, Inputs inputs, const worker::PrecompiledBuildResult*) {
             project.pchs[pch_key].failure = {std::move(record), std::move(inputs)};
         });
     if(!built) {

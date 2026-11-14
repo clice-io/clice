@@ -1,8 +1,8 @@
 ["as an entry"."$ clice command convert -- missing-cc -std=c++20 -c main.cpp -o main.o"]
 stdout = "missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 -D FROM_RULE ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-cc
+warning: Cannot ask the compiler for its default settings: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
@@ -24,48 +24,48 @@ stdout = '''
 }
 '''
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-cc
+warning: Cannot ask the compiler for its default settings: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["the source in its place"."$ clice command convert -- missing-cc -x c++ -c tool"]
 stdout = "missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -x c++ -D FROM_RULE ${WS}/tool"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-cc
+warning: Cannot ask the compiler for its default settings: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["the source in its place"."$ clice command convert -- missing-cc -working-directory sub -c main.cpp"]
 stdout = "missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -working-directory ${WS}/sub -D FROM_RULE ${WS}/sub/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-cc
+warning: Cannot ask the compiler for its default settings: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["the source in its place"."$ clice command convert -- missing-cc -x c++ main.c -x c -c"]
 stdout = "missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -x c++ -D FROM_RULE ${WS}/main.c -x c"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-cc
+warning: Cannot ask the compiler for its default settings: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["the source in its place"."$ clice command convert -- missing-cc --driver-mode=cl /c /Tptool"]
 stdout = "missing-cc --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} --driver-mode=cl /TP -D FROM_RULE ${WS}/tool"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-cc
+warning: Cannot ask the compiler for its default settings: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["in a subdirectory"."$ clice command convert --workspace .. -- missing-cc -c main.cpp"]
 stdout = "missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D FROM_RULE ${WS}/sub/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-cc
+warning: Cannot ask the compiler for its default settings: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-cc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 

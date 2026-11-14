@@ -4,7 +4,6 @@ import type { ClientHandle } from "../client";
 import type { CompileCommand, CurrentContextResult } from "@clice/tools/protocol" with {
     "resolution-mode": "import",
 };
-import { LanguageStatus } from "./status";
 
 /// Where the command comes from, in a sentence.
 function origin(command: CompileCommand): string {
@@ -34,7 +33,8 @@ function script(file: vscode.Uri, command: CompileCommand): string {
     lines.push(`# ${origin(command)}.`);
     if (command.queryFailure !== null) {
         lines.push(
-            `# Its compiler could not be queried (${command.queryFailure}), so clang read the command on its own.`,
+            `# clice cannot ask its compiler for its settings: ${command.queryFailure}.`,
+            "# clang read the command on its own.",
         );
     }
     lines.push(`cd ${quote(command.directory)}`);
@@ -44,17 +44,9 @@ function script(file: vscode.Uri, command: CompileCommand): string {
 
 const scheme = "clice-command";
 
-/// The compile command of the active editor: a language status item saying
-/// where it comes from, and a read-only document showing it whole. Returns
-/// what shows the command of the active editor's current context, which the
-/// compilation context feature fetches; null hides it.
-export function registerCompileCommand(
-    client: ClientHandle,
-    ext: vscode.ExtensionContext,
-): (command: CompileCommand | null) => void {
-    const status = new LanguageStatus("clice.compileCommand", "clice: compile command");
-    const show: vscode.Command = { title: "Show", command: "clice.showCompileCommand" };
-
+/// The compile command of the active editor, shown whole in a read-only
+/// document.
+export function registerCompileCommand(client: ClientHandle, ext: vscode.ExtensionContext) {
     const changed = new vscode.EventEmitter<vscode.Uri>();
     const provider: vscode.TextDocumentContentProvider = {
         onDidChange: changed.event,
@@ -95,26 +87,8 @@ export function registerCompileCommand(
     }
 
     ext.subscriptions.push(
-        status,
         changed,
         vscode.workspace.registerTextDocumentContentProvider(scheme, provider),
         vscode.commands.registerCommand("clice.showCompileCommand", showCommand),
     );
-
-    return (command) => {
-        if (command === null) {
-            status.hide();
-            return;
-        }
-        const failed =
-            command.queryFailure === null
-                ? ""
-                : `; its compiler could not be queried: ${command.queryFailure}`;
-        status.show(
-            command.source,
-            origin(command) + failed,
-            show,
-            command.source === "fallback" || command.queryFailure !== null,
-        );
-    };
 }

@@ -3,9 +3,9 @@ diagnostics = [
     {
         at = "import ⟦circle;⟧",
         severity = "error",
-        message = "could not build module 'circle': the cache directory ${WS}/.clice cannot be used",
-        source = "clang",
-        code = "err_module_not_built",
+        message = "module 'circle' does not build: the cache directory ${WS}/.clice cannot be used",
+        source = "clice",
+        code = "module-not-built",
     },
 ]
 

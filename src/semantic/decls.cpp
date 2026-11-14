@@ -390,6 +390,10 @@ auto named_parameters(const clang::FunctionDecl& function, unsigned index)
     } else {
         add(function);
     }
+    // LIMITATION: an undocumented override renaming a parameter of the base
+    // whose comment it inherits (`documentation.inherit`) finds no `@param`
+    // for it: hover and signature help give the parameter no text, and the
+    // method's card lists it under the base's name.
     return named;
 }
 
@@ -790,26 +794,9 @@ namespace {
 template <typename TemplateDeclTy>
 clang::NamedDecl* only_instantiation_impl(TemplateDeclTy* TD) {
     clang::NamedDecl* Only = nullptr;
-    // A call whose body fails to instantiate for it, as a generic lambda's
-    // deduced return type makes it, leaves its specialization invalid and
-    // unreferenced: the instantiation only when no call succeeds.
-    clang::NamedDecl* Failed = nullptr;
-    bool failed_more = false;
     for(auto* Spec: TD->specializations()) {
         if(Spec->getTemplateSpecializationKind() == clang::TSK_ExplicitSpecialization)
             continue;
-        // Overload resolution specializes every function template candidate
-        // it deduces; only the one a call picks is referenced.
-        if constexpr(std::is_same_v<TemplateDeclTy, clang::FunctionTemplateDecl>) {
-            if(Spec->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation &&
-               !Spec->isReferenced()) {
-                if(Spec->isInvalidDecl()) {
-                    failed_more |= Failed != nullptr;
-                    Failed = Spec;
-                }
-                continue;
-            }
-        }
         // A class template specialization the code only names, through a
         // pointer to it, is not instantiated; one a partial specialization
         // matches instantiates the partial specialization instead.
@@ -823,18 +810,46 @@ clang::NamedDecl* only_instantiation_impl(TemplateDeclTy* TD) {
             return nullptr;
         Only = Spec;
     }
-    return Only != nullptr || failed_more ? Only : Failed;
+    return Only;
 }
 
 }  // namespace
+
+auto instantiations(const clang::FunctionTemplateDecl& templated)
+    -> llvm::SmallVector<clang::FunctionDecl*, 4> {
+    llvm::SmallVector<clang::FunctionDecl*, 4> calls;
+    for(auto* specialization: templated.specializations()) {
+        auto kind = specialization->getTemplateSpecializationKind();
+        // Overload resolution specializes every function template candidate
+        // it deduces; only the one a call picks is referenced, or left
+        // invalid and unreferenced by a body that fails to instantiate for
+        // it, as a generic lambda's deduced return type makes it.
+        if(kind == clang::TSK_ExplicitSpecialization ||
+           (kind == clang::TSK_ImplicitInstantiation && !specialization->isReferenced() &&
+            !specialization->isInvalidDecl())) {
+            continue;
+        }
+        calls.push_back(specialization);
+    }
+    return calls;
+}
 
 auto only_instantiation(clang::NamedDecl* TemplatedDecl) -> clang::NamedDecl* {
     assert(TemplatedDecl);
     if(auto* TD = TemplatedDecl->getDescribedTemplate()) {
         if(auto* CTD = llvm::dyn_cast<clang::ClassTemplateDecl>(TD))
             return only_instantiation_impl(CTD);
-        if(auto* FTD = llvm::dyn_cast<clang::FunctionTemplateDecl>(TD))
-            return only_instantiation_impl(FTD);
+        if(auto* FTD = llvm::dyn_cast<clang::FunctionTemplateDecl>(TD)) {
+            auto calls = instantiations(*FTD);
+            // A call whose body failed counts only when no call succeeds.
+            auto failed = [](const clang::FunctionDecl* call) {
+                return call->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation &&
+                       !call->isReferenced();
+            };
+            if(!ranges::all_of(calls, failed))
+                llvm::erase_if(calls, failed);
+            return calls.size() == 1 ? calls.front() : nullptr;
+        }
         if(auto* VTD = llvm::dyn_cast<clang::VarTemplateDecl>(TD))
             return only_instantiation_impl(VTD);
     }

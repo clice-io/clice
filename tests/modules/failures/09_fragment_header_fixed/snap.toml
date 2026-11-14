@@ -3,9 +3,9 @@ errors = [
     {
         at = "import ⟦A;⟧",
         severity = "error",
-        message = "could not build module 'A': use of undeclared identifier 'missing_name'",
-        source = "clang",
-        code = "err_module_not_built",
+        message = "module 'A' does not build: use of undeclared identifier 'missing_name'",
+        source = "clice",
+        code = "module-not-built",
     },
 ]
 
@@ -14,9 +14,9 @@ errors = [
     {
         at = "import ⟦A;⟧",
         severity = "error",
-        message = "could not build module 'A': use of undeclared identifier 'missing_name'",
-        source = "clang",
-        code = "err_module_not_built",
+        message = "module 'A' does not build: use of undeclared identifier 'missing_name'",
+        source = "clice",
+        code = "module-not-built",
     },
 ]
 

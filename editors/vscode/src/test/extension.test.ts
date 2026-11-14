@@ -102,6 +102,27 @@ suite("inactive span decoding", function () {
     });
 });
 
+suite("editor context menu", function () {
+    test("clice's group follows navigation, its commands in order", function () {
+        const extension = vscode.extensions.getExtension("clice-io.clice");
+        assert.ok(extension, "the extension is installed");
+        const menu = (
+            extension.packageJSON as {
+                contributes: { menus: { "editor/context": { command: string; group?: string }[] } };
+            }
+        ).contributes.menus["editor/context"];
+        assert.deepStrictEqual(
+            menu.map((item) => [item.command, item.group]),
+            [
+                ["clice.switchSourceHeader", "0_clice@1"],
+                ["clice.switchContext", "0_clice@2"],
+                ["clice.switchConfiguration", "0_clice@3"],
+                ["clice.showCompileCommand", "0_clice@4"],
+            ],
+        );
+    });
+});
+
 suite("executable setting", function () {
     test("a relative path resolves against the workspace", function () {
         const base = path.resolve("ws", "app");

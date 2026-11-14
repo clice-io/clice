@@ -1363,14 +1363,16 @@ ZEST_CASE(LastSlotWarnsUser) {
     f.simulate_crash(1, false);
     std::string background =
         "clice's background workers keep crashing and are stopped for 30 seconds: completion, "
-        "signature help, formatting and indexing wait until then. The server log has the crash "
-        "reports";
+        "signature help, formatting and indexing wait until then. This is a bug in clice: please "
+        "report it at https://github.com/clice-io/clice/issues, with the crash reports from "
+        "clice's log";
     ZEXPECT(f.anomalies.guidance() == std::vector{background});
 
     f.simulate_crash(0, true);
     std::string open_files =
         "clice's workers for open files keep crashing and are stopped for 30 seconds: compiles "
-        "of the open files wait until then. The server log has the crash reports";
+        "of the open files wait until then. This is a bug in clice: please report it at "
+        "https://github.com/clice-io/clice/issues, with the crash reports from clice's log";
     ZEXPECT(f.anomalies.guidance() == std::vector{background, open_files});
 }
 

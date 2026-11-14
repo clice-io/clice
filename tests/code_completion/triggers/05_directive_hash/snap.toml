@@ -1,0 +1,41 @@
+[answers.line_start.completion]
+items = [
+    { label = "define", kind = "Keyword" },
+    { label = "error", kind = "Keyword" },
+    { label = "if", kind = "Keyword" },
+    { label = "ifdef", kind = "Keyword" },
+    { label = "ifndef", kind = "Keyword" },
+    { label = "include", kind = "Keyword" },
+    { label = "include_next", kind = "Keyword" },
+    { label = "line", kind = "Keyword" },
+    { label = "pragma", kind = "Keyword" },
+    { label = "undef", kind = "Keyword" },
+]
+more = 1
+
+[answers.indented.completion]
+items = [
+    { label = "define", kind = "Keyword" },
+    { label = "error", kind = "Keyword" },
+    { label = "if", kind = "Keyword" },
+    { label = "ifdef", kind = "Keyword" },
+    { label = "ifndef", kind = "Keyword" },
+    { label = "include", kind = "Keyword" },
+    { label = "include_next", kind = "Keyword" },
+    { label = "line", kind = "Keyword" },
+    { label = "pragma", kind = "Keyword" },
+    { label = "undef", kind = "Keyword" },
+]
+more = 1
+
+[answers.stringize.completion]
+items = []
+
+[answers.in_string.completion]
+items = []
+
+[answers.in_comment.completion]
+items = []
+
+[answers.in_block_comment.completion]
+items = []

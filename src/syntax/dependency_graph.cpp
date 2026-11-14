@@ -737,15 +737,20 @@ struct FullScan {
             file.warm = true;
             return;
         }
-        wave.reads.spawn(read_into(wave.scans, wave.scans.size() - 1, files.resolve(fid).data()));
+        wave.reads.spawn(read_into(wave.scans, wave.scans.size() - 1, fid));
     }
 
-    static async::task<> read_into(std::vector<std::optional<ScannedText>>& scans,
-                                   std::size_t index,
-                                   const char* path) {
+    async::task<> read_into(std::vector<std::optional<ScannedText>>& scans,
+                            std::size_t index,
+                            Fid fid) {
+        const char* path = files.resolve(fid).data();
         auto scanned = co_await async::queue([path] { return read_and_scan(path); });
         if(!scanned) {
-            LOG_WARN("{}; its includes are not scanned", scanned.error());
+            if(scanned.error().code == std::errc::no_such_file_or_directory) {
+                report.missing.push_back(fid);
+            } else {
+                LOG_WARN("{}; its includes are not scanned", scanned.error());
+            }
             co_return;
         }
         scans[index] = std::move(*scanned);
@@ -874,6 +879,9 @@ struct FullScan {
                     files.disk.observe(file.fid, scanned->obs);
                     graph.quick_scans.results.try_emplace({file.fid, scanned->obs.hash},
                                                           scanned->result);
+                }
+                if(!scanned->result->utf8) {
+                    report.not_utf8.push_back(file.fid);
                 }
                 auto contexts = llvm::ArrayRef(wave->contexts).slice(file.first, file.count);
                 for(auto& module: scanner.record(file.fid,

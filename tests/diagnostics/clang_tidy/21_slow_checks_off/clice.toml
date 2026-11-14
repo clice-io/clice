@@ -1,0 +1,2 @@
+[diagnostics]
+slow_clang_tidy_checks = false

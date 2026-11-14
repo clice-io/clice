@@ -185,6 +185,11 @@ std::vector<ListedContext> Project::list_contexts(Fid file) {
         }
     }
 
+    // LIMITATION: a source that includes itself (one table expanded twice)
+    // is offered its own command alone, not the place it enters itself: how
+    // the second pass reads the code both passes compile is never shown from
+    // the AST.
+    //
     // Real entries only: a default command is no context to switch to.
     // Offered even when hosts exist, so a host override can be switched back
     // to the file's own command.
