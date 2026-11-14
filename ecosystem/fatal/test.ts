@@ -15,9 +15,8 @@ regression({
             why: "the server's hover prints an alias's canonical type with a template parameter unnamed",
             kind: "disagree",
             request: "hover",
-            file: "fatal/type/test/sanity_check_test.cpp",
             // The canonical type's line and the block the server prints for it.
-            detail: /^[-+].*$/m,
+            detail: /^(?:-.* is `__make_integer_seq<.*`|\+.* is|\+```(?:cpp)?|\+__make_integer_seq<.*|\+\s+value-parameter-[\d-]+>)$/m,
         },
     ],
 });
