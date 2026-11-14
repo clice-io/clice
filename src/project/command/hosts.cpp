@@ -96,7 +96,7 @@ std::optional<HostSearch> enter_at(Project& project,
                                    const Candidate& candidate,
                                    std::uint32_t occurrence) {
     auto request = project.tree_request(host, candidate);
-    auto chains = project.include_chains(request.key, header);
+    auto chains = project.include_chains(request, header);
     if(!chains) {
         return HostSearch{.missing = std::move(request)};
     }
@@ -145,7 +145,7 @@ std::optional<std::uint32_t> Project::count_occurrences(Fid host, Fid header) {
     if(offered.empty()) {
         return 0;
     }
-    auto chains = include_chains(tree_request(host, offered.front()).key, header);
+    auto chains = include_chains(tree_request(host, offered.front()), header);
     if(!chains) {
         return std::nullopt;
     }

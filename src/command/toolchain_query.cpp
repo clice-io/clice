@@ -156,6 +156,10 @@ static async::task<std::expected<Job, std::string>> ask_compiler(std::vector<std
     co_return co_await ask_gcc_style(std::move(args), command, driver_tokens, cwd);
 }
 
+bool driver_found(const QuerySpec& spec) {
+    return find_driver(spec.argv[0], spec.cwd).has_value();
+}
+
 async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     auto& command = *spec.command;
     auto driver = find_driver(spec.argv[0], spec.cwd);

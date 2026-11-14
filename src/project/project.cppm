@@ -587,11 +587,12 @@ struct Project {
     Affected update_members(CDBDiff commands, llvm::ArrayRef<OpenFile> open = {});
 
     /// Ask again the compilers that could not be asked, once their cooldown
-    /// passed: when one answers, every unit whose index it changes the
-    /// identity of (command_identity) reindexes. Whether one answered: the
-    /// open documents compiled without their compiler's answer compile
-    /// again, which is the owner's to tell.
-    bool ask_compilers_again();
+    /// passed (Toolchain::retry_failed): when one has answered, every unit
+    /// whose identity (command_identity) it changed reindexes and checks its
+    /// PCMs again, with what derives from them. None when none answered;
+    /// the open documents compiled without their compiler's answer are the
+    /// owner's to compile again.
+    std::optional<Affected> ask_compilers_again(llvm::ArrayRef<OpenFile> open);
 
     // discovery.cpp
 
@@ -701,9 +702,13 @@ struct Project {
     /// rules edit it (apply_rules), its hash the key of the unit's include
     /// tree (tree_request); 0 when the build compiles it under none. A run's
     /// extras are not part of it. A command clang's own driver reads for
-    /// want of its compiler's answer (Toolchain::unqueried) has another
+    /// want of its compiler's answer (Toolchain::query_failed) has another
     /// identity: the compiler answering at last reindexes the unit.
     std::uint64_t command_identity(Fid unit);
+
+    /// The identity of the command `request` names, as command_identity
+    /// gives it.
+    std::uint64_t command_identity(const TreeRequest& request);
 
     /// The command of the entry writing the precompiled header that the
     /// command `selection` and `request` give `file` reads
@@ -764,7 +769,7 @@ struct Project {
     /// way changed since, a file appeared where the compile looked and found none, or a forced file
     /// a precompiled header held hides the way in — and no run took one since the inputs it read
     /// last changed.
-    std::optional<llvm::SmallVector<Host>> include_chains(const UnitCommand& unit, Fid header);
+    std::optional<llvm::SmallVector<Host>> include_chains(const TreeRequest& request, Fid header);
 
     /// The unit's own command `candidate`, rules applied, and its key.
     TreeRequest tree_request(Fid unit, const Candidate& candidate);

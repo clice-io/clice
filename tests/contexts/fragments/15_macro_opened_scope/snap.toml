@@ -1,2 +1,5 @@
-[test."decls.h"]
+["not indexed"."decls.h"]
+diagnostics = []
+
+["indexed"."decls.h"]
 diagnostics = []

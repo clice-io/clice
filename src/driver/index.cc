@@ -166,9 +166,7 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     if(!project.database) {
         result.error = std::format("Cannot persist the index at {}: {}",
                                    std::string_view(project.settings.project.cache_dir),
-                                   opened.unwritable.empty()
-                                       ? "its database could not be loaded; the log says why"
-                                       : opened.unwritable);
+                                   opened.unwritable);
     } else if(opened.members.empty()) {
         result.error = std::format("Nothing to index: {}", project.why_no_members(batch.root));
     }

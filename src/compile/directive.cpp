@@ -511,7 +511,7 @@ public:
             braces += token.is(clang::tok::l_brace) ? 1 : token.is(clang::tok::r_brace) ? -1 : 0;
         }
         if(braces != 0) {
-            macro_braces[unit.file_id(unit.SM().getExpansionLoc(name.getLocation()))] += braces;
+            macro_braces[unit.produced_at(name.getLocation()).file] += braces;
         }
     }
 

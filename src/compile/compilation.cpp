@@ -349,7 +349,8 @@ bool macro_spells(clang::Preprocessor& pp,
 
 /// Leave preferred_name out of the class templates a preamble declares and
 /// out of their specializations.
-/// clang bug: see CompilationParams::modular (clice-io/clice#1057 item 15).
+/// clang bug: a specialization a PCH reads through the attribute stays apart
+/// from a module's (CompilationParams::modular, clice-io/clice#1057 item 15).
 static void drop_preferred_names(clang::ASTContext& context) {
     llvm::SmallVector<clang::DeclContext*> contexts{context.getTranslationUnitDecl()};
     while(!contexts.empty()) {

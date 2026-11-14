@@ -140,6 +140,7 @@ struct FileTable {
     void unspell_root(const Spelling& root);
 
     llvm::DenseMap<Fid, std::string> shown;
+
     /// spelling() where it is not the identity.
     llvm::DenseMap<Fid, std::string> spelled;
 

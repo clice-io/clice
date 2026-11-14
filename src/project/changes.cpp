@@ -346,20 +346,22 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
     return changes;
 }
 
-bool Project::ask_compilers_again() {
+std::optional<Affected> Project::ask_compilers_again(llvm::ArrayRef<OpenFile> open) {
     if(!toolchain.retry_failed()) {
-        return false;
+        return std::nullopt;
     }
+    Cascade cascade{.project = *this, .open = open};
     llvm::SmallVector<Fid> units;
     index.for_each_unit([&](Fid unit) { units.push_back(unit); });
     for(auto unit: units) {
         if(index.indexed_command(unit) != command_identity(unit)) {
+            cascade.invalidate_module(unit);
             index.mark_outdated(unit);
-            background_index.enqueue(unit, ReindexReason::ContentChanged);
+            cascade.reindex(unit, true);
         }
     }
     background_index.schedule();
-    return true;
+    return std::move(cascade.affected);
 }
 
 Affected Project::update_members(CDBDiff commands, llvm::ArrayRef<OpenFile> open) {

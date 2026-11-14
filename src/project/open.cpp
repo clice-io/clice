@@ -318,6 +318,10 @@ Project::Opened Project::open(const OpenOptions& options) {
                 opened.unreadable = unreadable_index(index::LoadResult::Undecodable, cache_dir);
             } else if(!database && reads) {
                 opened.unreadable = unreadable_index(index::LoadResult::Unreadable, cache_dir);
+            } else if(!database) {
+                opened.unwritable =
+                    "the header of its index database cannot be read; the "
+                    "database is left untouched";
             }
             // A unit deleted while no server ran keeps its index until a
             // look finds it missing (see FreshnessGate).

@@ -6,6 +6,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 [test."$ clice analyze modules file util/b.cpp"]
+wrong = "b.cpp includes only lib/widen.h, yet widen is app's: with no definition, the smallest path declaring it, app/local.h, provides it, whichever unit was indexed first"
 stdout = '''
 {
   "path": "util/b.cpp",
@@ -40,6 +41,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 [test."$ clice analyze modules file util/b.cpp #2"]
+wrong = "b.cpp includes only lib/widen.h, yet widen is app's: with no definition, the smallest path declaring it, app/local.h, provides it, whichever unit was indexed first"
 stdout = '''
 {
   "path": "util/b.cpp",

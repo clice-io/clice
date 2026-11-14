@@ -141,10 +141,8 @@ std::optional<std::uint32_t> open_push(llvm::StringRef content, std::uint32_t bo
             open.push_back({token.range.begin, std::move(stack->first)});
             continue;
         }
-        auto last = std::find_if(open.rbegin(), open.rend(), [&](const Push& push) {
-            return push.stack == stack->first;
-        });
-        if(last != open.rend()) {
+        auto pushed = views::reverse(open);
+        if(auto last = ranges::find(pushed, stack->first, &Push::stack); last != pushed.end()) {
             open.erase(std::next(last).base());
         }
     }

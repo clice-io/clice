@@ -250,6 +250,10 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     std::vector<CompilationEntry> new_entries;
     Normalizer normalizer{.commands = command_table, .files = file_table, .inputs = &source.inputs};
 
+    // A file several entries name, through links, is spelled as the first
+    // names it, whose command is its default.
+    llvm::DenseSet<Fid> named;
+
     // A database written inside Cygwin or MSYS2 (CMake run from their shell)
     // spells its paths POSIX-style: the mount table of the runtime on PATH,
     // found at the first such entry, maps the entries so spelled.
@@ -411,7 +415,10 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         bool c_family = is_c_family_file(file_ref);
 
         auto file = spelled(file_ref, directory, normalizer.mounts);
-        auto path_id = file_table.intern_entry(file);
+        auto path_id = file_table.intern(file);
+        if(named.insert(path_id).second) {
+            file_table.intern_entry(file);
+        }
 
         kotatsu::string_list_ref tokens =
             command ? normalizer.split(*command, views, args) : kotatsu::string_list_ref(args);

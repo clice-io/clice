@@ -288,10 +288,8 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     manifest.nodes.reserve(view.node_count());
     for(std::uint32_t i = 0; i < view.node_count(); i += 1) {
         auto node = view.node(i);
-        manifest.nodes.push_back({.file = version_of[node.file].raw,
-                                  .parent = node.parent,
-                                  .line = node.line,
-                                  .skipped = node.skipped});
+        node.file = version_of[node.file].raw;
+        manifest.nodes.push_back(node);
     }
     for(std::uint32_t i = 0; i < view.link_count(); i += 1) {
         auto link = view.link(i);

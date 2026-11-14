@@ -327,9 +327,12 @@ std::uint64_t Project::command_identity(Fid unit) {
     if(candidates.empty()) {
         return 0;
     }
-    auto request = tree_request(unit, candidates.front());
-    if(toolchain.unqueried(request.command.command, request.command.language)) {
-        return llvm::hash_combine(request.key.second, llvm::StringRef("unqueried"));
+    return command_identity(tree_request(unit, candidates.front()));
+}
+
+std::uint64_t Project::command_identity(const TreeRequest& request) {
+    if(toolchain.query_failed(request.command.command, request.command.language)) {
+        return llvm::hash_combine(request.key.second, llvm::StringRef("query failed"));
     }
     return request.key.second;
 }

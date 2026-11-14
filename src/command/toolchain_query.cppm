@@ -32,6 +32,9 @@ struct QuerySpec {
 /// the query's language.
 async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec);
 
+/// Whether the query's driver is found where it would run.
+bool driver_found(const QuerySpec& spec);
+
 /// A command as clang's own driver reads it in place of a compiler clice
 /// does not run.
 struct ClangReading {

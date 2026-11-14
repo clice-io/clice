@@ -304,7 +304,7 @@ struct BatchResult {
 
 /// One-shot batch indexing on the project's own builds — no sessions, no
 /// transports: open the project, drain the background index, persist, and
-/// wind down in contract-11 order. Runs its own event loop to completion.
+/// wind down in the order of contract 2. Runs its own event loop to completion.
 /// Passes start immediately and indexing happens even when the settings
 /// keep the background index disabled — running the command is the
 /// request itself.
@@ -388,7 +388,7 @@ inline bool start_batch(BatchRun& run,
     return true;
 }
 
-/// The shared contract-11 tail, then the pool.
+/// The shared tail of contract 2, then the pool.
 inline async::task<> shutdown(BatchRun& run) {
     co_await run.project.shutdown();
     co_await run.pool.stop();

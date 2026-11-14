@@ -52,11 +52,15 @@ public:
     /// either.
     std::expected<ResolvedCommand, std::string> resolve(CommandID id, InputKind input);
 
+    struct WarmOptions {
+        /// The queries retry failed ones, whose failures were reported then.
+        bool retry = false;
+    };
+
     /// Pre-query in parallel, deduplicated by query key, running as many
     /// drivers at once as the process has CPUs. Blocks until all unique
-    /// queries complete. `again`: they retry failed ones, whose failures
-    /// were reported then.
-    void warm(llvm::ArrayRef<CommandRef> refs, bool again = false);
+    /// queries complete.
+    void warm(llvm::ArrayRef<CommandRef> refs, WarmOptions options = {});
 
     /// A compile argv and how the command came to it.
     struct RenderedCommand {
@@ -98,12 +102,14 @@ public:
         query_policy.cooldown = retry;
     }
 
-    /// Whether clang's own driver reads the command for want of its
-    /// compiler's answer: the compiler's last query for it failed.
-    bool unqueried(CommandID id, InputKind input);
+    /// Whether the compiler's last query for the command failed, which
+    /// leaves it read by clang's own driver.
+    bool query_failed(CommandID id, InputKind input);
 
-    /// Ask again every compiler whose query failed and whose cooldown has
-    /// passed: whether one answered.
+    /// Ask again every compiler whose driver was missing and whose cooldown
+    /// has passed: whether a compiler that had failed answered since the
+    /// last call, here or on a resolve. A driver that ran and failed is asked
+    /// again only when a command needs it: a hung one would stall the caller.
     bool retry_failed();
 
 private:
@@ -186,17 +192,18 @@ private:
 
     /// What the query caches say about a (command, input) key: a live
     /// query, a failure still cooling down, or the query to run. A
-    /// cooled-down failure is dropped on the way, so the query retries.
+    /// cooled-down failure stays until the query commits.
     struct QueryAdmission;
     QueryAdmission admit_query(CommandID id, InputKind input);
 
     /// Commits the result of the query for the command `id`: the job's
     /// frontend into the query cache, a failure into the negative cache with
-    /// its time.
+    /// its time and whether its driver was missing.
     void commit_query(llvm::StringRef key,
                       CommandID id,
                       InputKind input,
-                      const std::expected<Job, std::string>& job);
+                      const std::expected<Job, std::string>& job,
+                      bool missing);
 
 private:
     CommandTable& commands;
@@ -217,9 +224,17 @@ private:
         CommandID command = invalid_command;
 
         InputKind input;
+
+        /// Its driver was not found: a compiler installed later answers.
+        bool missing = false;
     };
 
     llvm::StringMap<FailedQuery> failed;
+
+    /// The failed keys that answered since, and how many of them
+    /// retry_failed reported.
+    std::size_t answered_late = 0;
+    std::size_t reported_late = 0;
 
     FailurePolicy query_policy;
 

@@ -599,12 +599,12 @@ async::task<Imports> Project::scan_imports(Fid path_id,
         auto started_at = chrono::duration_cast<chrono::milliseconds>(
                               chrono::system_clock::now().time_since_epoch())
                               .count();
+        // Taken here: a reset of the graph on the loop while the scan runs
+        // on the pool moves the cache's owner out and back, the cache
+        // itself staying.
+        auto& cache = *dep_graph.directives;
         auto scanned = co_await async::queue([&] {
-            return scan_precise(*dep_graph.directives,
-                                argv,
-                                resolution.directory,
-                                content,
-                                std::move(vfs));
+            return scan_precise(cache, argv, resolution.directory, content, std::move(vfs));
         });
         scan = {.directives = directives,
                 .bound = bound,

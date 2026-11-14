@@ -508,17 +508,21 @@ async::task<> ServedProject::sources_poll_task() {
         // Time is the feature: the workspace loop's pace.
         co_await async::sleep(interval);
         co_await poll_sources();
-        if(!project.ask_compilers_again()) {
+        auto affected = project.ask_compilers_again(open_files());
+        if(!affected) {
             continue;
         }
-        Affected affected;
+        // One whose first compile is still in flight may have resolved its
+        // command before the answer.
         for(auto& [path_id, document]: documents) {
             auto& latest = document.latest;
-            if(latest && latest->output && !latest->output->diagnostics.query_failure.empty()) {
-                affected.stale.push_back(path_id);
+            if((!latest ||
+                (latest->output && !latest->output->diagnostics.query_failure.empty())) &&
+               !ranges::contains(affected->stale, path_id)) {
+                affected->stale.push_back(path_id);
             }
         }
-        follow(affected);
+        follow(*affected);
         server.hooks.happened(LoopEvent::CompilersAnswered);
     }
 }

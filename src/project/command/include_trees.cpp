@@ -184,11 +184,12 @@ TreeRequest Project::tree_request(Fid unit, const Candidate& candidate) {
     };
 }
 
-std::optional<llvm::SmallVector<Host>> Project::include_chains(const UnitCommand& unit,
+std::optional<llvm::SmallVector<Host>> Project::include_chains(const TreeRequest& request,
                                                                Fid header) {
-    auto [host, command] = unit;
+    auto& unit = request.key;
+    auto host = unit.first;
     // The manifest holds the tree of the command the index was built under.
-    if(index.indexed_command(host) == command) {
+    if(index.indexed_command(host) == command_identity(request)) {
         if(auto manifest = index.manifest(host)) {
             if(auto found = tree_chains(*this,
                                         host,

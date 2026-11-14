@@ -5,6 +5,7 @@ import { test } from "@clice/tools/testing";
 // does not exist, a worker count that is not a number.
 test("no database", { errors: ["Nothing to lint: no compile_commands.json found"] }, async (t) => {
     await t.cli("lint --jobs 2");
+    await t.cli("lint --jobs 2 --json");
 });
 
 test(

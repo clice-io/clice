@@ -100,46 +100,22 @@ void merge_findings(std::vector<worker::TidyDiagnostic>& findings) {
     findings.erase(duplicates.begin(), duplicates.end());
 }
 
-/// One compile of a lint run: a unit under one of its database entries,
-/// none for the one resolve_command picks, which alone the index takes.
+/// A file of a lint run: compiled under the command resolve_command picks,
+/// which alone the index takes, then under each other distinct command of
+/// its database entries, one after another: a consumer compiles a file
+/// once at a time (Project::compile_unit).
 struct LintJob {
     Fid file;
 
-    std::optional<ContextChoice> entry;
+    std::vector<ContextChoice> entries;
 };
 
-async::task<> lint_one(BatchRun& run, bool with_index, LintJob job, LintPass& pass) {
+/// Compile the unit `request` asks for and add what it found to the pass;
+/// whether it failed.
+async::task<bool> lint_compile(BatchRun& run, Fid path_id, UnitRequest request, LintPass& pass) {
     using enum UnitResult::Status;
     auto& project = run.project;
-    auto path_id = job.file;
     auto file = project.file_table.resolve(path_id);
-    // A TU outside the lint set is here for the index only.
-    UnitRequest request;
-    request.index = with_index && !job.entry && project.rules.indexable(file);
-    request.entry = std::move(job.entry);
-    bool failed = false;
-    if(project.rules.lintable(file)) {
-        auto resolution = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
-        // Checked under a configuration it does not have, the unit would
-        // report what was not asked for and miss what was.
-        if(!resolution.error.empty()) {
-            if(pass.config_errors.insert(resolution.error).second) {
-                LOG_ERROR("{}", resolution.error);
-            }
-            failed = true;
-        } else {
-            request.tidy = std::move(resolution.params);
-        }
-    }
-    if(!request.tidy && !request.index) {
-        if(failed) {
-            pass.failed.insert(path_id);
-        }
-        pass.inflight -= 1;
-        pass.task_done.set();
-        co_return;
-    }
-
     // One retry: a lost compile or a preemption says nothing about the TU,
     // and a one-shot pass has no later pass to requeue into. A compile
     // that crashed its worker would crash the retry too. One whose memory
@@ -160,14 +136,8 @@ async::task<> lint_one(BatchRun& run, bool with_index, LintJob job, LintPass& pa
         co_await run.pool.await_capacity(false);
         result = co_await project.compile_unit(path_id, request);
     }
-
     if(!result) {
-        if(failed) {
-            pass.failed.insert(path_id);
-        }
-        pass.inflight -= 1;
-        pass.task_done.set();
-        co_return;
+        co_return false;
     }
 
     switch(result->status) {
@@ -187,7 +157,7 @@ async::task<> lint_one(BatchRun& run, bool with_index, LintJob job, LintPass& pa
                                        project.rules.lintable(
                                            files.resolve(files.intern(Spelling::absolute(d.file))));
                             });
-            break;
+            co_return false;
         }
         case Skipped:
         case Failed: {
@@ -195,31 +165,61 @@ async::task<> lint_one(BatchRun& run, bool with_index, LintJob job, LintPass& pa
             // the last-known index then; lint has nothing to keep) — either way
             // the TU went unchecked. A command clang rejected says why.
             ranges::move(result->tidy_diagnostics, std::back_inserter(pass.findings));
-            failed = true;
             LOG_WARN("Lint failed for {}: {}",
                      file,
                      result->error.empty() ? "no compile command found" : result->error);
-            break;
+            co_return true;
         }
         case Crashed: {
-            failed = true;
             LOG_WARN("Lint gave up on {}: {}", file, result->error);
-            break;
+            co_return true;
         }
         case TooBig: {
-            failed = true;
             LOG_WARN(
                 "Lint gave up on {}: it does not fit in memory, its worker reached {} MiB alone",
                 file,
                 result->memory >> 20);
-            break;
+            co_return true;
         }
         case Lost:
         case Preempted:
         case OutOfMemory: {
-            failed = true;
             LOG_WARN("Lint gave up on {} after a retry: {}", file, result->error);
-            break;
+            co_return true;
+        }
+    }
+    std::unreachable();
+}
+
+async::task<> lint_one(BatchRun& run, bool with_index, LintJob job, LintPass& pass) {
+    auto& project = run.project;
+    auto path_id = job.file;
+    auto file = project.file_table.resolve(path_id);
+    // A TU outside the lint set is here for the index only.
+    UnitRequest request;
+    request.index = with_index && project.rules.indexable(file);
+    bool failed = false;
+    if(project.rules.lintable(file)) {
+        auto resolution = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
+        // Checked under a configuration it does not have, the unit would
+        // report what was not asked for and miss what was.
+        if(!resolution.error.empty()) {
+            if(pass.config_errors.insert(resolution.error).second) {
+                LOG_ERROR("{}", resolution.error);
+            }
+            failed = true;
+        } else {
+            request.tidy = std::move(resolution.params);
+        }
+    }
+    if(request.tidy || request.index) {
+        failed = co_await lint_compile(run, path_id, request, pass) || failed;
+    }
+    if(request.tidy) {
+        request.index = false;
+        for(auto& entry: job.entries) {
+            request.entry = std::move(entry);
+            failed = co_await lint_compile(run, path_id, request, pass) || failed;
         }
     }
     if(failed) {
@@ -291,9 +291,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     } else if(with_index && !project.database) {
         result.error = std::format("Cannot persist the index at {}: {}",
                                    std::string_view(project.settings.project.cache_dir),
-                                   opened.unwritable.empty()
-                                       ? "its database could not be loaded; the log says why"
-                                       : opened.unwritable);
+                                   opened.unwritable);
     }
     if(result.error) {
         result.exit_code = 2;
@@ -312,7 +310,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         if(!lintable && !(with_index && project.rules.indexable(file))) {
             continue;
         }
-        jobs.push_back({.file = member});
+        auto& job = jobs.emplace_back(LintJob{.file = member});
         if(!lintable) {
             continue;
         }
@@ -320,7 +318,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         for(auto& candidate: project.candidates(member)) {
             auto base = project.commands.command_hash_hex(candidate.base);
             if(commands.insert(base).second && commands.size() > 1) {
-                jobs.push_back({.file = member, .entry = ContextChoice{.base = std::move(base)}});
+                job.entries.push_back(ContextChoice{.base = std::move(base)});
             }
         }
     }

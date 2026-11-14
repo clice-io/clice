@@ -850,8 +850,12 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
                 add_template_head(hasher, described->getTemplateParameters());
             }
         }
-        /// A header's typedef carries no file (needs_path): two unrelated
-        /// headers declaring one name in one namespace differ by the type.
+        // A header's typedef carries no file (needs_path): two unrelated
+        // headers declaring one name in one namespace differ by the type.
+        // LIMITATION: so does one typedef whose type a macro picks (`real`
+        // a double under one unit's -D, a float under another's): references
+        // and renames from one configuration miss the other's uses, as for
+        // a function whose signature a macro picks.
         if(alias->getDeclContext()->getRedeclContext()->isFileContext()) {
             add_type(hasher, alias->getUnderlyingType());
         }

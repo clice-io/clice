@@ -219,17 +219,43 @@ ZEST_CASE(FailedQueryRetries) {
 
 ZEST_CASE(FailedQueryAskedAgain) {
     // A compiler installed once its query failed answers when asked again
-    // past the cooldown: its commands are no longer unqueried.
+    // past the cooldown: its commands' queries no longer failed.
     f.toolchain.set_failed_retry(chrono::seconds(0));
     auto a = add("a.cpp", {tmp.c_path("clang"), "-std=c++17"});
     ZEXPECT(!f.failure(a).empty());
-    ZEXPECT(f.toolchain.unqueried(a.command, a.language));
+    ZEXPECT(f.toolchain.query_failed(a.command, a.language));
     ZEXPECT(!f.toolchain.retry_failed());
 
     auto driver = fake_clang(clang_job);
     ZEXPECT(f.toolchain.retry_failed());
-    ZEXPECT(!f.toolchain.unqueried(a.command, a.language));
+    ZEXPECT(!f.toolchain.query_failed(a.command, a.language));
     ZEXPECT(!f.toolchain.retry_failed());
+}
+
+ZEST_CASE(AnsweredOnResolve) {
+    // A compiler answering when a command needs it, past the cooldown, is
+    // reported by the next retry, which asks nothing itself.
+    f.toolchain.set_failed_retry(chrono::seconds(0));
+    auto a = add("a.cpp", {tmp.c_path("clang"), "-std=c++17"});
+    ZEXPECT(!f.failure(a).empty());
+    auto driver = fake_clang(clang_job);
+    ZEXPECT(f.toolchain.resolve(a.command, a.language).has_value());
+    ZEXPECT(!f.toolchain.query_failed(a.command, a.language));
+    ZEXPECT(f.toolchain.retry_failed());
+    ZEXPECT(!f.toolchain.retry_failed());
+}
+
+ZEST_CASE(FailingDriverLeftToResolve) {
+    // A driver that runs and fails is asked again only by a command that
+    // needs it: the retry would otherwise wait on one that hangs.
+    f.toolchain.set_failed_retry(chrono::seconds(0));
+    auto driver = fake_driver("clang", "exit 1\n");
+    auto ref = add("a.cpp", {driver.c_str()});
+    ZEXPECT(!f.failure(ref).empty());
+    ZASSERT(fs::remove(driver));
+    auto answering = fake_clang(clang_job);
+    ZEXPECT(!f.toolchain.retry_failed());
+    ZEXPECT(f.toolchain.query_failed(ref.command, ref.language));
 }
 
 ZEST_CASE(FailedQueryUnqueried) {
