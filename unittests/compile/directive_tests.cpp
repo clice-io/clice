@@ -263,6 +263,7 @@ ZEST_CASE(UnresolvedMacros) {
 #undef §(skipped_undef)SKIPPED_UNDEF
 #ifdef §(nested)NESTED
 #elif §(nested_elif)NESTED_ELIF > 1
+#elifndef §(nested_known)GUARD
 #endif
 #endif
 #if __has_include(<limits.h>) && __has_cpp_attribute(nodiscard) && GUARD + 0
@@ -298,7 +299,7 @@ ZEST_CASE(UnresolvedMacros) {
     ZEXPECT(offsets == expected);
 
     // A skipped condition names the definition it tests when there is one.
-    for(auto name: {"known_elif", "known"}) {
+    for(auto name: {"known_elif", "known", "nested_known"}) {
         ZEXPECT(ranges::any_of(macros, [&](const MacroRef& macro) {
             return macro.kind == MacroRef::Ref &&
                    unit->written_at(macro.loc).offset == point(name);

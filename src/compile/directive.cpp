@@ -88,6 +88,13 @@ private:
         return location;
     }
 
+    clang::MacroInfo* definition(llvm::StringRef name) {
+        auto& pp = unit.instance->getPreprocessor();
+        auto& identifiers = pp.getIdentifierTable();
+        auto known = identifiers.find(name);
+        return known == identifiers.end() ? nullptr : pp.getMacroInfo(known->getValue());
+    }
+
     /// A system header's directives test what its platform and the user
     /// configure: none is a name of the project.
     void add_unresolved(clang::SourceLocation location) {
@@ -115,27 +122,10 @@ private:
     /// preprocessor `evaluated`, those it found defined are left out, their
     /// expansions recorded them, as is `defined`'s operand, which Defined
     /// sees. Of one it did not, a name defined there references that
-    /// definition, unless the condition lies in a block it skips.
-    void add_unresolved(clang::FileID fid,
-                        llvm::ArrayRef<Token> condition,
-                        bool evaluated,
-                        bool skipped_block = false) {
-        auto& pp = unit.instance->getPreprocessor();
-        auto& identifiers = pp.getIdentifierTable();
+    /// definition (add_tested).
+    void add_unresolved(clang::FileID fid, llvm::ArrayRef<Token> condition, bool evaluated) {
+        auto& identifiers = unit.instance->getPreprocessor().getIdentifierTable();
         auto content = unit.file_content(fid);
-        auto definition = [&](llvm::StringRef name) -> clang::MacroInfo* {
-            auto known = identifiers.find(name);
-            return known == identifiers.end() ? nullptr : pp.getMacroInfo(known->getValue());
-        };
-        // A name the condition tests without the preprocessor resolving it.
-        auto unresolved = [&](const Token& token) {
-            auto location = unit.create_location(fid, token.range.begin);
-            if(auto* macro = skipped_block ? nullptr : definition(token.text(content))) {
-                add_macro(macro, MacroRef::Ref, location);
-            } else {
-                add_unresolved(location);
-            }
-        };
         for(std::size_t i = 0; i < condition.size(); i += 1) {
             auto& token = condition[i];
             if(!token.is_identifier() ||
@@ -148,7 +138,7 @@ private:
                     i += 1;
                 }
                 if(!evaluated && i + 1 < condition.size() && condition[i + 1].is_identifier()) {
-                    unresolved(condition[i + 1]);
+                    add_tested(fid, condition[i + 1], content);
                 }
                 i += 1;
                 continue;
@@ -171,10 +161,22 @@ private:
                 continue;
             }
             if(!evaluated) {
-                unresolved(token);
+                add_tested(fid, token, content);
             } else if(!macro) {
                 add_unresolved(unit.create_location(fid, token.range.begin));
             }
+        }
+    }
+
+    /// A macro name a condition the preprocessor did not evaluate tests: it
+    /// references the definition the name has there, the preprocessor's
+    /// still, since no directive of a skipped block runs.
+    void add_tested(clang::FileID fid, const Token& name, llvm::StringRef content) {
+        auto location = unit.create_location(fid, name.range.begin);
+        if(auto* macro = definition(name.text(content))) {
+            add_macro(macro, MacroRef::Ref, location);
+        } else {
+            add_unresolved(location);
         }
     }
 
@@ -468,12 +470,13 @@ public:
             auto spelled = llvm::ArrayRef(tokens).slice(line, i + 1 - line);
             auto name = keyword.text(content);
             if(name == "if" || name == "elif") {
-                add_unresolved(fid, spelled, /*evaluated=*/false, /*skipped_block=*/true);
-            } else if(ranges::contains(
-                          std::array{"define", "undef", "ifdef", "ifndef", "elifdef", "elifndef"},
-                          name) &&
-                      !spelled.empty() && spelled.front().is_identifier()) {
+                add_unresolved(fid, spelled, /*evaluated=*/false);
+            } else if(spelled.empty() || !spelled.front().is_identifier()) {
+                continue;
+            } else if(name == "define" || name == "undef") {
                 add_unresolved(unit.create_location(fid, spelled.front().range.begin));
+            } else if(ranges::contains(std::array{"ifdef", "ifndef", "elifdef", "elifndef"}, name)) {
+                add_tested(fid, spelled.front(), content);
             }
         }
     }
