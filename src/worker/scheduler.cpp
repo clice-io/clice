@@ -493,6 +493,8 @@ void WorkerScheduler::check_memory(SchedulerTime now) {
     // rate they grow; a lone one only once it has, and the only stateless
     // request only as it is about to run through the reserve: killing it
     // takes it for too big for the machine.
+    // LIMITATION: a first index on a small machine knows no unit's size: two
+    // running at once sometimes outgrow it, and one is killed and run again.
     auto low = running(Priority::Low);
     auto reserve = last_sample.reserve;
     auto short_by = low > 1                               ? reserve + growth_soon()

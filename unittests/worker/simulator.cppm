@@ -2,6 +2,7 @@ module clice:unittests.worker.simulator;
 
 import :support.prelude;
 import :unittests.worker.workloads;
+import :worker.resources;
 import :worker.scheduler;
 
 namespace clice::testing {
@@ -25,7 +26,7 @@ struct SimMachine {
     /// without swap; otherwise every worker slows, as on macOS's compressor.
     bool oom_kills = true;
 
-    /// macOS keeps a larger reserve: decompression starts near 20% free.
+    /// macOS's reserve (memory_reserve).
     bool mac_reserve = false;
 };
 
@@ -130,10 +131,7 @@ inline std::uint64_t others_at(const SimMachine& machine, double t) {
 }
 
 inline std::uint64_t reserve(const SimMachine& machine) {
-    if(machine.mac_reserve) {
-        return std::max<std::uint64_t>(1536 * MiB, machine.memory / 10);
-    }
-    return std::max<std::uint64_t>(512 * MiB, machine.memory / 20);
+    return memory_reserve(machine.memory, machine.mac_reserve);
 }
 
 }  // namespace sim

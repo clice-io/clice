@@ -269,9 +269,14 @@ public:
 
     /// The requests of unknown peak that run at once on a learned estimate
     /// below default_peak; those dispatched after them are estimated at
-    /// default_peak. A wrong estimate shows only as they outgrow it, and
-    /// the memory kills that stop them come one at a time.
+    /// default_peak until learned_peaks are known. A wrong estimate shows
+    /// only as they outgrow it, and the memory kills that stop them come
+    /// one at a time.
     constexpr static std::size_t learned_runs = 3;
+
+    /// The peaks past which every request of unknown peak runs on the
+    /// learned estimate: more than the small units a project lists first.
+    constexpr static std::size_t learned_peaks = 20;
 
     /// The user counts as active this long after their last activity, and
     /// while a foreground request is in flight, for at most

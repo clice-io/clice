@@ -9,13 +9,19 @@ MemoryState memory_state(std::span<const sys::ProcessStats> workers) {
     if(!memory) {
         return {};
     }
-    constexpr std::uint64_t MiB = 1ull << 20;
 #ifdef __APPLE__
-    auto reserve = std::max(1536 * MiB, memory->limit / 10);
+    constexpr bool macos = true;
 #else
-    auto reserve = std::max(512 * MiB, memory->limit / 20);
+    constexpr bool macos = false;
 #endif
-    return {.headroom = memory->available, .reserve = reserve, .limit = memory->limit};
+    return {.headroom = memory->available,
+            .reserve = memory_reserve(memory->limit, macos),
+            .limit = memory->limit};
+}
+
+std::uint64_t memory_reserve(std::uint64_t limit, bool macos) {
+    constexpr std::uint64_t MiB = 1ull << 20;
+    return macos ? std::max(1536 * MiB, limit / 10) : std::max(512 * MiB, limit / 20);
 }
 
 std::size_t default_max_resident(std::uint64_t limit) {

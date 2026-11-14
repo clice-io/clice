@@ -87,7 +87,15 @@ SimResult known_run(SimSpec spec) {
 SimResult expect_near_known(const SimSpec& spec, double slower) {
     auto first = simulate(spec);
     expect_sound(spec, first);
-    ZEXPECT(first.wall <= slower * known_run(spec).wall);
+    auto known = known_run(spec);
+    std::println("SIM kills={} oom={} wall={:.0f} known={:.0f} ratio={:.3f} min_headroom={}MiB",
+                 first.memory_killed.size(),
+                 first.oom_kills,
+                 first.wall,
+                 known.wall,
+                 first.wall / known.wall,
+                 first.min_headroom >> 20);
+    ZEXPECT(first.wall <= slower * known.wall);
     return first;
 }
 
@@ -157,6 +165,29 @@ ZEST_CASE(MacSmallUnits) {
 ZEST_CASE(MacProject) {
     auto result = expect_near_known(on_mac(mlir_mac), 1.1);
     ZEXPECT(result.min_headroom > 0);
+}
+
+/// A 36 GiB Mac with 6 workers whose other programs hold 24 GiB, as a
+/// laptop's do, indexing units of about a gigabyte: MLIR's at twice their
+/// size. The reserve does not grow with the machine.
+ZEST_CASE(MacLaptop) {
+    std::vector<UnitLoad> units;
+    for(auto unit: mlir_mac) {
+        units.push_back({.seconds = 2 * unit.seconds, .peak = 2 * unit.peak});
+    }
+    auto spec = on_mac(units, 24 * GiB);
+    spec.machine.memory = 36 * GiB;
+    spec.machine.physical = 6;
+    spec.machine.logical = 6;
+    spec.scheduler = {.background_jobs = 6, .max_workers = 6};
+    auto result = expect_near_known(spec, 1.1);
+    ZEXPECT(result.min_headroom > 0);
+    std::println("MacLaptop kills={} wall={:.0f} known={:.0f} min_headroom={}MiB lost={:.0f}",
+                 result.memory_killed.size(),
+                 result.wall,
+                 known_run(spec).wall,
+                 result.min_headroom >> 20,
+                 result.lost);
 }
 
 /// Small units first teach the session a small estimate; the heavy ones
