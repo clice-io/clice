@@ -24,6 +24,35 @@ function frame(message: object): string {
     return `Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`;
 }
 
+/// A connection to the server at `port` once it listens, as an editor that
+/// knows the port makes one: refused until then. Its stderr says nothing
+/// in time: on Windows its first lines may wait there until it writes more.
+async function connect(
+    port: number,
+    exited: Promise<unknown>,
+    log: () => string,
+): Promise<net.Socket> {
+    for (;;) {
+        const editor = net.connect(port, "127.0.0.1");
+        const outcome = await Promise.race([
+            once(editor, "connect").then(
+                () => "connected",
+                () => "refused",
+            ),
+            exited.then(() => "exited"),
+        ]);
+        if (outcome === "connected") {
+            return editor;
+        }
+        editor.destroy();
+        if (outcome === "exited") {
+            throw new Error(`the server exited before it listened:\n${log()}`);
+        }
+        // No event: a port that starts listening tells no client.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+}
+
 test(
     "SIGTERM with an editor connected",
     { except: { win32: "Windows has no SIGTERM to send a process" } },
@@ -35,20 +64,8 @@ test(
         });
         const exited = once(server, "exit");
         let log = "";
-        const listening = new Promise<void>((resolve) => {
-            server.stderr.on("data", (chunk: Buffer) => {
-                log += chunk.toString();
-                if (log.includes("Listening on")) {
-                    resolve();
-                }
-            });
-        });
-        const ready = await Promise.race([listening.then(() => true), exited.then(() => false)]);
-        if (!ready) {
-            throw new Error(`the server exited before it listened:\n${log}`);
-        }
-        const editor = net.connect(port, "127.0.0.1");
-        await once(editor, "connect");
+        server.stderr.on("data", (chunk: Buffer) => (log += chunk.toString()));
+        const editor = await connect(port, exited, () => log);
         // Answered, the connection is accepted and its peer runs.
         editor.write(
             frame({

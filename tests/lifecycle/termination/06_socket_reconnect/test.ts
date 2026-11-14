@@ -42,10 +42,33 @@ async function reply(editor: net.Socket): Promise<unknown> {
     }
 }
 
-async function connect(port: number): Promise<net.Socket> {
-    const editor = net.connect(port, "127.0.0.1");
-    await once(editor, "connect");
-    return editor;
+/// A connection to the server at `port` once it listens, as an editor that
+/// knows the port makes one: refused until then. Its stderr says nothing
+/// in time: on Windows its first lines may wait there until it writes more.
+async function connect(
+    port: number,
+    exited: Promise<unknown>,
+    log: () => string,
+): Promise<net.Socket> {
+    for (;;) {
+        const editor = net.connect(port, "127.0.0.1");
+        const outcome = await Promise.race([
+            once(editor, "connect").then(
+                () => "connected",
+                () => "refused",
+            ),
+            exited.then(() => "exited"),
+        ]);
+        if (outcome === "connected") {
+            return editor;
+        }
+        editor.destroy();
+        if (outcome === "exited") {
+            throw new Error(`the server exited before it listened:\n${log()}`);
+        }
+        // No event: a port that starts listening tells no client.
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
 }
 
 test("an editor connecting again shuts the server down", async (t) => {
@@ -69,8 +92,7 @@ test("an editor connecting again shuts the server down", async (t) => {
             }
         }
     };
-    await logged("Listening on");
-    const first = await connect(port);
+    const first = await connect(port, exited, () => log);
     first.write(
         frame({
             jsonrpc: "2.0",
@@ -82,7 +104,7 @@ test("an editor connecting again shuts the server down", async (t) => {
     await reply(first);
     first.destroy();
     await logged("Client disconnected");
-    const second = await connect(port);
+    const second = await connect(port, exited, () => log);
     second.write(frame({ jsonrpc: "2.0", id: 1, method: "shutdown", params: null }));
     await t.show("shutdown", JSON.stringify(await reply(second)));
     second.write(frame({ jsonrpc: "2.0", method: "exit", params: null }));
