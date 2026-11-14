@@ -32,6 +32,7 @@ ScanResult scan_quick(llvm::StringRef content) {
     namespace dds = clang::dependency_directives_scan;
 
     ScanResult result;
+    result.utf8 = simdjson::validate_utf8(content.data(), content.size());
 
     llvm::SmallVector<dds::Token> tokens;
     llvm::SmallVector<dds::Directive> directives;

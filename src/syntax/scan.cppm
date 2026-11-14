@@ -46,6 +46,10 @@ struct ScanResult {
     /// signaling the caller should fall back to the preprocessor-based scan.
     bool need_preprocess = false;
 
+    /// Whether the text is UTF-8, as clice reads every source (scan_quick
+    /// tells; the preprocessor scans leave it set).
+    bool utf8 = true;
+
     struct IncludeInfo {
         /// The header name as written, without its delimiters.
         std::string path;

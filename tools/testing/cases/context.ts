@@ -38,7 +38,8 @@ export interface TestContext {
     /// A block of the output: what a request of a server answers, passed as
     /// the request itself, `t.show("hover", s.hover(at))`; text, lines or a
     /// number as they are; or a record of these, one block each. The copy
-    /// reads `${WS}`, a worker's death `${CRASH}`.
+    /// reads `${WS}`, a worker's death `${CRASH}`, a session's log directory
+    /// `${SESSION}`.
     show(label: string, value: Shown, options?: ShowOptions): Promise<void>;
     readonly disk: Disk;
     at(file: string, anchor: string): TextAnchor;

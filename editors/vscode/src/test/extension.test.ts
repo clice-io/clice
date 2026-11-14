@@ -11,6 +11,7 @@ import { inactiveSpans } from "../feature/inactive";
 import { serverOutput, TraceChannel } from "../log";
 import { exited, retire } from "../process";
 import { resolveExecutable, serverEnvironment } from "../setting";
+import { scratchFolder } from "./scratch";
 
 // The extension's own tests, which no fixture changes: they run once
 // (.vscode-test.mjs). Those of documents a server answers take it from
@@ -99,6 +100,27 @@ suite("inactive span decoding", function () {
         assert.deepStrictEqual(inactiveSpans([1, 0, 3, 0, 0], MASK), none);
         assert.deepStrictEqual(inactiveSpans([], MASK), none);
         assert.deepStrictEqual(inactiveSpans([1, 0, 3, 0, MASK], 0), none);
+    });
+});
+
+suite("editor context menu", function () {
+    test("clice's group follows navigation, its commands in order", function () {
+        const extension = vscode.extensions.getExtension("clice-io.clice");
+        assert.ok(extension, "the extension is installed");
+        const menu = (
+            extension.packageJSON as {
+                contributes: { menus: { "editor/context": { command: string; group?: string }[] } };
+            }
+        ).contributes.menus["editor/context"];
+        assert.deepStrictEqual(
+            menu.map((item) => [item.command, item.group]),
+            [
+                ["clice.switchSourceHeader", "0_clice@1"],
+                ["clice.switchContext", "0_clice@2"],
+                ["clice.switchConfiguration", "0_clice@3"],
+                ["clice.showCompileCommand", "0_clice@4"],
+            ],
+        );
     });
 });
 
@@ -381,14 +403,6 @@ suite("conflicting extensions", function () {
         });
     });
 });
-
-/// A new folder outside the workspace, which .vscode-test.mjs removes once
-/// VS Code has exited.
-function scratchFolder(prefix: string): string {
-    const scratch = process.env.CLICE_E2E_SCRATCH;
-    assert.ok(scratch, "CLICE_E2E_SCRATCH names the folder .vscode-test.mjs made");
-    return fs.mkdtempSync(path.join(scratch, prefix));
-}
 
 suite("second names", function () {
     test("an editor on a second name moves to the open document", async function () {

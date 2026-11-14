@@ -553,6 +553,9 @@ auto outline(std::vector<OutlineEntry> entries,
         entry.range.end = std::max(entry.range.end, entry.selection_range.end);
     }
 
+    // LIMITATION: the constructors one macro argument names (`name();
+    // name(base);` in the macro's body) list once, being one written name.
+    //
     // A merged index holds a declaration once per context it compiles in,
     // and an explicit instantiation's local once more: a written name is
     // one entry, whatever entities the index gives it there, with the
@@ -582,6 +585,9 @@ auto outline(std::vector<OutlineEntry> entries,
     merge_typedefs(nodes, lexical);
 
     // The members a macro invocation makes list under it.
+    // LIMITATION: they list flat (a gtest TEST's class, its constructor,
+    // `test_info_` and `TestBody` side by side): all share the invocation's
+    // range, and nothing written orders them.
     std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> groups;
     auto count = static_cast<std::uint32_t>(nodes.size());
     for(std::uint32_t index = 0; index < count; index += 1) {

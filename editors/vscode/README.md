@@ -46,21 +46,21 @@ its own, as clice asks (not when it connects to a server over a socket). With
 installed, both configuration files are completed and checked against clice's
 schema.
 
-## What clice tells of a file
+## Commands on a file
 
-The language status of a C or C++ file — the `{}` beside its language mode;
-pin an item to keep it in the status bar — tells:
+The context menu of a C or C++ editor holds clice's commands, below Go to
+Definition and its kin:
 
-- where its compile command comes from: `database` (an entry of a
-  compilation database), `host` (the command of a source including the
-  header), `default` (a rule's `default_command`), `borrowed` (the command of
-  a unit nearby) or `fallback` (clice's own), marked as a warning when the
-  command is clice's own or its compiler could not be queried. **Show**, or
-  `clice: Show Compile Command`, opens the whole command;
-- its compilation context, when it has more than one: `auto` or `selected`,
-  with **Switch**. The Explorer's Compilation Contexts view lists them all;
-- the build configuration, when the rules in `clice.toml` declare any, with
-  **Switch**, which restarts the server under the one picked.
+- **Switch Header and Source (Module Interface and Implementation)**, also
+  `Alt+O`, opens the file's counterpart;
+- **Switch Compilation Context**, when the file has more than one; the
+  Explorer's Compilation Contexts view lists them all;
+- **Switch Build Configuration**, when the rules in `clice.toml` declare
+  any; it restarts the server under the one picked;
+- **Show Compile Command** opens the command clice compiles the file with,
+  and where it comes from: an entry of a compilation database, the command
+  of a source including the header, a rule's `default_command`, the command
+  of a unit nearby, or clice's own.
 
 A compile that runs long shows its progress in the status bar: the file and
 what it waits on (its modules, its preamble, the parse). What needs fixing in

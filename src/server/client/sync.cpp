@@ -92,6 +92,12 @@ void LSPClient::register_document_sync() {
             return;
         }
         srv.save_document(srv.files.intern(*path));
+        // What a pulling client asks after a save — the edits it holds
+        // checked, a crash the save retries — one that does not pull is
+        // pushed.
+        if(!pull_diagnostics) {
+            refresh_diagnostics();
+        }
 
         LOG_INFO("Saved {}", *path);
     });

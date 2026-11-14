@@ -153,9 +153,10 @@ auto hover_info(const index::IndexQuery& query,
         return module_hover(query, cursor, *info, documentation);
     }
     // LIMITATION: the index holds a symbol's declared text, its scopes and
-    // its comment, no type facts: the card lacks the `aka` line and the
-    // value the AST's shows, while a document has no AST — evicted, its
-    // worker paused or crashed, read-only, or just opened.
+    // its comment, no type facts: the card lacks the `aka` line, the value,
+    // the offset and size, the Overrides line and a type's members the AST's
+    // shows, while a document has no AST — evicted, its worker paused or
+    // crashed, read-only, or just opened.
     std::string definition;
     auto text = index::declared_text(query, symbol, cursor.site.file, RelationKind::Definition);
     // The card of an Objective-C class or category shows its @interface,

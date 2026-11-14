@@ -33,7 +33,8 @@ void ServedProject::record_crash(const std::shared_ptr<Session>& session,
              feature::crash_note({.kind = kind,
                                   .cause = record->cause,
                                   .count = record->count,
-                                  .save_only = record->save_only(Session::policy)})
+                                  .save_only = record->save_only(Session::policy)},
+                                 server.session_dir)
                  .message);
     // A silent first crash leaves the published state alone (see Session
     // invariant 4).
@@ -91,7 +92,7 @@ std::vector<feature::FileDiagnostic>
         }
     }
     for(auto& note: session.crash_notes()) {
-        diagnostics.push_back(feature::crash_note(note));
+        diagnostics.push_back(feature::crash_note(note, server.session_dir));
     }
     return diagnostics;
 }

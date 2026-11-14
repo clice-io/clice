@@ -3,9 +3,9 @@ errors = [
     {
         at = "import ⟦A;⟧",
         severity = "error",
-        message = "could not build module 'A': module 'missing' not found",
-        source = "clang",
-        code = "err_module_not_built",
+        message = "module 'A' does not build: module 'missing' not found",
+        source = "clice",
+        code = "module-not-built",
     },
 ]
 

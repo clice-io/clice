@@ -6,7 +6,5 @@ async function items(a: AnswersContext): Promise<void> {
     }
 }
 
-// Clang, which answers inspect, still offers `#elif` and `#else` after an `#else`.
-const paths = { server: "directive names are answered before anything compiles" };
-answers("default", { paths }, items);
-answers("configured", { paths, config: { code_completion: { statement_snippets: true } } }, items);
+answers("default", items);
+answers("configured", { config: { code_completion: { statement_snippets: true } } }, items);

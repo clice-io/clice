@@ -1,16 +1,16 @@
 [kept."$ clice command convert -- missing-clang++ -std=c++20 -fno-exceptions -fno-rtti -pedantic main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 -fno-exceptions -fno-rtti -pedantic ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 [kept."$ clice command convert -- missing-clang++ -std=c++20 -Wall -Werror main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 -Wall -Werror ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
@@ -52,7 +52,7 @@ stdout = '''
 ]
 '''
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
 error: 2 of the entries stay driver commands: the warnings above say why
 '''
 exit = 1

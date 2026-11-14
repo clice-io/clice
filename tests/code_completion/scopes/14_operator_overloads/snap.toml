@@ -5,6 +5,7 @@ items = [
     { label = "operator==(…) +2 overloads", kind = "Function" },
     { label = "scale(…) +1 overload", kind = "Function" },
 ]
+incomplete = true
 
 [answers.unqualified.completion]
 items = [

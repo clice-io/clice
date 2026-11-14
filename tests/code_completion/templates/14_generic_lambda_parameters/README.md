@@ -7,4 +7,5 @@ issues: [clangd#493, clangd#1768]
 An `auto` parameter of a lambda completes the members of the type the lambda is called with
 
 The call can come after the lambda, or be the algorithm the lambda is
-passed to. A lambda called with several types completes nothing.
+passed to. A lambda called with several types completes the names every one
+of them has.

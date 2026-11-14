@@ -1,0 +1,10 @@
+[answers.use.hover]
+markdown = '''
+**type** `make_index_sequence`
+
+```cpp
+template <size_t Size> using make_index_sequence = make_sequence<size_t, Size>
+```
+`make_sequence<size_t, Size>` is `__make_integer_seq<sequence, unsigned long, Size>`
+'''
+range = "⟦make_index_sequence⟧<5> five;"

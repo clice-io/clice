@@ -8,6 +8,7 @@ import :support.logging;
 import :syntax.header_context;
 import :syntax.include_resolver;
 import :syntax.lexer;
+import :syntax.scan;
 import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
@@ -130,7 +131,9 @@ struct Tiers {
                 auto command = project.apply_rules(file, candidate).command;
                 auto key = SelfContainmentKey{file, project.commands.command_hash(command)};
                 selection.self_containment = key;
-                selection.self_contained = project.self_contained(key, request.open);
+                selection.self_contained = request.self_contained
+                                               ? request.self_contained
+                                               : project.self_contained(key, request.open);
                 selection.in_context = selection.self_contained == false;
             }
         }
@@ -240,6 +243,20 @@ Rendered Project::render(const CommandRef& ref, const RenderOptions& options) {
     return result;
 }
 
+ScanResult Project::declared_module(const CommandRef& command, llvm::StringRef text) {
+    auto rendered = render(command);
+    std::vector<const char*> argv;
+    argv.reserve(rendered.arguments.size());
+    for(auto& argument: rendered.arguments) {
+        argv.push_back(argument.c_str());
+    }
+    return scan_module_decl(*dep_graph.directives,
+                            argv,
+                            rendered.directory,
+                            text,
+                            llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden)));
+}
+
 Resolution Project::resolve_command(Fid path_id, const CommandRequest& request) {
     Resolution resolution;
     static_cast<SelectedCommand&>(resolution) = select_command(path_id, request);
@@ -290,8 +307,10 @@ async::task<Resolution> Project::resolve_with_trees(Fid file,
                                                     llvm::function_ref<CommandRequest()> request,
                                                     llvm::function_ref<bool()> current) {
     auto resolution = resolve_command(file, request());
+    // A tree taken is stale at once when its host changes while it is read
+    // (a save): taken once more, it reads the host as it is now.
     llvm::SmallVector<UnitCommand, 2> taken;
-    while(resolution.missing_tree && !ranges::contains(taken, resolution.missing_tree->key)) {
+    while(resolution.missing_tree && ranges::count(taken, resolution.missing_tree->key) < 2) {
         taken.push_back(resolution.missing_tree->key);
         if(!co_await take_tree(*resolution.missing_tree) || (current && !current())) {
             break;

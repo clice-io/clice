@@ -37,6 +37,7 @@ stdout = '''
           "file": "${WS}/broken.cpp",
           "line": 2,
           "column": 12,
+          "offset": 26,
           "message": "use of undeclared identifier 'missing'"
         }
       ]
@@ -48,6 +49,7 @@ stdout = '''
           "file": "",
           "line": 0,
           "column": 0,
+          "offset": 0,
           "message": "unknown warning option '-Wlogical-op'; did you mean '-Wlong-long'?"
         }
       ]
@@ -59,6 +61,7 @@ stdout = '''
           "file": "",
           "line": 0,
           "column": 0,
+          "offset": 0,
           "message": "'missing.h' file not found"
         }
       ]
@@ -70,12 +73,14 @@ stdout = '''
           "file": "${WS}/many_errors.cpp",
           "line": 2,
           "column": 12,
+          "offset": 25,
           "message": "use of undeclared identifier 'one'"
         },
         {
           "file": "${WS}/many_errors.cpp",
           "line": 6,
           "column": 12,
+          "offset": 59,
           "message": "use of undeclared identifier 'two'"
         }
       ]
@@ -87,6 +92,7 @@ stdout = '''
           "file": "${WS}/include/oops.h",
           "line": 2,
           "column": 12,
+          "offset": 32,
           "message": "use of undeclared identifier 'undefined_name'"
         }
       ]

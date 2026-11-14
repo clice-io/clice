@@ -130,6 +130,7 @@ items = [
     { label = "Shape", kind = "Class" },
 ]
 more = 2
+incomplete = true
 
 [features.area]
 highlights = [

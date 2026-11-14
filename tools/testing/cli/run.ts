@@ -83,8 +83,9 @@ export function rootRelative(text: string, form: string, sep: string, root: stri
     return out + text.slice(from);
 }
 
-/// `text` as it reads on every host: the copy `${WS}` with forward slashes,
-/// a worker's cause of death `${CRASH}`.
+/// `text` as it reads on every host and every run: the copy `${WS}` with
+/// forward slashes, a worker's cause of death `${CRASH}`, a session's log
+/// directory `${SESSION}`.
 export function portable(text: string, root: string): string {
     let out = text;
     for (const form of rootForms(root)) {
@@ -93,9 +94,11 @@ export function portable(text: string, root: string): string {
         }
         out = out.replaceAll(form, "${WS}");
     }
-    return elideCrash(out).replace(/(\$\{WS\}[^\s"']*)/g, (span) =>
-        span.replaceAll("\\\\", "/").replaceAll("\\", "/"),
-    );
+    return elideCrash(out)
+        .replace(/(\$\{WS\}[^\s"']*)/g, (span) =>
+            span.replaceAll("\\\\", "/").replaceAll("\\", "/"),
+        )
+        .replace(/\b\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_\d+\b/g, "${SESSION}");
 }
 
 /// What a command printed with clang's resource directory beside the clice
@@ -110,12 +113,11 @@ function resourceless(text: string): string {
     return out;
 }
 
-/// A command's output as it reads on every host and every run: portable, a
-/// session's log directory `${SESSION}`, the toolchain query's temporary
-/// input `${QUERY_INPUT}`, times of day, durations and sizes elided.
+/// A command's output as it reads on every host and every run: portable,
+/// the toolchain query's temporary input `${QUERY_INPUT}`, times of day,
+/// durations and sizes elided.
 export function normalize(text: string, root: string): string {
     return portable(text, root)
-        .replace(/\b\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_\d+\b/g, "${SESSION}")
         .replace(/\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d{3})?\b/g, "#time")
         .replace(/\b\d+(\.\d+)?(ms|s)\b/g, "#$2")
         .replace(/\b\d+(\.\d+)? (B|KB|MB|GB)\b/g, "# $2")

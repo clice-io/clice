@@ -20,6 +20,7 @@ stdout = '''
           "file": "${WS}/main.cpp",
           "line": 1,
           "column": 21,
+          "offset": 20,
           "message": "'enabled' declared here"
         }
       ]

@@ -121,7 +121,6 @@ compiles = true
 
 +int ns::Widget::id() const {
 +}
-+
 +}
 +
  int main() {
@@ -171,9 +170,7 @@ compiles = true
 +
 +int ns::Widget::id() const {
  }
-
 +}
-+
+
  int main() {
-     ns::Widget w(1);
 '''

@@ -1,0 +1,18 @@
+[editor."main.cpp"]
+diagnostics = [
+    {
+        at = "⟦⟧double ratio(int total, int count) {",
+        severity = "warning",
+        message = "clang-tidy does not run on this file until its configuration parses. HeaderFileExtensions lists `.h`, but clang-tidy takes an extension without its dot, in letters and digits (`h`, not `.h`)",
+        source = "clice",
+        code = "invalid-clang-tidy-config",
+    },
+]
+
+[lint."$ clice lint --jobs 1"]
+stdout = '''
+Linted 0 translation units in #s: 0 findings.
+1 translation unit failed to run (see the log); the report is partial.
+'''
+stderr = "error: HeaderFileExtensions lists `.h`, but clang-tidy takes an extension without its dot, in letters and digits (`h`, not `.h`)"
+exit = 2

@@ -50,16 +50,21 @@ struct Completable {
 
 /// The names `prefix` matches that completion may offer from any scope —
 /// names of namespaces and unscoped enumerators, and macros
-/// (SymbolFlags::Completable) — best first, at most `limit` names, each with
-/// all its overloads: the project's and the open buffers' linked across
-/// files. An empty prefix takes the names used most. Whether the limit cut
-/// them short.
+/// (SymbolFlags::Completable) — or from the namespace `scope` a qualifier
+/// names (absolute: from the global scope), best first, at most `limit`
+/// names, each with all its overloads: the project's and the open buffers'
+/// linked across files. An empty prefix takes the names used most. Whether
+/// the limit cut them short.
 struct Completables {
     std::vector<Completable> names;
     bool exhausted = true;
 };
 
-Completables completables(const IndexQuery& index, llvm::StringRef prefix, std::uint32_t limit);
+Completables completables(const IndexQuery& index,
+                          llvm::StringRef prefix,
+                          std::uint32_t limit,
+                          llvm::ArrayRef<llvm::StringRef> scope = {},
+                          bool absolute = false);
 
 /// The symbols a locator query names: by id; by place — the symbol
 /// under a cursor, or those defined on a line of the file's serving

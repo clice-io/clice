@@ -216,7 +216,12 @@ async function startServer(dir: string, file: string, env: Record<string, string
     const checkFailed = () => {
         const failure = FAILED.exec(readLog());
         if (failure) {
-            throw new Error(`${file}: ${failure[0]}`);
+            // The extension says on its stderr why it started what it did:
+            // a release it could not look up or download, with GitHub's
+            // answer, leaves it on an installed version.
+            const reason = /^clice: .*$/m.exec(readLog(stderr))?.[0];
+            const lines = [`${file}: ${failure[0]}`, ...(reason ? [reason] : []), logTail()];
+            throw new Error(lines.join("\n"));
         }
     };
     try {

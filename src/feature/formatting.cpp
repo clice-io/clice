@@ -113,8 +113,17 @@ auto document_format(llvm::StringRef file,
                      llvm::StringRef content,
                      std::optional<LocalSourceRange> range)
     -> std::expected<std::vector<TextReplacement>, std::string> {
-    auto selection =
-        range ? tooling::Range(range->begin, range->length()) : tooling::Range(0, content.size());
+    auto selection = tooling::Range(0, content.size());
+    if(range) {
+        // clang-format takes a line whose first token starts right at the
+        // range's end as changed too: a selection of whole lines, ending at
+        // the next line's start, would reformat that line.
+        auto length = range->length();
+        if(length != 0 && content[range->end - 1] == '\n') {
+            length -= 1;
+        }
+        selection = tooling::Range(range->begin, length);
+    }
     auto replacements = format_content(file, content, selection);
     if(!replacements) {
         return std::unexpected(std::move(replacements.error()));

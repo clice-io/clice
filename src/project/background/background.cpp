@@ -89,7 +89,16 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                 break;
             }
             case Status::Failed: {
-                LOG_WARN("[{}/{}] Cannot index {}: {}", index, total, file_path, result->error);
+                // The scan named the files the database lists that do not
+                // exist, once for all.
+                if(fs::exists(file_path)) {
+                    LOG_WARN("[{}/{}] Cannot index {}: {}", index, total, file_path, result->error);
+                } else {
+                    LOG_DEBUG("[{}/{}] Cannot index {}, which does not exist",
+                              index,
+                              total,
+                              file_path);
+                }
                 record(path_id, {.failed = true});
                 break;
             }

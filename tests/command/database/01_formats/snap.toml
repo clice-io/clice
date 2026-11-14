@@ -44,8 +44,8 @@ stdout = '''
 ]
 '''
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
 error: 3 of the entries stay driver commands: the warnings above say why
 '''
 exit = 1

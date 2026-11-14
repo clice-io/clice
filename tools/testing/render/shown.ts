@@ -80,7 +80,8 @@ async function answer(value: Shown, options: RenderOptions, where: string): Prom
 
 /// A block of the output: a request's answer under its kind, a record's
 /// entries under their labels, anything else under `value`. The copy at
-/// `root` reads `${WS}`, a worker's death `${CRASH}`.
+/// `root` reads `${WS}`, a worker's death `${CRASH}`, a session's log
+/// directory `${SESSION}`.
 export async function block(
     value: Shown,
     options: RenderOptions,

@@ -179,6 +179,7 @@ items = [
     { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
 ]
 more = 4
+incomplete = true
 
 [default.two_qualifiers.completion]
 items = [
@@ -377,6 +378,7 @@ items = [
 items = [
     { label = "helper_detail()", kind = "Function", detail = "int", insert = "helper_detail()" },
 ]
+incomplete = true
 
 [default.macro_qualifier.completion]
 items = [
@@ -1012,6 +1014,7 @@ items = [
     { label = "helper_value(int x)", kind = "Function", detail = "int", insert = "helper_value()" },
     { label = "run()", kind = "Function", detail = "int", insert = "run()" },
 ]
+incomplete = true
 
 ["a namespace bringing in names"."brings in none".completion]
 items = [
@@ -1027,6 +1030,7 @@ items = [
     { label = "tone_warm", kind = "EnumMember", detail = "Tone", insert = "tone_warm" },
 ]
 more = 4
+incomplete = true
 
 ["a header edited before the compile".names.completion]
 items = [
@@ -1055,6 +1059,7 @@ items = [
     { label = "delete", kind = "Keyword", insert = "delete" },
 ]
 more = 47
+incomplete = true
 
 ["nothing typed".using-directive.completion]
 items = [
@@ -1070,3 +1075,4 @@ items = [
     { label = "helper_versioned()", kind = "Function", detail = "int", insert = "helper_versioned()" },
 ]
 more = 70
+incomplete = true

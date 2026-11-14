@@ -68,6 +68,23 @@ bool follows_access_operator(llvm::StringRef text,
                              std::uint32_t offset,
                              const clang::LangOptions& dialect);
 
+/// The scope a qualifier written before a name names, as its text spells
+/// it: `std` in `std::vec`, `a` and `b` in `::a::b::x`.
+struct WrittenScope {
+    llvm::SmallVector<llvm::StringRef, 2> segments;
+
+    /// It starts at the global scope (`::a::x`).
+    bool global = false;
+};
+
+/// The scope written before the name starting at `begin`, when it is a chain
+/// of names: none where no `::` precedes the name, and where what precedes
+/// is a template's arguments (`vector<int>::`) or a member access
+/// (`obj.a::x`). The line is lexed alone, as follows_access_operator does.
+std::optional<WrittenScope> written_scope(llvm::StringRef text,
+                                          std::uint32_t begin,
+                                          const clang::LangOptions& dialect);
+
 /// A designator written in a braced initializer, by the field it starts
 /// with.
 struct WrittenDesignator {

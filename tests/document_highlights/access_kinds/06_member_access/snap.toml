@@ -4,7 +4,7 @@ highlights = [
     { at = "point.⟦x⟧ = point.y;", kind = "write" },
     { at = "point.⟦x⟧ += 1;", kind = "write" },
     { at = "point.raw = point.⟦x⟧;", kind = "read" },
-    { at = "Point corner{.⟦x⟧ = 0, .y = 0};", kind = "read" },
+    { at = "Point corner{.⟦x⟧ = 0, .y = 0};", kind = "write" },
 ]
 
 [answers.raw]
@@ -16,7 +16,7 @@ highlights = [
 [answers.init]
 highlights = [
     { at = "int ⟦x⟧; @-1", kind = "text" },
-    { at = "Origin(int start) : ⟦x⟧(start) {}", kind = "read" },
+    { at = "Origin(int start) : ⟦x⟧(start) {}", kind = "write" },
 ]
 
 [answers.point]

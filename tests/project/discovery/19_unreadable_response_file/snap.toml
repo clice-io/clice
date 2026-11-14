@@ -5,7 +5,7 @@ Session log: ${WS}/.clice/logs/${SESSION}
 '''
 stderr = '''
 warning: The compilation database compile_commands.json names response files that cannot be read, and the commands naming them compile without their options: absent.rsp. A build may delete them once it has run; build again to bring them back
-warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: the compiler missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
 '''
 exit = 0
 
@@ -15,12 +15,12 @@ ${WS}/compile_commands.json:
   directory: ${WS}
   command:   ${WS}/missing-cc @absent.rsp -DKEPT=0 -c main.cpp
   resolved:  ${WS}/missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D KEPT=0 ${WS}/main.cpp
-  error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
+  error:     the compiler could not be queried: the compiler ${WS}/missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine
 
 settings:  the defaults
 '''
 stderr = '''
 warning: The compilation database compile_commands.json names response files that cannot be read, and the commands naming them compile without their options: absent.rsp. A build may delete them once it has run; build again to bring them back
-warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands
+warning: Cannot ask the compiler for its default settings: the compiler missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
 '''
 exit = 0

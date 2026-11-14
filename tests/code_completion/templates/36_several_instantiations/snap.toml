@@ -1,0 +1,79 @@
+[answers.call_before_point.completion]
+items = [
+    { label = "size() const", kind = "Method", detail = "int", insert = "size()" },
+    { label = "template", kind = "Keyword", insert = "template" },
+]
+
+[answers.overloads_differ.completion]
+items = [
+    { label = "at(…) +1 overload", kind = "Method", insert = "at($0)", snippet = true },
+    { label = "size() const", kind = "Method", detail = "int", insert = "size()" },
+    { label = "data()", kind = "Method", detail = "int *", insert = "data()" },
+    { label = "template", kind = "Keyword", insert = "template" },
+]
+
+[answers.dependent_scope.completion]
+items = [
+    { label = "at(…) +1 overload", kind = "Method", insert = "at" },
+    { label = "data()", kind = "Method", detail = "int *", insert = "data" },
+    { label = "size() const", kind = "Method", detail = "int", insert = "size" },
+    { label = "size_type", kind = "TypeParameter", insert = "size_type" },
+    { label = "operator=(…) +3 overloads", kind = "Method", insert = "operator=" },
+]
+
+[answers.taken_branch.completion]
+items = [
+    { label = "at(int index)", kind = "Method", detail = "int", insert = "at(${1:int index})", snippet = true },
+    { label = "data()", kind = "Method", detail = "int *", insert = "data()" },
+    {
+        label = "push_back(int value)",
+        kind = "Method",
+        detail = "void",
+        insert = "push_back(${1:int value})",
+        snippet = true,
+    },
+    { label = "size() const", kind = "Method", detail = "int", insert = "size()" },
+    { label = "template", kind = "Keyword", insert = "template" },
+]
+
+[answers.other_branch.completion]
+items = [
+    { label = "data()", kind = "Method", detail = "int *", insert = "data()" },
+    { label = "at(long index) const", kind = "Method", detail = "int", insert = "at(${1:long index})", snippet = true },
+    {
+        label = "first(int count) const",
+        kind = "Method",
+        detail = "Span",
+        insert = "first(${1:int count})",
+        snippet = true,
+    },
+    { label = "size() const", kind = "Method", detail = "int", insert = "size()" },
+    { label = "template", kind = "Keyword", insert = "template" },
+]
+
+[answers.past_eight.completion]
+items = [
+    { label = "extra", kind = "Field", detail = "int", insert = "extra" },
+    { label = "value", kind = "Field", detail = "int", insert = "value" },
+    { label = "template", kind = "Keyword", insert = "template" },
+]
+
+[answers.non_class.completion]
+items = []
+
+[answers.default_argument.completion]
+items = [
+    { label = "dim(…) +1 overload", kind = "Method", insert = "dim($0)", snippet = true },
+]
+
+[answers.passed_lambda.completion]
+items = [
+    { label = "get(…) +2 overloads", kind = "Method", insert = "get($0)", snippet = true },
+    { label = "template", kind = "Keyword", insert = "template" },
+]
+
+[answers.generic_lambda.completion]
+items = [
+    { label = "size() const", kind = "Method", detail = "int", insert = "size()" },
+    { label = "template", kind = "Keyword", insert = "template" },
+]

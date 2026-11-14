@@ -15,14 +15,20 @@ test("dependency change keeps buffer entries", async (t) => {
 
     // The header moves on disk: b.cpp's compile is stale, its buffer is
     // not, so the entries it compiled from these very bytes keep serving
-    // while the files including the header index it again.
+    // while the files including the header index and compile again.
     const reindex = await s.park("index", "a.cpp", { at: "reply" });
     const other = await s.park("index", "b.cpp", { at: "reply" });
+    const recompile = await s.park("compile", "a.cpp", { at: "reply" });
+    const otherRecompile = await s.park("compile", "b.cpp", { at: "reply" });
     expect(await s.poll("workspace")).toBe(0);
     t.disk.write("h.h", "#pragma once\n// moved\nextern int shared_sym;\n");
     expect(await s.poll("workspace")).toBe(1);
     await reindex.reached();
+    await recompile.reached();
+    await otherRecompile.reached();
     await t.show("moved", s.references(use));
+    await recompile.release();
+    await otherRecompile.release();
     await reindex.release();
     await other.release();
     await s.sync();

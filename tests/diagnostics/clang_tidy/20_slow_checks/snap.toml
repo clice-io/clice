@@ -1,0 +1,12 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "⟦int⟧ result = value * 2;",
+        severity = "warning",
+        message = "variable 'result' of type 'int' can be declared 'const'",
+        source = "clang-tidy",
+        code = "misc-const-correctness",
+        link = "https://clang.llvm.org/extra/clang-tidy/checks/misc/const-correctness.html",
+        tags = [],
+    },
+]

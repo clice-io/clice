@@ -3,6 +3,7 @@ module clice:feature.diagnostics;
 import :command.table;
 import :compile.compilation;
 import :compile.diagnostic;
+import :compile.tidy;
 import :support.prelude;
 import :syntax.position;
 import :syntax.token;
@@ -17,11 +18,23 @@ struct DiagnosticsOptions {
                   "Run clang-tidy on open files and offer its fixes, with "
                   "the checks the nearest `.clang-tidy` configures (a "
                   "small default set without one). Checks too slow for "
-                  "an editor, and those unreliable on code being edited, "
-                  "are left out; files `clice lint` does not check get "
+                  "an editor are left out unless `slow_clang_tidy_checks` "
+                  "is `true`, those unreliable on code being edited "
+                  "always are; files `clice lint` does not check get "
                   "none. `NOLINT` comments also silence compiler warnings "
                   "only while this runs.")
     bool clang_tidy = true;
+
+    KANNOTATE(&slow_clang_tidy_checks,
+              description =
+                  "Also run on open files the checks the `.clang-tidy` "
+                  "enables that are too slow for an editor or not measured "
+                  "for one (`misc-const-correctness` doubles the time a "
+                  "large file takes to compile): every compile of the file "
+                  "waits for them. Unset, clice names such checks once "
+                  "when it leaves them out; `false` leaves them out "
+                  "silently. `clice lint` runs them either way.")
+    std::optional<bool> slow_clang_tidy_checks;
 
     KANNOTATE(&suppress,
               description =
@@ -126,6 +139,19 @@ struct CompileDiagnostics {
     /// includes not found.
     CommandSource source = CommandSource::Database;
 
+    /// The file whose command it is, as the user knows it: the unit the
+    /// command was borrowed from, the host a header compiles in; empty for
+    /// the file's own.
+    std::string command_of;
+
+    /// The file lies outside its project's root: no database of the
+    /// project would list it.
+    bool outside_project = false;
+
+    /// The directory the command runs in, when it does not exist: a stale
+    /// database, or one written on another machine; empty otherwise.
+    std::string missing_directory;
+
     /// What the compile raised: the compiler's and clang-tidy's
     /// diagnostics, and clice's own about the compile; on a failure before
     /// parsing, why it failed.
@@ -187,19 +213,28 @@ auto confirmed_skipped(llvm::ArrayRef<FileDiagnostic> skipped, const CompileDiag
 /// cycles back to.
 struct ModuleFailure {
     std::vector<std::string> chain;
+
     std::string error;
+
+    /// Where `error` is, when the build placed it.
+    std::optional<DiagnosticNote> error_at;
+
+    /// How many more errors the last one's build met.
+    std::uint32_t more_errors = 0;
+
     std::optional<std::size_t> cycle;
 };
 
 /// clang reports the import of a module whose build failed as not found:
 /// `message`, when it is that report for one of `failures`, says instead
-/// why the module did not build. The failure it names, none for any other
-/// message.
+/// which module did not build, why, and through which imports. The failure
+/// it names, none for any other message.
 const ModuleFailure* explain_failed_import(std::string& message,
                                            llvm::ArrayRef<ModuleFailure> failures);
 
-/// explain_failed_import over the diagnostics of a compile, each coded as
-/// clang codes what it says.
+/// explain_failed_import over the diagnostics of a compile, each then
+/// clice's (`module-not-built`, `module-cycle`), with the place of the
+/// error the module failed on.
 void explain_failed_imports(std::vector<FileDiagnostic>& diagnostics,
                             llvm::ArrayRef<ModuleFailure> failures);
 
@@ -223,8 +258,8 @@ struct ModuleChoice {
 FileDiagnostic ambiguous_module(const ModuleChoice& choice, llvm::StringRef text);
 
 /// The warning at a file's top that clang-tidy does not run on it while
-/// its configuration fails to parse with `error`.
-FileDiagnostic invalid_tidy_config(llvm::StringRef error);
+/// its configuration fails to parse, each place the error names a note.
+FileDiagnostic invalid_tidy_config(const tidy::TidyResolution& resolution);
 
 /// What a compile reports in place of an index that could not be handed
 /// over.
@@ -274,9 +309,13 @@ struct CrashNote {
     bool save_only = false;
 };
 
-/// The warning at a file's top telling what of it a crash stopped, and what
-/// brings it back.
-FileDiagnostic crash_note(const CrashNote& note);
+/// Where clice takes bug reports.
+constexpr inline llvm::StringRef issue_tracker = "https://github.com/clice-io/clice/issues";
+
+/// The warning at a file's top telling what of it a crash stopped, what
+/// brings it back, and where the crash report is: in `reports`, the
+/// session's log directory, or the server's log when it keeps none.
+FileDiagnostic crash_note(const CrashNote& note, llvm::StringRef reports);
 
 /// The warning at a file's top saying that its compile, which reported
 /// errors, read `files` from disk while their documents hold unsaved text:

@@ -3,8 +3,8 @@ errors = [
     {
         at = "import ⟦layer_20_a;⟧",
         severity = "error",
-        message = "could not build module 'layer_20_a': could not build module 'layer_19_a': could not build module 'layer_18_a': could not build module 'layer_17_a': could not build module 'layer_16_a': could not build module 'layer_15_a': could not build module 'layer_14_a': could not build module 'layer_13_a': could not build module 'layer_12_a': could not build module 'layer_11_a': could not build module 'layer_10_a': could not build module 'layer_09_a': could not build module 'layer_08_a': could not build module 'layer_07_a': could not build module 'layer_06_a': could not build module 'layer_05_a': could not build module 'layer_04_a': could not build module 'layer_03_a': could not build module 'layer_02_a': could not build module 'layer_01_a': could not build module 'base': use of undeclared identifier 'broken_in_base'",
-        source = "clang",
-        code = "err_module_not_built",
+        message = "module 'base' does not build: use of undeclared identifier 'broken_in_base'; imported through layer_20_a → layer_19_a → layer_18_a → layer_17_a → layer_16_a → layer_15_a → layer_14_a → layer_13_a → layer_12_a → layer_11_a → layer_10_a → layer_09_a → layer_08_a → layer_07_a → layer_06_a → layer_05_a → layer_04_a → layer_03_a → layer_02_a → layer_01_a → base",
+        source = "clice",
+        code = "module-not-built",
     },
 ]

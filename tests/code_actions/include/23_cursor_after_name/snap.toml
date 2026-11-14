@@ -1,0 +1,31 @@
+[[answers.printf.code_actions]]
+kind = "quickfix"
+title = "Add #include <cstdio>"
+compiles = false
+errors = [
+    "expected '(' for function-style cast or type construction",
+    "no member named 'vector' in namespace 'std'",
+    "use of undeclared identifier 'values'",
+]
+
+[answers.printf.code_actions.edits]
+"main.cpp" = '''
+ #include "config.h"
++#include <cstdio>
+
+ void f() {
+'''
+
+[[answers.vector.code_actions]]
+kind = "quickfix"
+title = "Add #include <vector>"
+compiles = false
+errors = ["use of undeclared identifier 'printf'"]
+
+[answers.vector.code_actions.edits]
+"main.cpp" = '''
+ #include "config.h"
++#include <vector>
+
+ void f() {
+'''

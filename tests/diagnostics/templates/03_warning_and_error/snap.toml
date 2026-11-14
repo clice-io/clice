@@ -36,18 +36,7 @@ diagnostics = [
 ]
 
 [test."flat.cpp"]
-wrong = "the error, raised second in the instantiation, shows on the #include instead of where the instantiation is requested: clang chains only the first diagnostic of an instantiation back to the request"
 diagnostics = [
-    {
-        at = '#include ⟦"flat.h"⟧',
-        severity = "error",
-        message = "In included file: no member named 'size' in 'Legacy'",
-        source = "clang",
-        code = "err_no_member",
-        related = [
-            { at = "flat.h │ return v + t.⟦size⟧();", message = "error occurred here" },
-        ],
-    },
     {
         at = "int y = ⟦use_flat⟧(Legacy{});",
         severity = "warning",
@@ -64,6 +53,16 @@ diagnostics = [
                 at = "flat.h │ [[⟦deprecated⟧]] static int get();",
                 message = "'get' has been explicitly marked deprecated here",
             },
+        ],
+    },
+    {
+        at = "int y = ⟦use_flat⟧(Legacy{});",
+        severity = "error",
+        message = "In template: no member named 'size' in 'Legacy'",
+        source = "clang",
+        code = "err_no_member",
+        related = [
+            { at = "flat.h │ return v + t.⟦size⟧();", message = "error occurred here" },
         ],
     },
 ]

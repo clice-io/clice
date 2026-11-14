@@ -1,0 +1,27 @@
+[editor."main.cpp"]
+diagnostics = [
+    {
+        at = "⟦int⟧ unchanged = 1;",
+        severity = "warning",
+        message = "variable 'unchanged' of type 'int' can be declared 'const'",
+        source = "clang-tidy",
+        code = "misc-const-correctness",
+    },
+    {
+        at = "⟦S⟧ t = std::move(s);",
+        severity = "warning",
+        message = "variable 't' of type 'S' can be declared 'const'",
+        source = "clang-tidy",
+        code = "misc-const-correctness",
+    },
+]
+
+[lint."$ clice lint --jobs 1"]
+stdout = '''
+${WS}/main.cpp:6:5: warning: variable 'unchanged' of type 'int' can be declared 'const' [misc-const-correctness]
+${WS}/main.cpp:7:5: warning: variable 't' of type 'S' can be declared 'const' [misc-const-correctness]
+${WS}/main.cpp:8:12: warning: 's' used after it was moved [bugprone-use-after-move]
+${WS}/main.cpp:7:11: note: move occurred here
+Linted 1 translation unit in #s: 3 findings.
+'''
+exit = 1

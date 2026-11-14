@@ -1,0 +1,1 @@
+Checks: "-*,bugprone-use-after-move,misc-const-correctness"

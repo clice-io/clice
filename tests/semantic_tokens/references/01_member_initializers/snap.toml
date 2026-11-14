@@ -1,7 +1,7 @@
 [answers.width.semantic_token]
 text = "width"
 type = "field"
-modifiers = ["member"]
+modifiers = ["modification", "member"]
 
 [answers.w.semantic_token]
 text = "w"
@@ -11,4 +11,4 @@ modifiers = ["local"]
 [answers.height.semantic_token]
 text = "height"
 type = "field"
-modifiers = ["member"]
+modifiers = ["modification", "member"]

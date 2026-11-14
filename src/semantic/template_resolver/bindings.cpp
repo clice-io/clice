@@ -623,8 +623,13 @@ const clang::TemplateArgument*
     if(!function) {
         return nullptr;
     }
-    auto* instantiation = llvm::dyn_cast_or_null<clang::FunctionDecl>(
-        decls::only_instantiation(const_cast<clang::FunctionDecl*>(function)));
+    const auto* instantiation =
+        options.instantiation && options.instantiation->getPrimaryTemplate()
+                                         ->getTemplatedDecl()
+                                         ->getCanonicalDecl() == function->getCanonicalDecl()
+            ? options.instantiation
+            : llvm::dyn_cast_or_null<clang::FunctionDecl>(
+                  decls::only_instantiation(const_cast<clang::FunctionDecl*>(function)));
     const auto* arguments =
         instantiation ? instantiation->getTemplateSpecializationArgs() : nullptr;
     if(!arguments || index >= arguments->size()) {

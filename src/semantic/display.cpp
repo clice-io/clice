@@ -160,6 +160,34 @@ auto specialization_args(const clang::NamedDecl& decl, const Options& options) -
     return text;
 }
 
+/// `type`, or the dependent specialization of a builtin template
+/// (`__make_integer_seq`) its aliases stand for, rebuilt as one parsed here.
+/// clang reads such a specialization back from a PCH as an alias of its
+/// canonical form, whose parameters print nameless (`value-parameter-0-0`):
+/// desugared, it would go on to that form.
+static clang::QualType builtin_specialization(clang::ASTContext& context, clang::QualType type) {
+    for(auto current = type;;) {
+        const auto* specialization = current->getAs<clang::TemplateSpecializationType>();
+        if(!specialization) {
+            return type;
+        }
+        if(llvm::isa_and_present<clang::BuiltinTemplateDecl>(
+               specialization->getTemplateName().getAsTemplateDecl())) {
+            if(!specialization->isTypeAlias() || !specialization->isDependentType()) {
+                return type;
+            }
+            return context.getTemplateSpecializationType(clang::ElaboratedTypeKeyword::None,
+                                                         specialization->getTemplateName(),
+                                                         specialization->template_arguments(),
+                                                         /*CanonicalArgs=*/{});
+        }
+        if(!specialization->isTypeAlias()) {
+            return type;
+        }
+        current = specialization->getAliasedType();
+    }
+}
+
 /// A simple wrapper for `clang::desugarForDiagnostic` that provides optional
 /// semantic.
 static std::optional<clang::QualType> desugar(clang::ASTContext& context, clang::QualType type) {
@@ -175,7 +203,8 @@ static std::optional<clang::QualType> desugar(clang::ASTContext& context, clang:
         }
     }
     bool should_aka = false;
-    auto desugared = clang::desugarForDiagnostic(context, type, should_aka);
+    auto desugared =
+        clang::desugarForDiagnostic(context, builtin_specialization(context, type), should_aka);
     if(!should_aka) {
         return std::nullopt;
     }
@@ -1265,6 +1294,35 @@ auto template_param_type(const clang::NamedDecl* param, const Options& options) 
 
 namespace {
 
+/// Whether `function`'s declaration writes `constexpr`. Sema makes a
+/// defaulted function that can be constexpr so, which clang's printer
+/// leaves out for every defaulted one: only the text tells which was
+/// written.
+bool writes_constexpr(const clang::FunctionDecl& function) {
+    if(!function.isConstexprSpecified()) {
+        return false;
+    }
+    if(!function.isExplicitlyDefaulted()) {
+        return true;
+    }
+    auto& context = function.getASTContext();
+    auto range = clang::Lexer::makeFileCharRange(
+        clang::CharSourceRange::getCharRange(function.getBeginLoc(), function.getLocation()),
+        context.getSourceManager(),
+        context.getLangOpts());
+    auto text =
+        clang::Lexer::getSourceText(range, context.getSourceManager(), context.getLangOpts());
+    for(auto at = text.find("constexpr"); at != llvm::StringRef::npos;
+        at = text.find("constexpr", at + 1)) {
+        auto end = at + llvm::StringRef("constexpr").size();
+        if((at == 0 || !clang::isAsciiIdentifierContinue(text[at - 1])) &&
+           (end == text.size() || !clang::isAsciiIdentifierContinue(text[end]))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// Whether `stmt` holds at most `budget` expressions as written, counted
 /// only that far: the conversions and temporaries Sema wraps them in, the
 /// members a braced list leaves out, and a lambda's body, which prints as
@@ -1959,6 +2017,9 @@ struct DeclarationPrinter {
         }
         auto type = instance || !var.getTypeSourceInfo() ? var.getType()
                                                          : var.getTypeSourceInfo()->getType();
+        // LIMITATION: a `const` written beside `constexpr` (`constexpr const
+        // int x`) is left out: the written type carries the const `constexpr`
+        // implies too, so the two cannot be told apart.
         if(var.isConstexpr()) {
             text += "constexpr ";
             type.removeLocalConst();
@@ -2098,7 +2159,7 @@ struct DeclarationPrinter {
         if(function.isVirtualAsWritten()) {
             text += "virtual ";
         }
-        if(function.isConstexprSpecified() && !function.isExplicitlyDefaulted()) {
+        if(writes_constexpr(function)) {
             text += "constexpr ";
         }
         if(function.isConsteval()) {
@@ -2585,8 +2646,18 @@ auto function_text(const clang::FunctionDecl& function,
     }
     std::string text;
     llvm::raw_string_ostream os(text);
+    // LIMITATION: a parameter written as a function type (`void foo(int
+    // f(int))`) prints as clang spells it, `int(f)(int)`, unlike its own card;
+    // most code writes a pointer there.
     function.print(os, policy);
     print_name(text, function, policy);
+    /// clang prints the specifiers before `constexpr` in this order.
+    if(function.isExplicitlyDefaulted() && writes_constexpr(function)) {
+        llvm::StringRef rest = text;
+        while(rest.consume_front("template<> ") || rest.consume_front("static ") ||
+              rest.consume_front("inline ") || rest.consume_front("virtual ")) {}
+        text.insert(text.size() - rest.size(), "constexpr ");
+    }
     if(!after.empty()) {
         std::size_t suffix = text.size();
         if(function.isPureVirtual()) {
@@ -2667,6 +2738,9 @@ auto definition(const clang::Decl* decl, const Options& options) -> Definition {
     clang::PrintingPolicy policy = printing_policy(context, written);
     EnclosingScopes scopes(decl->getDeclContext());
     policy.Callbacks = &scopes;
+    // LIMITATION: a function's card leaves out the attributes its parameters
+    // write (`void report([[maybe_unused]] int code)` shows `void report(int
+    // code)`); the parameter's own card shows them.
     /// Attributes print as the source writes them, which clang's printer
     /// does not know.
     policy.SuppressDeclAttributes = true;
@@ -2759,6 +2833,9 @@ auto definition(const clang::Decl* decl, const Options& options) -> Definition {
         }
     } else if(const auto* function = templated->getAsFunction()) {
         auto after = printer.written(*function).after;
+        // LIMITATION: GNU's `noreturn` shows as `__attribute__((noreturn))`
+        // after the signature even where a macro writes it (`NORETURN void
+        // fail();`).
         /// GNU's `noreturn` marks the function's type, and leaves no
         /// attribute on the declaration.
         if(function->getType()->castAs<clang::FunctionType>()->getNoReturnAttr() &&

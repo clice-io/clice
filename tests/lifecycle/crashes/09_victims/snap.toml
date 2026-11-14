@@ -58,8 +58,9 @@ pushes = [
         {
             at = "⟦⟧int add(int a, int b) {",
             severity = "warning",
-            message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it.",
+            message = "clice's worker crashed while compiling this file (${CRASH}). Semantic features are paused here until this file or a header it includes changes, or until you save it. This is a bug in clice: please report it at https://github.com/clice-io/clice/issues, with the crash report from the log directory ${WS}/.clice/logs/${SESSION}.",
             source = "clice",
+            code = "worker-crash",
         },
     ],
 ]

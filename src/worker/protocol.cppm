@@ -419,6 +419,20 @@ struct FormatResult {
     std::string error;
 };
 
+/// A message where it is, located for CLI presentation: 1-based line and
+/// column, the column counting bytes like the compiler's, and the byte
+/// offset they name; a message no file holds (the command line's) has
+/// none of them.
+struct LocatedMessage {
+    std::string file;
+    std::uint32_t line = 0;
+    std::uint32_t column = 0;
+    std::uint32_t offset = 0;
+    std::string message;
+
+    auto operator<=>(const LocatedMessage&) const = default;
+};
+
 /// Result of a PCH or PCM build.
 struct PrecompiledBuildResult {
     bool success = true;
@@ -427,9 +441,9 @@ struct PrecompiledBuildResult {
     /// without user errors indicates clice infrastructure breakage (anomaly).
     bool has_user_errors = false;
 
-    /// The first of the user errors: the one a module's importers name as
-    /// why it did not build.
-    std::string first_error;
+    /// The first of the user errors, where it is: the one a module's
+    /// importers name as why it did not build.
+    LocatedMessage first_error;
 
     /// How many errors the build met.
     std::uint32_t error_count = 0;
@@ -450,18 +464,6 @@ struct PrecompiledBuildResult {
 
     /// See CompileUnitResult::index_in_file.
     bool index_in_file = false;
-};
-
-/// A message where it is, located for CLI presentation: 1-based line and
-/// column, the column counting bytes like the compiler's; a message no
-/// file holds (the command line's) has neither.
-struct LocatedMessage {
-    std::string file;
-    std::uint32_t line = 0;
-    std::uint32_t column = 0;
-    std::string message;
-
-    auto operator<=>(const LocatedMessage&) const = default;
 };
 
 /// One of a unit's database entries.

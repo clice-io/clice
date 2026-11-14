@@ -3,9 +3,9 @@ errors = [
     {
         at = "import ⟦CycA;⟧",
         severity = "error",
-        message = "cyclic dependency in module 'CycA': CycA -> CycB -> CycA",
-        source = "clang",
-        code = "err_module_cycle",
+        message = "module 'CycA' does not build: its imports cycle back to it (CycA → CycB → CycA)",
+        source = "clice",
+        code = "module-cycle",
     },
 ]
 
@@ -14,8 +14,8 @@ errors = [
     {
         at = "import ⟦CycA;⟧",
         severity = "error",
-        message = "cyclic dependency in module 'CycA': CycA -> CycB -> CycA",
-        source = "clang",
-        code = "err_module_cycle",
+        message = "module 'CycA' does not build: its imports cycle back to it (CycA → CycB → CycA)",
+        source = "clice",
+        code = "module-cycle",
     },
 ]

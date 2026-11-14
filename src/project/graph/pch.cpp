@@ -198,7 +198,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         why,
         std::move(known),
         before,
-        [&](FailureRecord record, Inputs inputs) {
+        [&](FailureRecord record, Inputs inputs, const worker::PrecompiledBuildResult*) {
             project.pchs[pch_key].failure = {std::move(record), std::move(inputs)};
         });
     if(!built) {
@@ -428,8 +428,7 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     // and hides what the fragment made visible. Such a preamble goes without
     // one (clice-io/clice#1057 item 13).
     // LIMITATION: a module unit whose global module fragment imports, often
-    // through a header it includes (as clice's own units do), parses its
-    // fragment again on every edit.
+    // through a header it includes, parses its fragment again on every edit.
     if(imported && imports.module_unit) {
         LOG_DEBUG("No PCH for {}: its global module fragment imports", path);
         return {.partial = partial};

@@ -148,6 +148,10 @@ const llvm::StringMap<Command>& commands() {
         add({"copybrief"}, {Kind::CopyBrief});
         add({"copydetails"}, {Kind::CopyDetails});
 
+        // LIMITATION: a block naming what it documents (`\fn void target()`,
+        // `\class X`, Qt's `\fn` blocks in a .cpp) documents the declaration
+        // below it, if any, not the one it names: documentation written away
+        // from its declaration is not found.
         add({"fn",
              "class",
              "struct",
@@ -816,6 +820,9 @@ private:
                 out += text.trim().empty() ? target : text.trim();
                 return after;
             }
+            // LIMITATION: a formula shows as its LaTeX source, a code span here
+            // and a `tex` code block for `@f[`: the editors' hover and completion
+            // panes render no math.
             case Kind::Formula: {
                 auto [formula, after] = closing(rest);
                 out += markup::code_span(formula.trim());

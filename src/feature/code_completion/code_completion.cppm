@@ -254,12 +254,12 @@ struct NoCompletion {};
 /// The completion at a point, as far as the server answers it alone. A
 /// client without request-side gating (nvim, zed) forwards every keystroke
 /// of an advertised trigger character: space is advertised only so that
-/// `import ` opens module suggestions, the others for include paths and
-/// member or scope access, and any other use of them completes nothing. A
-/// directive name, an include path and a module name are completed here;
-/// other code by a compile, given the index's names for the name typed:
-/// those the file reaches, and those it reaches once it includes or imports
-/// what declares them.
+/// `import ` opens module suggestions, `#` for directive names, the others
+/// for include paths and member or scope access, and any other use of them
+/// completes nothing. A directive name, an include path and a module name
+/// are completed here; other code by a compile, given the index's names for
+/// the name typed: those the file reaches, and those it reaches once it
+/// includes or imports what declares them.
 auto code_complete(const CompletionInputs& inputs)
     -> std::variant<NoCompletion, protocol::CompletionList, CompileCompletion>;
 
@@ -277,6 +277,7 @@ auto directive_completion(const CompletionName& completing,
 /// The paths an `#include` being typed (`completing`) may go on with in
 /// `text`, the file at `path`, as `search` finds them: a directory leaves
 /// the path open for the `/` typed next, a header closes the directive.
+/// An item clice takes for a header has the `data` `"header"`.
 auto include_completion(const CompletionName& completing,
                         llvm::StringRef text,
                         const PositionMap& map,

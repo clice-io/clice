@@ -13,6 +13,11 @@ struct ResolverOptions {
     /// header would differ with what each unit including it instantiates.
     bool only_instantiation = true;
 
+    /// With only_instantiation, the instantiation of a function template
+    /// whose arguments its parameters stand for, in place of its only one:
+    /// the template may have several.
+    const clang::FunctionDecl* instantiation = nullptr;
+
     /// Keep what each query cost and where its work was cut short
     /// (TemplateResolver::audits), for finding the code the resolver
     /// struggles with (`clice inspect template-resolver --audit`).

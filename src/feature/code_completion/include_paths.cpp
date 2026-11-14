@@ -65,7 +65,7 @@ auto include_completion(const CompletionName& completing,
     // and closes the directive, replacing the rest of the path through
     // a closing delimiter already there.
     char closer = angled ? '>' : '"';
-    auto item_of = [&](llvm::StringRef name, bool is_dir, std::uint64_t rank) {
+    auto item_of = [&](llvm::StringRef name, bool is_dir, bool header, std::uint64_t rank) {
         auto end = completing.replace.end;
         if(!is_dir && completing.closed) {
             end = static_cast<std::uint32_t>(text.find(closer, end)) + 1;
@@ -75,6 +75,11 @@ auto include_completion(const CompletionName& completing,
         item.kind =
             is_dir ? protocol::CompletionItemKind::Folder : protocol::CompletionItemKind::File;
         item.sort_text = std::format("{:010}", rank);
+        // An editor draws a file's icon by its name's extension, which a
+        // header like `vector` lacks.
+        if(header) {
+            item.data = protocol::LSPAny(std::string("header"));
+        }
         item.text_edit = protocol::TextEdit{
             .range = *map.range({completing.replace.begin, end}, encoding),
             .new_text = is_dir ? name.str() : (name + llvm::Twine(closer)).str(),
@@ -128,8 +133,8 @@ auto include_completion(const CompletionName& completing,
                        builtin_header(below) == BuiltinHeader::Internal;
             };
             bool hidden = name.starts_with(".");
-            bool unlikely = !is_dir && (!looks_like_header(name, dir, search_dir.path, tier >= 3) ||
-                                        internal());
+            bool header = !is_dir && looks_like_header(name, dir, search_dir.path, tier >= 3);
+            bool unlikely = !is_dir && (!header || internal());
             bool reserved = name.starts_with("_");
             // The rank, ascending. A hidden name (`.git/`) follows all the
             // others, and a file no header would be named as (`README.md`,
@@ -148,10 +153,10 @@ auto include_completion(const CompletionName& completing,
                         position;
             auto [it, inserted] = listed.try_emplace(name, items.size(), rank);
             if(inserted) {
-                items.push_back(item_of(name, is_dir, rank));
+                items.push_back(item_of(name, is_dir, header, rank));
             } else if(rank < it->second.second) {
                 it->second.second = rank;
-                items[it->second.first] = item_of(name, is_dir, rank);
+                items[it->second.first] = item_of(name, is_dir, header, rank);
             }
         }
     };

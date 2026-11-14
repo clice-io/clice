@@ -365,6 +365,9 @@ private:
             if(!literal) {
                 return;
             }
+            // LIMITATION: each piece of a concatenated literal is read on its
+            // own: a placeholder split across pieces (`"%" PRId64`, `"{" "}"`)
+            // shows as plain string text.
             for(unsigned i = 0; i < literal->getNumConcatenated(); i += 1) {
                 // A macro's replacement list stays lexical: one written
                 // there formats only where the macro expands.
@@ -411,6 +414,10 @@ private:
     /// The inactive regions, merged with the arguments macro invocations
     /// drop: those of the parameters their definition never names.
     void collect_inactive() {
+        // LIMITATION: only the arguments of an invocation written in the file
+        // count: one it forwards to another macro that drops it is not dimmed
+        // (`LOG(x)` forwarding to an empty `LOG_IMPL(...)`, while `LOG_IMPL(x)`
+        // written directly is).
         auto spelled = semantics.spelled_tokens();
         std::vector<std::pair<std::uint32_t, std::uint32_t>> dropped;
         for(const auto* ref: invocations) {

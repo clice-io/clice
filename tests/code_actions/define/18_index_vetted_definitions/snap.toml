@@ -24,7 +24,6 @@ compiles = true
 +
 +void Widget::c() {
 +}
-+
 '''
 
 [index.defined_elsewhere]

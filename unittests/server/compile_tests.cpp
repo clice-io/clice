@@ -252,7 +252,7 @@ ZEST_CASE(CrashPublishesNote) {
 
     auto notes = session->crash_notes();
     ZASSERT(notes.size() == 1u);
-    auto message = feature::crash_note(notes[0]).message;
+    auto message = feature::crash_note(notes[0], "").message;
     ZEXPECT(message.contains("while compiling this file (killed by signal 11 (SIGSEGV))"));
     ZEXPECT(message.contains("save it"));
 

@@ -96,12 +96,14 @@ std::optional<QualifiedName> qualified_name_at(CompilationUnit& unit, std::uint3
     auto it = ranges::partition_point(tokens, [&](const Token& token) {
         return token.range.end <= offset;
     });
-    if((it == tokens.end() || it->range.begin > offset || it->kind == clang::tok::comment) &&
-       it != tokens.begin() && std::prev(it)->range.end == offset) {
+    auto names = [&](auto token) {
+        return token != tokens.end() && token->range.begin <= offset &&
+               focus.kind(*token) == clang::tok::identifier;
+    };
+    if(!names(it) && it != tokens.begin() && std::prev(it)->range.end == offset) {
         --it;
     }
-    if(it == tokens.end() || focus.kind(*it) != clang::tok::identifier ||
-       it->range.begin > offset) {
+    if(!names(it)) {
         return std::nullopt;
     }
     auto is = [&](std::optional<std::size_t> i, TokenKind kind) {

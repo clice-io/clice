@@ -12,7 +12,6 @@ pushes = [
 ]
 
 [test.edited]
-wrong = "an edit alone compiles nothing: an editor that only receives pushed diagnostics keeps the old error until it asks something of the file"
 pushes = [
     [
         {
@@ -23,6 +22,20 @@ pushes = [
             code = "err_undeclared_var_use",
         },
     ],
+]
+
+[test.saved]
+pushes = [
+    [
+        {
+            at = "return ⟦missing⟧;",
+            severity = "error",
+            message = "use of undeclared identifier 'missing'",
+            source = "clang",
+            code = "err_undeclared_var_use",
+        },
+    ],
+    [],
 ]
 
 [test.asked]

@@ -4,9 +4,9 @@ errors = [
     {
         at = "import :⟦p2; … ⟧ (2 lines)",
         severity = "error",
-        message = "cyclic dependency in module 'M:p2': M:p2 -> M:p1 -> M:p2",
-        source = "clang",
-        code = "err_module_cycle",
+        message = "module 'M:p2' does not build: its imports cycle back to it (M:p2 → M:p1 → M:p2)",
+        source = "clice",
+        code = "module-cycle",
     },
 ]
 
@@ -16,9 +16,9 @@ errors = [
     {
         at = "import :⟦p1; … ⟧ (2 lines)",
         severity = "error",
-        message = "cyclic dependency in module 'M:p1': M:p1 -> M:p2 -> M:p1",
-        source = "clang",
-        code = "err_module_cycle",
+        message = "module 'M:p1' does not build: its imports cycle back to it (M:p1 → M:p2 → M:p1)",
+        source = "clice",
+        code = "module-cycle",
     },
 ]
 
@@ -28,9 +28,9 @@ errors = [
     {
         at = "export import :⟦p1; … export⟧ (2 lines)",
         severity = "error",
-        message = "cyclic dependency in module 'M:p1': M:p1 -> M:p2 -> M:p1",
-        source = "clang",
-        code = "err_module_cycle",
+        message = "module 'M:p1' does not build: its imports cycle back to it (M:p1 → M:p2 → M:p1)",
+        source = "clice",
+        code = "module-cycle",
     },
 ]
 
@@ -39,8 +39,8 @@ errors = [
     {
         at = "import ⟦M;⟧",
         severity = "error",
-        message = "could not build module 'M': cyclic dependency in module 'M:p1': M:p1 -> M:p2 -> M:p1",
-        source = "clang",
-        code = "err_module_not_built",
+        message = "module 'M:p1' does not build: its imports cycle back to it (M:p1 → M:p2 → M:p1); imported through M → M:p1",
+        source = "clice",
+        code = "module-cycle",
     },
 ]

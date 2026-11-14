@@ -7,7 +7,7 @@ import :compile.tidy;
 namespace clice {
 
 std::string DiagnosticID::diagnostic_code() const {
-    if(source == DiagnosticSource::ClangTidy) {
+    if(source != DiagnosticSource::Clang) {
         return name.str();
     }
     if(!name.empty()) {
@@ -263,6 +263,7 @@ private:
         if(editor) {
             editor->adjust_diag(diagnostic);
         }
+        diagnostic.requested = requested_instantiation();
         // A check can report one finding more than once, from several
         // instantiations of a template.
         if(diagnostic.id.source == DiagnosticSource::ClangTidy &&
@@ -279,6 +280,49 @@ private:
         unit.collected_diagnostics.push_back(std::move(diagnostic));
     }
 
+    /// The work of Sema's that clang notes as a template instantiation the
+    /// code requested (feature/diagnostics.cpp instantiation_note).
+    static bool instantiation(clang::Sema::CodeSynthesisContext::SynthesisKind kind) {
+        using enum clang::Sema::CodeSynthesisContext::SynthesisKind;
+        switch(kind) {
+            case TemplateInstantiation:
+            case DefaultTemplateArgumentInstantiation:
+            case DefaultFunctionArgumentInstantiation:
+            case ExplicitTemplateArgumentSubstitution:
+            case DeducedTemplateArgumentSubstitution:
+            case PriorTemplateArgumentSubstitution:
+            case DefaultTemplateArgumentChecking:
+            case ExceptionSpecEvaluation:
+            case ExceptionSpecInstantiation:
+            case RequirementInstantiation:
+            case NestedRequirementConstraintsCheck:
+            case ConstraintsCheck:
+            case ConstraintSubstitution:
+            case ParameterMappingSubstitution:
+            case TypeAliasTemplateInstantiation: return true;
+            default: return false;
+        }
+    }
+
+    /// Where the focus file asks for the instantiations Sema is in, the
+    /// innermost request. The driver reports before there is an instance.
+    std::optional<LocalSourceRange> requested_instantiation() {
+        if(!unit.instance || !unit.instance->hasSema()) {
+            return std::nullopt;
+        }
+        auto focus = unit.focus_file();
+        for(auto& context: views::reverse(unit.instance->getSema().CodeSynthesisContexts)) {
+            if(!instantiation(context.Kind)) {
+                continue;
+            }
+            auto written = unit.written_range(clang::SourceRange(context.PointOfInstantiation));
+            if(written && focus.contains(written->file)) {
+                return written->range;
+            }
+        }
+        return std::nullopt;
+    }
+
     /// Formatting can deserialize declarations, and the AST reader reports
     /// the ODR mismatches it meets there as diagnostics of their own,
     /// reentrantly: the one converted here is built aside while theirs
@@ -292,15 +336,19 @@ private:
         diagnostic.error_by_default = ids.isDefaultMappingAsError(raw.getID());
         diagnostic.id.name = ids.getWarningOptionForDiag(raw.getID());
 
+        llvm::SmallString<256> message;
+        raw.FormatDiagnostic(message);
+        diagnostic.message = message.str();
         // clang blames the header for not being declared a header unit;
         // clice builds none, whatever the build declares.
         if(diagnostic.id.value == clang::diag::err_header_import_not_header_unit) {
-            diagnostic.message = std::format("header units are not supported; {} is not imported",
-                                             raw.getArgStdStr(0));
-        } else {
-            llvm::SmallString<256> message;
-            raw.FormatDiagnostic(message);
-            diagnostic.message = message.str();
+            diagnostic.id.source = DiagnosticSource::Clice;
+            diagnostic.id.name = "header-unit";
+            diagnostic.message = std::format(
+                "clice does not build header units, so {} is not imported; #include "
+                "it instead",
+                raw.getArgStdStr(0));
+            unit.reworded.insert_or_assign(message, diagnostic.message);
         }
 
         if(auto pair = diagnostic_range(raw)) {

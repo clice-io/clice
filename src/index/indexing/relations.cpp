@@ -414,6 +414,11 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
     // Constructions are call edges too, but only written ones — an
     // implicit copy or elided temporary has no paren/brace form and
     // would flood the constructor's callers.
+    // LIMITATION: a factory forwarding its arguments to a constructor
+    // (`make<Widget>(800, 600)`) constructs inside its own instantiation,
+    // which records no written construction: the constructor's references
+    // and incoming calls leave out the factory's callers, which signature
+    // help does show the constructors to.
     if(auto* CCE = node.get<clang::CXXConstructExpr>()) {
         if(!CCE->getParenOrBraceRange().isValid()) {
             return;

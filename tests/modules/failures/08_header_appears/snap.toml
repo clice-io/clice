@@ -3,8 +3,8 @@ errors = [
     {
         at = "import ⟦A;⟧",
         severity = "error",
-        message = "could not build module 'A': could not build module 'B': 'generated.h' file not found",
-        source = "clang",
-        code = "err_module_not_built",
+        message = "module 'B' does not build: 'generated.h' file not found (and 1 more error); imported through A → B",
+        source = "clice",
+        code = "module-not-built",
     },
 ]

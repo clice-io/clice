@@ -12,3 +12,7 @@ Checks: "-*,bugprone-integer-division
 '''
 source = "clice"
 code = "invalid-clang-tidy-config"
+related = [
+    { at = ".clang-tidy │ HeaderFilterRegex: [⟦⟧", message = "Expected quote at end of scalar" },
+    { at = '.clang-tidy │ ⟦⟧Checks: "-*,bugprone-integer-division', message = "Map value must not be empty" },
+]
