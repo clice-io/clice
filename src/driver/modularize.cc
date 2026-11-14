@@ -210,7 +210,8 @@ int run(Merge& opts) {
 
 int run(Modularize& opts) {
     if(!opts.partition || !opts.output.out) {
-        return fail("modularize needs --partition and --out");
+        print_json(Failure{.error = "modularize needs --partition and --out"});
+        return 2;
     }
     auto libcxx = analysis::read_std_modules(opts.std);
     if(!libcxx) {
@@ -228,7 +229,7 @@ int run(Modularize& opts) {
     if(!loaded) {
         print_json(Failure{.error = std::move(loaded.error().message),
                            .stale = std::move(loaded.error().dropped)});
-        return 1;
+        return (*opened)->project.index.damaged() ? 2 : 1;
     }
     auto partition = analysis::partition(loaded->facts, *spec);
     if(!partition) {

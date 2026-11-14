@@ -12,7 +12,7 @@ stdout = '''
   "to": "core",
   "entities": [
     {
-      "id": "#e754d0209128f76a path:core/str.h",
+      "id": "#369944dff0ce14dc path:core/str.h",
       "entity": "helper",
       "owner": "core/str.h",
       "users": [
@@ -21,7 +21,7 @@ stdout = '''
       "interface": false
     },
     {
-      "id": "#54efcea165420468",
+      "id": "#a4a42208cf996f09",
       "entity": "uses_helper",
       "owner": "core/str.h",
       "users": [
@@ -34,14 +34,14 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice analyze modules edge core app --move-entity \"#e754d0209128f76a path:core/str.h=app/helper.h\""]
+[test."$ clice analyze modules edge core app --move-entity \"#369944dff0ce14dc path:core/str.h=app/helper.h\""]
 stdout = '''
 {
   "from": "core",
   "to": "app",
   "entities": [
     {
-      "id": "#e754d0209128f76a path:core/str.h",
+      "id": "#369944dff0ce14dc path:core/str.h",
       "entity": "helper",
       "owner": "app/helper.h",
       "users": [

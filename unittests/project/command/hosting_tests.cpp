@@ -66,7 +66,7 @@ struct TreeProject {
 
     /// include_chains under `host`'s first command.
     std::optional<llvm::SmallVector<Host>> chains(Fid host, Fid header) {
-        return project.include_chains(tree(host).key, header);
+        return project.include_chains(tree(host), header);
     }
 };
 
@@ -1085,13 +1085,15 @@ ZEST_CASE(TreeFollowsItsInputs) {
     p.project.dep_graph.set_includes(main, 0, {{a}});
     p.project.dep_graph.build_reverse_map();
 
-    auto key = p.tree(main).key;
+    auto request = p.tree(main);
+    auto key = request.key;
     p.project.hosting.trees.commit(key,
                                    {.root = VersionID{p.version(main, main_text)},
                                     .nodes = {{.file = p.version(a, "#pragma once\n"), .line = 1}}},
                                    {*current_input(p.project.file_table, other)});
     ZEXPECT(p.chains(main, a)->size() == 1u);
-    ZEXPECT(!p.project.include_chains({main, key.second + 1}, a).has_value());
+    request.key.second += 1;
+    ZEXPECT(!p.project.include_chains(request, a).has_value());
 
     p.write("other.h", "int y;\n");
     p.project.file_table.disk.end_turn();
@@ -1210,7 +1212,8 @@ ZEST_CASE(FailedContextRemembered) {
     Host host{
         .file = main,
         .chain = {main, t},
-        .lines = {1}
+        .lines = {1},
+        .macro_braces = {0},
     };
     auto command = p.tree(main).command;
     auto failed = p.project.synthesize(t, host, command);

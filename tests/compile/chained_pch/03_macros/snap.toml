@@ -503,7 +503,7 @@ stdout = '''
   "result": {
     "name": "LIMIT",
     "kind": "Macro",
-    "symbol": "#ea5cf972ba74672e",
+    "symbol": "#b12bb46cfe51faca",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -549,7 +549,7 @@ stdout = '''
   "result": {
     "name": "MODE",
     "kind": "Macro",
-    "symbol": "#95be9293e11b3611",
+    "symbol": "#21d965a8b6f9f7c7",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -583,7 +583,7 @@ stdout = '''
   "result": {
     "name": "SQUARE",
     "kind": "Macro",
-    "symbol": "#65b8f161b31911ad",
+    "symbol": "#8c941ba1c5e39cc0",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -611,7 +611,7 @@ stdout = '''
   "result": {
     "name": "EXTRA_ONLY",
     "kind": "Macro",
-    "symbol": "#ab6691b85478527d",
+    "symbol": "#c022aea7e7d70267",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -639,7 +639,7 @@ stdout = '''
   "result": {
     "name": "g",
     "kind": "Field",
-    "symbol": "#69251924040f6a2c",
+    "symbol": "#c2f89aea4b4b9fb8",
     "references": [
       {
         "file": "${WS}/include/guarded.h",
@@ -667,7 +667,7 @@ stdout = '''
   "result": {
     "name": "o",
     "kind": "Field",
-    "symbol": "#750cdeb0f13b80fb",
+    "symbol": "#bf9cef49bf55e707",
     "references": [
       {
         "file": "${WS}/include/once.h",
@@ -702,7 +702,7 @@ stdout = '''
   "result": {
     "name": "LIMIT",
     "kind": "Macro",
-    "symbol": "#ea5cf972ba74672e",
+    "symbol": "#b12bb46cfe51faca",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -748,7 +748,7 @@ stdout = '''
   "result": {
     "name": "MODE",
     "kind": "Macro",
-    "symbol": "#95be9293e11b3611",
+    "symbol": "#21d965a8b6f9f7c7",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -782,7 +782,7 @@ stdout = '''
   "result": {
     "name": "SQUARE",
     "kind": "Macro",
-    "symbol": "#65b8f161b31911ad",
+    "symbol": "#8c941ba1c5e39cc0",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -810,7 +810,7 @@ stdout = '''
   "result": {
     "name": "EXTRA_ONLY",
     "kind": "Macro",
-    "symbol": "#ab6691b85478527d",
+    "symbol": "#c022aea7e7d70267",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -838,7 +838,7 @@ stdout = '''
   "result": {
     "name": "g",
     "kind": "Field",
-    "symbol": "#69251924040f6a2c",
+    "symbol": "#c2f89aea4b4b9fb8",
     "references": [
       {
         "file": "${WS}/include/guarded.h",
@@ -866,7 +866,7 @@ stdout = '''
   "result": {
     "name": "o",
     "kind": "Field",
-    "symbol": "#750cdeb0f13b80fb",
+    "symbol": "#bf9cef49bf55e707",
     "references": [
       {
         "file": "${WS}/include/once.h",

@@ -55,6 +55,12 @@ struct IncludeNode {
     /// and node_of never answers it.
     bool skipped = false;
 
+    /// The braces the macros the parent expanded before the directive open,
+    /// net: beside those its text opens there, the scope the file is
+    /// entered in, which a macro opens in `BEGIN_API` / `#include` /
+    /// `END_API` (glibc's `__BEGIN_DECLS`).
+    std::int32_t macro_braces = 0;
+
     friend bool operator==(const IncludeNode&, const IncludeNode&) = default;
 };
 

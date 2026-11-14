@@ -15,42 +15,42 @@ stdout = '''
         "kind": "Struct",
         "startLine": 3,
         "endLine": 6,
-        "symbol": "#00fc195501113d53"
+        "symbol": "#49ca944f6bb97dc2"
       },
       {
         "name": "x",
         "kind": "Field",
         "startLine": 4,
         "endLine": 4,
-        "symbol": "#995ff32f556a7dc8"
+        "symbol": "#046df2c456f1b16b"
       },
       {
         "name": "y",
         "kind": "Field",
         "startLine": 5,
         "endLine": 5,
-        "symbol": "#592eb7b24e6e4600"
+        "symbol": "#d507d1e33a6dbac5"
       },
       {
         "name": "twice",
         "kind": "Function",
         "startLine": 8,
         "endLine": 11,
-        "symbol": "#54d7b1312102e8e6"
+        "symbol": "#47b3cbe2c9c9c087"
       },
       {
         "name": "geo",
         "kind": "Namespace",
         "startLine": 13,
         "endLine": 17,
-        "symbol": "#b8d40a731e70f055"
+        "symbol": "#343ba92e720a5600"
       },
       {
         "name": "area",
         "kind": "Function",
         "startLine": 14,
         "endLine": 16,
-        "symbol": "#bb577830b310f5fe"
+        "symbol": "#744eaaf912f92ab9"
       }
     ]
   },
@@ -69,35 +69,35 @@ stdout = '''
         "kind": "Macro",
         "startLine": 3,
         "endLine": 3,
-        "symbol": "#73b66f848912e0e6"
+        "symbol": "#d789a0821abb55c2"
       },
       {
         "name": "Point",
         "kind": "Struct",
         "startLine": 5,
         "endLine": 5,
-        "symbol": "#00fc195501113d53"
+        "symbol": "#49ca944f6bb97dc2"
       },
       {
         "name": "twice",
         "kind": "Function",
         "startLine": 7,
         "endLine": 7,
-        "symbol": "#54d7b1312102e8e6"
+        "symbol": "#47b3cbe2c9c9c087"
       },
       {
         "name": "geo",
         "kind": "Namespace",
         "startLine": 9,
         "endLine": 11,
-        "symbol": "#b8d40a731e70f055"
+        "symbol": "#343ba92e720a5600"
       },
       {
         "name": "area",
         "kind": "Function",
         "startLine": 10,
         "endLine": 10,
-        "symbol": "#bb577830b310f5fe"
+        "symbol": "#744eaaf912f92ab9"
       }
     ]
   },
@@ -117,7 +117,7 @@ stdout = '''
     "endLine": 11,
     "documentation": null,
     "text": "int twice(int value) {\n    int doubled = value * 2;\n    return doubled;\n}",
-    "symbol": "#54d7b1312102e8e6"
+    "symbol": "#47b3cbe2c9c9c087"
   },
   "stale": []
 }

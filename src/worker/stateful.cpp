@@ -249,7 +249,7 @@ RequestResult<worker::CompileParams>
                           .project_root = params.project_root,
                           .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
                 .tidy = params.tidy,
-                .skip_bodies = true,
+                .skip_bodies = params.skip_bodies,
                 .function_bodies = params.indexing.function_bodies,
                 .preamble_inactive_regions = params.preamble_inactive_regions,
                 .stop = stop,

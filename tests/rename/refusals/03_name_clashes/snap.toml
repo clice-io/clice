@@ -39,7 +39,7 @@ errors = ["redefinition of 'factor'"]
 error = "cannot rename `offset`: `factor` already names a parameter of the same function (${WS}/main.cpp:4)"
 
 [answers.same_signature]
-wrong = "the function takes the name of another with the same parameters, a redefinition, and the rename only warns"
+wrong = "not supported: a rename onto another function with the same parameters, which makes a redefinition, is not refused, only warned of"
 
 [answers.same_signature.rename]
 notice = '''

@@ -201,7 +201,7 @@ stdout = '''
         "edits": 0,
         "conflicts": [],
         "warnings": [],
-        "error": "the name here resolves to `Seconds::value` and `Meters::value`; rename them to one name in one list of renames, or one of them from its declaration",
+        "error": "the name here resolves to `Meters::value` and `Seconds::value`; rename them to one name in one list of renames, or one of them from its declaration",
         "candidates": null
       }
     ],

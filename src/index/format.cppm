@@ -18,7 +18,7 @@ namespace clice::index {
 /// symbol-hash semantics change (stored entries keyed by old hashes would
 /// silently stop matching newly computed ones), or when the meaning of
 /// stored data changes.
-constexpr inline std::uint32_t index_format_version = 63;
+constexpr inline std::uint32_t index_format_version = 64;
 
 /// The bytes of `blob`, the writer form of a blob layout. A blob holds less
 /// than 4 GiB; index blobs stay far below it, so one past it stops the

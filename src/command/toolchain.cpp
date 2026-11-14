@@ -258,7 +258,11 @@ std::size_t forwarded_start(llvm::ArrayRef<std::string> tokens, const Command& c
 Toolchain::Toolchain(CommandTable& commands,
                      FileTable& files,
                      chrono::steady_clock::duration failed_retry) :
-    commands(commands), files(files), query_policy{.cooldown = failed_retry} {}
+    commands(commands), files(files), query_policy{.cooldown = failed_retry} {
+    if(auto ms = env_integer("CLICE_TEST_QUERY_RETRY_MS")) {
+        query_policy.cooldown = chrono::milliseconds(*ms);
+    }
+}
 
 Toolchain::~Toolchain() = default;
 
@@ -377,7 +381,11 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
     // LIMITATION: so do Apple clang's own cc1 flags (-clang-vendor-feature=,
     // -fno-odr-hash-protocols), and the macros only its fork predefines
     // (TARGET_OS_ARROW, __ARM_ARCH_8_3__) stay undefined; code testing
-    // them is rare, and no difference has been seen.
+    // them is rare, and no difference has been seen. Under Intel's oneAPI
+    // 2024.2 a SYCL kernel given as an unnamed lambda is an error, as the
+    // cc1 flag of Intel's clang allowing it is not ours, and under 2025.0 a
+    // SYCL header's bfloat16 is an incomplete type: one false error each in
+    // a SYCL project; 2025.1 and later are clean.
     auto parse_options = cli::ParseOptions{.visibility = clang_options::CC1Option};
     std::vector<cli::ParsedArg> kept;
     llvm::StringRef triple;
@@ -518,10 +526,7 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
     }
     stage(query.args.drop_front(query.forwarded));
 
-    resolved_configs.push_back({.driver = query.driver,
-                                .args = commands.persist(staged),
-                                .hidden = query.hidden,
-                                .shadowed = query.shadowed});
+    resolved_configs.push_back({.frontend = &query, .args = commands.persist(staged)});
     return static_cast<ResolvedID>(resolved_configs.size() - 1);
 }
 
@@ -542,15 +547,14 @@ Toolchain::QueryAdmission Toolchain::admit_query(CommandID id, InputKind input) 
     if(queries.contains(admission.key)) {
         return admission;
     }
-    if(auto failed_it = failed.find(admission.key); failed_it != failed.end()) {
-        if(failed_it->second.stops(query_policy, FailureRecord::Clock::now())) {
-            admission.kind = QueryAdmission::Kind::CoolingDown;
-            admission.error = failed_it->second.cause;
-            return admission;
-        }
-        // Cooldown over: the failure may have been transient — retry the
-        // real query.
-        failed.erase(failed_it);
+    // Past its cooldown a failure may have been transient: the real query
+    // runs again.
+    if(auto failed_it = failed.find(admission.key);
+       failed_it != failed.end() &&
+       failed_it->second.record.stops(query_policy, FailureRecord::Clock::now())) {
+        admission.kind = QueryAdmission::Kind::CoolingDown;
+        admission.error = failed_it->second.record.cause;
+        return admission;
     }
 
     auto& command = commands.get(id);
@@ -567,12 +571,42 @@ Toolchain::QueryAdmission Toolchain::admit_query(CommandID id, InputKind input) 
 
 void Toolchain::commit_query(llvm::StringRef key,
                              CommandID id,
-                             const std::expected<Job, std::string>& job) {
+                             InputKind input,
+                             const std::expected<Job, std::string>& job,
+                             bool missing) {
     if(!job) {
-        failed[key].fail(query_policy, {}, job.error(), FailureRecord::Clock::now());
+        auto& entry = failed[key];
+        entry.record.fail(query_policy, {}, job.error(), FailureRecord::Clock::now());
+        entry.command = id;
+        entry.input = input;
+        entry.missing = missing;
         return;
     }
+    if(failed.erase(key)) {
+        answered_late += 1;
+    }
     queries.try_emplace(key, frontend(*job, commands.get(id)));
+}
+
+bool Toolchain::query_failed(CommandID id, InputKind input) {
+    return !failed.empty() && commands.get(id).query_toolchain &&
+           failed.contains(query_key(id, input).key);
+}
+
+bool Toolchain::retry_failed() {
+    std::vector<CommandRef> due;
+    auto now = FailureRecord::Clock::now();
+    for(auto& entry: failed) {
+        if(entry.second.missing && !entry.second.record.stops(query_policy, now)) {
+            due.push_back({.command = entry.second.command,
+                           .language = entry.second.input,
+                           .source = CommandSource::Database});
+        }
+    }
+    warm(due, {.retry = true});
+    bool answered = answered_late != reported_late;
+    reported_late = answered_late;
+    return answered;
 }
 
 std::expected<Toolchain::ResolvedCommand, std::string> Toolchain::resolve(CommandID id,
@@ -596,7 +630,7 @@ std::expected<Toolchain::ResolvedCommand, std::string> Toolchain::resolve(Comman
 
         auto [ended] = async::run(query_one(admission.spec));
         auto& result = *ended;
-        commit_query(admission.key, id, result);
+        commit_query(admission.key, id, input, result, !result && !driver_found(admission.spec));
         if(!result) {
             if(runs_compiler) {
                 LOG_WARN(
@@ -630,10 +664,11 @@ std::expected<Toolchain::ResolvedCommand, std::string>
     return ResolvedCommand{.id = resolved->id, .query_failure = std::move(failure)};
 }
 
-void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
+void Toolchain::warm(llvm::ArrayRef<CommandRef> refs, WarmOptions options) {
     struct Pending {
         std::string key;
         CommandID command;
+        InputKind input;
         QuerySpec spec;
 
         /// A build chose the compiler: the builtin command's names one
@@ -655,8 +690,11 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
             pending[it->second].chosen |= chosen;
             continue;
         }
-        pending.push_back(
-            {std::move(admission.key), ref.command, std::move(admission.spec), chosen});
+        pending.push_back({std::move(admission.key),
+                           ref.command,
+                           ref.language,
+                           std::move(admission.spec),
+                           chosen});
     }
 
     if(pending.empty()) {
@@ -671,8 +709,10 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     struct QueryResult {
         std::string key;
         CommandID command;
+        InputKind input;
         std::expected<Job, std::string> result;
         bool chosen;
+        bool missing;
     };
 
     // The query is moved into the coroutine frame as a parameter, so the
@@ -680,7 +720,13 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     auto make_task = [](Pending p, async::semaphore& drivers) -> async::task<QueryResult> {
         auto running = co_await drivers.scoped_acquire();
         auto result = co_await query_one(p.spec);
-        co_return QueryResult{std::move(p.key), p.command, std::move(result), p.chosen};
+        bool missing = !result && !driver_found(p.spec);
+        co_return QueryResult{std::move(p.key),
+                              p.command,
+                              p.input,
+                              std::move(result),
+                              p.chosen,
+                              missing};
     };
 
     auto query_all = [&]() -> async::task<kotatsu::small_vector<QueryResult>> {
@@ -701,6 +747,8 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     for(auto& o: *results) {
         if(o.result) {
             succeeded += 1;
+        } else if(options.retry) {
+            LOG_DEBUG("The compiler still cannot be asked: {}", o.result.error());
         } else if(o.chosen) {
             LOG_WARN(
                 "Cannot ask the compiler for its default settings: {}; clang's own "
@@ -709,9 +757,16 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
         } else {
             LOG_WARN("Cannot ask clice's default compiler for its settings: {}", o.result.error());
         }
-        commit_query(o.key, o.command, o.result);
+        commit_query(o.key, o.command, o.input, o.result, o.missing);
     }
 
+    if(options.retry) {
+        if(succeeded != 0) {
+            LOG_INFO("{} that could not be asked before answered",
+                     counted(succeeded, "compiler", "compilers"));
+        }
+        return;
+    }
     LOG_INFO("Queried {} for default settings; {} failed",
              counted(total, "compiler", "compilers"),
              total - succeeded);
@@ -733,7 +788,7 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
 
     std::vector<const char*> argv;
     argv.reserve(rc.args.size() + 8);
-    argv.push_back(rc.driver);
+    argv.push_back(rc.frontend->driver);
     argv.push_back("-cc1");
     argv.push_back("-main-file-name");
     // path::filename returns a suffix of the interned path (a pointer
@@ -747,8 +802,9 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
     std::size_t last_user_content = argv.size();
     auto left_out = opts.left_out(rc.args);
     for(auto [i, arg]: views::enumerate(rc.args)) {
-        if(left_out[i] || (!opts.shadowed_dirs && names_search_dir(arg.opt_id) &&
-                           ranges::contains(rc.shadowed, llvm::StringRef(arg.values[0])))) {
+        if(left_out[i] ||
+           (!opts.shadowed_dirs && names_search_dir(arg.opt_id) &&
+            ranges::contains(rc.frontend->shadowed, llvm::StringRef(arg.values[0])))) {
             continue;
         }
         render_arg(arg, emit);
@@ -764,7 +820,7 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
     argv.push_back(source.data());
     return {.argv = std::move(argv),
             .query_failure = std::move(resolution->query_failure),
-            .hidden = rc.hidden ? *rc.hidden : vfs::HiddenFiles{}};
+            .hidden = rc.frontend->hidden ? *rc.frontend->hidden : vfs::HiddenFiles{}};
 }
 
 std::vector<const char*> Toolchain::render_for_clang(const CommandRef& ref,
@@ -795,7 +851,7 @@ SearchConfig Toolchain::search_config(const CommandRef& ref) {
     auto [it, inserted] = search_configs.try_emplace(resolution->id);
     if(inserted) {
         it->second = extract_search_config(resolved(resolution->id).args, directory);
-        it->second.hidden = resolved(resolution->id).hidden;
+        it->second.hidden = resolved(resolution->id).frontend->hidden;
         // A directory the command names is the user's, however the driver
         // passes it on: clang-cl's /imsvc reaches cc1 as -internal-isystem.
         llvm::StringSet<> named;

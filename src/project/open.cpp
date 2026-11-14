@@ -157,9 +157,10 @@ std::string unreadable_index(index::LoadResult result, std::string_view where) {
 }
 
 /// Open the index database as its writer under `lock`, recording the
-/// project as the cache directory's owner; none when another project owns
-/// the directory.
-void open_writer(Project& project, index::WriterLock lock) {
+/// project as the cache directory's owner; why the index is not persisted
+/// when another project owns the directory or no database opens, else
+/// empty.
+std::string open_writer(Project& project, index::WriterLock lock) {
     auto& cache_dir = project.settings.cache_dir;
     // The owner is recorded, and checked again, under the lock: another
     // project may have become the directory's owner since the settings
@@ -167,21 +168,26 @@ void open_writer(Project& project, index::WriterLock lock) {
     CanonicalRef root = project.root;
     auto shown = project.file_table.display(root);
     if(owned_elsewhere(cache_dir, root)) {
-        LOG_GUIDANCE("Cache directory {} serves the project at {}; {} keeps no index",
-                     std::string_view(cache_dir),
-                     cache_dir_owner(cache_dir),
-                     shown);
-        return;
+        auto why = std::format("Cache directory {} serves the project at {}",
+                               std::string_view(cache_dir),
+                               cache_dir_owner(cache_dir));
+        LOG_GUIDANCE("{}; {} keeps no index", why, shown);
+        return why;
     }
     set_cache_dir_owner(cache_dir, root, shown);
-    project.database = index::open_database(*project.store, project.database_key);
-    if(project.database) {
-        project.writer_lock = std::move(lock);
+    auto database = index::open_database(*project.store, project.database_key);
+    if(!database) {
+        LOG_GUIDANCE("{}; the index is not saved", database.error());
+        return std::move(database.error());
     }
+    project.database = std::move(*database);
+    project.writer_lock = std::move(lock);
+    return {};
 }
 
 /// Open the cache store and the index database as `options` say; why the
-/// index cannot be read, for a run that reads it, in `opened`.
+/// index cannot be read, for a run that reads it, or kept, for its writer,
+/// in `opened`.
 void open_store(Project& project, const Project::OpenOptions& options, Project::Opened& opened) {
     using Cache = Project::OpenOptions::Cache;
     auto& cache_dir = project.settings.cache_dir;
@@ -210,6 +216,9 @@ void open_store(Project& project, const Project::OpenOptions& options, Project::
             return;
         }
         LOG_GUIDANCE("{}; no preamble or module is precompiled, and the index is not saved", why);
+        if(options.cache == Cache::Write) {
+            opened.unwritable = std::move(why);
+        }
         return;
     }
     // Only a run loading the build's members compiles them; registering
@@ -234,50 +243,66 @@ void open_store(Project& project, const Project::OpenOptions& options, Project::
         // No writer lock: a concurrent server or index run keeps owning it,
         // while the persisted versions and precompiled records still seed this
         // run. What it changes stays in memory and exits with it.
-        project.database = index::open_database(*project.store, key, /*read_only=*/true);
-        if(project.database || !read_only) {
+        auto database = index::open_database(*project.store, key, /*read_only=*/true);
+        if(database) {
+            project.database = std::move(*database);
             return;
         }
         if(!index::database_exists(*project.store, key)) {
-            opened.unreadable = unreadable_index(index::LoadResult::Empty,
-                                                 index::database_directory(*project.store, key));
+            if(read_only) {
+                opened.unreadable = unreadable_index(index::LoadResult::Empty,
+                                                     index::database_directory(*project.store, key));
+            }
             return;
         }
-        opened.unreadable =
-            std::format("The index database at {} cannot be opened; the log above says why",
-                        index::database_directory(*project.store, key));
+        if(!read_only) {
+            LOG_WARN("{}; this run reads no index", database.error());
+            return;
+        }
+        opened.unreadable = std::move(database.error());
         return;
     }
     auto lock = index::WriterLock::acquire(cache_dir);
     if(!lock) {
-        project.index_waits = lock.error() == index::WriterLock::Refused::Held;
+        if(lock.error() == index::WriterLock::Refused::Held) {
+            project.index_waits = true;
+        } else {
+            opened.unwritable = std::format("Cannot open the index writer lock under {}",
+                                            std::string_view(cache_dir));
+        }
         return;
     }
-    open_writer(project, std::move(*lock));
+    opened.unwritable = open_writer(project, std::move(*lock));
 }
 
 /// Load the saved state — the index, the precompiled records, the context
 /// choices — `reconcile`d with the build when it is loaded, and mark the
 /// units deleted while no run wrote the index missing; why a run that
-/// `reads` the index cannot, empty when it can.
-std::string load_saved_state(Project& project, bool reconcile, bool reads) {
+/// `reads` the index cannot, or why its writer keeps it in memory, in
+/// `opened`.
+void load_saved_state(Project& project, bool reconcile, bool reads, Project::Opened& opened) {
     auto& cache_dir = project.settings.cache_dir;
     index::IndexReport report;
     bool decoded = project.load_saved(reconcile, report);
     project.take_report(report);
     // A reader takes no fresh database for one it cannot read.
     if(!decoded && project.database && project.database->read_only()) {
-        return unreadable_index(index::LoadResult::Undecodable, cache_dir);
+        opened.unreadable = unreadable_index(index::LoadResult::Undecodable, cache_dir);
+        return;
     }
-    if(!project.database && reads) {
-        return unreadable_index(index::LoadResult::Unreadable, cache_dir);
+    if(!project.database) {
+        if(reads) {
+            opened.unreadable = unreadable_index(index::LoadResult::Unreadable, cache_dir);
+            return;
+        }
+        opened.unwritable =
+            "the header of its index database cannot be read; the database is left untouched";
     }
     // A unit deleted while no server ran keeps its index until a look finds
     // it missing (see FreshnessGate).
     llvm::SmallVector<Fid> units;
     project.index.for_each_unit([&](Fid tu) { units.push_back(tu); });
     project.file_table.disk.find_missing(units);
-    return {};
 }
 
 }  // namespace
@@ -323,6 +348,10 @@ Project::Opened Project::open(const OpenOptions& options) {
         auto above = databases_above(CanonicalRef(file).parent(), root);
         nearby.append(above.begin(), above.end());
     }
+    // LIMITATION: nothing of the load is kept for the next start: every start
+    // reads the databases again, queries the compilers again (one process per
+    // command group, the slowest on Windows) and scans every file again, for
+    // seconds before the first answer on a project of LLVM's size.
     switch(options.load) {
         case Load::Rules: break;
         case Load::Databases: load_sources(*this, nearby); break;
@@ -339,7 +368,7 @@ Project::Opened Project::open(const OpenOptions& options) {
         if(reads && options.load != Load::Members) {
             opened.unreadable = unreadable_index(index.open(*database), settings.cache_dir);
         } else {
-            opened.unreadable = load_saved_state(*this, options.load == Load::Members, reads);
+            load_saved_state(*this, options.load == Load::Members, reads, opened);
         }
     }
     // The store stays: a run building PCHs and PCMs (lint without --index)
@@ -374,10 +403,10 @@ async::task<std::optional<index::WriterLock>> Project::wait_for_writer() {
     }
 }
 
-CDBDiff Project::open_index(index::WriterLock lock) {
+CDBDiff Project::open_index(index::WriterLock lock, Opened& opened) {
     index_waits = false;
     CDBDiff joined;
-    open_writer(*this, std::move(lock));
+    opened.unwritable = open_writer(*this, std::move(lock));
     if(!database) {
         return joined;
     }
@@ -400,12 +429,9 @@ CDBDiff Project::open_index(index::WriterLock lock) {
     if(!joined.empty() || recorded) {
         joined.append(rebuild_dependency_graph().provisional);
     }
-    if(auto why = load_saved_state(*this, true, false); !why.empty()) {
-        LOG_WARN("{}", why);
-        index.clear();
-        database.reset();
-    }
+    load_saved_state(*this, true, false, opened);
     index.stale_units();
+    opened.members = members();
     return joined;
 }
 

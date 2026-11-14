@@ -323,6 +323,26 @@ ZEST_CASE(LabelsTellFlags) {
     ZEXPECT(ranges::contains(clang, "-O2"));
 }
 
+ZEST_CASE(ListingRemembered) {
+    // The listing holds while the state it reads does: a database loaded
+    // without the project following it shows once the commands move.
+    tmp.touch("main.cpp");
+    auto entry = [&](llvm::StringRef flags) {
+        return std::format(
+            R"({{"directory": "{}", "file": "main.cpp", "command": "clang++ {} -c main.cpp"}})",
+            json_escape(tmp.root),
+            flags);
+    };
+    write_cdb(tmp, project.cdb, std::format("[{}]", entry("-DFIRST")));
+    auto file = fx.intern(tmp.path("main.cpp"));
+    ZASSERT(project.list_contexts(file).size() == 1u);
+
+    write_cdb(tmp, project.cdb, std::format("[{},\n{}]", entry("-DFIRST"), entry("-DSECOND")));
+    ZEXPECT(project.list_contexts(file).size() == 1u);
+    project.commands_epoch += 1;
+    ZEXPECT(project.list_contexts(file).size() == 2u);
+}
+
 ZEST_CASE(ValidChoiceStaysActive) {
     tmp.touch("host.cpp", R"(#include "h.h")");
     tmp.touch("h.h");

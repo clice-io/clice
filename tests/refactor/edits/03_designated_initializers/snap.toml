@@ -16,7 +16,7 @@ stdout = '''
         "locator": "Point::x",
         "name": "x",
         "kind": "Field",
-        "symbol": "#995ff32f556a7dc8",
+        "symbol": "#046df2c456f1b16b",
         "newName": "column",
         "edits": 6,
         "conflicts": [],

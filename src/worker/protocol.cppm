@@ -178,6 +178,9 @@ struct CompileParams {
 
     /// Run clang-tidy over the parse with this frozen configuration.
     std::optional<tidy::TidyParams> tidy;
+
+    /// See CompilationParams::skip_bodies.
+    bool skip_bodies = false;
 };
 
 /// Status of a stateful compile. Anything but `Done` is a non-result: the
@@ -259,6 +262,9 @@ struct BuildPCHParams {
     /// Every built module's PCM (module name -> PCM path), where the
     /// preamble's imports load theirs from.
     std::unordered_map<std::string, std::string> pcms;
+
+    /// See CompilationParams::skip_bodies.
+    bool skip_bodies = false;
 
     /// See CompilationParams::modular.
     bool modular = false;
@@ -458,6 +464,16 @@ struct LocatedMessage {
     auto operator<=>(const LocatedMessage&) const = default;
 };
 
+/// One of a unit's database entries.
+struct UnitEntry {
+    /// The unit's file.
+    std::string file;
+
+    /// The entry's place among the file's, from 1, as `clice command` lists
+    /// them.
+    std::uint32_t index = 0;
+};
+
 struct TidyDiagnostic {
     std::string file;
     std::uint32_t line = 0;
@@ -477,6 +493,10 @@ struct TidyDiagnostic {
 
     /// The notes clang-tidy attached ("previous definition is here").
     std::vector<LocatedMessage> notes;
+
+    /// The entry whose command a lint run compiled the unit under, when it
+    /// is not the first command of the unit's file (clice lint).
+    protocol::optional<UnitEntry> entry;
 };
 
 struct CompileUnitResult {

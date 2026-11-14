@@ -10,18 +10,19 @@ namespace clice::analysis {
 
 namespace {
 
-/// The entity names an edge carries, most-named first.
+/// The entity names an edge carries, most-named first, then by name.
 std::vector<std::string> sample(const Facts& facts, const Graph::Edge& edge, std::size_t limit) {
-    std::vector<std::pair<std::uint32_t, std::size_t>> ranked;
+    std::vector<std::pair<std::size_t, std::string_view>> ranked;
     for(auto& [entity, files]: edge.entities) {
-        ranked.emplace_back(entity, files.size());
+        ranked.emplace_back(files.size(), facts.entities[entity].name);
     }
-    ranges::stable_sort(ranked, ranges::greater{}, [](auto& entry) { return entry.second; });
+    ranges::sort(ranked, [](auto& lhs, auto& rhs) {
+        return std::tie(rhs.first, lhs.second) < std::tie(lhs.first, rhs.second);
+    });
     std::vector<std::string> names;
-    for(auto& entry: ranked) {
-        auto& name = facts.entities[entry.first].name;
+    for(auto& [count, name]: ranked) {
         if(!ranges::contains(names, name)) {
-            names.push_back(name);
+            names.emplace_back(name);
         }
         if(names.size() == limit) {
             break;

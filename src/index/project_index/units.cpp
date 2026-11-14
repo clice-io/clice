@@ -25,12 +25,9 @@ struct UnitFacts {
 
     llvm::SmallVector<UseHash, 1> uses;
 
-    /// Per content hash, the unit's resolution of the file's own
-    /// `#include` lines.
-    llvm::SmallVector<
-        std::pair<std::uint64_t, std::vector<std::pair<std::uint32_t, std::uint32_t>>>,
-        1>
-        resolutions;
+    /// Per content hash, the unit's resolution of the file's lines naming
+    /// another.
+    llvm::SmallVector<std::pair<std::uint64_t, std::vector<LinkEdge>>, 1> resolutions;
 
     friend bool operator==(const UnitFacts&, const UnitFacts&) = default;
 };
@@ -140,21 +137,27 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
             add_distinct(facts[record.fid].read, record.content_hash);
         };
         entered(of.tu_version);
-        for(auto& node: of.nodes) {
-            entered(VersionID{node.file});
-            auto parent =
-                node.parent == no_node ? of.tu_version : VersionID{of.nodes[node.parent].file};
-            auto& record = files.version(parent);
+        auto resolve = [&](VersionID holder, LinkEdge edge) {
+            auto& record = files.version(holder);
             auto& resolutions = facts[record.fid].resolutions;
             auto it = ranges::find_if(resolutions, [&](const auto& resolution) {
                 return resolution.first == record.content_hash;
             });
             if(it == resolutions.end()) {
-                resolutions.emplace_back(record.content_hash,
-                                         std::vector<std::pair<std::uint32_t, std::uint32_t>>());
+                resolutions.emplace_back(record.content_hash, std::vector<LinkEdge>());
                 it = std::prev(resolutions.end());
             }
-            it->second.emplace_back(node.line, path_of(VersionID{node.file}));
+            it->second.push_back(edge);
+        };
+        for(auto& node: of.nodes) {
+            entered(VersionID{node.file});
+            auto parent =
+                node.parent == no_node ? of.tu_version : VersionID{of.nodes[node.parent].file};
+            resolve(parent, {.line = node.line, .target = path_of(VersionID{node.file})});
+        }
+        for(auto& link: of.links) {
+            resolve(link.file,
+                    {.line = link.line, .column = link.column, .target = path_of(link.target)});
         }
         for(auto& [version, variant]: of.contributions) {
             auto& record = files.version(version);
@@ -210,7 +213,7 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
             remove_unit(record.uses, use, unit);
         }
         for(auto& [content, edges]: before.resolutions) {
-            auto it = ranges::find_if(record.resolutions, [&](const IncludeResolution& resolution) {
+            auto it = ranges::find_if(record.resolutions, [&](const LinkResolution& resolution) {
                 return resolution.content == content && resolution.edges == edges;
             });
             if(it != record.resolutions.end()) {
@@ -236,7 +239,7 @@ llvm::SmallVector<Fid> ProjectIndex::replace_manifest(Fid tu, std::optional<TUMa
             add_unit(record.uses, use, unit);
         }
         for(auto& [content, edges]: after.resolutions) {
-            auto it = ranges::find_if(record.resolutions, [&](const IncludeResolution& resolution) {
+            auto it = ranges::find_if(record.resolutions, [&](const LinkResolution& resolution) {
                 return resolution.content == content && resolution.edges == edges;
             });
             if(it == record.resolutions.end()) {

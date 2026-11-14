@@ -193,21 +193,7 @@ std::string cl_search_path(llvm::StringRef ccbin) {
     if(path::is_absolute(ccbin)) {
         directory = fs::is_directory(ccbin) ? ccbin.str() : std::string(path::parent(ccbin));
     } else if(sys::find_program(found, "cl")) {
-        // LIMITATION: the newest toolset, even when the build pinned an older
-        // one (-vcvars_ver) and several are installed: _MSC_VER and the STL
-        // headers follow the newest.
-        std::string toolchain;
-        llvm::ToolsetLayout layout;
-        if(llvm::findVCToolChainViaSetupConfig(*llvm::vfs::getRealFileSystem(),
-                                               std::nullopt,
-                                               toolchain,
-                                               layout)) {
-            directory =
-                llvm::getSubDirectoryPath(llvm::SubDirectoryType::Bin,
-                                          layout,
-                                          toolchain,
-                                          llvm::Triple(llvm::sys::getProcessTriple()).getArch());
-        }
+        directory = visual_studio_bin("cl");
     }
     if(auto path = env_string("PATH"); !directory.empty() && path) {
         directory += ';';
@@ -686,6 +672,10 @@ std::expected<NVCCDryrun, std::string> parse_nvcc_dryrun(llvm::StringRef output)
         }
     };
 
+    // LIMITATION: nvcc's version macros (`__CUDACC_VER_*`) pass on: under
+    // nvcc 12.8 or later, code taking their `>= 12.8` branch (CUTLASS) names
+    // `__NV_ATOMIC_RELAXED`, defined by a CUDA header that clang's CUDA
+    // wrapper headers replace, and reports it undeclared.
     auto harvest_defines = [](llvm::ArrayRef<std::string> tokens, std::vector<std::string>& out) {
         for(llvm::StringRef token: tokens) {
             if(!token.consume_front("-D"))

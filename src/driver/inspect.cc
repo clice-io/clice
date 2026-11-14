@@ -208,23 +208,30 @@ struct UnitIndex {
         };
     }
 
-    /// The focus file's include directives as the index resolves them
-    /// (ProjectIndex::resolved_includes): those of the TU root and of the
-    /// focus file entered again.
-    auto includes() const -> std::vector<index::ResolvedInclude> {
-        std::vector<index::ResolvedInclude> includes;
+    /// The places the focus file names another file as the index resolves
+    /// them (ProjectIndex::resolved_links): the includes of the TU root and
+    /// of the focus file entered again, and the focus file's links.
+    auto links() const -> std::vector<index::ResolvedLink> {
+        std::vector<index::ResolvedLink> links;
         for(std::uint32_t i = 0; i < tu.node_count(); i += 1) {
             auto node = tu.node(i);
             if(node.parent == index::no_node || tu.node(node.parent).file == tu.focus_file()) {
-                includes.push_back({.line = node.line, .target = tu.path(node.file).str()});
+                links.push_back({.line = node.line, .target = tu.path(node.file).str()});
             }
         }
-        auto key = [](const index::ResolvedInclude& include) {
-            return std::tie(include.line, include.target);
+        for(std::uint32_t i = 0; i < tu.link_count(); i += 1) {
+            auto link = tu.link(i);
+            if(link.file == tu.focus_file()) {
+                links.push_back(
+                    {.line = link.line, .column = link.column, .target = link.target.str()});
+            }
+        }
+        auto key = [](const index::ResolvedLink& link) {
+            return std::tie(link.line, link.column, link.target);
         };
-        ranges::sort(includes, {}, key);
-        includes.erase(ranges::unique(includes, {}, key).begin(), includes.end());
-        return includes;
+        ranges::sort(links, {}, key);
+        links.erase(ranges::unique(links, {}, key).begin(), links.end());
+        return links;
     }
 };
 
@@ -270,7 +277,7 @@ std::optional<codec::raw_value> run_document_links(const FeatureParams& params) 
 
 std::optional<codec::raw_value> run_document_links_from_index(const FeatureParams& params) {
     UnitIndex index(params.unit);
-    return to_raw_json(feature::document_links(index.source, index.includes()));
+    return to_raw_json(feature::document_links(index.source, index.links()));
 }
 
 struct RawLocation {
@@ -789,8 +796,7 @@ std::expected<std::unique_ptr<OpenedProject>, ProjectError> load_inspected(const
         auto overlay = json::from_string<codec::dyn::Value>(*opts.config_overlay);
         if(!overlay) {
             return std::unexpected(ProjectError{
-                .message = std::format("invalid --config-overlay: {}", overlay.error().message),
-                .exit_code = 2});
+                .message = std::format("invalid --config-overlay: {}", overlay.error().message)});
         }
         options.overlay = std::move(*overlay);
     }

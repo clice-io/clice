@@ -96,12 +96,12 @@ stdout = '''
 file ${WS}/main.cpp
   blob=# B  content size=40  content hash=#1a667a99fd0a2c5a
   variants=1
-    #e25b1de78b55aa28  contributed by 1 unit
+    #6ac1df6667aef4d3  contributed by 1 unit
       ${WS}/main.cpp
   symbols=3  local symbols=2  occurrences=5  relations=5
     Definition=3
     Reference=2
-    local #af9437b6ea0b8b52  kind=Parameter  name=b
-    local #cca4d04698654dd1  kind=Parameter  name=a
+    local #0948381ed1624e19  kind=Parameter  name=b
+    local #864b0f1e93d67434  kind=Parameter  name=a
 '''
 exit = 0

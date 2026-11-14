@@ -144,6 +144,42 @@ ZEST_CASE(WorkingDirectoryPCHOutput) {
                            [&](const Spelling& input) { return file_table.find(input) == pch; }));
 };
 
+ZEST_CASE(ClPCHOptions) {
+    /// cl's `/Yc` writes the PCH `/Fp` names and `/Yu` reads it, as CMake
+    /// writes them for MSVC; without `/Fp`, the through header's name with
+    /// `.pch` for its extension.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    database.add_command("/project",
+                         "/project/cmake_pch.cxx",
+                         R"(cl /TP /Yc/project/cmake_pch.hxx /FpCMakeFiles/app.pch )"
+                         R"(/FI/project/cmake_pch.hxx /project/cmake_pch.cxx)"sv);
+    database.add_command("/project",
+                         "/project/main.cpp",
+                         R"(cl /Yu/project/cmake_pch.hxx /FpCMakeFiles/app.pch )"
+                         R"(/FI/project/cmake_pch.hxx main.cpp)"sv);
+    database.add_command("/project", "/project/stdafx.cpp", "cl /Ycstdafx.h stdafx.cpp"sv);
+    database.add_command("/project", "/project/off.cpp", "cl /Ycstdafx.h /Y- off.cpp"sv);
+    auto command = [&](llvm::StringRef file) {
+        return database.candidate_entries(file).front().command;
+    };
+    auto pch = commands.pch_output(command("/project/cmake_pch.cxx"));
+    ZASSERT(pch);
+    ZEXPECT(CanonicalPath(*pch) ==
+            CanonicalPath(Spelling::absolute("/project/CMakeFiles/app.pch")));
+    auto read = file_table.find(*pch);
+    ZASSERT(read);
+    ZEXPECT(database.pch_writers(*read).size() == 1U);
+    ZEXPECT(ranges::any_of(commands.pch_inputs(command("/project/main.cpp")),
+                           [&](const Spelling& input) { return file_table.find(input) == read; }));
+
+    auto stdafx = commands.pch_output(command("/project/stdafx.cpp"));
+    ZASSERT(stdafx);
+    ZEXPECT(CanonicalPath(*stdafx) == CanonicalPath(Spelling::absolute("/project/stdafx.pch")));
+    ZEXPECT(!commands.pch_output(command("/project/off.cpp")).has_value());
+};
+
 ZEST_CASE(CommandHashSurvivesMove) {
     /// Paths under the workspace — the compiler, the directory, path
     /// options — hash by their portable names: a moved checkout keeps its
@@ -259,7 +295,7 @@ ZEST_CASE(ResourceDir) {
 
     auto& entry = database.candidate_entries(fake("main.cpp")).front();
     auto ref = database_command(database, entry);
-    auto argv = commands.render_driver(ref, database.spelling(ref.file));
+    auto argv = commands.render_driver(ref, database.files().spelling(ref.file));
 
     bool has_resource_dir = false;
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
@@ -278,7 +314,7 @@ ZEST_CASE(ResourceDir) {
     database2.add_command("/fake", "main.cpp", "clang++ -resource-dir /custom main.cpp"sv);
     auto& entry2 = database2.candidate_entries(fake("main.cpp")).front();
     auto ref2 = database_command(database2, entry2);
-    auto argv2 = commands2.render_driver(ref2, database2.spelling(ref2.file));
+    auto argv2 = commands2.render_driver(ref2, database2.files().spelling(ref2.file));
     int count = 0;
     for(auto* arg: argv2) {
         if(arg == "-resource-dir"sv) {

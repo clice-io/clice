@@ -56,13 +56,16 @@ enum class LoopEvent : std::uint8_t {
     DiskChange,
     /// A checkpoint committed index shards.
     Checkpoint,
+    /// The sources loop found a compiler that could not be asked answer.
+    CompilersAnswered,
 };
 
 /// The events' names in the protocol, by LoopEvent.
-constexpr inline std::array<llvm::StringLiteral, 3> loop_event_names = {
+constexpr inline std::array<llvm::StringLiteral, 4> loop_event_names = {
     "databaseChange",
     "diskChange",
     "checkpoint",
+    "compilersAnswered",
 };
 
 std::optional<LoopEvent> parse_loop_event(llvm::StringRef name);

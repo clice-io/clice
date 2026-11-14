@@ -52,6 +52,27 @@ ZEST_CASE(SymlinkedSourceSpelling) {
     ZASSERT(!argv.empty());
     ZEXPECT(llvm::StringRef(argv.back()) == tmp.path("real/main.cpp"));
 };
+
+ZEST_CASE(FirstEntrySpells) {
+    /// A source two entries name through two links is spelled as the first
+    /// names it, whose command is its default.
+    TempDir tmp;
+    tmp.touch("real/main.cpp", "int main() {}\n");
+    ZASSERT(::symlink(tmp.path("real/main.cpp").c_str(), tmp.path("a.cpp").c_str()) == 0);
+    ZASSERT(::symlink(tmp.path("real/main.cpp").c_str(), tmp.path("b.cpp").c_str()) == 0);
+    tmp.touch("compile_commands.json",
+              build_cdb_json({
+                  {tmp.root, tmp.path("a.cpp"), {"-DA"}},
+                  {tmp.root, tmp.path("b.cpp"), {"-DB"}},
+    }));
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    ZASSERT(database.load(tmp.path("compile_commands.json")));
+    auto argv = render_entry(database, tmp.path("real/main.cpp"));
+    ZASSERT(!argv.empty());
+    ZEXPECT(llvm::StringRef(argv.back()) == tmp.path("a.cpp"));
+};
 #endif
 
 ZEST_CASE(ResponseFilesRecorded) {

@@ -12,6 +12,7 @@ import :settings.settings;
 import :support.logging;
 import :support.prelude;
 import :support.process;
+import :support.text;
 import :support.version;
 import :vfs.file_table;
 import :vfs.path;
@@ -30,7 +31,7 @@ inline std::expected<std::pair<Spelling, LoadedSettings>, ProjectError>
                  const Spelling& start = Spelling::cwd()) {
     auto root = where.root(start);
     if(!root) {
-        return std::unexpected(ProjectError{.message = std::move(root.error()), .exit_code = 2});
+        return std::unexpected(ProjectError{.message = std::move(root.error())});
     }
     options.configuration = where.build.configuration;
     CanonicalPath canonical(*root);
@@ -48,7 +49,7 @@ inline std::expected<std::pair<Spelling, LoadedSettings>, ProjectError>
         }
     }
     if(!errors.empty()) {
-        return std::unexpected(ProjectError{.message = llvm::join(errors, "\n"), .exit_code = 2});
+        return std::unexpected(ProjectError{.message = llvm::join(errors, "\n")});
     }
     return std::pair{std::move(*root), std::move(loaded)};
 }
@@ -92,13 +93,11 @@ inline std::unique_ptr<OpenedProject> open_at(const Spelling& root,
 }
 
 /// The project at `root` under `loaded` with its index, read-only, and
-/// `load` of its build; why the index cannot be read is logged, and
-/// `unusable` the error.
+/// `load` of its build; the error says why the index cannot be read.
 inline std::expected<std::unique_ptr<OpenedProject>, ProjectError>
     open_index(const Spelling& root,
                LoadedSettings loaded,
                Project::OpenOptions::Load load,
-               std::string_view unusable,
                bool check_disk = true) {
     auto opened = open_at(root,
                           std::move(loaded),
@@ -108,8 +107,7 @@ inline std::expected<std::unique_ptr<OpenedProject>, ProjectError>
                           },
                           check_disk);
     if(!opened->opened.unreadable.empty()) {
-        LOG_ERROR("{}", opened->opened.unreadable);
-        return std::unexpected(ProjectError{.message = std::string(unusable)});
+        return std::unexpected(ProjectError{.message = std::move(opened->opened.unreadable)});
     }
     return opened;
 }
@@ -124,16 +122,64 @@ inline feature::query::Context query_context(const Project& project) {
     };
 }
 
-/// What an answer lists as stale: `listed` and the files `project` withheld, sorted, once each.
-inline std::vector<std::string> stale_files(const Project& project,
-                                            std::vector<std::string> listed) {
-    for(auto file: project.freshness.withheld()) {
-        listed.emplace_back(project.file_table.display(file));
+/// The files an answer lists as stale, by why its entries of them are
+/// missing: changed since the last index (the query withheld them),
+/// asked about but never indexed, or failed to index under --fresh.
+struct StaleFiles {
+    std::vector<std::string> changed;
+
+    std::vector<std::string> unindexed;
+
+    std::vector<std::string> failed;
+
+    /// All of them, sorted, once each: the answer's `stale`.
+    std::vector<std::string> all() const {
+        std::vector<std::string> listed;
+        listed.append_range(changed);
+        listed.append_range(unindexed);
+        listed.append_range(failed);
+        ranges::sort(listed);
+        listed.erase(ranges::unique(listed).begin(), listed.end());
+        return listed;
     }
-    ranges::sort(listed);
-    auto duplicates = ranges::unique(listed);
-    listed.erase(duplicates.begin(), duplicates.end());
-    return listed;
+
+    /// What an error ends with when it may stem from them, so a symbol
+    /// missing from one of them does not read as missing from the project;
+    /// empty when there are none.
+    std::string note() const {
+        llvm::SmallVector<std::string, 3> reasons;
+        if(!changed.empty()) {
+            reasons.push_back(
+                std::format("{} left out, changed since the last index: rerun with --fresh",
+                            counted(changed.size(), "file", "files")));
+        }
+        if(!unindexed.empty()) {
+            reasons.push_back(std::format("{} not in the index: run `clice index`",
+                                          counted(unindexed.size(), "file", "files")));
+        }
+        if(!failed.empty()) {
+            reasons.push_back(
+                std::format("{} failed to index", counted(failed.size(), "unit", "units")));
+        }
+        return llvm::join(reasons, "; ");
+    }
+};
+
+/// The stale files of an answer about `project`: those it withheld, with
+/// `changed` (files a rename found not current), `unindexed` and `failed`.
+inline StaleFiles stale_files(const Project& project,
+                              std::vector<std::string> changed,
+                              std::vector<std::string> unindexed,
+                              std::vector<std::string> failed) {
+    for(auto file: project.freshness.withheld()) {
+        changed.emplace_back(project.file_table.display(file));
+    }
+    StaleFiles stale{std::move(changed), std::move(unindexed), std::move(failed)};
+    for(auto* list: {&stale.changed, &stale.unindexed, &stale.failed}) {
+        ranges::sort(*list);
+        list->erase(ranges::unique(*list).begin(), list->end());
+    }
+    return stale;
 }
 
 /// A snapshot of a batch index run's progress within the current pass:
@@ -143,6 +189,34 @@ struct BatchProgress {
     std::size_t completed = 0;
     std::size_t total = 0;
     std::size_t failed = 0;
+
+    /// A unit compiling for long, and for how many seconds.
+    struct Slow {
+        std::string unit;
+
+        std::int64_t seconds = 0;
+    };
+
+    /// The units compiling for more than `slow_after`, longest first.
+    std::vector<Slow> slow;
+
+    constexpr static auto slow_after = chrono::seconds(30);
+
+    /// The slow units for a progress line to end with: `; compiling 41s:
+    /// a.cpp, 35s: b.cpp`; empty when there are none.
+    std::string slow_units() const {
+        if(slow.empty()) {
+            return {};
+        }
+        constexpr std::size_t shown = 3;
+        llvm::SmallVector<std::string, shown> listed;
+        for(auto& unit: views::take(slow, shown)) {
+            listed.push_back(std::format("{}s: {}", unit.seconds, unit.unit));
+        }
+        auto more =
+            slow.size() > shown ? std::format(" and {} more", slow.size() - shown) : std::string();
+        return std::format("; compiling {}{}", llvm::join(listed, ", "), more);
+    }
 };
 
 /// The project a batch run works on, as the command read it.
@@ -180,6 +254,10 @@ struct BatchResult {
     /// The run reached its final summary (early failures skip it).
     bool completed = false;
 
+    /// Why the run stopped before indexing: the workers did not start, no
+    /// database could take the index, or there was nothing to index.
+    protocol::optional<std::string> error;
+
     std::size_t indexed_tus = 0;
 
     std::size_t shard_count = 0;
@@ -213,14 +291,12 @@ struct BatchResult {
     /// The session log directory; empty when file logging is off.
     std::string session_dir;
 
-    /// Why a run that never started indexing could not write the index
-    /// (writes_index); the log and the exit code report it.
-    KANNOTATE(&unwritable, skip = true)
-    std::string unwritable;
-
     /// Index state remained that the final save could not commit; a rerun
     /// cannot resume from it.
     bool unsaved = false;
+
+    /// Why the database refused the last save, when it did (Project::save_error).
+    protocol::optional<std::string> save_error;
 
     /// The index database was damaged: the final save discarded it, and
     /// the next run rebuilds the index.
@@ -231,7 +307,7 @@ struct BatchResult {
 
 /// One-shot batch indexing on the project's own builds — no sessions, no
 /// transports: open the project, drain the background index, persist, and
-/// wind down in contract-11 order. Runs its own event loop to completion.
+/// wind down in the order of contract 2. Runs its own event loop to completion.
 /// Passes start immediately and indexing happens even when the settings
 /// keep the background index disabled — running the command is the
 /// request itself.
@@ -339,19 +415,17 @@ inline async::task<std::string> writes_index(Project& project, Project::Opened& 
                                                   .holder = index::WriterLock::holder(cache_dir)},
                                                  cache_dir);
         }
-        project.open_index(std::move(*lock));
-        // The saved index brings the files it recorded as members.
-        opened.members = project.members();
+        project.open_index(std::move(*lock), opened);
     }
     if(!project.database) {
-        co_return std::format(
-            "Cannot persist the index at {}: the warning above says why; fix that and rerun",
-            std::string_view(cache_dir));
+        co_return std::format("Cannot persist the index at {}: {}",
+                              std::string_view(cache_dir),
+                              opened.unwritable);
     }
     co_return std::string();
 }
 
-/// The shared contract-11 tail, then the pool.
+/// The shared tail of contract 2, then the pool.
 inline async::task<> shutdown(BatchRun& run) {
     co_await run.project.shutdown();
     co_await run.pool.stop();
@@ -442,10 +516,11 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
                                                                     const LoadedSettings& loaded) {
     auto report_progress = [](const BatchProgress& progress) {
         driver::println(stderr,
-                        "indexing {}/{} units, {} failed",
+                        "indexing {}/{} units, {} failed{}",
                         progress.completed,
                         progress.total,
-                        progress.failed);
+                        progress.failed,
+                        progress.slow_units());
     };
     auto indexed = index_project({.root = root, .loaded = loaded}, report_progress);
     if(!indexed) {
@@ -461,19 +536,19 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
     }
     auto& result = std::get<BatchResult>(*indexed);
     if(!result.completed) {
-        if(!result.unwritable.empty()) {
-            return std::unexpected(std::move(result.unwritable));
-        }
-        return std::unexpected(result.interrupted ? "indexing interrupted"
-                                                  : "indexing failed; see the log");
+        return std::unexpected(result.interrupted ? std::string("indexing interrupted")
+                                                  : std::move(*result.error));
     }
     if(result.unsaved) {
-        return std::unexpected("part of the index could not be persisted; see the log");
+        return std::unexpected(
+            result.save_error
+                ? std::format("part of the index could not be persisted: {}", *result.save_error)
+                : std::string("part of the index could not be persisted"));
     }
     if(result.damaged) {
         return std::unexpected(
-            "the index database is damaged (see the log); it is discarded, and the next `clice "
-            "index` rebuilds the index");
+            "the index database is damaged; it is discarded, and the next `clice index` "
+            "rebuilds the index");
     }
     return std::move(result.failed);
 }
@@ -498,11 +573,11 @@ inline std::expected<std::unique_ptr<OpenedProject>, ProjectError>
         }
         failed = std::move(*refreshed);
     }
-    auto opened = open_index(root,
-                             std::move(loaded),
-                             load,
-                             "the index could not be opened (the log above says why); run "
-                             "`clice index` or pass --fresh");
+    // LIMITATION: without --fresh the compilation database is not checked
+    // against the index: after a change to compile_commands.json or
+    // clice.toml alone, the sources unchanged, queries answer from the old
+    // commands' index and report nothing stale.
+    auto opened = open_index(root, std::move(loaded), load);
     if(opened) {
         (*opened)->failed = std::move(failed);
     }
@@ -518,10 +593,7 @@ inline std::expected<std::unique_ptr<OpenedProject>, ProjectError>
         return std::unexpected(std::move(read.error()));
     }
     auto& [root, loaded] = *read;
-    return open_index(root,
-                      std::move(loaded),
-                      Project::OpenOptions::Load::Rules,
-                      "no usable index; run `clice index` first");
+    return open_index(root, std::move(loaded), Project::OpenOptions::Load::Rules);
 }
 
 }  // namespace clice::driver

@@ -46,6 +46,36 @@ std::vector<std::string> cl_driver_mode(llvm::StringRef driver, CompilerFamily f
     return mode;
 }
 
+std::string visual_studio_bin(llvm::StringRef program) {
+#ifdef _WIN32
+    bool cl = program.equals_insensitive("cl");
+    if(!cl && !program.equals_insensitive("clang-cl")) {
+        return {};
+    }
+    // LIMITATION: the newest toolset, even when the build pinned an older
+    // one (-vcvars_ver) and several are installed: _MSC_VER and the STL
+    // headers follow the newest.
+    std::string toolchain;
+    llvm::ToolsetLayout layout;
+    if(!llvm::findVCToolChainViaSetupConfig(*llvm::vfs::getRealFileSystem(),
+                                            std::nullopt,
+                                            toolchain,
+                                            layout)) {
+        return {};
+    }
+    auto arch = llvm::Triple(llvm::sys::getProcessTriple()).getArch();
+    if(cl) {
+        return llvm::getSubDirectoryPath(llvm::SubDirectoryType::Bin, layout, toolchain, arch);
+    }
+    // <VS>/VC/Tools/MSVC/<version> is the toolset, <VS>/VC/Tools/Llvm/<arch>/bin
+    // the clang-cl beside it.
+    auto tools = path::parent(path::parent(toolchain));
+    return path::join(tools, "Llvm", arch == llvm::Triple::aarch64 ? "ARM64" : "x64", "bin");
+#else
+    return {};
+#endif
+}
+
 async::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> args,
                                                     const Command& command,
                                                     llvm::StringRef input,

@@ -16,7 +16,7 @@ stdout = '''
     "endLine": 6,
     "documentation": "Computes the area of a rectangle.\n\n**Parameters:**  \n- `width` — The horizontal extent.\n- `height` — The vertical extent.\n\n**Returns:** The product of both sides.",
     "text": "int area(int width, int height) {\n    return width * height;\n}",
-    "symbol": "#7b938a3382a6f65a"
+    "symbol": "#80edefe76566de37"
   },
   "stale": []
 }
@@ -29,7 +29,7 @@ stdout = '''
   "result": {
     "name": "surface",
     "kind": "Function",
-    "symbol": "#a2ee286bd8d3dc88",
+    "symbol": "#a4f5a4a6165a3706",
     "documentation": "Computes the area of a rectangle.\n\n**Parameters:**  \n- `width` — The horizontal extent.\n- `height` — The vertical extent.\n\n**Returns:** The product of both sides.",
     "definition": {
       "file": "${WS}/geometry.cpp",
@@ -54,7 +54,7 @@ stdout = '''
     "endLine": 14,
     "documentation": "Draws the shape.",
     "text": "void Square::draw() {}",
-    "symbol": "#e3c8e20a05689894"
+    "symbol": "#6435ba1176dabae2"
   },
   "stale": []
 }
@@ -67,7 +67,7 @@ stdout = '''
   "result": {
     "name": "sides",
     "kind": "Field",
-    "symbol": "#17762968bcc5b2cf",
+    "symbol": "#3aef01e8e2534f90",
     "documentation": "How many sides it has.",
     "definition": {
       "file": "${WS}/include/geometry.h",

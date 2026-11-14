@@ -478,7 +478,7 @@ ZEST_CASE(MergedRecordsRoundTrip) {
     TempDir tmp;
     auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
     ZASSERT(store);
-    auto db = index::open_database(*store, {});
+    auto db = index::open_database(*store, {}).value_or(nullptr);
     ZASSERT(db != nullptr);
 
     clice::FileTable pool;
@@ -508,7 +508,7 @@ ZEST_CASE(SymbolRecordsRoundTrip) {
     TempDir tmp;
     auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
     ZASSERT(store);
-    auto db = index::open_database(*store, {});
+    auto db = index::open_database(*store, {}).value_or(nullptr);
     ZASSERT(db != nullptr);
 
     clice::FileTable pool;
@@ -585,7 +585,7 @@ ZEST_CASE(LazyShardsStayPut) {
     TempDir tmp;
     auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
     ZASSERT(store);
-    auto db = index::open_database(*store, {});
+    auto db = index::open_database(*store, {}).value_or(nullptr);
     ZASSERT(db != nullptr);
 
     clice::FileTable writer_files;
@@ -634,7 +634,7 @@ ZEST_CASE(LocalSymbolAcrossFiles) {
     TempDir tmp;
     auto store = CacheStore::open(tmp.path("lmdb"), 1, false);
     ZASSERT(store);
-    auto db = index::open_database(*store, {});
+    auto db = index::open_database(*store, {}).value_or(nullptr);
     ZASSERT(db != nullptr);
 
     auto unit_of = [](llvm::StringRef name, llvm::StringRef text) {

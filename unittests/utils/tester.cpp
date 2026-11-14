@@ -141,6 +141,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
     auto scan_args_base = base_cc1_args(standard, triple);
 
     std::vector<ScannedModule> modules;
+    DirectiveCache cache;
     for(auto& mod: all_modules) {
         auto args = scan_args_base;
         args.push_back(TestVFS::path(mod.filename));
@@ -150,7 +151,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
             argv.push_back(arg.c_str());
         }
 
-        auto result = scan_precise(argv, TestVFS::root(), {}, vfs);
+        auto result = scan_precise(cache, argv, TestVFS::root(), {}, vfs);
         if(result.provided_module().empty()) {
             continue;
         }
@@ -300,7 +301,7 @@ void Tester::prepare_driver(llvm::StringRef standard) {
     auto entry = database.add_command(TestVFS::root(), src_path, command);
     ZASSERT(entry);
     auto ref = database_command(database, *entry);
-    auto rendered = toolchain.render(ref, database.spelling(ref.file));
+    auto rendered = toolchain.render(ref, database.files().spelling(ref.file));
     params.input.arguments.assign(rendered.argv.begin(), rendered.argv.end());
 
     auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(

@@ -416,7 +416,11 @@ void Project::reopen_fresh_database() {
     // database, as does the record of the members it was saved with.
     index.clear();
     saved_members.forget_persisted();
-    database = index::open_database(*store, database_key);
+    if(auto fresh = index::open_database(*store, database_key)) {
+        database = std::move(*fresh);
+    } else {
+        LOG_WARN("{}; index persistence is disabled for this session", fresh.error());
+    }
     // The metadata blobs died with the condemned database while their
     // loaded state lives on in memory; without a re-dirty the next save
     // skips them and a restart loses the user's context choices and every
@@ -541,7 +545,9 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
 
     if(committed) {
         unsaved_bytes = 0;
+        save_error.clear();
     } else if(!report.owes_retry) {
+        save_error = committed.error();
         // A map that grew takes the batch again at once; any other refusal
         // leaves it in memory for the next save.
         LOG_WARN("The index database is not written: {}", committed.error());

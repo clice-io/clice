@@ -39,19 +39,62 @@ llvm::StringRef language_state_at_slot(llvm::ArrayRef<Arg> args) {
     return cl_state.empty() ? x_state : cl_state;
 }
 
+/// The last of the args the option `id` spells; null for none.
+const Arg* last_of(llvm::ArrayRef<Arg> args, unsigned id) {
+    for(auto& arg: views::reverse(args)) {
+        if(arg.opt_id == id) {
+            return &arg;
+        }
+    }
+    return nullptr;
+}
+
+/// cl's `/Yc` or `/Yu` (`id`) when no `/Y-` turns it off; null otherwise.
+const Arg* cl_pch_option(llvm::ArrayRef<Arg> args, unsigned id) {
+    return last_of(args, clang_options::OPT__SLASH_Y_) ? nullptr : last_of(args, id);
+}
+
 /// Whether the command writes a precompiled header: it compiles its input
 /// as a header (`-x c++-header`) — as CMake builds a target's precompiled
-/// headers from `cmake_pch.hxx.cxx` — or emits a PCH, and does not only
-/// check its syntax (Bazel's header parsing).
+/// headers from `cmake_pch.hxx.cxx` — emits a PCH, or creates one with cl's
+/// `/Yc`, and does not only check its syntax (Bazel's header parsing).
 bool writes_pch(llvm::ArrayRef<Arg> args) {
     namespace types = clang::driver::types;
-    auto has = [&](unsigned id) {
-        return ranges::any_of(args, [&](const Arg& arg) { return arg.opt_id == id; });
-    };
     auto type = types::lookupTypeForTypeSpecifier(language_state_at_slot(args).str().c_str());
     return ((type != types::TY_INVALID && types::onlyPrecompileType(type)) ||
-            has(clang_options::OPT_emit_pch)) &&
-           !has(clang_options::OPT_fsyntax_only);
+            last_of(args, clang_options::OPT_emit_pch) ||
+            cl_pch_option(args, clang_options::OPT__SLASH_Yc)) &&
+           !last_of(args, clang_options::OPT_fsyntax_only);
+}
+
+/// The command's working directory: its entry's, or the one
+/// -working-directory names.
+Spelling working_directory(const Command& command) {
+    auto* named = last_of(command.args, clang_options::OPT_working_directory);
+    return Spelling::absolute(named && named->values.size() == 1 ? named->values[0]
+                                                                 : command.directory);
+}
+
+/// The PCH cl's `/Yc` writes or `/Yu` reads, `through` being that option:
+/// /Fp's path, `.pch` added when it names no extension, else the through
+/// header's with its extension replaced — clang-cl's driver's rule
+/// (Driver::GetClPchPath). None for an option naming no header without /Fp.
+std::optional<Spelling> cl_pch_path(const Command& command, const Arg& through) {
+    auto directory = working_directory(command);
+    if(auto* fp = last_of(command.args, clang_options::OPT__SLASH_Fp);
+       fp && fp->values.size() == 1) {
+        std::string path = fp->values[0];
+        if(path::extension(path).empty()) {
+            path += ".pch";
+        }
+        return Spelling::absolute(Spelling(path, directory).str());
+    }
+    if(through.values.size() != 1 || llvm::StringRef(through.values[0]).empty()) {
+        return std::nullopt;
+    }
+    llvm::StringRef header = through.values[0];
+    auto stem = header.drop_back(path::extension(header).size());
+    return Spelling::absolute(Spelling(stem.str() + ".pch", directory).str());
 }
 
 /// Whether the driver compiles C inputs as C++, as `g++` and `clang++` do
@@ -262,23 +305,26 @@ llvm::StringRef CommandTable::forced_language(CommandID id) const {
 }
 
 std::optional<Spelling> CommandTable::pch_output(CommandID id) const {
-    for(auto& arg: views::reverse(get(id).args)) {
-        if(arg.opt_id == clang_options::OPT_o && arg.values.size() == 1) {
-            return Spelling::absolute(arg.values[0]);
-        }
+    auto& command = get(id);
+    if(auto* created = cl_pch_option(command.args, clang_options::OPT__SLASH_Yc)) {
+        return cl_pch_path(command, *created);
     }
-    return std::nullopt;
+    auto* output = last_of(command.args, clang_options::OPT_o);
+    return output && output->values.size() == 1
+               ? std::optional(Spelling::absolute(output->values[0]))
+               : std::nullopt;
 }
 
 llvm::SmallVector<Spelling, 2> CommandTable::pch_inputs(CommandID id) const {
-    auto& args = get(id).args;
-    auto directory = Spelling::absolute(get(id).directory);
-    for(auto& arg: args) {
-        if(arg.opt_id == clang_options::OPT_working_directory && arg.values.size() == 1) {
-            directory = Spelling::absolute(arg.values[0]);
+    auto& command = get(id);
+    auto& args = command.args;
+    auto directory = working_directory(command);
+    llvm::SmallVector<Spelling, 2> inputs;
+    if(auto* used = cl_pch_option(args, clang_options::OPT__SLASH_Yu)) {
+        if(auto pch = cl_pch_path(command, *used)) {
+            inputs.push_back(std::move(*pch));
         }
     }
-    llvm::SmallVector<Spelling, 2> inputs;
     for(auto& arg: args) {
         if(arg.values.size() != 1) {
             continue;

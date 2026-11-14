@@ -41,7 +41,7 @@ exit = 0
 
 ["the units lint beside an index that cannot be read"."$ clice lint"]
 stdout = "Linted 5 translation units in #s: 0 findings."
-stderr = "warning: Index database at .clice/cache/v15/index/default/index.mdb is empty; run `clice index` to build it"
+stderr = "warning: Index database at .clice/cache/v15/index/default/index.mdb is empty; run `clice index` to build it; this run reads no index"
 exit = 0
 
 ["a rule leaving the pch's builder out of the index"."$ clice lint"]

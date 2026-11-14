@@ -25,7 +25,7 @@ $ clice command src/main.cpp
   hidden:    112 of the files in /usr/lib/gcc/x86_64-linux-gnu/13/include
 ```
 
-The exit code is 0 when the file's entries are listed, 1 when the file does not exist or no database lists it, 2 when the arguments do not parse.
+The exit code is 0 when the file's entries are listed, 1 when the file does not exist or no database lists it, 2 when a database changes while it is read or the arguments do not parse.
 
 ## Converting commands
 
@@ -33,4 +33,4 @@ The exit code is 0 when the file's entries are listed, 1 when the file does not 
 
 The converted commands are `-cc1` commands of the Clang clice is built on: they suit a tool built on a compatible Clang. A command whose compiler cannot be queried stays a driver command instead, the one clang's own driver reads in the compiler's place.
 
-The exit code is 0 when every command is converted; 1 when a compiler cannot be queried, after printing what was converted, the commands it could not query as those driver commands; 1 as well when the database cannot be read or the command compiles no C-family source file or several; 2 when the arguments do not parse.
+The exit code is 0 when every command is converted; 1 when a compiler cannot be queried, after printing what was converted, the commands it could not query as those driver commands; 2 when the database cannot be read, the command compiles no C-family source file or several, or the arguments do not parse.

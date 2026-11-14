@@ -40,8 +40,8 @@ stdout = '''
       "interfaceEntities": 2,
       "implementationEntities": 0,
       "sample": [
-        "length",
-        "Str"
+        "Str",
+        "length"
       ]
     },
     {
@@ -50,8 +50,8 @@ stdout = '''
       "interfaceEntities": 0,
       "implementationEntities": 2,
       "sample": [
-        "Clock::size",
-        "Clock"
+        "Clock",
+        "Clock::size"
       ]
     }
   ],

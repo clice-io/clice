@@ -93,6 +93,11 @@ std::vector<WrittenDesignator> written_designators(llvm::StringRef text,
 CompletionName completion_name(llvm::StringRef text,
                                std::uint32_t offset,
                                const clang::LangOptions& dialect) {
+    // LIMITATION: after `namespace kota::` clang completes the global scope's
+    // names, not the namespaces nested in `kota`, so typing any nested
+    // namespace definition gets the wrong candidates; a line opening with
+    // `namespace` would have its own context here (clice-io/clice#1057 item 7).
+    //
     // Only a line opening with a directive, an import or a module
     // declaration has a context, and only then is the text before it lexed,
     // for the comment the line may be in.

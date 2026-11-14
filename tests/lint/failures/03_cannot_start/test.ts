@@ -6,6 +6,7 @@ import { test } from "@clice/tools/testing";
 // Said before the run writes anything: no cache directory, no session log.
 test("no database", { errors: ["Nothing to lint: no compile_commands.json found"] }, async (t) => {
     await t.cli("lint --jobs 2");
+    await t.cli("lint --jobs 2 --json");
     await t.show("created", t.disk.list(".clice/**"));
 });
 

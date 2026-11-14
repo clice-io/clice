@@ -198,7 +198,7 @@ auto written_range(const clang::Decl* decl) -> clang::SourceRange {
     if(leading) {
         range.setBegin(attribute_begin(*leading, sources, decl->getASTContext().getLangOpts()));
     }
-    // Clang leaves a bound it cannot locate unset, on valid code too:
+    // clang bug: clang leaves a bound it cannot locate unset, on valid code too:
     // `short __attribute__((vector_size(16)))`, `Ts...[0]`, the typeless
     // `for(x : v)`; an unclosed `namespace a {` runs to the end of its file.
     if(range.getBegin().isInvalid()) {

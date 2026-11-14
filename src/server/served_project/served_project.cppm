@@ -500,7 +500,7 @@ public:
     /// Interrupt every in-flight parse and wait for the detached compile
     /// joins. The attempts themselves finish in TaskGraph::shutdown — the
     /// interruption is what keeps that finish prompt (an attempt's stateful
-    /// send carries the interrupt, not its advisory token: contract 2 wants
+    /// send carries the interrupt, not its advisory token: contract 1 wants
     /// the real reply, and the interrupt makes it arrive early).
     async::task<> stop_compiles();
 
@@ -838,7 +838,9 @@ private:
     /// the wait ends leaves the project unserved (index_kept_elsewhere).
     async::task<> open_index_task();
 
-    /// The default-sources loop, poll_sources on the workspace poll's pace.
+    /// The default-sources loop, poll_sources on the workspace poll's pace,
+    /// asking the compilers that could not be asked again: the documents
+    /// compiled without the answer of one that answers compile again.
     /// Spawned by start() unless polling is off.
     async::task<> sources_poll_task();
 

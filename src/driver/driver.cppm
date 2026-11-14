@@ -186,10 +186,10 @@ struct Answer {
 };
 
 /// `{"error": "...", "stale": [...]}` on stdout, exit code 1 (2 for
-/// arguments that do not parse): what kept the question from being
-/// answered, and the files withheld on the way — a symbol not found may
-/// sit in one of them. A locator naming several symbols where one was
-/// wanted lists them.
+/// arguments that do not parse or a project or index that cannot be read):
+/// what kept the question from being answered, and the files withheld on
+/// the way — a symbol not found may sit in one of them. A locator naming
+/// several symbols where one was wanted lists them.
 struct Failure {
     std::string error;
     protocol::optional<std::vector<feature::query::SymbolEntry>> candidates;
@@ -264,25 +264,24 @@ int dispatch(T& options) {
     }
 }
 
-/// Why a subcommand cannot work on its project, and the exit code it ends
-/// with: 2 for arguments or a configuration it cannot take, 1 otherwise.
+/// Why a subcommand cannot work on its project: it ends with exit code 2,
+/// the work not done (docs/en/cli/overview.md).
 struct ProjectError {
     std::string message;
-    int exit_code = 1;
 };
 
 /// Answer that a subcommand answering in JSON cannot work on its project;
 /// returns its exit code.
 inline int fail(ProjectError error) {
     print_json(Failure{.error = std::move(error.message)});
-    return error.exit_code;
+    return 2;
 }
 
 /// Tell on stderr why a subcommand answering in text cannot work on its
 /// project; returns its exit code.
 inline int print_error(const ProjectError& error) {
     LOG_ERROR("{}", error.message);
-    return error.exit_code;
+    return 2;
 }
 
 }  // namespace clice::driver

@@ -100,6 +100,8 @@ clice 采用拉取式（pull-based）编译模型：编译不会在文件发生�
 
 Preamble 边界通过词法扫描确定：项目的 `Lexer` 从文件开头逐行扫描，识别以 `#` 开头的预处理指令和 `module;` 全局模块片段声明。扫描在第一行非预处理内容处停止（位于全局模块片段中时，则在模块声明处停止），并将该位置的字节偏移量作为边界返回。
 
+Preamble 还会在它没有弹出的 `#pragma` 压栈（`push_macro`、`pack(push)`、`clang attribute push`、`GCC visibility push`、`clang assume_nonnull begin`）之前结束：PCH 不保存这些栈，否则正文中的弹出会找不到对应的压栈。在全局模块片段中，如果压栈之后片段里还有 include，就完全不使用 Preamble：否则正文会在模块声明之前解析该 include 带来的声明。
+
 这种基于词法的检测不需要启动完整的预处理器，速度非常快。
 
 ### Preamble 完整性检查

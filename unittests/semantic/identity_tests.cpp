@@ -1092,74 +1092,65 @@ ZEST_CASE(CTagsIncludedSource) {
     ZEXPECT(entity_at(alone, "table.c", "table") == entity_at(*this, "table.c", "table"));
 }
 
-ZEST_CASE(TypedefsOpenedSystemHeader) {
+ZEST_CASE(TypedefsOpenedHeader) {
     llvm::StringRef header = "typedef int §(handle)handle;\n";
-    auto system = [](Tester& tester) {
-        tester.prepare("-std=c17");
-        tester.params.input.arguments.insert(tester.params.input.arguments.end() - 1,
-                                             {"-isystem", TestVFS::path("sys")});
-        return tester.try_compile();
-    };
-    add_file("sys/lib.h", header);
-    add_focus("a.c", "#include <lib.h>\n");
-    ZASSERT(system(*this));
-
-    // Opened in the editor, the header is the focus file clang takes for
-    // the user's own; its includers reach it as a system header.
-    Tester alone;
-    alone.add_focus("sys/lib.h", header);
-    ZASSERT(system(alone));
-
-    ZEXPECT(entity_at(alone, "sys/lib.h", "handle") == entity_at(*this, "sys/lib.h", "handle"));
-}
-
-ZEST_CASE(TypedefsInSystemFramework) {
-    llvm::StringRef header = "typedef int §(handle)handle;\n";
-    auto frameworks = [](Tester& tester) {
-        tester.prepare("-std=c17");
-        tester.params.input.arguments.insert(tester.params.input.arguments.end() - 1,
-                                             {"-iframework", TestVFS::path("Frameworks")});
-        return tester.try_compile();
-    };
-    add_file("Frameworks/Kit.framework/Headers/kit.h", header);
-    add_focus("a.c", "#include <Kit/kit.h>\n");
-    ZASSERT(frameworks(*this));
+    add_file("lib.h", header);
+    add_focus("a.c", "#include \"lib.h\"\n");
+    ZASSERT(compile("-std=c17"));
 
     Tester alone;
-    alone.add_focus("Frameworks/Kit.framework/Headers/kit.h", header);
-    ZASSERT(frameworks(alone));
+    alone.add_focus("lib.h", header);
+    ZASSERT(alone.compile("-std=c17"));
 
-    ZEXPECT(entity_at(alone, "Frameworks/Kit.framework/Headers/kit.h", "handle") ==
-            entity_at(*this, "Frameworks/Kit.framework/Headers/kit.h", "handle"));
+    ZEXPECT(entity_at(alone, "lib.h", "handle") == entity_at(*this, "lib.h", "handle"));
 }
 
-ZEST_CASE(TypedefsNearestDirectory) {
-    // The nearest search directory above a header decides: a subdirectory
-    // of a system one is too, a user directory inside a system one is not.
-    llvm::StringRef system_header = "typedef int §(handle)handle;\n";
-    llvm::StringRef user_header = "typedef int §(count)count;\n";
-    auto directories = [](Tester& tester) {
+ZEST_CASE(TypedefsAcrossHeaders) {
+    // Each unit's first declaration is in another header.
+    add_file("a.h", "#pragma once\ntypedef int §(a)Handle;\n");
+    add_file("b.h", "#pragma once\ntypedef int §(b)Handle;\n");
+    add_focus("x.cpp", "#include \"a.h\"\n#include \"b.h\"\n");
+    ZASSERT(compile());
+
+    Tester other;
+    other.add_file("a.h", "#pragma once\ntypedef int §(a)Handle;\n");
+    other.add_file("b.h", "#pragma once\ntypedef int §(b)Handle;\n");
+    other.add_focus("y.cpp", "#include \"b.h\"\n#include \"a.h\"\n");
+    ZASSERT(other.compile());
+
+    ZEXPECT(entity_at(*this, "a.h", "a") == entity_at(other, "a.h", "a"));
+    ZEXPECT(entity_at(*this, "b.h", "b") == entity_at(other, "b.h", "b"));
+}
+
+ZEST_CASE(TypedefsSystemOrNot) {
+    llvm::StringRef header = "typedef int §(handle)handle;\n";
+    auto through = [&](Tester& tester, const char* flag) {
+        tester.add_file("inc/lib.h", header);
+        tester.add_focus("a.c", "#include <lib.h>\n");
         tester.prepare("-std=c17");
-        tester.params.input.arguments.insert(
-            tester.params.input.arguments.end() - 1,
-            {"-I", TestVFS::path("sys/own"), "-isystem", TestVFS::path("sys")});
+        tester.params.input.arguments.insert(tester.params.input.arguments.end() - 1,
+                                             {flag, TestVFS::path("inc")});
         return tester.try_compile();
     };
-    add_file("sys/bits/lib.h", system_header);
-    add_file("sys/own/own.h", user_header);
-    add_focus("a.c", "#include <bits/lib.h>\n#include <own.h>\n");
-    ZASSERT(directories(*this));
+    ZASSERT(through(*this, "-I"));
 
-    Tester bits;
-    bits.add_focus("sys/bits/lib.h", system_header);
-    ZASSERT(directories(bits));
-    ZEXPECT(entity_at(bits, "sys/bits/lib.h", "handle") ==
-            entity_at(*this, "sys/bits/lib.h", "handle"));
+    Tester system;
+    ZASSERT(through(system, "-isystem"));
 
-    Tester own;
-    own.add_focus("sys/own/own.h", user_header);
-    ZASSERT(directories(own));
-    ZEXPECT(entity_at(own, "sys/own/own.h", "count") == entity_at(*this, "sys/own/own.h", "count"));
+    ZEXPECT(entity_at(system, "inc/lib.h", "handle") == entity_at(*this, "inc/lib.h", "handle"));
+}
+
+ZEST_CASE(TypedefsByType) {
+    add_file("a.h", "typedef int §(handle)Handle;\n");
+    add_focus("x.cpp", "#include \"a.h\"\n");
+    ZASSERT(compile());
+
+    Tester other;
+    other.add_file("b.h", "typedef long §(handle)Handle;\n");
+    other.add_focus("y.cpp", "#include \"b.h\"\n");
+    ZASSERT(other.compile());
+
+    ZEXPECT(entity_at(*this, "a.h", "handle") != entity_at(other, "b.h", "handle"));
 }
 
 ZEST_CASE(CLinkageIgnoresTypes) {

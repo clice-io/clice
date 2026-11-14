@@ -60,6 +60,14 @@ struct TUIndexBlobOf {
     Seq<std::uint64_t> content_hashes;
     Seq<IncludeNode> nodes;
 
+    /// The lines naming a file the parse does not enter (IncludeTree::links),
+    /// as columns: the holding file's path id, the line, the column, the
+    /// target's absolute path.
+    Seq<std::uint32_t> link_files;
+    Seq<std::uint32_t> link_lines;
+    Seq<std::uint32_t> link_columns;
+    Seq<Seq<char>> link_targets;
+
     /// The symbols the entries name, sorted by hash, except the file-local
     /// ones (a function's locals, a template's parameters) — only their
     /// own file can mention one, and that file's section names it — and

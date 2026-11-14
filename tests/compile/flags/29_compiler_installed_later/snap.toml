@@ -1,0 +1,13 @@
+[test.missing]
+diagnostics = [
+    {
+        at = "⟦⟧int main() {",
+        severity = "warning",
+        message = "The compiler of this file's compile command could not be queried (Driver ${WS}/bin/clang++ not found or not executable), so clang read the command on its own: system headers, predefined macros and the default standard may differ from the compiler's.",
+        source = "clice",
+        code = "toolchain-query-failed",
+    },
+]
+
+[test.installed]
+diagnostics = []

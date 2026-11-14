@@ -55,7 +55,7 @@ stdout = '''
   "result": {
     "name": "a",
     "kind": "Field",
-    "symbol": "#994b43e0fe38145e",
+    "symbol": "#e1ad47926fc48f45",
     "references": [
       {
         "file": "${WS}/include/alpha.h",

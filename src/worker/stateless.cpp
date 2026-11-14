@@ -191,7 +191,7 @@ static worker::PrecompiledBuildResult
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
         .output_file = *output,
         .modular = params.modular,
-        .skip_bodies = !params.whole_file,
+        .skip_bodies = params.skip_bodies,
         .function_bodies = params.indexing.function_bodies,
         .stop = stop,
     };

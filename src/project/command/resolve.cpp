@@ -229,7 +229,7 @@ SelectedCommand Project::select_command(Fid path_id, const CommandRequest& reque
 
 Rendered Project::render(const CommandRef& ref, const RenderOptions& options) {
     Rendered result{.directory = commands.get(ref.command).directory};
-    auto rendered = toolchain.render(ref, cdb.spelling(ref.file), options);
+    auto rendered = toolchain.render(ref, file_table.spelling(ref.file), options);
     result.arguments.assign(rendered.argv.begin(), rendered.argv.end());
     result.hidden = std::move(rendered.hidden);
     // The builtin command names a compiler no build chose: clang's own
@@ -324,7 +324,17 @@ const clang::LangOptions& Project::dialect(Fid file, const ContextChoice* choice
 
 std::uint64_t Project::command_identity(Fid unit) {
     auto candidates = this->candidates(unit);
-    return candidates.empty() ? 0 : tree_request(unit, candidates.front()).key.second;
+    if(candidates.empty()) {
+        return 0;
+    }
+    return command_identity(tree_request(unit, candidates.front()));
+}
+
+std::uint64_t Project::command_identity(const TreeRequest& request) {
+    if(toolchain.query_failed(request.command.command, request.command.language)) {
+        return llvm::hash_combine(request.key.second, llvm::StringRef("query failed"));
+    }
+    return request.key.second;
 }
 
 std::optional<CommandRef> Project::pch_writer(Fid file,

@@ -407,7 +407,7 @@ const double scale = 2.0
 range = "total += helper(⟦scale⟧) + ring_twice() + hidden_twice();"
 
 [locations.hidden]
-wrong = "should list where twice<Hidden> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+wrong = "should list where twice<Hidden> reads it, as clice query references does: with background indexing off, the editor reads the headers without their function bodies, and hidden_twice's in extra.h instantiates it"
 definition = ["include/base.h │ double ⟦radius⟧;"]
 declaration = ["include/base.h │ double ⟦radius⟧;"]
 references = [
@@ -430,7 +430,7 @@ double radius
 range = "return total + Hidden{2.0}.⟦radius⟧ + Ring{3.0}.radius + ring_twice();"
 
 [locations.ring]
-wrong = "should list where twice<Ring> reads it, as clice query references does: the preamble's PCH instantiates it and keeps no record"
+wrong = "should list where twice<Ring> reads it, as clice query references does: with background indexing off, the editor reads the headers without their function bodies, and ring_twice's in extra.h instantiates it"
 definition = ["include/extra.h │ double ⟦radius⟧;"]
 declaration = ["include/extra.h │ double ⟦radius⟧;"]
 references = [
@@ -650,7 +650,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#e713b5aad0f6b40b path:${WS}/main.cpp",
+    "symbol": "#430eafb001a70d0a path:${WS}/main.cpp",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -679,7 +679,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#98af58599e6797e0 path:${WS}/main.cpp",
+    "symbol": "#f741cacb41dfe75a path:${WS}/main.cpp",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -708,7 +708,7 @@ stdout = '''
   "result": {
     "name": "value",
     "kind": "Field",
-    "symbol": "#f5915bf4d051d504 path:${WS}/include/base.h",
+    "symbol": "#3c67b0fa582a3f31 path:${WS}/include/base.h",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -736,7 +736,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#8b4bf7016d613881 path:${WS}/include/base.h",
+    "symbol": "#d39957e80aae5fee path:${WS}/include/base.h",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -770,7 +770,7 @@ stdout = '''
   "result": {
     "name": "scale",
     "kind": "Variable",
-    "symbol": "#be54be463be22747 path:${WS}/include/base.h",
+    "symbol": "#8d311ccec728851f path:${WS}/include/base.h",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -810,7 +810,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#eea344cbaa4a6723 path:${WS}/include/base.h",
+    "symbol": "#76364fc456121fa3 path:${WS}/include/base.h",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -845,7 +845,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#085ea94849e87b9a path:${WS}/include/extra.h",
+    "symbol": "#243ef8bb4db9d6e2 path:${WS}/include/extra.h",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -880,7 +880,7 @@ stdout = '''
   "result": {
     "name": "ring_twice",
     "kind": "Function",
-    "symbol": "#b20bf57606ce5a2e path:${WS}/include/extra.h",
+    "symbol": "#c62064b466bfeabe path:${WS}/include/extra.h",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -921,7 +921,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#e713b5aad0f6b40b path:${WS}/main.cpp",
+    "symbol": "#430eafb001a70d0a path:${WS}/main.cpp",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -950,7 +950,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#98af58599e6797e0 path:${WS}/main.cpp",
+    "symbol": "#f741cacb41dfe75a path:${WS}/main.cpp",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -979,7 +979,7 @@ stdout = '''
   "result": {
     "name": "value",
     "kind": "Field",
-    "symbol": "#f5915bf4d051d504 path:${WS}/include/base.h",
+    "symbol": "#3c67b0fa582a3f31 path:${WS}/include/base.h",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1007,7 +1007,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#8b4bf7016d613881 path:${WS}/include/base.h",
+    "symbol": "#d39957e80aae5fee path:${WS}/include/base.h",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1041,7 +1041,7 @@ stdout = '''
   "result": {
     "name": "scale",
     "kind": "Variable",
-    "symbol": "#be54be463be22747 path:${WS}/include/base.h",
+    "symbol": "#8d311ccec728851f path:${WS}/include/base.h",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1081,7 +1081,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#eea344cbaa4a6723 path:${WS}/include/base.h",
+    "symbol": "#76364fc456121fa3 path:${WS}/include/base.h",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1116,7 +1116,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#085ea94849e87b9a path:${WS}/include/extra.h",
+    "symbol": "#243ef8bb4db9d6e2 path:${WS}/include/extra.h",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1151,7 +1151,7 @@ stdout = '''
   "result": {
     "name": "ring_twice",
     "kind": "Function",
-    "symbol": "#b20bf57606ce5a2e path:${WS}/include/extra.h",
+    "symbol": "#c62064b466bfeabe path:${WS}/include/extra.h",
     "references": [
       {
         "file": "${WS}/include/extra.h",

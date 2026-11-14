@@ -22,7 +22,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 5,
         "container": null,
-        "symbol": "#c9be3d07e9d6b64f"
+        "symbol": "#407a5db4652e9057"
       }
     ]
   },
@@ -43,7 +43,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 5,
         "container": null,
-        "symbol": "#c9be3d07e9d6b64f"
+        "symbol": "#407a5db4652e9057"
       }
     ]
   },
@@ -55,7 +55,7 @@ exit = 0
 ["refuses a writer it cannot ask"."$ clice index"]
 stdout = "Session log: ${WS}/.clice/logs/${SESSION}"
 stderr = "error: another clice process (pid #) holds the index writer lock at .clice; retry when it is done"
-exit = 1
+exit = 2
 
 ["refuses a writer it cannot ask"."$ clice query symbol-search compute --fresh"]
 stdout = '''
@@ -65,7 +65,7 @@ stdout = '''
 }
 '''
 stderr = "error: another clice process (pid #) holds the index writer lock at .clice; retry when it is done"
-exit = 1
+exit = 2
 
 ["refuses a writer it cannot ask"."$ clice query symbol-search compute"]
 stdout = '''
@@ -79,7 +79,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 4,
         "container": null,
-        "symbol": "#81df9416985c4402"
+        "symbol": "#dedd7a0cf92bcd53"
       }
     ]
   },

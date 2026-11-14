@@ -16,3 +16,20 @@ warning: [2/2] Cannot index ghost.cpp: error reading 'ghost.cpp': No such file o
 indexing 2/2 units, 1 failed
 '''
 exit = 0
+
+[test."$ clice query definition ghost --fresh"]
+stdout = '''
+{
+  "error": "symbol not found; 1 unit failed to index",
+  "stale": [
+    "${WS}/ghost.cpp"
+  ]
+}
+'''
+stderr = '''
+warning: cannot read ghost.cpp: No such file or directory; its includes are not scanned
+indexing 0/1 units, 0 failed
+warning: [1/1] Cannot index ghost.cpp: error reading 'ghost.cpp': No such file or directory
+indexing 1/1 units, 1 failed
+'''
+exit = 1

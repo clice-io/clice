@@ -115,7 +115,7 @@ inline std::vector<const char*> render_entry(CompilationDatabase& cdb,
                    applied,
                    commands.input_kind(applied, file),
                    CommandSource::Database};
-    auto argv = commands.render_driver(ref, cdb.spelling(ref.file));
+    auto argv = commands.render_driver(ref, cdb.files().spelling(ref.file));
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
         if(llvm::StringRef(argv[i]) == "-resource-dir") {
             argv.erase(argv.begin() + i, argv.begin() + i + 2);

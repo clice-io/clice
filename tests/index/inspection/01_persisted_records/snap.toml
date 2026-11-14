@@ -7,8 +7,8 @@ exit = 0
 
 [records."$ clice index symbol geo::area"]
 stdout = '''
-symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
-  parent #b8d40a731e70f055  kind=Namespace  name=geo
+symbol #235b3ffe05b9a45c  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
+  parent #343ba92e720a5600  kind=Namespace  name=geo
   scope=External  file=${WS}/geo.cpp  reference files=3
   ${WS}/geo.cpp: definitions=1 declarations=0 references=0
   ${WS}/geo.h: definitions=0 declarations=1 references=0
@@ -16,10 +16,10 @@ symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  
 '''
 exit = 0
 
-[records."$ clice index symbol \"#410bf4404641a3b4\""]
+[records."$ clice index symbol \"#235b3ffe05b9a45c\""]
 stdout = '''
-symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
-  parent #b8d40a731e70f055  kind=Namespace  name=geo
+symbol #235b3ffe05b9a45c  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
+  parent #343ba92e720a5600  kind=Namespace  name=geo
   scope=External  file=${WS}/geo.cpp  reference files=3
   ${WS}/geo.cpp: definitions=1 declarations=0 references=0
   ${WS}/geo.h: definitions=0 declarations=1 references=0
@@ -29,8 +29,8 @@ exit = 0
 
 [records."$ clice index symbol area"]
 stdout = '''
-symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
-  parent #b8d40a731e70f055  kind=Namespace  name=geo
+symbol #235b3ffe05b9a45c  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
+  parent #343ba92e720a5600  kind=Namespace  name=geo
   scope=External  file=${WS}/geo.cpp  reference files=3
   ${WS}/geo.cpp: definitions=1 declarations=0 references=0
   ${WS}/geo.h: definitions=0 declarations=1 references=0
@@ -40,8 +40,8 @@ exit = 0
 
 [records."$ clice index symbol geo.h:4:5"]
 stdout = '''
-symbol #410bf4404641a3b4  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
-  parent #b8d40a731e70f055  kind=Namespace  name=geo
+symbol #235b3ffe05b9a45c  kind=Function  name=area  args=  qualified=geo::area  flags=HasDefinition,Completable  form=Identifier
+  parent #343ba92e720a5600  kind=Namespace  name=geo
   scope=External  file=${WS}/geo.cpp  reference files=3
   ${WS}/geo.cpp: definitions=1 declarations=0 references=0
   ${WS}/geo.h: definitions=0 declarations=1 references=0
@@ -51,9 +51,9 @@ exit = 0
 
 [records."$ clice index symbol geo.cpp:4:14"]
 stdout = '''
-symbol #de258236384cacbb  kind=Parameter  name=width  args=  qualified=geo::area::width  flags=HasDefinition  form=Identifier
-  parent #410bf4404641a3b4  kind=Function  name=area
-  parent #b8d40a731e70f055  kind=Namespace  name=geo
+symbol #35502da87c59fbf0  kind=Parameter  name=width  args=  qualified=geo::area::width  flags=HasDefinition  form=Identifier
+  parent #235b3ffe05b9a45c  kind=Function  name=area
+  parent #343ba92e720a5600  kind=Namespace  name=geo
   scope=local (no symbol record)
   ${WS}/geo.cpp: definitions=1 declarations=0 references=1
 '''
@@ -64,14 +64,14 @@ stdout = '''
 file ${WS}/geo.h
   blob=# B  content size=65  content hash=#9dd4e54be8a63a99
   variants=1
-    #88c48672bc8efdb6  contributed by 2 units
+    #9aa589cc8f1ec496  contributed by 2 units
       ${WS}/geo.cpp
       ${WS}/main.cpp
   symbols=4  local symbols=2  occurrences=4  relations=4
     Declaration=1
     Definition=3
-    local #03f26c0a76f19d73  kind=Parameter  name=width
-    local #fe1adf0868b4d70d  kind=Parameter  name=height
+    local #4b1cba1fa8fe7ebd  kind=Parameter  name=height
+    local #e75c189be72c1e01  kind=Parameter  name=width
 '''
 exit = 0
 
@@ -80,8 +80,8 @@ stdout = '''
 translation unit ${WS}/main.cpp
   built at #time  content hash=#f296566f561e8eb5
   contributions=2
-    #88c48672bc8efdb6  ${WS}/geo.h
-    #6849cffcbd55f181  ${WS}/main.cpp
+    #9aa589cc8f1ec496  ${WS}/geo.h
+    #09cf7b5d7478b6f9  ${WS}/main.cpp
   include tree (1 node):
     ${WS}/geo.h  included at ${WS}/main.cpp:1
 '''

@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "Holder",
     "kind": "Struct",
-    "symbol": "#b9ddd5b92359f6ae",
+    "symbol": "#23edebfb714be1f1",
     "references": [
       {
         "file": "${WS}/main.cpp",
@@ -50,7 +50,7 @@ stdout = '''
         "locator": "Holder",
         "name": "Holder",
         "kind": "Struct",
-        "symbol": "#b9ddd5b92359f6ae",
+        "symbol": "#23edebfb714be1f1",
         "newName": "Box",
         "edits": 12,
         "conflicts": [],
@@ -158,7 +158,7 @@ stdout = '''
         "locator": "Holder<bool>",
         "name": "Holder",
         "kind": "Struct",
-        "symbol": "#b9ddd5b92359f6ae",
+        "symbol": "#23edebfb714be1f1",
         "newName": "Box",
         "edits": 12,
         "conflicts": [],
