@@ -141,11 +141,11 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     // The machine is the run's: every logical core, while memory admits
     // the units.
     auto& batch = options.project;
-    bool started =
+    auto unstarted =
         start_batch(run, batch, batch.workers != 0 ? batch.workers : sys::parallelism(), "index");
     result.session_dir = run.session_dir;
-    if(!started) {
-        result.error = "the worker processes did not start";
+    if(!unstarted.empty()) {
+        result.error = std::move(unstarted);
         result.exit_code = 2;
         // A failed later spawn leaves earlier workers and their I/O tasks
         // live; unstopped they keep the batch event loop spinning and the

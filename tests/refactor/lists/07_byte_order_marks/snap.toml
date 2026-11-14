@@ -16,7 +16,7 @@ stdout = '''
         "locator": "Count",
         "name": "Count",
         "kind": "Struct",
-        "symbol": "#7652b8c4edddab5a",
+        "symbol": "#7eb612d8f700ef54",
         "newName": "Tally",
         "edits": 2,
         "conflicts": [],

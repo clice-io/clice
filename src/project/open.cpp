@@ -250,8 +250,9 @@ void open_store(Project& project, const Project::OpenOptions& options, Project::
         }
         if(!index::database_exists(*project.store, key)) {
             if(read_only) {
-                opened.unreadable = unreadable_index(index::LoadResult::Empty,
-                                                     index::database_directory(*project.store, key));
+                opened.unreadable =
+                    unreadable_index(index::LoadResult::Empty,
+                                     index::database_directory(*project.store, key));
             }
             return;
         }

@@ -341,12 +341,12 @@ inline void show_path(FileTable& files, std::string& path) {
 
 /// Batch startup: the command's settings with the run's overrides
 /// (`workers` for the project's), the session file logger, and the worker
-/// pool; false when the run cannot start, or has nothing to work on.
+/// pool; why the run cannot start, or has nothing to work on, else empty.
 /// `log_tag` names the run's log after the subcommand.
-inline bool start_batch(BatchRun& run,
-                        const BatchProject& batch,
-                        std::uint32_t workers,
-                        llvm::StringRef log_tag) {
+inline std::string start_batch(BatchRun& run,
+                               const BatchProject& batch,
+                               std::uint32_t workers,
+                               llvm::StringRef log_tag) {
     auto& project = run.project;
     run.files.spell_root(batch.root);
     project.root = CanonicalPath(batch.root);
@@ -366,8 +366,7 @@ inline bool start_batch(BatchRun& run,
     if(!fs::exists(settings.cache_dir)) {
         project.use_configuration(batch.loaded.configuration);
         if(!project.rules.declares_sources() && discovered_databases(project.root).empty()) {
-            LOG_ERROR("Nothing to {}: {}", log_tag, project.why_no_members(batch.root));
-            return false;
+            return std::format("Nothing to {}: {}", log_tag, project.why_no_members(batch.root));
         }
     }
     if(!settings.logging_dir.empty()) {
@@ -397,9 +396,9 @@ inline bool start_batch(BatchRun& run,
     pool_opts.session_dir = run.session_dir;
     if(!run.pool.start(pool_opts)) {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
-        return false;
+        return "the worker processes did not start";
     }
-    return true;
+    return {};
 }
 
 /// The index database a batch run writes its index into: open, or opened

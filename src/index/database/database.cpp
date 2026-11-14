@@ -796,9 +796,8 @@ std::expected<std::unique_ptr<LmdbDatabase>, std::string> open_lmdb_env(llvm::St
         fs::File::open(path + "-open", {.write = true, .create = true});
         if(!fs::exists(path + "-lock")) {
             if(auto error = check_room_for_lock(path)) {
-                return std::unexpected(std::format("No room for the index database at {}: {}",
-                                                   path,
-                                                   error.message()));
+                return std::unexpected(
+                    std::format("No room for the index database at {}: {}", path, error.message()));
             }
         }
     }

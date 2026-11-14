@@ -14,7 +14,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 4,
         "container": null,
-        "symbol": "#81df9416985c4402"
+        "symbol": "#dedd7a0cf92bcd53"
       }
     ]
   },
@@ -26,4 +26,4 @@ exit = 0
 
 ["a stopped server"."$ clice index #2"]
 stderr = "error: the clice server (pid #) does not answer"
-exit = 1
+exit = 2

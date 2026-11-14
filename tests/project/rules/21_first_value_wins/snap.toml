@@ -17,7 +17,7 @@ stdout = '''
         "file": "${WS}/keep/a.cpp",
         "line": 1,
         "container": null,
-        "symbol": "#681117ee69f46561"
+        "symbol": "#58530676f74c58ff"
       }
     ]
   },

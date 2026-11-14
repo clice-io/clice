@@ -295,8 +295,8 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     Timer timer;
     auto& project = run.project;
 
-    if(!start_batch(run, batch, batch.workers, "lint")) {
-        result.error = "the worker processes did not start";
+    if(auto unstarted = start_batch(run, batch, batch.workers, "lint"); !unstarted.empty()) {
+        result.error = std::move(unstarted);
         result.exit_code = 2;
         // See index_batch: stop the partially started pool or the loop
         // never drains.
