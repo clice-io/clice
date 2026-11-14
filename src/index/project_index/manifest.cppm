@@ -6,10 +6,14 @@ import :vfs.file_table;
 
 namespace clice::index {
 
-/// An `#include` of a document as a unit resolved it, from a TU manifest:
-/// the 1-based directive line and the target's absolute path.
-struct ResolvedInclude {
+/// A place a document names another file, as a unit resolved it (a
+/// LinkEdge): its 1-based line, the byte column its argument is searched
+/// from, and the target's absolute path.
+struct ResolvedLink {
     std::uint32_t line = 0;
+
+    std::uint32_t column = 0;
+
     std::string target;
 };
 
@@ -54,6 +58,24 @@ struct TUManifest {
     /// even when the file was entered several times.
     std::vector<std::pair<VersionID, std::uint64_t>> contributions;
 
+    /// A line naming a file the TU does not enter — a `__has_include`, an
+    /// `#embed`, a `__has_embed` — in the file holding it: the document
+    /// links computed from the index. Its target is a version without
+    /// bytes: the link names a path, never a content.
+    struct Link {
+        VersionID file;
+
+        std::uint32_t line = 0;
+
+        std::uint32_t column = 0;
+
+        VersionID target;
+
+        friend bool operator==(const Link&, const Link&) = default;
+    };
+
+    std::vector<Link> links;
+
     /// The places the TU's failed lookups looked that held no file, as
     /// versions without bytes (content hash 0): a file appearing at one
     /// changes what the TU compiles to.
@@ -73,8 +95,8 @@ struct TUManifest {
 };
 
 /// Visit the raw id of every version a manifest names — its TU's, its
-/// include tree's, its contributions', its failed lookups', its imports'
-/// and its instantiation uses' — by reference, const as
+/// include tree's, its links', its contributions', its failed lookups', its
+/// imports' and its instantiation uses' — by reference, const as
 /// `manifest` is.
 template <typename Manifest, typename Visit>
     requires std::same_as<std::remove_const_t<Manifest>, TUManifest>
@@ -82,6 +104,10 @@ void for_each_version(Manifest& manifest, Visit&& visit) {
     visit(manifest.tu_version.raw);
     for(auto& node: manifest.nodes) {
         visit(node.file);
+    }
+    for(auto& link: manifest.links) {
+        visit(link.file.raw);
+        visit(link.target.raw);
     }
     for(auto& version: views::keys(manifest.contributions)) {
         visit(version.raw);

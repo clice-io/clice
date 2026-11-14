@@ -169,8 +169,9 @@ struct GateParams {
 /// Watches for the next `event` of the server's background loops after it
 /// is placed: "databaseChange", the database loop applied a changed
 /// compilation database; "diskChange", the disk loop's looks found files
-/// changed; "checkpoint", a checkpoint committed index shards (see
-/// LoopEvent). The reply is a hold id: clice/internal/held announces the
+/// changed; "checkpoint", a checkpoint committed index shards;
+/// "compilersAnswered", the sources loop found a compiler that could not be
+/// asked answer (see LoopEvent). The reply is a hold id: clice/internal/held announces the
 /// event.
 struct WatchParams {
     std::string event;

@@ -227,6 +227,13 @@ struct Project {
     /// they are too many (ServedProject::checkpoint_task).
     std::uint64_t unsaved_bytes = 0;
 
+    /// Why the database refused the last save; empty once a save commits.
+    std::string save_error;
+
+    /// The units a worker compiles now (compile_unit), each since it reached
+    /// the worker: what a batch run names when one takes long.
+    llvm::DenseMap<Fid, chrono::steady_clock::time_point> compiling;
+
     /// The generation of context-affecting project state: the include graph,
     /// the include trees — a tree moves its host's contexts — and the
     /// self-containment results — a header found self-contained lists the
@@ -242,6 +249,21 @@ struct Project {
     /// Generation of the build's commands: bumped when a database reloads
     /// or a member appears, not on saves like the dependency graph's.
     std::uint64_t commands_epoch = 1;
+
+    /// list_contexts's last answer for each file, and the generations of
+    /// what it read: the include graph, trees and checks (context_epoch),
+    /// the commands, and the index's trees.
+    struct ListedContexts {
+        std::uint64_t context_epoch = 0;
+
+        std::uint64_t commands_epoch = 0;
+
+        std::uint64_t manifests = 0;
+
+        std::vector<ListedContext> items;
+    };
+
+    llvm::DenseMap<Fid, ListedContexts> listed_contexts;
 
     /// What the project knows of the headers borrowing a unit's command.
     Hosting hosting;
@@ -375,6 +397,11 @@ struct Project {
         /// Why the index could not be read, for a run reading it: it opens
         /// with none then. Empty when it was read.
         std::string unreadable;
+
+        /// Why the index is not persisted, for the run writing it: no
+        /// database could be opened or owned, and it keeps the index in
+        /// memory. Empty when it persists.
+        std::string unwritable;
     };
 
     /// Open the project over its final settings (load_settings), once,
@@ -559,6 +586,14 @@ struct Project {
     /// commands_epoch.
     Affected update_members(CDBDiff commands, llvm::ArrayRef<OpenFile> open = {});
 
+    /// Ask again the compilers that could not be asked, once their cooldown
+    /// passed (Toolchain::retry_failed): when one has answered, every unit
+    /// whose identity (command_identity) it changed reindexes and checks its
+    /// PCMs again, with what derives from them. None when none answered;
+    /// the open documents compiled without their compiler's answer are the
+    /// owner's to compile again.
+    std::optional<Affected> ask_compilers_again(llvm::ArrayRef<OpenFile> open);
+
     // discovery.cpp
 
     /// The sentence the guidance of a project without a database ends with:
@@ -666,8 +701,14 @@ struct Project {
     /// index records it: the default selection (candidates' first) as the
     /// rules edit it (apply_rules), its hash the key of the unit's include
     /// tree (tree_request); 0 when the build compiles it under none. A run's
-    /// extras are not part of it.
+    /// extras are not part of it. A command clang's own driver reads for
+    /// want of its compiler's answer (Toolchain::query_failed) has another
+    /// identity: the compiler answering at last reindexes the unit.
     std::uint64_t command_identity(Fid unit);
+
+    /// The identity of the command `request` names, as command_identity
+    /// gives it.
+    std::uint64_t command_identity(const TreeRequest& request);
 
     /// The command of the entry writing the precompiled header that the
     /// command `selection` and `request` give `file` reads
@@ -728,7 +769,7 @@ struct Project {
     /// way changed since, a file appeared where the compile looked and found none, or a forced file
     /// a precompiled header held hides the way in — and no run took one since the inputs it read
     /// last changed.
-    std::optional<llvm::SmallVector<Host>> include_chains(const UnitCommand& unit, Fid header);
+    std::optional<llvm::SmallVector<Host>> include_chains(const TreeRequest& request, Fid header);
 
     /// The unit's own command `candidate`, rules applied, and its key.
     TreeRequest tree_request(Fid unit, const Candidate& candidate);
@@ -819,7 +860,8 @@ struct Project {
     /// The contexts a file can compile in, in this project: its hosts, ranked,
     /// each with the commands it gives and the places it enters the header at,
     /// then the file's own database entries. Contexts compiling the same under
-    /// one command list once.
+    /// one command list once. Remembered until the state it reads changes
+    /// (ListedContexts).
     std::vector<ListedContext> list_contexts(Fid file);
 
     /// The listing's item for the context the file compiles in as `resolution`
@@ -858,6 +900,14 @@ struct Project {
     /// same one.
     PCHRequest declared_pch_request(const CommandRef& unit);
 
+    /// Whether a compile with `imports` skips the bodies of the functions
+    /// its headers define (`skip_header_bodies`): not one meeting a module,
+    /// whose global module fragments keep the bodies of the headers they
+    /// include, which clang then finds defined differently.
+    bool skips_header_bodies(const Imports& imports) const {
+        return settings.project.skip_header_bodies && !imports.modular();
+    }
+
     /// The PCH of the preamble of `text`, the buffer of `file` compiled under
     /// `arguments` from `directory` as `resolution` resolved them, with
     /// `imports` its imports: keyed by the preamble text and the
@@ -895,7 +945,7 @@ struct Project {
 
     /// The crash of the key's last build, while the inputs it is known to have
     /// read hold: an attempt's crash is recorded whatever became of the request
-    /// that spawned it (contract 12), and every consumer that finds it books it
+    /// that spawned it (contract 3), and every consumer that finds it books it
     /// against its own document instead of burning a worker of its own. One
     /// document's records cannot contain it alone: the PCH is shared.
     const FailureRecord* pch_build_crash(llvm::StringRef pch_key);
@@ -1124,7 +1174,7 @@ struct Project {
     /// an anomaly. The interest class is read at dispatch time: a foreground
     /// waiter may have joined after the attempt started. The advisory token
     /// rides into the pool, which cancels the request over IPC while this frame
-    /// keeps awaiting the real reply (contract 2). The reply of a build that
+    /// keeps awaiting the real reply (contract 1). The reply of a build that
     /// succeeded; else the attempt's result — Stale for a build the attempt
     /// withdrew, which is no decision on it.
     async::task<std::expected<worker::PrecompiledBuildResult, Result>>
@@ -1191,7 +1241,7 @@ struct Project {
     /// second call waits for the first to end.
     async::task<> stop_feeding();
 
-    /// The shutdown once its owner's compiles are quiesced (contract 11):
+    /// The shutdown once its owner's compiles are quiesced (contract 2):
     /// stop feeding the workers and wait for the include-tree runs, wind
     /// down the graph's attempts, save a last time and close the cache
     /// store.

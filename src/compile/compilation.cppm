@@ -202,11 +202,12 @@ struct CompilationParams {
 
     /// Preamble: the files loading the PCH are module units or import
     /// modules, so the PCH leaves preferred_name out, as clang leaves it out
-    /// of the modules it writes (llvm/llvm-project#56490). Kept, a
-    /// specialization the PCH declares after a module's
+    /// of the modules it writes (llvm/llvm-project#56490).
+    /// clang bug: kept, a specialization the PCH declares after a module's
     /// (`basic_string_view<char>` of a global module fragment's
     /// <string_view>) has its type read through the attribute before it
-    /// merges, and that type stays apart from the module's.
+    /// merges, and that type stays apart from the module's
+    /// (clice-io/clice#1057 item 15).
     bool modular = false;
 
     /// Skip the bodies of the functions in the files the focus file's

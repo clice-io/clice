@@ -880,6 +880,7 @@ async::task<> WorkerPool::monitor_loop() {
 void WorkerPool::sample() {
     SchedulerSample sample;
     sample.stateless_processes = stateless_processes();
+    std::vector<WorkerSample> stateless;
     std::vector<sys::ProcessStats> usage;
     std::uint64_t swapped = 0;
     for(bool stateful: {false, true}) {
@@ -898,7 +899,7 @@ void WorkerPool::sample() {
             if(!stateful) {
                 auto cpu = chrono::duration_cast<chrono::milliseconds>(read->user_time +
                                                                        read->system_time);
-                sample.workers.push_back(
+                stateless.push_back(
                     {.slot = static_cast<std::size_t>(index), .memory = read->memory, .cpu = cpu});
             }
         }
@@ -911,7 +912,7 @@ void WorkerPool::sample() {
               memory.headroom >> 20,
               memory.reserve >> 20,
               sample.stateless_processes);
-    scheduler.sample(std::move(sample), now());
+    scheduler.sample(sample, stateless, now());
     execute();
     if(memory.limit > 0) {
         tick_oom_scores(memory.limit);

@@ -7,11 +7,8 @@ import { modularize, test } from "@clice/tools/testing";
 // nothing calls.
 const ARGS = "--scope app/** --scope third/** --partition partition.json --std stdmod";
 
-// One worker: which header provides fake_widen, declared both in
-// <cwide.h> and in a fragment widen.h pastes, depends on the order the
-// units are indexed in (analyze/dependencies/06_unit_order).
 test(async (t) => {
-    await t.cli("index --jobs 1");
+    await t.cli("index");
     await t.cli(`analyze modules interface alpha ${ARGS}`);
     await t.cli(`analyze modules interface beta ${ARGS}`);
     await t.cli(`analyze modules interface ${ARGS}`);

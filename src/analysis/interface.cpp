@@ -614,6 +614,8 @@ std::vector<Interface> interfaces(const Facts& facts, const Partition& partition
             for(auto header: used) {
                 interface.textual_uses.push_back(header_of(module_of(header), header, {}));
             }
+            // clang bug: clang mangles internal linkage alike across modules
+            // (Interface::shared_locals, clice-io/clice#1057 item 10).
             // Overloads are one name to the reader.
             std::map<std::pair<std::string, std::string>, std::set<std::string>> shared;
             for(auto& [entity, users]: local_users) {

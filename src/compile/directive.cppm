@@ -16,6 +16,10 @@ struct Include {
 
     /// Location of the `include` keyword.
     clang::SourceLocation location;
+
+    /// The braces the macros the includer expanded before the directive
+    /// open, net (IncludeNode::macro_braces).
+    std::int32_t macro_braces = 0;
 };
 
 /// Information about `__has_include` directive.

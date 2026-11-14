@@ -247,6 +247,7 @@ bool is_discarded_option(unsigned id) {
         case OPT_include_pch:
         case OPT__SLASH_Yc:
         case OPT__SLASH_Yu:
+        case OPT__SLASH_Y_:
         case OPT__SLASH_Fp:
 
         /// Dependency scan, and the frontend's dependency output a driver
@@ -360,6 +361,7 @@ bool names_path(unsigned id, llvm::StringRef value) {
         case OPT_fprofile_remapping_file_EQ:
         case OPT_fbuild_session_file:
         case OPT_include_pch:
+        case OPT__SLASH_Fp:
         case OPT_working_directory: return true;
         case OPT_config: return value.contains('/') || value.contains('\\');
         default: return false;
@@ -426,6 +428,10 @@ std::optional<ArgClass> classify_option(unsigned id, llvm::ArrayRef<const char*>
     switch(id) {
         case OPT_include_pch:
         case OPT_emit_pch:
+        case OPT__SLASH_Yc:
+        case OPT__SLASH_Yu:
+        case OPT__SLASH_Y_:
+        case OPT__SLASH_Fp:
         case OPT_o:
         case OPT_fmodule_output:
         case OPT_fmodule_output_EQ: return ArgClass::Precompiled;

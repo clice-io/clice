@@ -96,7 +96,7 @@ std::optional<HostSearch> enter_at(Project& project,
                                    const Candidate& candidate,
                                    std::uint32_t occurrence) {
     auto request = project.tree_request(host, candidate);
-    auto chains = project.include_chains(request.key, header);
+    auto chains = project.include_chains(request, header);
     if(!chains) {
         return HostSearch{.missing = std::move(request)};
     }
@@ -121,6 +121,9 @@ HostSearch Project::find_chosen_host(Fid header, const ContextChoice& choice) {
 }
 
 HostSearch Project::find_ranked_host(Fid header) {
+    // LIMITATION: a host with several commands (one per build configuration)
+    // is tried under the first that fits alone: a header that only another of
+    // its commands includes is hosted elsewhere, or not at all.
     for(auto host: ranked_hosts(header)) {
         if(auto found = enter_at(*this, header, host, candidates(header, host).front(), 0)) {
             return std::move(*found);
@@ -142,7 +145,7 @@ std::optional<std::uint32_t> Project::count_occurrences(Fid host, Fid header) {
     if(offered.empty()) {
         return 0;
     }
-    auto chains = include_chains(tree_request(host, offered.front()).key, header);
+    auto chains = include_chains(tree_request(host, offered.front()), header);
     if(!chains) {
         return std::nullopt;
     }

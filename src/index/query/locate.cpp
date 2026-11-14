@@ -52,6 +52,8 @@ RankedHits ranked_search(const IndexQuery& index, const Locator& query, std::uin
     });
     // A damaged index answers incompletely, a missing one not at all:
     // until a full build every symbol record is judged one by one instead.
+    // LIMITATION: so before a new project's first save, each unqualified
+    // completion scores every symbol (about three times as slow on fmt).
     bool scan_records = project.search_index().damaged() || !project.search_index().loaded();
     bool exhausted = scan_records || indexed.exhausted;
     if(!scan_records) {

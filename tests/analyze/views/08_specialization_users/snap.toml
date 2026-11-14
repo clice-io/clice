@@ -1,0 +1,36 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 3 file shards (# KB), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice analyze modules edge app lib"]
+stdout = '''
+{
+  "from": "app",
+  "to": "lib",
+  "entities": [
+    {
+      "id": "#f48be501dc217e10",
+      "entity": "Traits",
+      "owner": "lib/traits.h",
+      "users": [
+        "app/main.cpp:2",
+        "app/spec.h:5"
+      ],
+      "interface": false
+    },
+    {
+      "id": "#fa55a81a8e947720",
+      "entity": "Traits::size",
+      "owner": "lib/traits.h",
+      "users": [
+        "app/main.cpp:2"
+      ],
+      "interface": false
+    }
+  ]
+}
+'''
+exit = 0

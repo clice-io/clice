@@ -463,7 +463,7 @@ ZEST_CASE(IncludeResolutionsPerUnit) {
     auto shared = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
     auto targets = [&] {
         std::vector<std::string> found;
-        auto edges = project.index.resolved_includes(shared);
+        auto edges = project.index.resolved_links(shared);
         for(auto& edge: edges) {
             // One directive, resolved two ways.
             ZEXPECT(edge.line == edges.front().line);

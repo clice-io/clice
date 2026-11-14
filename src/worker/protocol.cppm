@@ -468,6 +468,16 @@ struct LocatedMessage {
     auto operator<=>(const LocatedMessage&) const = default;
 };
 
+/// One of a unit's database entries.
+struct UnitEntry {
+    /// The unit's file.
+    std::string file;
+
+    /// The entry's place among the file's, from 1, as `clice command` lists
+    /// them.
+    std::uint32_t index = 0;
+};
+
 struct TidyDiagnostic {
     std::string file;
     std::uint32_t line = 0;
@@ -487,6 +497,10 @@ struct TidyDiagnostic {
 
     /// The notes clang-tidy attached ("previous definition is here").
     std::vector<LocatedMessage> notes;
+
+    /// The entry whose command a lint run compiled the unit under, when it
+    /// is not the first command of the unit's file (clice lint).
+    protocol::optional<UnitEntry> entry;
 };
 
 struct CompileUnitResult {

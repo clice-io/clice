@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "FOO",
     "kind": "Macro",
-    "symbol": "#f96e0a8891754788",
+    "symbol": "#cc0d9d5596a8c893",
     "references": [
       {
         "file": "${WS}/main.cpp",
@@ -33,7 +33,7 @@ stdout = '''
   "result": {
     "name": "FOO",
     "kind": "Macro",
-    "symbol": "#f96e0a8891754788",
+    "symbol": "#cc0d9d5596a8c893",
     "documentation": null,
     "definition": {
       "file": "<command line>",
@@ -59,7 +59,7 @@ stdout = '''
         "file": "<command line>",
         "line": 1,
         "container": null,
-        "symbol": "#f96e0a8891754788"
+        "symbol": "#cc0d9d5596a8c893"
       }
     ]
   },
@@ -74,7 +74,7 @@ stdout = '''
   "result": {
     "name": "__cplusplus",
     "kind": "Macro",
-    "symbol": "#b462100cb8486466",
+    "symbol": "#3098cccb04c0721b",
     "documentation": null,
     "definition": {
       "file": "<built-in>",

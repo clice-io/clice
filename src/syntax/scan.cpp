@@ -162,52 +162,64 @@ namespace {
 
 class DirectivesGetter : public clang::DependencyDirectivesGetter {
 public:
-    explicit DirectivesGetter(clang::FileManager& file_mgr) : file_mgr(&file_mgr) {}
+    DirectivesGetter(clang::CompilerInstance* instance, DirectiveCache& cache) :
+        instance(instance), cache(&cache) {}
 
-    std::unique_ptr<clang::DependencyDirectivesGetter>
-        cloneFor(clang::FileManager& new_file_mgr) override {
-        return std::make_unique<DirectivesGetter>(new_file_mgr);
+    /// A module the scan compiles has a source manager of its own, whose
+    /// buffers this one cannot see: it lexes them as text.
+    std::unique_ptr<clang::DependencyDirectivesGetter> cloneFor(clang::FileManager&) override {
+        return std::make_unique<DirectivesGetter>(nullptr, *cache);
     }
 
     std::optional<llvm::ArrayRef<clang::dependency_directives_scan::Directive>>
         operator()(clang::FileEntryRef file) override {
-        if(file == scanned) {
+        if(!instance || file == scanned) {
             return std::nullopt;
         }
-
-        auto buffer = file_mgr->getBufferForFile(file);
+        // The very bytes the lexer reads: the source manager keeps them for
+        // every entry of the file.
+        auto buffer = instance->getSourceManager().getMemoryBufferForFileOrNone(file);
         if(!buffer) {
             return std::nullopt;
         }
-
-        // Directive::Tokens are ArrayRefs into the entry's tokens, so the
-        // entry is scanned in its final, never-moving place.
-        auto& entry = entries.emplace_back();
-        entry.source = (*buffer)->getBuffer().str();
-        if(clang::scanSourceForDependencyDirectives(entry.source, entry.tokens, entry.directives)) {
-            entries.pop_back();
+        auto text = buffer->getBuffer();
+        auto [known, fresh] = files.try_emplace(&file.getFileEntry());
+        if(fresh) {
+            known->second = {input_path(instance->getFileManager(), file), llvm::xxh3_64bits(text)};
+        }
+        auto entry = cache->directives(known->second.path, known->second.hash, text);
+        if(!entry) {
             return std::nullopt;
         }
-        return llvm::ArrayRef(entry.directives);
+        held.push_back(entry);
+        return llvm::ArrayRef(entry->directives);
     }
 
     /// Lexed by clang's ordinary lexer, not from its directives: the scanned
-    /// file is the text being typed, and the directives lexer breaks on
-    /// half-typed directives (an `#if(` cut off at the end of the buffer,
-    /// `import <header>;`) where the ordinary lexer reports an error — the
-    /// scan runs in the master process, where a crash ends the server.
+    /// file is the text being typed.
+    /// clang bug: the directives lexer breaks on half-typed directives (an
+    /// `#if(` cut off at the end of the buffer, `import <header>;`) where the
+    /// ordinary lexer reports an error — the scan runs in the master process,
+    /// where a crash ends the server (clice-io/clice#1057 item 16).
     clang::OptionalFileEntryRef scanned;
 
-private:
-    struct Entry {
-        /// The file's text, which the tokens point into.
-        std::string source;
-        llvm::SmallVector<clang::dependency_directives_scan::Token> tokens;
-        llvm::SmallVector<clang::dependency_directives_scan::Directive> directives;
+    /// The files read for their directives, by the path the file table
+    /// names them and the hash of their bytes (ScanResult::deps).
+    struct Read {
+        std::string path;
+
+        std::uint64_t hash = 0;
     };
 
-    clang::FileManager* file_mgr;
-    std::deque<Entry> entries;
+    llvm::DenseMap<const clang::FileEntry*, Read> files;
+
+private:
+    clang::CompilerInstance* instance;
+
+    DirectiveCache* cache;
+
+    /// The entries handed to this scan, which it reads until it ends.
+    std::vector<std::shared_ptr<const DirectiveCache::Entry>> held;
 };
 
 /// Collects the imports the preprocessor reaches, each with its offset in
@@ -279,13 +291,21 @@ public:
     }
 
     /// Fill ScanResult::deps once the scan ended: the files entered, by the
-    /// bytes read, and the places looked at that still hold nothing.
-    void finish() {
+    /// bytes read, and the places looked at that still hold nothing. A file
+    /// `getter` read for its directives is known already.
+    void finish(const DirectivesGetter& getter) {
         auto& files = sources.getFileManager();
         llvm::StringSet<> seen;
         for(auto fid: entered) {
             auto entry = sources.getFileEntryRefForID(fid);
             if(!entry) {
+                continue;
+            }
+            if(auto known = getter.files.find(&entry->getFileEntry());
+               known != getter.files.end()) {
+                if(seen.insert(known->second.path).second) {
+                    result.deps.push_back({.path = known->second.path, .hash = known->second.hash});
+                }
                 continue;
             }
             auto path = input_path(files, *entry);
@@ -338,12 +358,14 @@ private:
 /// the entered preprocessor; the module declaration it reached is read
 /// into `result` before the source file is ended.
 void scan_with_preprocessor(
+    DirectiveCache& cache,
     llvm::ArrayRef<const char*> arguments,
     llvm::StringRef directory,
     std::optional<llvm::StringRef> content,
     llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs,
     ScanResult& result,
-    llvm::function_ref<void(clang::CompilerInstance&, clang::FrontendAction&)> body) {
+    llvm::function_ref<
+        void(clang::CompilerInstance&, clang::FrontendAction&, const DirectivesGetter&)> body) {
     if(!vfs) {
         vfs = new vfs::View();
     }
@@ -378,7 +400,7 @@ void scan_with_preprocessor(
     instance->getDiagnostics().setSuppressAllDiagnostics(true);
     instance->createFileManager();
 
-    auto getter = std::make_unique<DirectivesGetter>(instance->getFileManager());
+    auto getter = std::make_unique<DirectivesGetter>(instance.get(), cache);
     auto& directives = *getter;
     instance->setDependencyDirectivesGetter(std::move(getter));
 
@@ -393,7 +415,7 @@ void scan_with_preprocessor(
     auto& sources = instance->getSourceManager();
     directives.scanned = sources.getFileEntryRefForID(sources.getMainFileID());
 
-    body(*instance, *action);
+    body(*instance, *action, directives);
 
     auto& pp = instance->getPreprocessor();
     if(pp.isInNamedModule()) {
@@ -406,6 +428,25 @@ void scan_with_preprocessor(
 
 }  // namespace
 
+std::shared_ptr<const DirectiveCache::Entry> DirectiveCache::directives(llvm::StringRef path,
+                                                                        std::uint64_t hash,
+                                                                        llvm::StringRef text) {
+    {
+        std::lock_guard lock(mutex);
+        if(auto it = entries.find(path); it != entries.end() && it->second->hash == hash) {
+            return it->second;
+        }
+    }
+    auto entry = std::make_shared<Entry>();
+    entry->hash = hash;
+    if(clang::scanSourceForDependencyDirectives(text, entry->tokens, entry->directives)) {
+        return nullptr;
+    }
+    std::lock_guard lock(mutex);
+    entries[path] = entry;
+    return entry;
+}
+
 std::shared_ptr<const ScanResult> QuickScanCache::scan_of(Fid fid,
                                                           std::uint64_t content_hash,
                                                           llvm::StringRef content) {
@@ -416,17 +457,21 @@ std::shared_ptr<const ScanResult> QuickScanCache::scan_of(Fid fid,
     return it->second;
 }
 
-ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
+ScanResult scan_precise(DirectiveCache& cache,
+                        llvm::ArrayRef<const char*> arguments,
                         llvm::StringRef directory,
                         std::optional<llvm::StringRef> content,
                         llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;
-    scan_with_preprocessor(arguments,
+    scan_with_preprocessor(cache,
+                           arguments,
                            directory,
                            content,
                            std::move(vfs),
                            result,
-                           [&](clang::CompilerInstance& instance, clang::FrontendAction& action) {
+                           [&](clang::CompilerInstance& instance,
+                               clang::FrontendAction& action,
+                               const DirectivesGetter& getter) {
                                auto& pp = instance.getPreprocessor();
                                auto recorder = std::make_unique<Recorder>(result, pp);
                                auto& recording = *recorder;
@@ -434,7 +479,7 @@ ScanResult scan_precise(llvm::ArrayRef<const char*> arguments,
                                if(auto error = action.Execute()) {
                                    llvm::consumeError(std::move(error));
                                }
-                               recording.finish();
+                               recording.finish(getter);
                            });
     return result;
 }
@@ -501,27 +546,30 @@ std::vector<std::string> absent_places(const llvm::StringSet<>& looked) {
     return absent;
 }
 
-ScanResult scan_module_decl(llvm::ArrayRef<const char*> arguments,
+ScanResult scan_module_decl(DirectiveCache& cache,
+                            llvm::ArrayRef<const char*> arguments,
                             llvm::StringRef directory,
                             std::optional<llvm::StringRef> content,
                             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;
-    scan_with_preprocessor(arguments,
-                           directory,
-                           content,
-                           std::move(vfs),
-                           result,
-                           [](clang::CompilerInstance& instance, clang::FrontendAction&) {
-                               // Instead of Execute(), which processes the
-                               // entire file, lex and stop as soon as the
-                               // module declaration is found.
-                               auto& pp = instance.getPreprocessor();
-                               pp.EnterMainSourceFile();
-                               clang::Token tok;
-                               do {
-                                   pp.Lex(tok);
-                               } while(!pp.isInNamedModule() && tok.isNot(clang::tok::eof));
-                           });
+    scan_with_preprocessor(
+        cache,
+        arguments,
+        directory,
+        content,
+        std::move(vfs),
+        result,
+        [](clang::CompilerInstance& instance, clang::FrontendAction&, const DirectivesGetter&) {
+            // Instead of Execute(), which processes the
+            // entire file, lex and stop as soon as the
+            // module declaration is found.
+            auto& pp = instance.getPreprocessor();
+            pp.EnterMainSourceFile();
+            clang::Token tok;
+            do {
+                pp.Lex(tok);
+            } while(!pp.isInNamedModule() && tok.isNot(clang::tok::eof));
+        });
     return result;
 }
 

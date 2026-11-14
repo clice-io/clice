@@ -190,6 +190,10 @@ public:
     /// The quick scans the graph was built from.
     QuickScanCache quick_scans;
 
+    /// The headers' directives every preprocessor scan of the project reads,
+    /// kept by reset like the quick scans.
+    std::unique_ptr<DirectiveCache> directives = std::make_unique<DirectiveCache>();
+
 private:
     /// Module name -> fids (multiple candidates possible, e.g. different targets).
     llvm::StringMap<llvm::SmallVector<Fid, 2>> module_to_path;

@@ -156,8 +156,10 @@ void WorkerScheduler::user_activity(SchedulerTime now) {
     decide(now);
 }
 
-void WorkerScheduler::sample(SchedulerSample sample, SchedulerTime now) {
-    for(auto& worker: sample.workers) {
+void WorkerScheduler::sample(SchedulerSample sample,
+                             llvm::ArrayRef<WorkerSample> workers,
+                             SchedulerTime now) {
+    for(auto& worker: workers) {
         auto& slot = slots.at(worker.slot);
         slot.memory = worker.memory;
         if(!slot.request) {
@@ -178,7 +180,7 @@ void WorkerScheduler::sample(SchedulerSample sample, SchedulerTime now) {
             request.cpu_moved = now;
         }
     }
-    last_sample = std::move(sample);
+    last_sample = sample;
     if(busy()) {
         last_busy = now;
     }
@@ -251,7 +253,8 @@ std::uint64_t WorkerScheduler::estimate(const Request& request) const {
     auto peak = request.peak;
     if(peak == 0) {
         peak = unknown_peak();
-        if(peak < default_peak && unknown_ahead(request) >= learned_runs) {
+        if(peak < default_peak && peaks.size() < learned_peaks &&
+           unknown_ahead(request) >= learned_runs) {
             peak = default_peak;
         }
     }
@@ -491,6 +494,8 @@ void WorkerScheduler::check_memory(SchedulerTime now) {
     // rate they grow; a lone one only once it has, and the only stateless
     // request only as it is about to run through the reserve: killing it
     // takes it for too big for the machine.
+    // LIMITATION: a first index on a small machine knows no unit's size: two
+    // running at once sometimes outgrow it, and one is killed and run again.
     auto low = running(Priority::Low);
     auto reserve = last_sample.reserve;
     auto short_by = low > 1                               ? reserve + growth_soon()

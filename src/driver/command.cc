@@ -187,7 +187,7 @@ struct ShownCommand {
 ShownCommand shown_command(Project& project,
                            const CommandRef& ref,
                            const RenderOptions& opts = {}) {
-    auto path = project.cdb.spelling(ref.file);
+    auto path = project.file_table.spelling(ref.file);
     auto resolution = project.toolchain.resolve(ref.command, ref.language);
     if(resolution && resolution->query_failure.empty()) {
         // The resolution is cached: rendering resolves it the same.
@@ -286,7 +286,7 @@ int run(Command& opts) {
         auto database = Spelling::absolute(project.cdb.source_path(entry.source));
         if(!written) {
             LOG_ERROR("{} changed while it was read; run the command again", database);
-            return 1;
+            return 2;
         }
         auto rendered = shown_command(project, ref);
         auto directory = Spelling::absolute(project.commands.get(ref.command).directory);
@@ -372,12 +372,12 @@ int convert_command(Project& project, llvm::ArrayRef<std::string> command, bool 
                                                        return source;
                                                    }),
                                                ", ")));
-        return 1;
+        return 2;
     }
     auto entry = project.cdb.add_command(directory, sources.front(), command);
     if(!entry) {
         LOG_ERROR("Not a compile command: {}", join_command(command));
-        return 1;
+        return 2;
     }
     auto ref = project.apply_rules(entry->file,
                                    {.base = entry->command, .source = CommandSource::Database});
@@ -406,7 +406,7 @@ int convert_database(Project& project, const Spelling& path) {
             "{}: a compilation database is a .json file, or a directory holding a "
             "compile_commands.json",
             path);
-        return 1;
+        return 2;
     }
     auto& cdb = project.cdb;
     auto& files = project.file_table;
@@ -415,15 +415,15 @@ int convert_database(Project& project, const Spelling& path) {
     auto written = read_database(database);
     if(!written) {
         LOG_ERROR("{}", written.error());
-        return 1;
+        return 2;
     }
     if(!cdb.load_source(source)) {
         LOG_ERROR("{} cannot be loaded; the warning above says why", database);
-        return 1;
+        return 2;
     }
     if(!written->loaded_by(cdb, source)) {
         LOG_ERROR("{} changed while it was read; run the command again", database);
-        return 1;
+        return 2;
     }
 
     llvm::DenseMap<std::uint32_t, CommandRef> refs;

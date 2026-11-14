@@ -249,6 +249,10 @@ llvm::SmallVector<Fid> Project::readers(Fid file) const {
         }
     };
     index.for_each_contribution(file, [&](Fid unit, std::uint64_t) { add(unit); });
+    // LIMITATION: with indexing off there are no absent lookups: a header
+    // created after the scan of a closed host whose `#include` missed it (a
+    // generated `.inc`) has no host, and compiles alone with false errors,
+    // until the host changes.
     index.for_each_absent_lookup(file, add);
     index.for_each_importer(file, add);
     for(auto& [module, entry]: pcms) {
@@ -340,6 +344,30 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
              counted(modules, "module", "modules"));
     changes.scan = std::move(report);
     return changes;
+}
+
+std::optional<Affected> Project::ask_compilers_again(llvm::ArrayRef<OpenFile> open) {
+    if(!toolchain.retry_failed()) {
+        return std::nullopt;
+    }
+    Cascade cascade{.project = *this, .open = open};
+    llvm::SmallVector<Fid> units;
+    index.for_each_unit([&](Fid unit) { units.push_back(unit); });
+    // LIMITATION: a module unit no index records (indexing off, or its
+    // build failed before any index) is not found here: its failed build
+    // stands until an edit or a save of it, though its compiler answers now.
+    // So do the header contexts found meanwhile (a host's include tree,
+    // whether a header compiles alone), until the host or the header
+    // changes.
+    for(auto unit: units) {
+        if(index.indexed_command(unit) != command_identity(unit)) {
+            cascade.invalidate_module(unit);
+            index.mark_outdated(unit);
+            cascade.reindex(unit, true);
+        }
+    }
+    background_index.schedule();
+    return std::move(cascade.affected);
 }
 
 Affected Project::update_members(CDBDiff commands, llvm::ArrayRef<OpenFile> open) {

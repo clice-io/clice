@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "Animal",
     "kind": "Struct",
-    "symbol": "#a1654fc0dd5efb6c",
+    "symbol": "#f606d498f8e65200",
     "documentation": null,
     "definition": {
       "file": "${WS}/a.h",
@@ -31,13 +31,13 @@ stdout = '''
   "result": {
     "files": [
       {
-        "path": "${WS}/main.cpp",
-        "kind": "source",
+        "path": "${WS}/a.h",
+        "kind": "header",
         "moduleName": null
       },
       {
-        "path": "${WS}/a.h",
-        "kind": "header",
+        "path": "${WS}/main.cpp",
+        "kind": "source",
         "moduleName": null
       }
     ],

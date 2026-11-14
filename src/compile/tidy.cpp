@@ -199,9 +199,9 @@ public:
     std::vector<ReportedInput> files;
 
     llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override {
-        // clang-tidy's walk up a Windows path ends at the bare drive (`c:`,
-        // the parent of `c:\`), which made absolute would name the current
-        // directory's path on that drive: it is the drive's root.
+        // clang bug: clang-tidy's walk up a Windows path ends at the bare
+        // drive (`c:`, the parent of `c:\`), which made absolute would name
+        // the current directory's path on that drive: it is the drive's root.
         llvm::SmallString<256> storage;
         auto spelled = path.toStringRef(storage);
         if(!spelled.empty() && llvm::StringRef(path::root(spelled).name) == spelled) {
@@ -363,11 +363,11 @@ tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
                          "-modernize-macro-to-enum",
                          "-cppcoreguidelines-macro-to-enum",
 
-                         // Check can choke on invalid (intermediate) c++
-                         // code, as code mid-edit often is.
+                         // clang bug: the check can choke on invalid
+                         // (intermediate) c++ code, as code mid-edit often is.
                          "-bugprone-use-after-move",
-                         // Check uses dataflow analysis, which might hang/crash unexpectedly on
-                         // incomplete code.
+                         // clang bug: the check uses dataflow analysis, which
+                         // might hang/crash unexpectedly on incomplete code.
                          "-bugprone-unchecked-optional-access",
                          "-abseil-unchecked-statusor-access");
 
@@ -395,10 +395,10 @@ tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
     if(!batch) {
         opts.Checks->append(bad_checks);
     }
-    // performance-use-std-move looks for a record's move assignment among
-    // the methods it has, and ends in llvm_unreachable when it is not
-    // there, which a release LLVM compiles into running past the last one:
-    // a record from a PCH or a module crashes the worker that way.
+    // clang bug: performance-use-std-move looks for a record's move
+    // assignment among the methods it has, and ends in llvm_unreachable when
+    // it is not there, which a release LLVM compiles into running past the
+    // last one: a record from a PCH or a module crashes the worker that way.
     opts.Checks->append(",-performance-use-std-move");
     for(auto& [key, value]: params.options) {
         opts.CheckOptions.insert_or_assign(key, tidy::ClangTidyOptions::ClangTidyValue(value));

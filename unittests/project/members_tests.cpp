@@ -80,7 +80,7 @@ struct Layout {
                                            ? Candidate{.base = project.fallback_command(file),
                                                        .source = CommandSource::Fallback}
                                            : candidates.front());
-        return project.commands.render_driver(ref, project.cdb.spelling(ref.file));
+        return project.commands.render_driver(ref, project.file_table.spelling(ref.file));
     }
 
     bool indexed(llvm::StringRef relative) {
@@ -720,7 +720,7 @@ ZEST_CASE(BorrowMergesRules) {
     auto ref = project.apply_rules(
         files.intern(Spelling::absolute(tmp.path("new/n.cpp"))),
         {.base = unit.command, .source = CommandSource::Borrowed, .rules_from = {unit.file}});
-    auto argv = project.commands.render_driver(ref, project.cdb.spelling(ref.file));
+    auto argv = project.commands.render_driver(ref, project.file_table.spelling(ref.file));
     auto at = [&](llvm::StringRef macro) {
         return ranges::find_if(
                    argv,
@@ -817,7 +817,7 @@ std::vector<const char*> render_fallback(Project& project,
                    applied,
                    project.commands.input_kind(applied, file),
                    CommandSource::Fallback};
-    auto argv = project.commands.render_driver(ref, project.cdb.spelling(ref.file));
+    auto argv = project.commands.render_driver(ref, project.file_table.spelling(ref.file));
     for(std::size_t i = 0; i + 1 < argv.size(); i += 1) {
         if(llvm::StringRef(argv[i]) == "-resource-dir") {
             argv.erase(argv.begin() + i, argv.begin() + i + 2);

@@ -66,21 +66,22 @@ auto document_links(CompilationUnit& unit) -> std::vector<feature::DocumentLink>
     return links;
 }
 
-auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedInclude> includes)
+auto document_links(SourceText& source, llvm::ArrayRef<index::ResolvedLink> resolved)
     -> std::vector<feature::DocumentLink> {
     auto positions = source.positions();
 
     std::vector<feature::DocumentLink> links;
-    for(const auto& include: includes) {
-        auto line = include.line == 0 ? std::nullopt : positions.line_bounds(include.line - 1);
-        if(!line) {
+    for(const auto& link: resolved) {
+        auto line = link.line == 0 ? std::nullopt : positions.line_bounds(link.line - 1);
+        if(!line || line->begin + link.column > line->end) {
             continue;
         }
-        auto range = find_directive_argument(source.lexical(), source.text(), line->begin);
+        auto range =
+            find_directive_argument(source.lexical(), source.text(), line->begin + link.column);
         if(!range) {
             continue;
         }
-        links.push_back({.range = *range, .target = include.target});
+        links.push_back({.range = *range, .target = link.target});
     }
 
     ranges::sort(links, [](const feature::DocumentLink& lhs, const feature::DocumentLink& rhs) {
@@ -104,7 +105,7 @@ auto document_links(SourceText& source, const index::IndexQuery& query, Fid file
     if(!shard || !shard->matches_content(source.text())) {
         return {};
     }
-    return document_links(source, query.project().resolved_includes(file));
+    return document_links(source, query.project().resolved_links(file));
 }
 
 auto merge(std::vector<feature::DocumentLink> ast,

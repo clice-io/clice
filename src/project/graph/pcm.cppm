@@ -57,7 +57,7 @@ struct PCMEntry : Precompiled<ModuleBuildFailed> {
 /// cache key computation and hit checks, store commits, the modules' build
 /// failures (PCMEntry::failure), and the cooperative response to advisory
 /// cancellation (an overtaken attempt tells its worker to stop and still
-/// reports the real result — contract 2). The graph owns identity, edges,
+/// reports the real result — contract 1). The graph owns identity, edges,
 /// attempts and interest.
 struct Imports {
     llvm::SmallVector<NodeId, 8> declared;

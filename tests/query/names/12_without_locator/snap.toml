@@ -17,7 +17,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 2,
         "container": null,
-        "symbol": "#864f22013c538ab8"
+        "symbol": "#3907274bfb66c292"
       },
       {
         "name": "value",
@@ -26,7 +26,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 1,
         "container": null,
-        "symbol": "#2282827d1139ff33"
+        "symbol": "#798e3126da48e267"
       }
     ]
   },

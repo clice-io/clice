@@ -123,6 +123,60 @@ ZEST_CASE(BoundBeforeLimit) {
     ZEXPECT(preamble_bound(content, content.find("#ifdef")) == content.find('\n'));
 }
 
+ZEST_CASE(StopsBeforeOpenPush) {
+    // A PCH keeps none of these stacks: the push goes to the body with its
+    // pop; one popped in the preamble stays.
+    llvm::StringRef src = R"(
+#pragma pack(push, 1)
+#pragma pack(pop)
+#define min(a, b) a
+#pragma push_macro("min")
+#undef min
+#include <a>
+int x;
+#pragma pop_macro("min")
+)";
+    ZEXPECT(preamble_bound(src) == src.find("min(a, b) a") + 11);
+
+    // Cutting at the open push leaves an earlier push of another stack
+    // open, whose pop came after it.
+    llvm::StringRef nested = R"(
+#include <a>
+#pragma clang attribute push(__attribute__((annotate("x"))), apply_to = function)
+#pragma GCC visibility push(default)
+#pragma clang attribute pop
+#include <b>
+)";
+    ZEXPECT(preamble_bound(nested) == nested.find("<a>") + 3);
+
+    llvm::StringRef nonnull = R"(
+#pragma clang assume_nonnull begin
+#pragma clang attribute ns.push(__attribute__((annotate("x"))), apply_to = function)
+#pragma clang attribute ns.pop
+#include <a>
+)";
+    ZEXPECT(preamble_bound(nonnull) == 0u);
+
+    llvm::StringRef fragment = R"(
+module;
+#pragma push_macro("min")
+#include <a>
+export module m;
+#pragma pop_macro("min")
+)";
+    ZEXPECT(preamble_bound(fragment) == 0u);
+
+    llvm::StringRef defines = R"(
+module;
+#include <a>
+#pragma push_macro("min")
+#undef min
+export module m;
+#pragma pop_macro("min")
+)";
+    ZEXPECT(preamble_bound(defines) == defines.find("<a>") + 3);
+}
+
 ZEST_CASE(StopsAtCode) {
     llvm::StringRef src = R"(
 #include <a>

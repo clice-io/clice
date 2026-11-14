@@ -28,18 +28,18 @@ stdout = '''
             "signature": null,
             "kind": "Variable",
             "file": "${WS}/main.cpp",
-            "line": 6,
-            "container": "b",
-            "symbol": "#2d69354e2aeb0cf6"
+            "line": 2,
+            "container": "a",
+            "symbol": "#acee15cf19159e64"
           },
           {
             "name": "value",
             "signature": null,
             "kind": "Variable",
             "file": "${WS}/main.cpp",
-            "line": 2,
-            "container": "a",
-            "symbol": "#ab73a1a4b609cf4d"
+            "line": 6,
+            "container": "b",
+            "symbol": "#67bd9c94304f12f5"
           }
         ]
       }
@@ -65,7 +65,7 @@ stdout = '''
         "locator": "a::value",
         "name": "value",
         "kind": "Variable",
-        "symbol": "#ab73a1a4b609cf4d",
+        "symbol": "#acee15cf19159e64",
         "newName": "amount",
         "edits": 2,
         "conflicts": [],
@@ -102,7 +102,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice refactor rename \"#ab73a1a4b609cf4d\" amount"]
+[test."$ clice refactor rename \"#67bd9c94304f12f5\" amount"]
 stdout = '''
 {
   "result": {
@@ -110,10 +110,10 @@ stdout = '''
     "renames": [
       {
         "line": null,
-        "locator": "#ab73a1a4b609cf4d",
+        "locator": "#67bd9c94304f12f5",
         "name": "value",
         "kind": "Variable",
-        "symbol": "#ab73a1a4b609cf4d",
+        "symbol": "#67bd9c94304f12f5",
         "newName": "amount",
         "edits": 2,
         "conflicts": [],
@@ -127,14 +127,14 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "edits": [
           {
-            "line": 2,
+            "line": 6,
             "column": 5,
             "name": "value",
             "newName": "amount"
           },
           {
             "line": 9,
-            "column": 23,
+            "column": 34,
             "name": "value",
             "newName": "amount"
           }
@@ -150,16 +150,14 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice refactor rename \"#ab73a1a4b609cf4d\" amount".files]
+[test."$ clice refactor rename \"#67bd9c94304f12f5\" amount".files]
 "main.cpp" = '''
- namespace a {
+
+ namespace b {
 -int value;
 +int amount;
  }
 
-…
- }
-
 -int use() { return a::value + b::value; }
-+int use() { return a::amount + b::value; }
++int use() { return a::value + b::amount; }
 '''

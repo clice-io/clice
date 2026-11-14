@@ -10,7 +10,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 4,
         "container": null,
-        "symbol": "#81df9416985c4402"
+        "symbol": "#dedd7a0cf92bcd53"
       }
     ]
   },
@@ -35,7 +35,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 5,
         "container": null,
-        "symbol": "#c9be3d07e9d6b64f"
+        "symbol": "#407a5db4652e9057"
       }
     ]
   },

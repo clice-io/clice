@@ -22,11 +22,13 @@ test("inspect loads the databases above its inputs", async (t) => {
 });
 
 // Discovery looks no deeper than the root's direct subdirectories: the
-// batch run, which opens no file, names the deeper databases instead.
+// batch run, which opens no file, names the deeper databases instead, in
+// its report's error too.
 test(
     "batch indexing names nested projects",
     { errors: ["Nothing to index: no compile_commands.json found"] },
     async (t) => {
         await t.cli("index --jobs 2");
+        await t.cli("index --jobs 2 --json");
     },
 );

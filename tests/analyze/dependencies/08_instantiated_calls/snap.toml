@@ -12,7 +12,7 @@ stdout = '''
   "to": "core",
   "entities": [
     {
-      "id": "#19d7d3810cb38af7",
+      "id": "#3474a306af379d52",
       "entity": "ops::clamp",
       "owner": "core/clamp.h",
       "users": [
@@ -21,7 +21,7 @@ stdout = '''
       "interface": true
     },
     {
-      "id": "#d32eceb1b7b75ad6",
+      "id": "#cd1632e4c920aed1",
       "entity": "ops::convert",
       "owner": "core/convert.h",
       "users": [
@@ -30,7 +30,7 @@ stdout = '''
       "interface": true
     },
     {
-      "id": "#0c38de0d58dc377c",
+      "id": "#85837b8cfcf9f6e8",
       "entity": "ops::scale",
       "owner": "core/scale.h",
       "users": [

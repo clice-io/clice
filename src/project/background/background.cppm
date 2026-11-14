@@ -406,7 +406,7 @@ public:
 
     /// Emitted when an index attempt of the file finished with no retry
     /// pending, or the file was refused (index_first), before the attempt's
-    /// waiters wake (contract 15): an open document waiting on the index
+    /// waiters wake (contract 5): an open document waiting on the index
     /// re-derives its route against what its owner made of the result.
     Signal<Fid> on_attempt_finished;
 

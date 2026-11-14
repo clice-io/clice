@@ -2,6 +2,7 @@ module clice;
 
 import :compile.compilation;
 import :index.indexing.include_tree;
+import :syntax.position;
 import :support.logging;
 
 namespace clice::index {
@@ -67,8 +68,9 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
     for(auto fid: directive_fids) {
         for(auto& include: directives.find(fid)->second.includes) {
             if(!include.skipped && include.fid.isValid() && !unit.from_context(include.fid)) {
-                tree.file_nodes[include.fid] =
-                    add_include_chain(unit, include.fid, tree, path_table);
+                auto node = add_include_chain(unit, include.fid, tree, path_table);
+                tree.file_nodes[include.fid] = node;
+                tree.nodes[node].macro_braces = include.macro_braces;
             }
         }
     }
@@ -103,6 +105,46 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
         }
     }
 
+    // The files holding them were entered, so their chains are real include
+    // edges; a context's synthesized files name nothing on disk.
+    llvm::SmallVector<std::pair<clang::FileID, Link>> links;
+    for(auto fid: directive_fids) {
+        if(unit.from_context(fid)) {
+            continue;
+        }
+        auto& written = directives.find(fid)->second;
+        // Where the user sees the argument, as the links the AST gives.
+        auto add = [&](clang::SourceLocation location, clang::OptionalFileEntryRef target) {
+            auto seen = unit.seen_at(location);
+            auto position = target && seen.file == fid
+                                ? unit.positions(fid).position(seen.offset, PositionEncoding::UTF8)
+                                : std::nullopt;
+            if(!position) {
+                return;
+            }
+            links.push_back({
+                fid,
+                {
+                  .line = position->line + 1,
+                  .column = position->character,
+                  .target = unit.file_path(*target).str(),
+                  }
+            });
+        };
+        for(auto& has_include: written.has_includes) {
+            add(has_include.location, has_include.file);
+        }
+        for(auto& embed: written.embeds) {
+            add(embed.loc, embed.file);
+        }
+        for(auto& has_embed: written.has_embeds) {
+            add(has_embed.loc, has_embed.file);
+        }
+        if(!links.empty() && links.back().first == fid) {
+            tree.file_nodes[fid] = add_include_chain(unit, fid, tree, path_table);
+        }
+    }
+
     llvm::SmallVector<clang::FileID> sorted_indexed(indexed_fids.begin(), indexed_fids.end());
     ranges::sort(sorted_indexed);
     for(auto fid: sorted_indexed) {
@@ -112,6 +154,10 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
     auto focus = unit.focus_file().file();
     tree.file_nodes[focus] = add_include_chain(unit, focus, tree, path_table);
     tree.paths.emplace_back(unit.file_path(focus));
+    for(auto& [fid, link]: links) {
+        link.file = tree.path_id(fid);
+        tree.links.push_back(std::move(link));
+    }
 
     // Hash the consumed bytes per path from the compiler's own buffers.
     // Freshness checks compare the disk against these, so they must

@@ -282,6 +282,9 @@ TypeHierarchy type_hierarchy(const index::IndexQuery& index,
                              TypeHierarchyOptions options) {
     TypeHierarchy hierarchy;
     if(options.supertypes) {
+        // LIMITATION: a base is the template a Base relation points at,
+        // without the arguments written for it: `struct Derived : Base<int>`
+        // lists `Base`.
         hierarchy.supertypes = index.located_targets(root, anchor, RelationKind::Base);
     }
     if(options.subtypes) {

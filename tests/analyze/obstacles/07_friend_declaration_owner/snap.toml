@@ -40,7 +40,7 @@ stdout = '''
   "to": "core",
   "entities": [
     {
-      "id": "#8a698d5da2dd2556",
+      "id": "#b8bee78ef9a03d1c",
       "entity": "Token",
       "owner": "core/token.h",
       "users": [
@@ -49,7 +49,7 @@ stdout = '''
       "interface": false
     },
     {
-      "id": "#513a472a96b08792",
+      "id": "#dc4558e34d577431",
       "entity": "answer",
       "owner": "core/api.h",
       "users": [
@@ -58,7 +58,7 @@ stdout = '''
       "interface": false
     },
     {
-      "id": "#41d7d6ad69d3eccd",
+      "id": "#f1e204a3696c3d3b",
       "entity": "same",
       "owner": "core/token.h",
       "users": [

@@ -74,13 +74,14 @@ struct UnitSetOf {
     Seq<std::uint8_t> units;
 };
 
-/// How a set of units resolved a file's own `#include` lines at one
-/// content: the directive lines and their targets (path ids), in line
-/// order.
+/// How a set of units resolved the lines of a file naming another at one
+/// content (LinkResolution): per edge its line, column and target path id,
+/// in line order.
 template <template <typename> typename Seq>
-struct IncludeResolutionOf {
+struct LinkResolutionOf {
     std::uint64_t content = 0;
     Seq<std::uint32_t> lines;
+    Seq<std::uint32_t> columns;
     Seq<std::uint32_t> targets;
     Seq<std::uint8_t> units;
 };
@@ -99,8 +100,8 @@ struct DependentsBlobOf {
     Seq<UnitSetOf<Seq>> importers;
     /// Per instantiation use, the units using it.
     Seq<UnitSetOf<Seq>> uses;
-    /// The distinct resolutions of the file's own `#include` lines.
-    Seq<IncludeResolutionOf<Seq>> resolutions;
+    /// The distinct resolutions of the file's lines naming another.
+    Seq<LinkResolutionOf<Seq>> resolutions;
     /// The versions of the file the manifests name, ascending by content
     /// hash: each one's version record id and how many manifests name it.
     Seq<std::uint64_t> version_hashes;
@@ -164,6 +165,12 @@ struct TUManifestBlobOf {
     /// contribution_count × (varint version, 8-byte little-endian variant hash —
     /// hashes are random bits, varint would only inflate them)
     Seq<std::uint8_t> contributions;
+
+    /// TUManifest::links as columns.
+    Seq<std::uint32_t> link_files;
+    Seq<std::uint32_t> link_lines;
+    Seq<std::uint32_t> link_columns;
+    Seq<std::uint32_t> link_targets;
 
     /// Sets of versions, as postings below their count.
     Seq<std::uint8_t> absent;

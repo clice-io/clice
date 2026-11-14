@@ -564,7 +564,7 @@ echo '#define __STDC_VERSION__ 201710L'
                                           host_path("/opt/libexec/gcc/riscv32-elf/13/cc1")));
     auto ref = add("a.c", {driver.c_str(), "-c"});
     ZASSERT(f.toolchain.resolve(ref.command, ref.language));
-    auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
+    auto rendered = f.toolchain.render(ref, f.db.files().spelling(ref.file));
     /// A module map is no header, which only #include_next reaches.
     ZEXPECT(rendered.hidden.hides(tmp.path("gcc/13/include/module.modulemap")));
     ZEXPECT(!rendered.hidden.hides(tmp.path("libc/include/module.modulemap")));

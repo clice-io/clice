@@ -41,6 +41,11 @@ enum class Deduction : std::uint8_t {
 /// against `vector<T>`), and one value of a wider type (`array<T, 0>`
 /// against `array<T, N>`), are special cases instead: they do not match,
 /// and the primary template stands for the rest.
+///
+/// LIMITATION: the primary template stands for values too: `enabled<T>`
+/// beside `template<> enabled<int> = true` folds to false, as libstdc++'s
+/// `is_integral<T>::value` does, so `conditional_t<is_integral_v<T>, A, B>`
+/// shows `B` as if it were certain.
 struct DeductionOptions {
     /// Whether a value argument may hold any value — a default that does
     /// not fold: a value pattern meeting one is undecided whatever its type.

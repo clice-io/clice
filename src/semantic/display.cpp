@@ -1469,8 +1469,8 @@ void unnamed_tags(clang::QualType type, llvm::SmallVectorImpl<const clang::TagDe
     }
 }
 
-/// The attribute as clang prints it, its expression arguments as code:
-/// clang prints a list of them by their addresses,
+/// The attribute as clang prints it, its expression arguments as code.
+/// clang bug: clang prints a list of them by their addresses,
 /// `release_capability(0x55f4c48d3398)`.
 auto pretty(const clang::Attr& attr, const clang::PrintingPolicy& policy) -> std::string {
     std::string text;
@@ -2022,9 +2022,10 @@ struct DeclarationPrinter {
     }
 
     /// The field of the template an instantiation's field is made from:
-    /// the pattern's field at its index, when it has that name. The pattern
-    /// clang reports can be another than the one instantiated (a
-    /// specialization merged across modules names its primary template).
+    /// the pattern's field at its index, when it has that name.
+    /// clang bug: the pattern clang reports can be another than the one
+    /// instantiated (a specialization merged across modules names its
+    /// primary template).
     static auto pattern_field(const clang::FieldDecl& field) -> const clang::FieldDecl* {
         const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(field.getParent());
         const auto* pattern = record ? record->getTemplateInstantiationPattern() : nullptr;

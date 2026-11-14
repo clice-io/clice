@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "measure",
     "kind": "Method",
-    "symbol": "#c9fbbb30710c2348",
+    "symbol": "#a759f2e00cefff10",
     "references": [
       {
         "file": "${WS}/app/main.cpp",

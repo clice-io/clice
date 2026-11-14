@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "flag",
     "kind": "EnumMember",
-    "symbol": "#d72b5df2c7ec6aef",
+    "symbol": "#13666098addd6d26",
     "references": [
       {
         "file": "${WS}/a.cpp",

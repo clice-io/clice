@@ -330,7 +330,7 @@ stdout = '''
   "result": {
     "name": "run",
     "kind": "Method",
-    "symbol": "#af49c265ca693bdb",
+    "symbol": "#ba0de5b4f842315c",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -370,7 +370,7 @@ stdout = '''
   "result": {
     "name": "square",
     "kind": "Variable",
-    "symbol": "#7ec27924d2c8cc2a",
+    "symbol": "#935d6e9b001eee85",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -398,7 +398,7 @@ stdout = '''
   "result": {
     "name": "get",
     "kind": "Method",
-    "symbol": "#10497ccaeb3b8c90",
+    "symbol": "#eb1bde7812d96685",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -433,7 +433,7 @@ stdout = '''
   "result": {
     "name": "later",
     "kind": "Method",
-    "symbol": "#2043a835f555b8bf",
+    "symbol": "#7fd15f65267cf980",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -475,7 +475,7 @@ stdout = '''
   "result": {
     "name": "run",
     "kind": "Method",
-    "symbol": "#af49c265ca693bdb",
+    "symbol": "#ba0de5b4f842315c",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -515,7 +515,7 @@ stdout = '''
   "result": {
     "name": "square",
     "kind": "Variable",
-    "symbol": "#7ec27924d2c8cc2a",
+    "symbol": "#935d6e9b001eee85",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -543,7 +543,7 @@ stdout = '''
   "result": {
     "name": "get",
     "kind": "Method",
-    "symbol": "#10497ccaeb3b8c90",
+    "symbol": "#eb1bde7812d96685",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -578,7 +578,7 @@ stdout = '''
   "result": {
     "name": "later",
     "kind": "Method",
-    "symbol": "#2043a835f555b8bf",
+    "symbol": "#7fd15f65267cf980",
     "references": [
       {
         "file": "${WS}/include/base.h",

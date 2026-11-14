@@ -31,12 +31,6 @@ struct CompilationEntry {
     /// entries in configuration order, so this is the default-selection
     /// order within one source.
     std::uint32_t ordinal = 0;
-
-    /// How the database names the file when that is not its identity (a
-    /// symlinked source), empty otherwise: the build compiles it under that
-    /// name, which decides where its quoted includes look and what
-    /// `__FILE__` says.
-    llvm::StringRef spelling;
 };
 
 /// The option whose value sets apart nearly every command `entries` compile
@@ -187,10 +181,6 @@ public:
     /// first is its default selection) — the identity reload_and_diff()
     /// diffs on.
     llvm::DenseMap<Fid, llvm::SmallVector<std::string, 1>> command_hash_snapshot();
-
-    /// The path a command gives its input file as: a database's spelling
-    /// of it (CompilationEntry::spelling), else its identity.
-    llvm::StringRef spelling(Fid file) const;
 
     /// Append one command no database file holds, a test's or one given on
     /// the command line, to an anonymous source and return its entry;

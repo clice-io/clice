@@ -1,0 +1,24 @@
+[test."$ clice format --check"]
+stdout = "Checked 1 file in #s: 1 needs formatting."
+stderr = '''
+${WS}/src/main.cpp:1:4: error: code should be clang-formatted [-Wclang-format-violations]
+int   main(){return 0;}
+   ^
+${WS}/src/main.cpp:1:13: error: code should be clang-formatted [-Wclang-format-violations]
+int   main(){return 0;}
+            ^
+${WS}/src/main.cpp:1:14: error: code should be clang-formatted [-Wclang-format-violations]
+int   main(){return 0;}
+             ^
+${WS}/src/main.cpp:1:23: error: code should be clang-formatted [-Wclang-format-violations]
+int   main(){return 0;}
+                      ^
+'''
+exit = 1
+
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0

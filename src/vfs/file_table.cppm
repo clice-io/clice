@@ -72,9 +72,15 @@ struct FileTable {
     /// path) is resolved by its caller.
     Fid intern(const Spelling& path);
 
-    /// Intern a path the build reaches its file by, remembering how it
-    /// spells the file (spell_as).
+    /// Intern a path an include lookup reached its file by: the build
+    /// reaches the file so (spelling), unless a database entry names it or
+    /// an earlier lookup reached it otherwise.
     Fid intern_spelled(const Spelling& path);
+
+    /// Intern the path a database entry names its file by: the build
+    /// compiles the file under that name (spelling), whatever lookups
+    /// reached it by. A reload names it anew.
+    Fid intern_entry(const Spelling& path);
 
     /// An identity names its own file.
     Fid intern(CanonicalRef identity);
@@ -87,13 +93,10 @@ struct FileTable {
     /// Look up a path without interning it.
     std::optional<Fid> find(const Spelling& path) const;
 
-    /// The path the build reaches a file by, when it differs from its
-    /// identity: its database entry's spelling, or the directory an include
-    /// lookup found it through; the first one recorded holds. A quoted
-    /// include searches from this path's directory, as clang's does from
-    /// the name it opened the includer under.
-    void spell_as(Fid fid, const Spelling& path);
-
+    /// The path the build reaches a file by, intern_entry's or
+    /// intern_spelled's, else its identity: a rendered command names its
+    /// input so, and a quoted include searches from this path's directory,
+    /// as clang's does from the name it opened the includer under.
     Spelling spelling(Fid fid) const;
 
     /// The path a user knows a file by: the one its open document was
@@ -137,7 +140,12 @@ struct FileTable {
     void unspell_root(const Spelling& root);
 
     llvm::DenseMap<Fid, std::string> shown;
+
+    /// spelling() where it is not the identity.
     llvm::DenseMap<Fid, std::string> spelled;
+
+    /// The files a database entry names (intern_entry).
+    llvm::DenseSet<Fid> entry_named;
 
     /// A workspace folder spell_root recorded: its identity, the spelling
     /// it was opened under, `..` folded, and the one files under it show

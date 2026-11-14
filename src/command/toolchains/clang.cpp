@@ -130,15 +130,20 @@ std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, Comp
             continue;
         }
         bool modules = family == CompilerFamily::GCC && parsed->id == clang_options::OPT_fmodules;
+        bool runtime_checks =
+            family == CompilerFamily::MSVC && parsed->id == clang_options::OPT__SLASH_RTC;
         llvm::StringRef warning =
             parsed->id == clang_options::OPT_W_Joined ? llvm::StringRef(parsed->values[0]) : "";
-        if(!modules && warning != "error" && !warning.starts_with("error=")) {
+        if(!modules && !runtime_checks && warning != "error" && !warning.starts_with("error=")) {
             continue;
         }
         result.insert(result.end(), flags.begin() + next, flags.begin() + parsed->index);
         next = parsed->index + 1;
         if(warning.consume_front("error=")) {
             result.push_back("-W" + warning.str());
+        }
+        if(runtime_checks) {
+            result.push_back("-D__MSVC_RUNTIME_CHECKS");
         }
     }
     result.insert(result.end(), flags.begin() + next, flags.end());
@@ -147,6 +152,10 @@ std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, Comp
 
 std::vector<std::string> clang_argv(llvm::ArrayRef<std::string> args,
                                     llvm::ArrayRef<std::string> mode) {
+    // LIMITATION: code relying on deferred template parsing (a template body
+    // naming what is declared below it, which clang-cl accepts) reports false
+    // errors on MSVC targets until the user adds -fdelayed-template-parsing.
+    //
     // Before C++20, clang defers template bodies on MSVC targets so that
     // code written for MSVC's lookup rules compiles, but a deferred body has
     // no AST: every feature inside it goes blind. Placed before the

@@ -8,11 +8,8 @@ import { modularize, test } from "@clice/tools/testing";
 // expands core's CORE_TWICE. app/run.cpp, outside both, uses tool.
 const ARGS = "--scope app/** --scope third/** --std stdmod --out wrap";
 
-// One worker: which header provides fake_widen, declared both in
-// <cwide.h> and in a fragment widen.h pastes, depends on the order the
-// units are indexed in (analyze/dependencies/06_unit_order).
 test("rewrites program modules", async (t) => {
-    await t.cli("index --jobs 1");
+    await t.cli("index");
     const run = await t.cli(`modularize ${ARGS} --partition partitions/program.json`);
     // The program as the plan builds it compiles cleanly.
     await modularize.compiles(t, run, "wrap");
@@ -20,7 +17,7 @@ test("rewrites program modules", async (t) => {
 
 // Nothing is written when a partition would be rejected.
 test("rejected partitions", async (t) => {
-    await t.cli("index --jobs 1");
+    await t.cli("index");
     for (const partition of ["clash", "same_primary", "outside", "dash", "keyword", "core_only"]) {
         await t.cli(`modularize ${ARGS} --partition partitions/${partition}.json`);
     }

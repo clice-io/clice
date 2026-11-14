@@ -71,11 +71,11 @@ exit = 1
 
 ["one source a command"."$ clice command convert -- missing-cc -c main.cpp other.cpp"]
 stderr = "error: The command names 2 C-family sources (main.cpp, other.cpp) among its arguments; convert takes a command compiling one"
-exit = 1
+exit = 2
 
 ["one source a command"."$ clice command convert -- missing-cc -c"]
 stderr = "error: The command names no C-family source among its arguments; convert takes a command compiling one"
-exit = 1
+exit = 2
 
 ["a database or a command"."$ clice command convert"]
 stderr = '''
@@ -115,4 +115,4 @@ exit = 2
 
 ["a database or a command"."$ clice command convert --"]
 stderr = "error: The command names no C-family source among its arguments; convert takes a command compiling one"
-exit = 1
+exit = 2
