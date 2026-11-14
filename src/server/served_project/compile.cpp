@@ -385,8 +385,9 @@ struct ServedProject::CompileAttempt {
     /// The command the send compiles under, the include trees the header's
     /// host search needs taken first: a header compiles under the host every
     /// process finds for it. `first`: the send that may be the
-    /// self-containment check.
-    async::task<std::optional<Result>> command(bool first);
+    /// self-containment check; `verdict`: the check's, for the send in the
+    /// host's context it steers.
+    async::task<std::optional<Result>> command(bool first, std::optional<bool> verdict);
 
     /// The modules the buffer imports, built: an import whose build failed is
     /// left to the parse, which reports it on the import next to the file's
@@ -542,7 +543,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
     });
     bool first = true;
     while(true) {
-        if(auto stop = co_await command(first)) {
+        if(auto stop = co_await command(first, comparison ? std::optional(false) : std::nullopt)) {
             co_return *stop;
         }
         if(auto stop = co_await modules()) {
@@ -622,7 +623,8 @@ async::task<Result> ServedProject::CompileAttempt::run() {
     }
 }
 
-async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool first) {
+async::task<std::optional<Result>>
+    ServedProject::CompileAttempt::command(bool first, std::optional<bool> verdict) {
     params = {};
     params.indexing.known_instantiations = known_instantiations;
     params.indexing.standard_library_instantiations =
@@ -636,7 +638,11 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool f
     }
     resolution = co_await project.resolve_with_trees(
         path_id,
-        [&] { return served.command_request(path_id); },
+        [&] {
+            auto request = served.command_request(path_id);
+            request.self_contained = verdict;
+            return request;
+        },
         [&] { return ticket.fresh(); });
     if(!ticket.fresh()) {
         co_return Result::Stale;

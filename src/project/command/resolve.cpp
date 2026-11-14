@@ -131,7 +131,9 @@ struct Tiers {
                 auto command = project.apply_rules(file, candidate).command;
                 auto key = SelfContainmentKey{file, project.commands.command_hash(command)};
                 selection.self_containment = key;
-                selection.self_contained = project.self_contained(key, request.open);
+                selection.self_contained = request.self_contained
+                                               ? request.self_contained
+                                               : project.self_contained(key, request.open);
                 selection.in_context = selection.self_contained == false;
             }
         }
@@ -305,8 +307,10 @@ async::task<Resolution> Project::resolve_with_trees(Fid file,
                                                     llvm::function_ref<CommandRequest()> request,
                                                     llvm::function_ref<bool()> current) {
     auto resolution = resolve_command(file, request());
+    // A tree taken is stale at once when its host changes while it is read
+    // (a save): taken once more, it reads the host as it is now.
     llvm::SmallVector<UnitCommand, 2> taken;
-    while(resolution.missing_tree && !ranges::contains(taken, resolution.missing_tree->key)) {
+    while(resolution.missing_tree && ranges::count(taken, resolution.missing_tree->key) < 2) {
         taken.push_back(resolution.missing_tree->key);
         if(!co_await take_tree(*resolution.missing_tree) || (current && !current())) {
             break;
