@@ -10,7 +10,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parse } from "smol-toml";
+import { parse, stringify } from "smol-toml";
 import * as proto from "vscode-languageserver-protocol";
 import { URI } from "vscode-uri";
 import { CliceClient, type InitializeOptions } from "../../client/client.ts";
@@ -114,28 +114,40 @@ export interface WorkerFault {
 }
 
 /// `config` with `last`, a rule for every file, after the rules `config`
-/// passes, else after those of the settings file in `root`: the
-/// configuration's rules replace the file's, and both anchor at the project
-/// root.
+/// passes; without those, `last` goes after the rules of the settings file
+/// in `root`, written into it so that the server reads them from the file
+/// as it does in use — the configuration's rules would replace the file's.
 export function withLastRule(
     config: Record<string, unknown>,
     root: string,
     last: Record<string, unknown>,
 ): Record<string, unknown> {
-    let rules = config["rules"] as unknown[] | undefined;
+    const rules = config["rules"] as unknown[] | undefined;
+    if (rules !== undefined) {
+        return { ...config, rules: [...rules, last] };
+    }
     for (const name of ["clice.toml", path.join(".clice", "config.toml")]) {
         const file = path.join(root, name);
-        if (rules !== undefined || !fs.existsSync(file)) {
+        if (!fs.existsSync(file)) {
             continue;
         }
-        // A file that does not parse breaks the project however it is served.
-        try {
-            rules = (parse(fs.readFileSync(file, "utf8"))["rules"] ?? []) as unknown[];
-        } catch {
-            rules = [];
+        const text = fs.readFileSync(file, "utf8");
+        const table = `\n${stringify({ rules: [last] })}`;
+        // A restart starts with the rule already there.
+        if (text.endsWith(table)) {
+            return config;
         }
+        // A file that does not parse, or whose rules are no table array,
+        // keeps its error as written: the rule goes to the configuration.
+        try {
+            parse(text + table);
+        } catch {
+            break;
+        }
+        fs.writeFileSync(file, text + table);
+        return config;
     }
-    return { ...config, rules: [...(rules ?? []), last] };
+    return { ...config, rules: [last] };
 }
 
 /// How the test's servers start: `t.start(options)`, and every restart of

@@ -130,8 +130,8 @@ struct WorkerPoolOptions {
 
     /// Dynamic scaling bounds for stateless workers.
     /// min_stateless: the ones started, and the floor idle scale-down keeps.
-    /// max_stateless: ceiling — never spawn above this count (0 = auto = the
-    /// physical cores, see default_max_stateless_worker_count).
+    /// max_stateless: ceiling — never spawn above this count, nor below
+    /// stateless_count.
     std::uint32_t min_stateless = 1;
     std::uint32_t max_stateless = 0;
 };

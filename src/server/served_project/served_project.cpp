@@ -184,10 +184,13 @@ void ServedProject::open() {
             .cache = Project::OpenOptions::Cache::Write,
             .files = std::move(open_files),
         });
+        // Rules keeping every unit out of the background index leave the
+        // index as saved: no indexer refreshes what it withholds.
+        project.freshness.options.withhold = project.rules.indexes_any();
         if(project.store) {
             bg_tasks.spawn(checkpoint_task());
         }
-        if(opened.writer_elsewhere) {
+        if(project.index_waits) {
             bg_tasks.spawn(open_index_task());
         } else if(project.database && !project.database->read_only()) {
             start_control_listener();
@@ -257,6 +260,16 @@ async::task<> ServedProject::open_index_task() {
     }
     project.background_index.start({.skipped_diagnostics = !project.rules.parses_every_body()});
     server.load_choices(*this);
+    // The documents opened meanwhile compiled without the context choices
+    // the index kept, and found no index to answer from.
+    for(auto& [file, entry]: server.choices) {
+        if(entry.project == this && entry.active && find_document(file)) {
+            choice_changed(*server.find_session(file));
+        }
+    }
+    if(server.client) {
+        server.client->refresh();
+    }
 }
 
 async::task<> ServedProject::shutdown() {
@@ -383,8 +396,9 @@ void ServedProject::decide_compiling(Fid path_id) {
         return;
     }
     // Nothing indexed yet: reading this file is the reason to index it
-    // first — unless indexing is disabled or the file is no unit of the
-    // build (a header, which only the units reading it index), in which
+    // first — unless the background index has not started (its index waits
+    // for the writer lock) or the file is no unit of the build (a header,
+    // which only the units reading it index), in which
     // case no shard will arrive soon and only an AST can serve the
     // document. An index_first the background index cannot fulfill
     // starts compiling through the attempt-finished check.

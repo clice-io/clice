@@ -211,6 +211,21 @@ bool Rules::parses_every_body() const {
     return false;
 }
 
+bool Rules::indexes_any() const {
+    for(auto* rule: active) {
+        if(!rule->background_index || rule->unmatchable) {
+            continue;
+        }
+        if(*rule->background_index) {
+            return true;
+        }
+        if(rule->patterns.empty()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 llvm::SmallVector<const CompiledRule*> Rules::covering() const {
     llvm::SmallVector<const CompiledRule*> result;
     for(auto* rule: active) {

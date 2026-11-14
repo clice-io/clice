@@ -1,3 +1,4 @@
+import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
 const SKIPPED = { rules: [{ patterns: ["third_party/**"], skip_function_body: true }] };
@@ -21,4 +22,15 @@ test("bodies skipped", async (t) => {
     await s.indexed();
     await t.show("references", s.references(t.at("main.cpp", "int |helper(int x) {")));
     await t.show("lib's declarations", s.workspaceSymbols("twice"));
+});
+
+// The PCM a session built with lib's bodies serves no session skipping
+// them: the next one builds its own.
+test("rule added across a restart", async (t) => {
+    const first = await t.start();
+    await first.diagnostics("main.cpp");
+    await first.stop();
+    const s = await t.start({ config: SKIPPED });
+    await t.show("skipped", s.diagnostics("main.cpp"));
+    expect((await s.counts()).pcm).toBe(1);
 });

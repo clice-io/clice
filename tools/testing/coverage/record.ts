@@ -66,7 +66,7 @@ export function recordToml(text: string): void {
     }
 }
 
-/// Every key path a configuration object sets: `project.readonly`,
+/// Every key path a configuration object sets: `workers.foreground`,
 /// `rules.append`, ... (array elements fold into their key).
 export function recordConfig(config: unknown, prefix = ""): void {
     if (Array.isArray(config)) {

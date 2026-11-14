@@ -29,8 +29,8 @@ async::task<> exchange(ipc::JSONPeer& peer,
                        std::expected<IndexResult, AskError>& out) {
     // Hang detection: a server that does not answer its status is taken for
     // hung.
-    auto status = co_await peer.send_request(StatusParams{}, {.timeout = answer_bound()});
-    if(!status) {
+    if(auto status = co_await peer.send_request(StatusParams{}, {.timeout = answer_bound()});
+       !status) {
         out = std::unexpected(AskError{
             .message = std::format("the clice server (pid {}) does not answer", endpoint.pid),
             .unanswered = true});
@@ -78,7 +78,7 @@ async::task<std::expected<IndexResult, AskError>> ask(const index::ServerEndpoin
 
 void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
     peer.on_request([](RequestContext&, const StatusParams&) -> RequestResult<StatusParams> {
-        co_return StatusResult{.pid = static_cast<std::uint32_t>(sys::pid())};
+        co_return StatusResult{};
     });
     peer.on_request(
         [&srv](RequestContext&, const IndexParams& params) -> RequestResult<IndexParams> {
@@ -90,10 +90,6 @@ void register_requests(ServedProject& srv, ipc::JSONPeer& peer) {
                                 params.configuration)});
             }
             auto& background = srv.project.background_index;
-            if(!background.started()) {
-                co_await async::fail(
-                    ipc::Error{"the running clice server has background indexing disabled"});
-            }
             // Build changes arrive through the databases' poll; a request right
             // after a compile_commands.json edit must see the new units.
             srv.project.file_table.disk.look_flags();
@@ -162,15 +158,16 @@ std::expected<Listener, std::string> listen(llvm::StringRef cache_dir, async::ev
     // One name per project: a server serves several. The default DACL of a
     // pipe lets other users read it alone, never write a request.
     static unsigned serial = 0;
-    name = std::format("\\\\.\\pipe\\clice-{}-{}", sys::pid(), serial++);
+    name = std::format(R"(\\.\pipe\clice-{}-{})", sys::pid(), serial);
+    serial += 1;
 #else
     // sun_path holds 104 bytes on macOS, 108 on Linux.
     constexpr std::size_t socket_path_max = 100;
     name = path::join(cache_dir, "server.sock");
     if(name.size() >= socket_path_max) {
-        llvm::SmallString<128> temp;
-        llvm::sys::path::system_temp_directory(/*ErasedOnReboot=*/true, temp);
-        auto made = fs::TempDirectory::create(temp.str(), "clice-");
+        std::string temp;
+        sys::temp_dir(temp);
+        auto made = fs::TempDirectory::create(temp, "clice-");
         if(!made) {
             return std::unexpected(std::format("cannot make a directory for its socket in {}: {}",
                                                temp,

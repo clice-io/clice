@@ -30,8 +30,8 @@ poll_seconds = 30
 [workers]
 # Workers keeping the open files compiled and answering requests about them.
 foreground = 2
-# The most compiles the background index runs at once: "auto" (half the
-# physical cores, at least 2) or a number.
+# The most compiles the background index runs at once, never more than
+# `max`: "auto" (half the physical cores, at least 2) or a number.
 background = "auto"
 # The most compile workers at once: "auto" (the physical cores) or a number.
 max = "auto"

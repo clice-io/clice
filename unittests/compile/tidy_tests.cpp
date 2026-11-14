@@ -415,6 +415,22 @@ ZEST_CASE(RemovedArgsAndUser) {
     ZEXPECT(*params.user == "alice");
 }
 
+ZEST_CASE(CustomChecksUnsupported) {
+    TempDir tmp;
+    tmp.touch(".clang-tidy", R"(Checks: '-*,bugprone-*'
+CustomChecks:
+  - Name: no-goto
+    Query: 'match gotoStmt().bind("goto")'
+    Diagnostic:
+      - BindName: goto
+        Message: avoid goto
+)");
+    tmp.touch("a.cpp");
+    auto resolution = tidy::resolve_tidy_params(tmp.path("a.cpp"));
+    ZEXPECT(resolution.params.checks.contains("bugprone-*"));
+    ZEXPECT(llvm::StringRef(resolution.error).starts_with("CustomChecks are not supported"));
+}
+
 ZEST_CASE(ExtraArgsCommandSplit) {
     // -W warning flags stay on the warning-options path where the Checks
     // gate applies; driver pass-throughs and everything else reach the

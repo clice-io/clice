@@ -284,9 +284,9 @@ suite("clice E2E", function () {
     });
 
     test("workspace symbol indexed, the file clean", async function () {
-        // Definition is index-based. The fixture turns the test hooks on
-        // (tools/testing/editors/fixtures.ts): the server answers a sync once
-        // the background index is done.
+        // Definition is index-based. The task turns the test hooks on
+        // (CLICE_TEST_HOOKS=1 in pixi.toml's vscode-e2e): the server answers
+        // a sync once the background index is done.
         assert.deepStrictEqual(await errors(opened().uri), [], `${scenario.file} has errors`);
         const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
             "vscode.executeWorkspaceSymbolProvider",

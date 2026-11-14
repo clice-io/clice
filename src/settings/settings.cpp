@@ -85,26 +85,26 @@ static std::uint32_t physical_parallelism() {
     return std::min(sys::physical_cores(), sys::parallelism());
 }
 
-std::uint32_t default_stateless_worker_count() {
+std::uint32_t auto_background_count() {
     // Settings is constructed on every worker request (the feature and build
     // params carry one); query the core count once, not per request.
     const static std::uint32_t count = std::max(physical_parallelism() / 2, 2u);
     return count;
 }
 
-std::uint32_t default_max_stateless_worker_count() {
+std::uint32_t auto_max_count() {
     const static std::uint32_t count = physical_parallelism();
     return count;
 }
 
 std::uint32_t WorkersSettings::background_count() const {
     auto* count = std::get_if<std::uint32_t>(&background);
-    return count ? *count : default_stateless_worker_count();
+    return std::min(count ? *count : auto_background_count(), max_count());
 }
 
 std::uint32_t WorkersSettings::max_count() const {
     auto* count = std::get_if<std::uint32_t>(&max);
-    return count ? *count : default_max_stateless_worker_count();
+    return count ? *count : auto_max_count();
 }
 
 /// Compile one pattern against absolute paths: the literal directory before
@@ -207,7 +207,7 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
     }
     // The file table's name for a directory is the one kept, whatever the
     // user wrote.
-    auto settle = [&](llvm::StringRef name, std::string& dir) {
+    auto resolve_dir = [&](llvm::StringRef name, std::string& dir) {
         auto substituted = substitute(dir, root);
         if(!substituted) {
             problem(std::move(substituted.error()), {name.str()});
@@ -223,10 +223,10 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
         dir = CanonicalPath(*spelled).str();
     };
     if(!cache_dir.empty()) {
-        settle("cache_dir", cache_dir);
+        resolve_dir("cache_dir", cache_dir);
     }
     if(!logging_dir.empty()) {
-        settle("logging_dir", logging_dir);
+        resolve_dir("logging_dir", logging_dir);
     } else if(!cache_dir.empty()) {
         logging_dir = path::join(cache_dir, "logs");
     }
@@ -519,9 +519,7 @@ static llvm::StringRef moved_key(llvm::StringRef section, llvm::StringRef key) {
              "skip_header_bodies",
              "moved to the rules' `skip_function_body` in clice 1.0"},
          {"project", "readonly", "moved to the rules' `readonly` in clice 1.0"},
-         {"project",
-             "idle_timeout_ms",
-             "moved to `workers.background_delay_ms` in clice 1.0"},
+         {"project", "idle_timeout_ms", "moved to `workers.background_delay_ms` in clice 1.0"},
          {"project", "stateful_worker_count", "moved to `workers.foreground` in clice 1.0"},
          {"project", "stateless_worker_count", "moved to `workers.background` in clice 1.0"},
          {"project", "max_stateless_worker_count", "moved to `workers.max` in clice 1.0"},
@@ -535,7 +533,9 @@ static llvm::StringRef moved_key(llvm::StringRef section, llvm::StringRef key) {
          {"project",
              "test_hooks",
              "moved to the environment variable CLICE_TEST_HOOKS in clice 1.0"},
-         {"tracker", "workspace_poll_seconds", "moved to the top-level `poll_seconds` in clice 1.0"},
+         {"tracker",
+             "workspace_poll_seconds",
+             "moved to the top-level `poll_seconds` in clice 1.0"},
          {"rules", "index", "moved to `background_index` in clice 1.0"},
          }
     };

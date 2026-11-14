@@ -16,8 +16,8 @@ namespace clice {
 /// The worker counts "auto" stands for (WorkersSettings): half the
 /// physical cores, at least 2, for the background index; the physical cores
 /// in all.
-std::uint32_t default_stateless_worker_count();
-std::uint32_t default_max_stateless_worker_count();
+std::uint32_t auto_background_count();
+std::uint32_t auto_max_count();
 
 /// A cache directory keys its indexes, configuration selection and server
 /// record by configuration alone, so it serves one project, whose root it
@@ -299,10 +299,10 @@ struct WorkersSettings {
 
     KANNOTATE(&background,
               description =
-                  "The most compiles the background index runs at once: "
-                  "\"auto\", half the machine's physical cores and at "
-                  "least 2, or a number, at least 1. Raising it speeds a "
-                  "first index up on a big machine.")
+                  "The most compiles the background index runs at once, "
+                  "never more than `max`: \"auto\", half the machine's "
+                  "physical cores and at least 2, or a number, at least 1. "
+                  "Raising it speeds a first index up on a big machine.")
     Count background = Automatic::Auto;
 
     KANNOTATE(&max,
@@ -321,7 +321,7 @@ struct WorkersSettings {
                   "edit or request before it starts, in milliseconds.")
     std::uint32_t background_delay_ms = 3000;
 
-    /// `background` as a number: "auto" the machine's.
+    /// `background` as a number, "auto" the machine's, at most max_count().
     std::uint32_t background_count() const;
 
     /// `max` as a number: "auto" the machine's.

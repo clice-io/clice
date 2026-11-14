@@ -311,7 +311,8 @@ public:
            function && !options.every_body && !visiting_root &&
            function->doesThisDeclarationHaveABody()) {
             auto location = function->getLocation();
-            if(!unit.indexes_bodies(location) && !unit.focus_file().contains(unit.file_id(location))) {
+            if(!unit.indexes_bodies(location) &&
+               !unit.focus_file().contains(unit.file_id(location))) {
                 skipped_body = function->getBody();
             }
         }

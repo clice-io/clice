@@ -147,7 +147,7 @@
             "properties": {
                 "foreground": {
                     "type": "integer",
-                    "minimum": 0,
+                    "minimum": 1,
                     "maximum": 4294967295,
                     "description": "Number of foreground workers: they keep the open files compiled and answer the requests about them (hover, semantic tokens, ...); at least 1.",
                     "default": 2

@@ -1651,6 +1651,19 @@ ZEST_CASE(StartsItsFloor) {
     });
 }
 
+ZEST_CASE(StartsBelowBackgroundJobs) {
+    // The background jobs the pool may run at once do not start workers:
+    // only the floor does.
+    WorkerPoolFixture f;
+    f.run([&]() -> async::task<> {
+        auto options = worker_options(f.tmp, 4, 0);
+        options.min_stateless = 1;
+        ZASSERT(f.pool.start(options));
+        ZEXPECT(f.stateless_count() == 1u);
+        co_await f.stop();
+    });
+}
+
 #ifdef __linux__
 ZEST_CASE(IdleKeepsSessionScore) {
     auto score = [](llvm::StringRef pid) {

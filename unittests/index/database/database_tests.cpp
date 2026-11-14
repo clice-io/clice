@@ -2,6 +2,8 @@ module;
 
 #ifndef _WIN32
 #include <fcntl.h>
+#include <signal.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -849,6 +851,39 @@ ZEST_CASE(OpenRemovesStaleCopy) {
     ZASSERT(index::open_database(store, {}) != nullptr);
     ZEXPECT(!fs::exists(file + "-compact"));
 }
+
+#ifndef _WIN32
+ZEST_CASE(NoRoomForLock) {
+    // A disk without room for LMDB's lock file turns its first write into
+    // a SIGBUS; a file size limit stands in for the full disk. It leaves
+    // room for the lock file of 64 KiB, not for the probe of 256: only the
+    // probe refuses the open.
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto file = path::join(index::database_directory(store, {}), "index.mdb");
+    std::unique_ptr<index::BlobDatabase> db;
+    {
+        struct rlimit saved = {};
+        ZASSERT(::getrlimit(RLIMIT_FSIZE, &saved) == 0);
+        struct sigaction ignored = {};
+        ignored.sa_handler = SIG_IGN;
+        struct sigaction previous = {};
+        ZASSERT(::sigaction(SIGXFSZ, &ignored, &previous) == 0);
+        auto restore = llvm::make_scope_exit([&] {
+            ::setrlimit(RLIMIT_FSIZE, &saved);
+            ::sigaction(SIGXFSZ, &previous, nullptr);
+        });
+        struct rlimit lowered = saved;
+        lowered.rlim_cur = 128 * 1024;
+        ZASSERT(::setrlimit(RLIMIT_FSIZE, &lowered) == 0);
+        db = index::open_database(store, {});
+    }
+    ZEXPECT(db == nullptr);
+    ZEXPECT(!fs::exists(file + "-lock"));
+    ZEXPECT(!fs::exists(file + "-probe"));
+    ZEXPECT(index::open_database(store, {}) != nullptr);
+}
+#endif
 
 };  // ZEST_SUITE(IndexDatabase)
 

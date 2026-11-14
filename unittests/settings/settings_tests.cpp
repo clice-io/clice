@@ -286,9 +286,9 @@ ZEST_CASE(BornValidDefaults) {
     ZEXPECT(settings.workers.foreground == 2u);
     ZEXPECT(std::holds_alternative<Automatic>(settings.workers.background));
     ZEXPECT(std::holds_alternative<Automatic>(settings.workers.max));
-    ZEXPECT(settings.workers.background_count() == default_stateless_worker_count());
+    ZEXPECT(settings.workers.background_count() == auto_background_count());
     ZEXPECT(settings.workers.background_count() >= 2u);
-    ZEXPECT(settings.workers.max_count() == default_max_stateless_worker_count());
+    ZEXPECT(settings.workers.max_count() == auto_max_count());
     ZEXPECT(settings.workers.background_delay_ms == 3000u);
     ZEXPECT(settings.poll_seconds == 30u);
     ZEXPECT(settings.inlay_hints.enabled == true);
@@ -881,10 +881,13 @@ apend = ["-DX"]
     auto says = [](const SettingsIssue& issue, llvm::StringRef text) {
         return llvm::StringRef(issue.message).contains(text);
     };
-    ZEXPECT(says(issue_at(2), "moved to the top-level `cache_dir` in clice 1.0 at project.cache_dir"));
+    ZEXPECT(
+        says(issue_at(2), "moved to the top-level `cache_dir` in clice 1.0 at project.cache_dir"));
     ZEXPECT(says(issue_at(3), "a last pattern-less rule's `background_index = false`"));
     ZEXPECT(says(issue_at(4), "gone in clice 1.0 at project.worker_memory_limit"));
-    ZEXPECT(says(issue_at(7), "moved to the top-level `poll_seconds` in clice 1.0 at tracker.workspace_poll_seconds"));
+    ZEXPECT(says(
+        issue_at(7),
+        "moved to the top-level `poll_seconds` in clice 1.0 at tracker.workspace_poll_seconds"));
     ZEXPECT(says(issue_at(11), "moved to `background_index` in clice 1.0 at rules[0].index"));
     for(auto line: {2u, 3u, 4u, 7u, 11u}) {
         ZEXPECT(issue_at(line).severity == SettingsIssue::Severity::Error);
@@ -916,9 +919,10 @@ ZEST_CASE(OverlayMovedKeysRejected) {
         ZASSERT(found != loaded.issues.end());
         return *found;
     };
-    for(auto text: {"moved to `workers.foreground` in clice 1.0 at project.stateful_worker_count",
-                    "moved to the environment variable CLICE_TEST_HOOKS in clice 1.0 at project.test_hooks",
-                    "moved to `background_index` in clice 1.0 at rules[0].index"}) {
+    for(auto text:
+        {"moved to `workers.foreground` in clice 1.0 at project.stateful_worker_count",
+         "moved to the environment variable CLICE_TEST_HOOKS in clice 1.0 at project.test_hooks",
+         "moved to `background_index` in clice 1.0 at rules[0].index"}) {
         auto& issue = issue_saying(text);
         ZEXPECT(issue.severity == SettingsIssue::Severity::Error);
         ZEXPECT(issue.file.empty());
@@ -1018,7 +1022,7 @@ types = "unlimited"
     ZEXPECT(std::get<std::uint32_t>(settings.workers.background) == 6u);
     ZEXPECT(settings.workers.background_count() == 6u);
     ZEXPECT(std::holds_alternative<Automatic>(settings.workers.max));
-    ZEXPECT(settings.workers.max_count() == default_max_stateless_worker_count());
+    ZEXPECT(settings.workers.max_count() == auto_max_count());
     ZEXPECT(std::holds_alternative<NoLimit>(settings.references.limit));
     ZEXPECT(at_most(settings.references.limit) == std::numeric_limits<std::uint32_t>::max());
     ZEXPECT(at_most(settings.code_completion.limit) == 7u);
@@ -1219,6 +1223,22 @@ patterns = ["src/**"]
 lint = true
 )");
     ZEXPECT(load_settings(root).issues.empty());
+}
+
+ZEST_CASE(ShadowedEditorFieldWarns) {
+    // Rules given through the editor's settings have no file to point at:
+    // the warning names the overlay instead.
+    TempDir tmp;
+    auto loaded =
+        load_settings(CanonicalPath(Spelling::absolute(tmp.root)), {.overlay = overlay(R"({
+        "rules": [{ "lint": false }, { "patterns": ["src/**"], "lint": true }]
+    })")});
+    ZEXPECT(!loaded.broken());
+    ZASSERT(loaded.issues.size() == 1u);
+    auto& issue = loaded.issues[0];
+    ZEXPECT(issue.severity == SettingsIssue::Severity::Warning);
+    ZEXPECT(issue.file.empty());
+    ZEXPECT(issue.message.starts_with("initializationOptions: never applies: rules[0]"));
 }
 
 ZEST_CASE(LaterRemoveWins) {

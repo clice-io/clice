@@ -18,7 +18,7 @@ namespace clice::control {
 /// Run a pass over the build — every unit re-validated against the disk, the ones
 /// the hash gate finds current skipped — and answer once the index is
 /// persisted. Refused when `configuration` is not the one the server
-/// indexes, or when its settings keep background indexing off.
+/// indexes.
 struct IndexParams {
     std::string configuration;
 };
@@ -32,9 +32,7 @@ struct IndexResult {
 /// What a server answers first, within a bound: that it serves at all.
 struct StatusParams {};
 
-struct StatusResult {
-    std::uint32_t pid = 0;
-};
+struct StatusResult {};
 
 /// Why a request to the serving writer failed.
 struct AskError {

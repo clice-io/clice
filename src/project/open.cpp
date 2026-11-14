@@ -250,8 +250,7 @@ void open_store(Project& project, const Project::OpenOptions& options, Project::
     }
     auto lock = index::WriterLock::acquire(cache_dir);
     if(!lock) {
-        opened.writer_elsewhere = lock.error() == index::WriterLock::Refused::Held;
-        project.index_waits = opened.writer_elsewhere;
+        project.index_waits = lock.error() == index::WriterLock::Refused::Held;
         return;
     }
     open_writer(project, std::move(*lock));
@@ -395,9 +394,11 @@ CDBDiff Project::open_index(std::optional<index::WriterLock> lock) {
     if(!rules.declares_sources()) {
         for(auto& source: nearby_sources(*this, saved_members.databases(index))) {
             if(!cdb.find_source(source) && !cdb.find_same_file(source)) {
-                if(auto diff = cdb.reload_and_diff(cdb.add_source(source))) {
+                auto id = cdb.add_source(source);
+                if(auto diff = cdb.reload_and_diff(id)) {
                     joined.append(*diff);
                 }
+                watch_database(id);
             }
         }
     }

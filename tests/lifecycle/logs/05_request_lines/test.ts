@@ -1,19 +1,21 @@
-import { setTimeout as sleep } from "node:timers/promises";
-import { expect } from "vitest";
 import { test, type TestContext } from "@clice/tools/testing";
 
 // The log keeps a line for each request that took over 200 ms or failed,
 // with what it waited for; a quick one leaves its line at debug level, which
 // the log does not keep.
 
-/// The hover lines of the session's one master.log, after its server stopped.
+/// The hover lines of the session's one master.log, after its server
+/// stopped: their message, times elided.
 function hovers(t: TestContext): string[] {
-    const logs = t.disk.list(".clice/logs/*/master.log");
-    expect(logs).toHaveLength(1);
+    const [log, ...others] = t.disk.list(".clice/logs/*/master.log");
+    if (log === undefined || others.length > 0) {
+        throw new Error("the session keeps one master.log");
+    }
     return t.disk
-        .read(logs[0] ?? "")
+        .read(log)
         .split("\n")
-        .filter((line) => line.includes("textDocument/hover on main.cpp"));
+        .filter((line) => line.includes("textDocument/hover on main.cpp"))
+        .map((line) => line.slice(line.indexOf("textDocument/hover")).replace(/\d+ ms/g, "# ms"));
 }
 
 test("a request kept waiting for its compile", async (t) => {
@@ -23,16 +25,11 @@ test("a request kept waiting for its compile", async (t) => {
     s.open("main.cpp", { pull: false });
     const hover = s.hover(t.at("main.cpp", "return |add"));
     await park.reached();
-    // Time is the feature: a request answered past 200 ms leaves a line.
-    await sleep(400);
+    await t.elapse(400, "a request answered past 200 ms leaves a line");
     await park.release();
-    expect(await hover).not.toBeNull();
+    await t.show("waited", hover);
     // Compiled now: this one answers at once.
-    expect(await s.hover(t.at("main.cpp", "int |add"))).not.toBeNull();
+    await t.show("at once", s.hover(t.at("main.cpp", "int |add")));
     await s.stop();
-    const lines = hovers(t);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatch(
-        /textDocument\/hover on main\.cpp answered in \d+ ms, \d+ ms of it waiting for its compile$/,
-    );
+    await t.show("logged", hovers(t));
 });

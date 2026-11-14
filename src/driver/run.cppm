@@ -316,6 +316,8 @@ inline bool start_batch(BatchRun& run,
     pool_opts.stateful_count = 0;
     pool_opts.stateless_count = settings.workers.background_count();
     pool_opts.max_stateless = settings.workers.max_count();
+    // A run has its units queued from the start: every worker starts at once.
+    pool_opts.min_stateless = pool_opts.stateless_count;
     pool_opts.session_dir = run.session_dir;
     if(!run.pool.start(pool_opts)) {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
@@ -330,13 +332,12 @@ inline bool start_batch(BatchRun& run,
 /// product would then die with it.
 inline async::task<std::string> writes_index(Project& project, Project::Opened& opened) {
     auto& cache_dir = project.settings.cache_dir;
-    if(opened.writer_elsewhere) {
+    if(project.index_waits) {
         auto lock = co_await project.wait_for_writer();
         if(!lock) {
-            co_return index::held_writer_message(
-                {.state = index::WriterStatus::State::Held,
-                 .holder = index::WriterLock::holder(cache_dir)},
-                cache_dir);
+            co_return index::held_writer_message({.state = index::WriterStatus::State::Held,
+                                                  .holder = index::WriterLock::holder(cache_dir)},
+                                                 cache_dir);
         }
         project.open_index(std::move(lock));
         // The saved index brings the files it recorded as members.

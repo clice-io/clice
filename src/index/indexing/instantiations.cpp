@@ -61,7 +61,7 @@ const clang::NamedDecl* Builder::in_pattern(const clang::NamedDecl* decl) {
 }
 
 /// The declaration whose place is the home of `decl` (Builder::home_of).
-static const clang::Decl* pattern_of(const clang::Decl* decl) {
+const static clang::Decl* pattern_of(const clang::Decl* decl) {
     const clang::Decl* pattern = nullptr;
     if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
         if(const auto* found = function->getTemplateInstantiationPattern()) {

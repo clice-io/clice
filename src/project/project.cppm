@@ -169,9 +169,10 @@ struct Project {
     /// a reopened database never races another writer for the directory.
     std::optional<index::WriterLock> writer_lock;
 
-    /// open() found the writer lock held elsewhere and left the index to
-    /// open_index: until then the index takes no build's entries, which
-    /// opening it would overwrite.
+    /// open(), opening the index as its writer, found the writer lock held
+    /// elsewhere and left the index closed, for the run to wait for the lock
+    /// (wait_for_writer) and open it then (open_index): until then the index
+    /// takes no build's entries, which opening it would overwrite.
     bool index_waits = false;
 
     /// Index blob persistence, opened together with the cache store.
@@ -380,12 +381,6 @@ struct Project {
         /// Why the index could not be read, for a run reading it: it opens
         /// with none then. Empty when it was read.
         std::string unreadable;
-
-        /// Another process holds the writer lock a run opening the index as
-        /// its writer asked for: the index is left closed (index_waits) for
-        /// the run to wait for the lock (wait_for_writer) and open it then
-        /// (open_index).
-        bool writer_elsewhere = false;
     };
 
     /// Open the project over its final settings (load_settings), once,
@@ -406,7 +401,7 @@ struct Project {
     /// still holds it then.
     async::task<std::optional<index::WriterLock>> wait_for_writer();
 
-    /// The index open() left closed (Opened::writer_elsewhere): as its
+    /// The index open() left closed (index_waits): as its
     /// writer under `lock`, else read-only, the database another process
     /// writes answering while nothing this run indexes is saved. What the
     /// index remembers of the build joins first — the databases of earlier
@@ -613,6 +608,9 @@ struct Project {
     /// Watch the databases registered so far, from their last loads, and
     /// the HEAD and index of the git checkout the project lies in.
     void watch_databases();
+
+    /// Watch the database `id`, registered since, from its last load.
+    void watch_database(SourceID id);
 
     /// Look at the databases (`force` skips the content gate and the
     /// two-tick debounce, the half-written-file guard): register the ones

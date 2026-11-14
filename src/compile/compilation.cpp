@@ -1077,6 +1077,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .tidy = built.tidy,
             .modular = built.modular,
             .skip_bodies = built.skip_bodies,
+            .function_bodies = built.function_bodies,
             .instantiating = built.instantiating,
             .stop = built.stop,
         };
@@ -1101,6 +1102,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
             .tidy = built.tidy,
             .modular = built.modular,
             .skip_bodies = built.skip_bodies,
+            .function_bodies = built.function_bodies,
             .instantiating = built.instantiating,
             .stop = built.stop,
         };

@@ -339,7 +339,7 @@ public:
     /// tells of its index reaches the documents: an index attempt ending
     /// (the index_first in decide_compiling promised the index would serve
     /// the cold document, and one that finishes without a servable shard ends
-    /// that promise — it starts compiling like the disabled-indexing branch,
+    /// that promise — it starts compiling like a document no index serves,
     /// or, under readonly "on", which compiles no document, it answers
     /// empty; its run's skipped-body diagnostics show), shards changing (documents without a
     /// current file index serve these very shards, freshness clause 4: the client asks again for

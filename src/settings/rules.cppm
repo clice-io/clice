@@ -122,6 +122,11 @@ public:
     /// rule before it says true for some.
     bool parses_every_body() const;
 
+    /// Whether the background index compiles any unit: no rule for every
+    /// file says `background_index = false` before a rule for some files
+    /// says true.
+    bool indexes_any() const;
+
     /// The first matching active rule setting `field`, which decides it for
     /// `path`; null when none does, and the default decides.
     template <typename T>

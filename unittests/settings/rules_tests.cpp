@@ -155,10 +155,11 @@ ZEST_CASE(BodyRulesInOrder) {
     settings.rules.push_back(Rule{.patterns = {"third_party/**"}, .skip_function_body = true});
     settings.rules.push_back(Rule{.patterns = {"src/**"}, .append = {"-DX"}});
     settings.rules.push_back(Rule{.configuration = "release", .index_function_body = false});
+    settings.rules.push_back(Rule{.configuration = "debug", .append = {"-DDEBUG"}});
     settings.rules.push_back(Rule{.index_function_body = true});
     CanonicalPath root(Spelling::absolute(tmp.root));
     settings.finalize(root);
-    Rules rules(settings, root, "");
+    Rules rules(settings, root, "debug");
 
     auto bodies = rules.function_body_rules();
     ZASSERT(bodies.rules.size() == 2u);
@@ -172,6 +173,28 @@ ZEST_CASE(BodyRulesInOrder) {
     ZEXPECT(indexed.patterns.empty());
     ZEXPECT(!indexed.skip.has_value());
     ZEXPECT(indexed.index == true);
+};
+
+ZEST_CASE(ParsesEveryBody) {
+    /// Every body is parsed only when a rule for every file says no skip
+    /// and no rule before it skips some files' bodies.
+    TempDir tmp;
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto parses_every_body = [&](std::vector<Rule> written) {
+        Settings settings;
+        settings.rules = std::move(written);
+        settings.finalize(root);
+        return Rules(settings, root, "").parses_every_body();
+    };
+    ZEXPECT(!parses_every_body({
+        Rule{.patterns = {"vendor/**"}, .skip_function_body = true},
+        Rule{.skip_function_body = false},
+    }));
+    ZEXPECT(parses_every_body({Rule{.skip_function_body = false}}));
+    ZEXPECT(!parses_every_body({
+        Rule{.patterns = {"src/**"}, .skip_function_body = false}
+    }));
+    ZEXPECT(!parses_every_body({}));
 };
 
 ZEST_CASE(HeaderCarriesHostEdits) {

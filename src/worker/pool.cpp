@@ -200,8 +200,6 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
     auto max_resident = options.max_resident.value_or(default_max_resident(memory_state({}).limit));
     residency = Residency(max_resident);
 
-    if(options.max_stateless == 0)
-        options.max_stateless = default_max_stateless_worker_count();
     options.max_stateless = std::max(options.max_stateless, options.stateless_count);
     if(options.min_stateless == 0)
         options.min_stateless = 1;

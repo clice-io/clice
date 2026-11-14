@@ -106,6 +106,21 @@ ZEST_CASE(CLPromptHeaders) {
     ZEXPECT(!adjacent(argv, "-internal-isystem", path::join(toolset, "include")));
 }
 
+ZEST_CASE(CLSkipsClangConfig) {
+    // The configuration file of a clang-cl installed beside a cl configures
+    // that clang-cl alone: clang's driver reading cl's command takes none
+    // of it.
+    tmp.touch("clang-cl.cfg", "-DFROM_CLANG_CFG\n");
+    auto configured = [](llvm::ArrayRef<const char*> argv) {
+        return ranges::any_of(argv,
+                              [](llvm::StringRef arg) { return arg.contains("FROM_CLANG_CFG"); });
+    };
+    auto cl = fake_cl();
+    ZEXPECT(!configured(f.resolve(add("a.cpp", {cl.c_str(), "/c"}))));
+    auto clang_cl = fake_cl("clang-cl");
+    ZEXPECT(configured(f.resolve(add("b.cpp", {clang_cl.c_str(), "/c"}))));
+}
+
 ZEST_CASE(ClangCLOwnVersion) {
     // clang-cl's version is the toolset its flags select, which the job
     // finds as clang-cl does; its standard is still its own to tell.
