@@ -13,6 +13,14 @@ namespace {
 
 constexpr auto posix = path::Style::Posix;
 
+/// Whether clang lexes `text` as one identifier: a letter of any script
+/// counts, as clang takes it.
+bool identifier(llvm::StringRef text) {
+    Lexer lexer(text, dialect_of());
+    auto token = lexer.advance();
+    return token.is_identifier() && token.range.begin == 0 && token.range.end == text.size();
+}
+
 /// A partition name for the file at `path`: its path under `base` when it is
 /// there, else its whole path, without the extension, each segment made an
 /// identifier.
@@ -28,10 +36,13 @@ std::string partition_name(llvm::StringRef path, llvm::StringRef base) {
     llvm::SmallVector<std::string> names;
     for(auto segment: segments) {
         std::string name;
-        for(auto c: segment) {
-            name += llvm::isAlnum(c) || c == '_' ? c : '_';
+        while(!segment.empty()) {
+            auto length = std::max(1u, llvm::getNumBytesForUTF8(segment.front()));
+            auto character = segment.take_front(length);
+            segment = segment.drop_front(character.size());
+            name += identifier(("_" + character).str()) ? character : llvm::StringRef("_");
         }
-        if(name.empty() || llvm::isDigit(name.front())) {
+        if(!identifier(name)) {
             name.insert(name.begin(), '_');
         }
         if(is_keyword(name)) {
@@ -310,8 +321,7 @@ struct Draft {
     llvm::DenseSet<std::uint32_t> partitions;
 
     /// Headers that stay headers, to include: the ones it names or takes
-    /// macros from without including them, and those of the partitions it
-    /// reaches only through another partition.
+    /// macros from without including them.
     std::set<std::uint32_t> needed;
 
     /// The headers that stay headers it includes itself, and the lines doing
@@ -608,13 +618,14 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     // Clang takes no declaration in the global module fragment of an
     // implementation partition as reachable from a unit importing it through
     // another partition, though the standard has that unit import it too:
-    // the unit includes the textual headers such a partition does itself.
+    // the unit imports such a partition itself.
     for(auto& [file, draft]: drafts) {
         if(!rewriter.rewritten(file)) {
             continue;
         }
         llvm::DenseSet<std::uint32_t> reached(draft.partitions.begin(), draft.partitions.end());
         llvm::SmallVector<std::uint32_t> pending(draft.partitions.begin(), draft.partitions.end());
+        llvm::SmallVector<std::uint32_t> fragments;
         while(!pending.empty()) {
             auto& through = drafts.at(pending.pop_back_val());
             for(auto next: through.partitions) {
@@ -622,15 +633,12 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                     continue;
                 }
                 pending.push_back(next);
-                if(units[next].kind == Unit::Kind::Internal) {
-                    for(auto header: drafts.at(next).textual) {
-                        if(!ranges::contains(facts.files[file].includes, header)) {
-                            draft.needed.insert(header);
-                        }
-                    }
+                if(units[next].kind == Unit::Kind::Internal && !drafts.at(next).textual.empty()) {
+                    fragments.push_back(next);
                 }
             }
         }
+        draft.partitions.insert(fragments.begin(), fragments.end());
     }
 
     llvm::StringSet<> primaries;
