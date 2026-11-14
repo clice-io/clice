@@ -780,6 +780,20 @@ tests/navigation/macros/10_header_variants
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: partial -->
+
+**被禁用的断言**
+
+被禁用的 `assert` 中的名称不指向任何东西
+
+定义了 `NDEBUG` 时，`assert(...)` 展开为空，其实参从不参与编译：其中写出的名称没有可跳转的定义，也不在引用之列。clice 不会去猜测它们本应指什么。
+
+```case
+tests/navigation/macros/12_disabled_assert
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 隐式目标
@@ -1565,6 +1579,7 @@ tests/workspace_symbols/queries/03_fuzzy_matching
 引号、通配符、作用域和过滤条件都能收窄一次搜索
 
 `"process"` 只匹配完整的名称，`proc*` 则匹配它通配到的一切；`io::*` 列出一个命名空间的成员，`io::**` 列出它的整棵子树；`kind:function` 只保留一种种类。各词项之间以空格分隔，可以组合使用。
+VS Code 的符号搜索只发送查询中的第一个词项，并按它过滤返回的结果：在 VS Code 中，第一个之后的词项，以及单独一个过滤条件，都找不到任何东西。
 
 ```case
 tests/workspace_symbols/queries/04_query_syntax
