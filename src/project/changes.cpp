@@ -353,6 +353,9 @@ std::optional<Affected> Project::ask_compilers_again(llvm::ArrayRef<OpenFile> op
     Cascade cascade{.project = *this, .open = open};
     llvm::SmallVector<Fid> units;
     index.for_each_unit([&](Fid unit) { units.push_back(unit); });
+    // LIMITATION: a module unit no index records (indexing off, or its
+    // build failed before any index) is not found here: its failed build
+    // stands until an edit or a save of it, though its compiler answers now.
     for(auto unit: units) {
         if(index.indexed_command(unit) != command_identity(unit)) {
             cascade.invalidate_module(unit);

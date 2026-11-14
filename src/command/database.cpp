@@ -252,6 +252,10 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
 
     // A file several entries name, through links, is spelled as the first
     // names it, whose command is its default.
+    // LIMITATION: across databases the last loaded spells it, whichever
+    // ranks first: two build directories whose databases name one source
+    // through different links compile it under the first's command from
+    // the other's path.
     llvm::DenseSet<Fid> named;
 
     // A database written inside Cygwin or MSYS2 (CMake run from their shell)
