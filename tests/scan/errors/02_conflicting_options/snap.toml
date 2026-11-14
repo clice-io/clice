@@ -1,6 +1,6 @@
 [test."$ clice scan --json --runs 2"]
 stderr = "error: --runs prints times, --json the graph: pass one of them"
-exit = 1
+exit = 2
 
 [test."$ clice scan --runs 0"]
 stderr = '''

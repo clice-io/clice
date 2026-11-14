@@ -16,8 +16,9 @@ to do. `--json` prints the report as one JSON object instead: the counts and
 every finding with its place, check and notes.
 
 Exit codes: `0` for a clean run, `1` when there are findings, `2` when the
-run could not complete as asked: the arguments do not parse, a translation
-unit failed to run or the index could not be persisted. An interrupted run
+run could not complete as asked: the arguments do not parse, there is nothing
+to lint (no project, no compilation database or no unit), a translation unit
+failed to run or the index could not be persisted. An interrupted run
 exits with `130`.
 
 ## What is checked

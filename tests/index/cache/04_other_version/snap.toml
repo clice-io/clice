@@ -8,15 +8,11 @@ exit = 0
 [test."$ clice query symbol-search add"]
 stdout = '''
 {
-  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
+  "error": "Index database at ${WS}/.clice/cache/v15/index/default/index.mdb was written by another version of clice; run `clice index` to rebuild it",
   "stale": []
 }
 '''
-stderr = '''
-warning: Index database at .clice/cache/v15/index/default/index.mdb was written by another version of clice; run `clice index` to rebuild it
-error: The index database at .clice/cache/v15/index/default cannot be opened; the log above says why
-'''
-exit = 1
+exit = 2
 
 [test."$ clice index #2"]
 stdout = '''
@@ -37,7 +33,7 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "line": 2,
         "container": null,
-        "symbol": "#5c1bf8ca24c752f7"
+        "symbol": "#5a9f3eb9a242c3a6"
       }
     ]
   },

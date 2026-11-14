@@ -40,11 +40,11 @@ stdout = '''
       "interfaceEntities": 0,
       "implementationEntities": 8,
       "sample": [
+        "Traits<Key>",
+        "Traits<Key>::value",
+        "Str",
         "Key",
-        "Traits<Str>::value",
-        "Traits<Str>",
-        "Traits::value",
-        "Traits<Key>"
+        "Traits<Str>::value"
       ]
     }
   ],
@@ -125,10 +125,10 @@ stdout = '''
       "name": "value",
       "signature": null,
       "kind": "Variable",
-      "file": "${WS}/core/traits.h",
-      "line": 7,
-      "container": "Traits<Str>",
-      "symbol": "#1db89fedc93cebea"
+      "file": "${WS}/third/lib.h",
+      "line": 5,
+      "container": "Traits",
+      "symbol": "#5efb1d383c3da0e8"
     },
     {
       "name": "value",
@@ -137,16 +137,16 @@ stdout = '''
       "file": "${WS}/core/key.h",
       "line": 10,
       "container": "Traits<Key>",
-      "symbol": "#3a80009f1eec823c"
+      "symbol": "#710041251f5113ef"
     },
     {
       "name": "value",
       "signature": null,
       "kind": "Variable",
-      "file": "${WS}/third/lib.h",
-      "line": 5,
-      "container": "Traits",
-      "symbol": "#5eea6509ecfb9b38"
+      "file": "${WS}/core/traits.h",
+      "line": 7,
+      "container": "Traits<Str>",
+      "symbol": "#e1a3a3bb7037204f"
     }
   ],
   "stale": []

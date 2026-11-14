@@ -376,11 +376,14 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
                    found->group,
                    target->symbol.symbol.hash,
                    [](const index::IndexQuery::Located& member) { return member.symbol.hash; })) {
+                std::array names{query.qualified_name(found->symbol.symbol.hash, file),
+                                 query.qualified_name(target->symbol.symbol.hash, file)};
+                ranges::sort(names);
                 return std::unexpected(std::format(
                     "the name here resolves to `{}` and `{}`; rename them to one name in one "
                     "list of renames, or one of them from its declaration",
-                    query.qualified_name(found->symbol.symbol.hash, file),
-                    query.qualified_name(target->symbol.symbol.hash, file)));
+                    names[0],
+                    names[1]));
             }
             continue;
         }

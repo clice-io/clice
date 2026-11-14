@@ -33,15 +33,15 @@ ZEST_CASE(ManifestRoundTrip) {
     // siblings — skipped or not, lines ascending or not, under a node or the
     // root.
     manifest.nodes = {
-        {0, ~0u, 1,     false},
-        {1, 2,   70000, false, 1},
-        {2, 0,   12,    false, -2},
-        {3, 0,   14,    true },
-        {4, 0,   14,    true },
-        {5, 0,   3,     true },
-        {6, 0,   90000, false},
-        {7, ~0u, 5,     true },
-        {8, ~0u, 2,     false},
+        {0, ~0u, 1, false},
+        {1, 2, 70000, false, 1},
+        {2, 0, 12, false, -2},
+        {3, 0, 14, true},
+        {4, 0, 14, true},
+        {5, 0, 3, true},
+        {6, 0, 90000, false},
+        {7, ~0u, 5, true},
+        {8, ~0u, 2, false},
     };
     manifest.instantiations = {
         {.file = VersionID{1}, .use = 0x1234},

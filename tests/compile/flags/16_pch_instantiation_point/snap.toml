@@ -12,7 +12,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#7e62fe4108f3584c",
+    "symbol": "#d9cc1011e282ba69",
     "references": [
       {
         "file": "${WS}/main.cpp",

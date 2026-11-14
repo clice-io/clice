@@ -1,0 +1,13 @@
+[answers.references]
+references = ["⟦Widget⟧() {}", "auto copy = T⟦(⟧);"]
+
+[answers.incoming]
+incoming_calls = [
+    {
+        name = "reset",
+        kind = "Method",
+        at = "void ⟦reset⟧() {",
+        detail = "Holder::reset()",
+        sites = ["auto copy = T⟦(⟧);"],
+    },
+]

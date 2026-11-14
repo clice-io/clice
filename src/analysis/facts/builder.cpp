@@ -915,8 +915,8 @@ void FactsBuilder::read_specializations() {
         }
         std::uint32_t line = 0;
         if(auto it = sites.find(specialization); it != sites.end()) {
-            if(auto site = ranges::find_if(it->second,
-                                           [&](const Site& site) { return site.file == file; });
+            if(auto site =
+                   ranges::find_if(it->second, [&](const Site& site) { return site.file == file; });
                site != it->second.end()) {
                 line = site->line;
             }

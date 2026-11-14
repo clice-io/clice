@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "go",
     "kind": "Method",
-    "symbol": "#01d38165a6c6a83e",
+    "symbol": "#7f76085768341f2e",
     "references": [],
     "total": 0
   },
@@ -33,7 +33,7 @@ stdout = '''
   "result": {
     "name": "go",
     "kind": "Method",
-    "symbol": "#01d38165a6c6a83e",
+    "symbol": "#7f76085768341f2e",
     "references": [
       {
         "file": "${WS}/system/algo",

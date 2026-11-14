@@ -790,8 +790,9 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
     std::size_t last_user_content = argv.size();
     auto left_out = opts.left_out(rc.args);
     for(auto [i, arg]: views::enumerate(rc.args)) {
-        if(left_out[i] || (!opts.shadowed_dirs && names_search_dir(arg.opt_id) &&
-                           ranges::contains(rc.frontend->shadowed, llvm::StringRef(arg.values[0])))) {
+        if(left_out[i] ||
+           (!opts.shadowed_dirs && names_search_dir(arg.opt_id) &&
+            ranges::contains(rc.frontend->shadowed, llvm::StringRef(arg.values[0])))) {
             continue;
         }
         render_arg(arg, emit);

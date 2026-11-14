@@ -30,7 +30,7 @@ stdout = '''
             "file": "${WS}/src/main.cpp",
             "line": 2,
             "container": "b",
-            "symbol": "#1d6e90c8d7f77165"
+            "symbol": "#2958be403d89dcba"
           },
           {
             "name": "f",
@@ -39,7 +39,7 @@ stdout = '''
             "file": "${WS}/src/main.cpp",
             "line": 1,
             "container": "a",
-            "symbol": "#fdb09edeb2b831b0"
+            "symbol": "#9c57e69129319909"
           }
         ]
       }
@@ -79,7 +79,7 @@ stdout = '''
             "file": "${WS}/src/two.cpp",
             "line": 1,
             "container": null,
-            "symbol": "#3f8827417223031d path:${WS}/src/two.cpp"
+            "symbol": "#019182782be5f93b path:${WS}/src/two.cpp"
           },
           {
             "name": "helper",
@@ -88,7 +88,7 @@ stdout = '''
             "file": "${WS}/src/one.cpp",
             "line": 1,
             "container": null,
-            "symbol": "#49e20ffe491b1aa6 path:${WS}/src/one.cpp"
+            "symbol": "#201240d4973fe70a path:${WS}/src/one.cpp"
           }
         ]
       }
@@ -114,7 +114,7 @@ stdout = '''
         "locator": "mix path:src/mixed.cpp",
         "name": "mix",
         "kind": "Function",
-        "symbol": "#13a0ec432ec841a7 path:${WS}/src/mixed.cpp",
+        "symbol": "#ab24b90c41f62a77",
         "newName": "h",
         "edits": 4,
         "conflicts": [],
@@ -174,7 +174,7 @@ stdout = '''
         "locator": "S::g",
         "name": "g",
         "kind": "Method",
-        "symbol": "#baa7d004239dec08",
+        "symbol": "#5d51fc1073617c87",
         "newName": "h",
         "edits": 6,
         "conflicts": [],

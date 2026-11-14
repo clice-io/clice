@@ -73,4 +73,4 @@ exit = 1
 
 ["not a database"."$ clice command convert broken.json"]
 stderr = "error: broken.json holds no array of entries: INCORRECT_TYPE: The JSON element does not have the requested type."
-exit = 1
+exit = 2

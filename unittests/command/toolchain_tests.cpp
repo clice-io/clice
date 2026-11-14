@@ -275,8 +275,8 @@ ZEST_CASE(ReadAsClangSpellings) {
     ZEXPECT(contains(f.read_as_clang(riscv), "+zba"));
 
     auto arm = add("b.c", {tmp.c_path("aarch64-linux-gnu-gcc"), "-mcpu=cortex-a72.cortex-a53"});
-    ZEXPECT(
-        contains(f.toolchain.render_for_clang(arm, f.db.files().spelling(arm.file)), "-mcpu=cortex-a72"));
+    ZEXPECT(contains(f.toolchain.render_for_clang(arm, f.db.files().spelling(arm.file)),
+                     "-mcpu=cortex-a72"));
     ZEXPECT(adjacent(f.read_as_clang(arm), "-target-cpu", "cortex-a72"));
 }
 
@@ -297,8 +297,8 @@ ZEST_CASE(UnknownTargetNamesDropped) {
     ZEXPECT(!contains(argv, "-mabi=ilp64x"));
 
     // Passed through to clang, it goes all the same, with what passes it.
-    auto xarch = add("c.c",
-                     {tmp.c_path("x86_64-linux-gnu-gcc"), "-Xarch_x86_64", "-mtune=x86-64-v3"});
+    auto xarch =
+        add("c.c", {tmp.c_path("x86_64-linux-gnu-gcc"), "-Xarch_x86_64", "-mtune=x86-64-v3"});
     argv = f.toolchain.render_for_clang(xarch, f.db.files().spelling(xarch.file));
     ZEXPECT(!contains(argv, "-Xarch_x86_64"));
     ZEXPECT(!contains(argv, "-mtune=x86-64-v3"));
@@ -523,7 +523,8 @@ ZEST_CASE(OtherBuiltinHeadersStay) {
 
     /// A command another tool reads, which could not hide them, leaves
     /// them out.
-    auto converted = f.toolchain.render(ref, f.db.files().spelling(ref.file), {.shadowed_dirs = false});
+    auto converted =
+        f.toolchain.render(ref, f.db.files().spelling(ref.file), {.shadowed_dirs = false});
     ZEXPECT(!contains(converted.argv, theirs));
     ZEXPECT(adjacent(converted.argv, "-internal-isystem", builtin_headers));
 }

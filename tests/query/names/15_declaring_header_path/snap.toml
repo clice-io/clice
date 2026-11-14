@@ -17,7 +17,7 @@ stdout = '''
         "file": "${WS}/a.cpp",
         "line": 2,
         "container": "Widget",
-        "symbol": "#38d475f4ce990c14"
+        "symbol": "#c83897b2647f3f02"
       }
     ]
   },
@@ -38,7 +38,7 @@ stdout = '''
         "file": "${WS}/a.h",
         "line": 2,
         "container": null,
-        "symbol": "#5b52580eb5b8875a"
+        "symbol": "#4932b6c3474fa669"
       },
       {
         "name": "draw",
@@ -47,7 +47,7 @@ stdout = '''
         "file": "${WS}/a.cpp",
         "line": 2,
         "container": "Widget",
-        "symbol": "#38d475f4ce990c14"
+        "symbol": "#c83897b2647f3f02"
       },
       {
         "name": "free_function",
@@ -56,7 +56,7 @@ stdout = '''
         "file": "${WS}/a.cpp",
         "line": 3,
         "container": null,
-        "symbol": "#758b8dadf482777f"
+        "symbol": "#67583c6d757f567a"
       },
       {
         "name": "hide",
@@ -65,7 +65,7 @@ stdout = '''
         "file": "${WS}/a.h",
         "line": 4,
         "container": "Widget",
-        "symbol": "#1122e728677fec01"
+        "symbol": "#e913a6499cb1254b"
       }
     ]
   },

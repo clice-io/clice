@@ -431,10 +431,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
            (!c_family && !command_table.forces_c_family(*normalized))) {
             continue;
         }
-        new_entries.push_back({.file = path_id,
-                               .command = *normalized,
-                               .source = id,
-                               .ordinal = index});
+        new_entries.push_back(
+            {.file = path_id, .command = *normalized, .source = id, .ordinal = index});
     }
 
     if(skipped != 0) {

@@ -10,8 +10,8 @@ stdout = '''
 {
   "result": {
     "directDependents": [
-      "${WS}/shapes.cppm",
-      "${WS}/mid.h"
+      "${WS}/mid.h",
+      "${WS}/shapes.cppm"
     ],
     "transitiveDependents": [
       "${WS}/main.cpp",
@@ -52,11 +52,11 @@ stdout = '''
     "includes": [],
     "includers": [
       {
-        "path": "${WS}/shapes.cppm",
+        "path": "${WS}/mid.h",
         "depth": 1
       },
       {
-        "path": "${WS}/mid.h",
+        "path": "${WS}/shapes.cppm",
         "depth": 1
       },
       {

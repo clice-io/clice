@@ -1,0 +1,115 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 4 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --partition partition.json --out wrap"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [],
+    "modules": [],
+    "mirrors": [],
+    "macros": "macros.h",
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [
+      {
+        "name": "app.core",
+        "primary": "app/core/module.cppm",
+        "interfaces": [
+          "app/core/数据.cppm",
+          "app/core/文本.cppm"
+        ],
+        "partitions": [],
+        "sources": [
+          "app/core/text.cpp"
+        ],
+        "imports": []
+      }
+    ],
+    "importers": [
+      "app/main.cpp"
+    ],
+    "macros": [],
+    "removed": [
+      "app/core/数据.h",
+      "app/core/文本.h"
+    ],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --partition partition.json --out wrap".files]
+"app/core/module.cppm" = '''
++export module app.core;
++
++export import :数据;
++export import :文本;
+'''
+"app/core/text.cpp" = '''
+-#include "core/文本.h"
++module app.core;
+
+ int core::Text::size() const {
+'''
+"app/core/数据.cppm" = '''
++export module app.core:数据;
++
++export {
++
++namespace core {
++
++struct Data {
++    int count() const {
++        return 2;
++    }
++};
++
++}  // namespace core
++}
+'''
+"app/core/数据.h" = "(removed)"
+"app/core/文本.cppm" = '''
++export module app.core:文本;
++
++export {
++
++namespace core {
++
++struct Text {
++    int size() const;
++};
++
++}  // namespace core
++}
+'''
+"app/core/文本.h" = "(removed)"
+"app/main.cpp" = '''
+-#include "core/文本.h"
+-#include "core/数据.h"
++#include "wrap/prelude.h"
++import app.core;
+
+ int main() {
+'''
+"wrap/.modularize" = '''
++macros.h
++prelude.h
+'''
+"wrap/macros.h" = '''
++#pragma once
++
+'''
+"wrap/prelude.h" = '''
++#pragma once
++
++#include "macros.h"
+'''

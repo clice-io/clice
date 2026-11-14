@@ -294,6 +294,12 @@ stdout = '''
         "form": 0
       },
       {
+        "name": "fake_widen",
+        "file": "third/libc/cwide.h",
+        "used": true,
+        "form": 0
+      },
+      {
         "name": "fake_word",
         "file": "third/libc/cdual.h",
         "used": true,

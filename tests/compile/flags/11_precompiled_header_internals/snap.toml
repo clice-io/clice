@@ -18,7 +18,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#930802bd3359aed2 path:${WS}/include/shapes.h",
+    "symbol": "#32a8c6e1225817cc path:${WS}/include/shapes.h",
     "references": [
       {
         "file": "${WS}/include/shapes.h",
@@ -52,7 +52,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#930802bd3359aed2 path:${WS}/include/shapes.h",
+    "symbol": "#32a8c6e1225817cc path:${WS}/include/shapes.h",
     "references": [
       {
         "file": "${WS}/include/shapes.h",
@@ -86,7 +86,7 @@ stdout = '''
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#930802bd3359aed2 path:${WS}/include/shapes.h",
+    "symbol": "#32a8c6e1225817cc path:${WS}/include/shapes.h",
     "documentation": null,
     "definition": {
       "file": "${WS}/include/shapes.h",
@@ -106,7 +106,7 @@ stdout = '''
   "result": {
     "name": "scale",
     "kind": "Variable",
-    "symbol": "#57104ffe1961fb99 path:${WS}/include/shapes.h",
+    "symbol": "#1393ff64ea4b112b path:${WS}/include/shapes.h",
     "references": [
       {
         "file": "${WS}/include/shapes.h",
@@ -146,7 +146,7 @@ stdout = '''
   "result": {
     "name": "scale",
     "kind": "Variable",
-    "symbol": "#57104ffe1961fb99 path:${WS}/include/shapes.h",
+    "symbol": "#1393ff64ea4b112b path:${WS}/include/shapes.h",
     "documentation": null,
     "definition": {
       "file": "${WS}/include/shapes.h",
@@ -166,7 +166,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#6a61696dee5b366d path:${WS}/src/local.cpp",
+    "symbol": "#c3a0eeca78c0e576 path:${WS}/src/local.cpp",
     "references": [
       {
         "file": "${WS}/include/shapes.h",
@@ -195,7 +195,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#ccef730dd8927c2e path:${WS}/src/local.cpp",
+    "symbol": "#1cba68b1f10029aa path:${WS}/src/local.cpp",
     "references": [
       {
         "file": "${WS}/include/shapes.h",
@@ -227,10 +227,19 @@ stdout = '''
       "name": "radius",
       "signature": null,
       "kind": "Field",
+      "file": "${WS}/src/local.cpp",
+      "line": 13,
+      "container": "scoped_twice::Scoped",
+      "symbol": "#1cba68b1f10029aa path:${WS}/src/local.cpp"
+    },
+    {
+      "name": "radius",
+      "signature": null,
+      "kind": "Field",
       "file": "${WS}/include/shapes.h",
       "line": 11,
       "container": "Hidden",
-      "symbol": "#5080540e43ee68b2 path:${WS}/include/shapes.h"
+      "symbol": "#64f1fc2b60988ae7 path:${WS}/include/shapes.h"
     },
     {
       "name": "radius",
@@ -239,16 +248,7 @@ stdout = '''
       "file": "${WS}/src/local.cpp",
       "line": 3,
       "container": "Local",
-      "symbol": "#6a61696dee5b366d path:${WS}/src/local.cpp"
-    },
-    {
-      "name": "radius",
-      "signature": null,
-      "kind": "Field",
-      "file": "${WS}/src/local.cpp",
-      "line": 13,
-      "container": "scoped_twice::Scoped",
-      "symbol": "#ccef730dd8927c2e path:${WS}/src/local.cpp"
+      "symbol": "#c3a0eeca78c0e576 path:${WS}/src/local.cpp"
     }
   ],
   "stale": []
@@ -262,7 +262,7 @@ stdout = '''
   "result": {
     "name": "value",
     "kind": "Field",
-    "symbol": "#25a69d0b87eb083c path:${WS}/include/shapes.h",
+    "symbol": "#54a37b107a365b17 path:${WS}/include/shapes.h",
     "documentation": null,
     "definition": {
       "file": "${WS}/include/shapes.h",
@@ -282,7 +282,7 @@ stdout = '''
   "result": {
     "name": "value",
     "kind": "Field",
-    "symbol": "#25a69d0b87eb083c path:${WS}/include/shapes.h",
+    "symbol": "#54a37b107a365b17 path:${WS}/include/shapes.h",
     "references": [
       {
         "file": "${WS}/include/shapes.h",

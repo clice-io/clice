@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "checksum",
     "kind": "Function",
-    "symbol": "#2ac638334627aaf7",
+    "symbol": "#d66a02363978a7d7",
     "documentation": null,
     "definition": {
       "file": "${WS}/lib.h",

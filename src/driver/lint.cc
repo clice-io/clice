@@ -51,7 +51,7 @@ struct Report {
 
     /// Why the run stopped before linting: the workers did not start, there
     /// was nothing to lint, or --index found no database to take the index.
-    std::string error;
+    protocol::optional<std::string> error;
 
     std::size_t checked_tus = 0;
     std::size_t failed_tus = 0;
@@ -66,7 +66,7 @@ struct Report {
     bool unsaved = false;
 
     /// Why the database refused the last save, when it did.
-    std::string save_error;
+    protocol::optional<std::string> save_error;
 
     double seconds = 0;
 };
@@ -295,7 +295,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
                                        ? "its database could not be loaded; the log says why"
                                        : opened.unwritable);
     }
-    if(!result.error.empty()) {
+    if(result.error) {
         result.exit_code = 2;
         co_await shutdown(run);
         co_return;
@@ -368,7 +368,9 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     // index is part of the product, so unsaved state must fail the run
     // like the index-only batch does.
     result.unsaved = with_index && project.has_unsaved_state();
-    result.save_error = project.save_error;
+    if(!project.save_error.empty()) {
+        result.save_error = project.save_error;
+    }
     if(!result.findings.empty()) {
         result.exit_code = 1;
     }
@@ -408,8 +410,8 @@ int run_lint(const ProjectOptions& where, std::uint32_t jobs, bool with_index, b
         return result.exit_code;
     }
     if(!result.completed) {
-        if(!result.error.empty()) {
-            LOG_ERROR("{}", result.error);
+        if(result.error) {
+            LOG_ERROR("{}", *result.error);
         }
         return result.exit_code;
     }
@@ -423,8 +425,8 @@ int run_lint(const ProjectOptions& where, std::uint32_t jobs, bool with_index, b
     }
     if(result.unsaved) {
         driver::println("Part of the index could not be persisted{}.",
-                        result.save_error.empty() ? std::string()
-                                                  : std::format(": {}", result.save_error));
+                        result.save_error ? std::format(": {}", *result.save_error)
+                                          : std::string());
     }
     return result.exit_code;
 }

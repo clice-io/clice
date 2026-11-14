@@ -12,7 +12,7 @@ stdout = '''
   "to": "core",
   "entities": [
     {
-      "id": "#0b04bc0d4bb8bf06",
+      "id": "#37678d02f01af111",
       "entity": "Vec",
       "owner": "core/vec.h",
       "users": [
@@ -21,7 +21,7 @@ stdout = '''
       "interface": false
     },
     {
-      "id": "#20cc85494c819b97",
+      "id": "#40f49ce51856d364",
       "entity": "Vec::x",
       "owner": "core/vec.h",
       "users": [
@@ -30,7 +30,7 @@ stdout = '''
       "interface": false
     },
     {
-      "id": "#56a75bca3c26e2f4",
+      "id": "#8551d63cc27a9a18",
       "entity": "operator+",
       "owner": "core/vec.h",
       "users": [
@@ -39,7 +39,7 @@ stdout = '''
       "interface": false
     },
     {
-      "id": "#1541eb964d462741",
+      "id": "#abb59c9d7198af9f",
       "entity": "operator+",
       "owner": "core/vec.h",
       "users": [
@@ -59,7 +59,7 @@ stdout = '''
   "to": "core",
   "entities": [
     {
-      "id": "#0b04bc0d4bb8bf06",
+      "id": "#37678d02f01af111",
       "entity": "Vec",
       "owner": "core/vec.h",
       "users": [
@@ -68,7 +68,7 @@ stdout = '''
       "interface": false
     },
     {
-      "id": "#20cc85494c819b97",
+      "id": "#40f49ce51856d364",
       "entity": "Vec::x",
       "owner": "core/vec.h",
       "users": [

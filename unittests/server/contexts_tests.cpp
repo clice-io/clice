@@ -328,9 +328,10 @@ ZEST_CASE(ListingRemembered) {
     // without the project following it shows once the commands move.
     tmp.touch("main.cpp");
     auto entry = [&](llvm::StringRef flags) {
-        return std::format(R"({{"directory": "{}", "file": "main.cpp", "command": "clang++ {} -c main.cpp"}})",
-                           json_escape(tmp.root),
-                           flags);
+        return std::format(
+            R"({{"directory": "{}", "file": "main.cpp", "command": "clang++ {} -c main.cpp"}})",
+            json_escape(tmp.root),
+            flags);
     };
     write_cdb(tmp, project.cdb, std::format("[{}]", entry("-DFIRST")));
     auto file = fx.intern(tmp.path("main.cpp"));

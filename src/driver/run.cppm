@@ -210,8 +210,8 @@ struct BatchProgress {
         for(auto& unit: views::take(slow, shown)) {
             listed.push_back(std::format("{}s: {}", unit.seconds, unit.unit));
         }
-        auto more = slow.size() > shown ? std::format(" and {} more", slow.size() - shown)
-                                         : std::string();
+        auto more =
+            slow.size() > shown ? std::format(" and {} more", slow.size() - shown) : std::string();
         return std::format("; compiling {}{}", llvm::join(listed, ", "), more);
     }
 };
@@ -253,7 +253,7 @@ struct BatchResult {
 
     /// Why the run stopped before indexing: the workers did not start, no
     /// database could take the index, or there was nothing to index.
-    std::string error;
+    protocol::optional<std::string> error;
 
     std::size_t indexed_tus = 0;
 
@@ -293,7 +293,7 @@ struct BatchResult {
     bool unsaved = false;
 
     /// Why the database refused the last save, when it did (Project::save_error).
-    std::string save_error;
+    protocol::optional<std::string> save_error;
 
     /// The index database was damaged: the final save discarded it, and
     /// the next run rebuilds the index.
@@ -494,13 +494,13 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
     auto& result = std::get<BatchResult>(*indexed);
     if(!result.completed) {
         return std::unexpected(result.interrupted ? std::string("indexing interrupted")
-                                                  : std::move(result.error));
+                                                  : std::move(*result.error));
     }
     if(result.unsaved) {
         return std::unexpected(
-            result.save_error.empty()
-                ? std::string("part of the index could not be persisted")
-                : std::format("part of the index could not be persisted: {}", result.save_error));
+            result.save_error
+                ? std::format("part of the index could not be persisted: {}", *result.save_error)
+                : std::string("part of the index could not be persisted"));
     }
     if(result.damaged) {
         return std::unexpected(

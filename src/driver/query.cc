@@ -179,9 +179,8 @@ std::expected<ImpactAnalysisResult, std::string> impact_analysis(Project& projec
             result.affected_modules.push_back(module_name.str());
         }
     }
-    for(auto* list: {&result.direct_dependents,
-                     &result.transitive_dependents,
-                     &result.affected_modules}) {
+    for(auto* list:
+        {&result.direct_dependents, &result.transitive_dependents, &result.affected_modules}) {
         ranges::sort(*list);
         list->erase(ranges::unique(*list).begin(), list->end());
     }
@@ -346,7 +345,7 @@ int run_query(const Options& opts, bool with_build, Ask ask) {
     auto ctx = query_context(project);
     auto result = ask(project, ctx);
     if(project.index.damaged()) {
-        return fail(project.damaged_index_error());
+        return fail(ProjectError{.message = project.damaged_index_error()});
     }
 
     auto stale = stale_files(project, {}, std::move(ctx.unindexed), (*opened)->failed);

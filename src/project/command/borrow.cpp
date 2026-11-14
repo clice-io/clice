@@ -35,7 +35,7 @@ static BorrowableCommands& borrowable_commands(Project& project) {
     return index;
 }
 
-static const llvm::StringMap<llvm::SmallVector<std::uint32_t>>&
+const static llvm::StringMap<llvm::SmallVector<std::uint32_t>>&
     search_dirs(Project& project, BorrowableCommands& index) {
     if(index.search_dirs) {
         return *index.search_dirs;

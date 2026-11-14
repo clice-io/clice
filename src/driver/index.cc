@@ -172,7 +172,7 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     } else if(opened.members.empty()) {
         result.error = std::format("Nothing to index: {}", project.why_no_members(batch.root));
     }
-    if(!result.error.empty()) {
+    if(result.error) {
         result.exit_code = 2;
         co_await shutdown(run);
         co_return;
@@ -211,7 +211,9 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     // The shutdown save was the last retry for failed writes; whatever is
     // still dirty never reached disk and a rerun cannot resume from it.
     result.unsaved = project.has_unsaved_state();
-    result.save_error = project.save_error;
+    if(!project.save_error.empty()) {
+        result.save_error = project.save_error;
+    }
     if(interrupted) {
         result.interrupted = true;
         result.exit_code = 130;
@@ -301,21 +303,21 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
         return result.exit_code;
     }
     // What a save refused, when one did.
-    auto refused = result.save_error.empty() ? std::string()
-                                             : std::format(": {}", result.save_error);
+    auto refused = result.save_error ? std::format(": {}", *result.save_error) : std::string();
     if(result.interrupted) {
         if(result.unsaved) {
-            driver::println("Indexing interrupted; part of the progress could not be persisted{}. "
-                            "Rerun `clice index` to resume.",
-                            refused);
+            driver::println(
+                "Indexing interrupted; part of the progress could not be persisted{}. "
+                "Rerun `clice index` to resume.",
+                refused);
         } else {
             driver::println("Indexing interrupted; progress saved. Rerun `clice index` to resume.");
         }
         return result.exit_code;
     }
     if(!result.completed) {
-        if(!result.error.empty()) {
-            LOG_ERROR("{}", result.error);
+        if(result.error) {
+            LOG_ERROR("{}", *result.error);
         }
         if(!result.session_dir.empty()) {
             driver::println("Session log: {}", result.session_dir);

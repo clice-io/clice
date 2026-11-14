@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#e713b5aad0f6b40b path:${WS}/main.cpp",
+    "symbol": "#430eafb001a70d0a path:${WS}/main.cpp",
     "references": [
       {
         "file": "${WS}/main.cpp",
@@ -40,7 +40,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#f8132c1e158f4ee4 path:${WS}/main.cpp",
+    "symbol": "#4f81cd49503b8066 path:${WS}/main.cpp",
     "references": [
       {
         "file": "${WS}/main.cpp",
@@ -69,7 +69,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#8851a59ad07546f0 path:${WS}/shapes.cppm",
+    "symbol": "#835527e9cf9dfba7 path:${WS}/shapes.cppm",
     "documentation": null,
     "definition": {
       "file": "${WS}/shapes.cppm",
@@ -89,7 +89,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#8851a59ad07546f0 path:${WS}/shapes.cppm",
+    "symbol": "#835527e9cf9dfba7 path:${WS}/shapes.cppm",
     "references": [
       {
         "file": "${WS}/main.cpp",

@@ -673,7 +673,7 @@ stdout = '''
   "result": {
     "name": "Plain",
     "kind": "Struct",
-    "symbol": "#07ad6641aea426ed",
+    "symbol": "#9cc0f3f0a7b3e482",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -731,7 +731,7 @@ stdout = '''
   "result": {
     "name": "wrapped",
     "kind": "Variable",
-    "symbol": "#873c8e625d62555c path:${WS}/main.cpp",
+    "symbol": "#682decedfe409e82 path:${WS}/main.cpp",
     "references": [
       {
         "file": "${WS}/main.cpp",
@@ -753,7 +753,7 @@ stdout = '''
   "result": {
     "name": "Item",
     "kind": "Struct",
-    "symbol": "#b011586cd18b9f2f",
+    "symbol": "#3da5cc5fc00c8e8d",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -787,7 +787,7 @@ stdout = '''
   "result": {
     "name": "legacy",
     "kind": "Function",
-    "symbol": "#eab473f99989542a",
+    "symbol": "#fb2d878f67a308d5",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -821,7 +821,7 @@ stdout = '''
   "result": {
     "name": "peek",
     "kind": "Function",
-    "symbol": "#deb7e11b23209117",
+    "symbol": "#3f8eda5eccd481c6",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -861,7 +861,7 @@ stdout = '''
   "result": {
     "name": "peek",
     "kind": "Function",
-    "symbol": "#deb7e11b23209117",
+    "symbol": "#3f8eda5eccd481c6",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -901,7 +901,7 @@ stdout = '''
   "result": {
     "name": "get",
     "kind": "Method",
-    "symbol": "#613b34c67d0b0ad0",
+    "symbol": "#d94973a22e4e32a8",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -929,7 +929,7 @@ stdout = '''
   "result": {
     "name": "weight",
     "kind": "Field",
-    "symbol": "#a1187bbf37731080",
+    "symbol": "#fff633783e410b2d",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -957,7 +957,7 @@ stdout = '''
   "result": {
     "name": "a",
     "kind": "Field",
-    "symbol": "#2aee8b5abae860a7",
+    "symbol": "#671674d435820967",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -998,7 +998,7 @@ stdout = '''
   "result": {
     "name": "Plain",
     "kind": "Struct",
-    "symbol": "#07ad6641aea426ed",
+    "symbol": "#9cc0f3f0a7b3e482",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1056,7 +1056,7 @@ stdout = '''
   "result": {
     "name": "wrapped",
     "kind": "Variable",
-    "symbol": "#873c8e625d62555c path:${WS}/main.cpp",
+    "symbol": "#682decedfe409e82 path:${WS}/main.cpp",
     "references": [
       {
         "file": "${WS}/main.cpp",
@@ -1078,7 +1078,7 @@ stdout = '''
   "result": {
     "name": "Item",
     "kind": "Struct",
-    "symbol": "#b011586cd18b9f2f",
+    "symbol": "#3da5cc5fc00c8e8d",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1112,7 +1112,7 @@ stdout = '''
   "result": {
     "name": "legacy",
     "kind": "Function",
-    "symbol": "#eab473f99989542a",
+    "symbol": "#fb2d878f67a308d5",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1146,7 +1146,7 @@ stdout = '''
   "result": {
     "name": "peek",
     "kind": "Function",
-    "symbol": "#deb7e11b23209117",
+    "symbol": "#3f8eda5eccd481c6",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1186,7 +1186,7 @@ stdout = '''
   "result": {
     "name": "peek",
     "kind": "Function",
-    "symbol": "#deb7e11b23209117",
+    "symbol": "#3f8eda5eccd481c6",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1226,7 +1226,7 @@ stdout = '''
   "result": {
     "name": "get",
     "kind": "Method",
-    "symbol": "#613b34c67d0b0ad0",
+    "symbol": "#d94973a22e4e32a8",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -1254,7 +1254,7 @@ stdout = '''
   "result": {
     "name": "weight",
     "kind": "Field",
-    "symbol": "#a1187bbf37731080",
+    "symbol": "#fff633783e410b2d",
     "references": [
       {
         "file": "${WS}/include/extra.h",
@@ -1282,7 +1282,7 @@ stdout = '''
   "result": {
     "name": "a",
     "kind": "Field",
-    "symbol": "#2aee8b5abae860a7",
+    "symbol": "#671674d435820967",
     "references": [
       {
         "file": "${WS}/include/base.h",

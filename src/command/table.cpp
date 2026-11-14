@@ -310,8 +310,9 @@ std::optional<Spelling> CommandTable::pch_output(CommandID id) const {
         return cl_pch_path(command, *created);
     }
     auto* output = last_of(command.args, clang_options::OPT_o);
-    return output && output->values.size() == 1 ? std::optional(Spelling::absolute(output->values[0]))
-                                                : std::nullopt;
+    return output && output->values.size() == 1
+               ? std::optional(Spelling::absolute(output->values[0]))
+               : std::nullopt;
 }
 
 llvm::SmallVector<Spelling, 2> CommandTable::pch_inputs(CommandID id) const {

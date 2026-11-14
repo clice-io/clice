@@ -599,14 +599,13 @@ async::task<Imports> Project::scan_imports(Fid path_id,
         auto started_at = chrono::duration_cast<chrono::milliseconds>(
                               chrono::system_clock::now().time_since_epoch())
                               .count();
-        auto scanned = co_await async::queue(
-            [&] {
-                return scan_precise(*dep_graph.directives,
-                                    argv,
-                                    resolution.directory,
-                                    content,
-                                    std::move(vfs));
-            });
+        auto scanned = co_await async::queue([&] {
+            return scan_precise(*dep_graph.directives,
+                                argv,
+                                resolution.directory,
+                                content,
+                                std::move(vfs));
+        });
         scan = {.directives = directives,
                 .bound = bound,
                 .arguments = arguments_hash,

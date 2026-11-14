@@ -166,7 +166,8 @@ ZEST_CASE(ClPCHOptions) {
     };
     auto pch = commands.pch_output(command("/project/cmake_pch.cxx"));
     ZASSERT(pch);
-    ZEXPECT(CanonicalPath(*pch) == CanonicalPath(Spelling::absolute("/project/CMakeFiles/app.pch")));
+    ZEXPECT(CanonicalPath(*pch) ==
+            CanonicalPath(Spelling::absolute("/project/CMakeFiles/app.pch")));
     auto read = file_table.find(*pch);
     ZASSERT(read);
     ZEXPECT(database.pch_writers(*read).size() == 1U);

@@ -16,7 +16,7 @@ stdout = '''
         "locator": "fast",
         "name": "fast",
         "kind": "EnumMember",
-        "symbol": "#e2317c1b505efc78",
+        "symbol": "#1020b8a6dd53b750",
         "newName": "compute",
         "edits": 2,
         "conflicts": [
@@ -66,7 +66,7 @@ stdout = '''
         "locator": "fast",
         "name": "fast",
         "kind": "EnumMember",
-        "symbol": "#e2317c1b505efc78",
+        "symbol": "#1020b8a6dd53b750",
         "newName": "slow",
         "edits": 2,
         "conflicts": [
@@ -116,7 +116,7 @@ stdout = '''
         "locator": "Color::red",
         "name": "red",
         "kind": "EnumMember",
-        "symbol": "#cfe0f122bed7103e",
+        "symbol": "#32e2e12e0f62dc9c",
         "newName": "compute",
         "edits": 2,
         "conflicts": [],
@@ -164,7 +164,7 @@ stdout = '''
         "locator": "Color::red",
         "name": "red",
         "kind": "EnumMember",
-        "symbol": "#cfe0f122bed7103e",
+        "symbol": "#32e2e12e0f62dc9c",
         "newName": "green",
         "edits": 2,
         "conflicts": [

@@ -47,8 +47,8 @@ stdout = '''
       "interfaceEntities": 2,
       "implementationEntities": 0,
       "sample": [
-        "Clock::size",
-        "Clock"
+        "Clock",
+        "Clock::size"
       ]
     },
     {
@@ -67,8 +67,8 @@ stdout = '''
       "interfaceEntities": 1,
       "implementationEntities": 1,
       "sample": [
-        "twice",
-        "Clock"
+        "Clock",
+        "twice"
       ]
     },
     {
@@ -77,8 +77,8 @@ stdout = '''
       "interfaceEntities": 0,
       "implementationEntities": 2,
       "sample": [
-        "Logger",
-        "Logger::clock"
+        "Logger::clock",
+        "Logger"
       ]
     },
     {
@@ -258,8 +258,8 @@ stdout = '''
       "interfaceEntities": 2,
       "implementationEntities": 0,
       "sample": [
-        "Clock::size",
-        "Clock"
+        "Clock",
+        "Clock::size"
       ]
     },
     {
@@ -287,8 +287,8 @@ stdout = '''
       "interfaceEntities": 0,
       "implementationEntities": 2,
       "sample": [
-        "Logger",
-        "Logger::clock"
+        "Logger::clock",
+        "Logger"
       ]
     },
     {
@@ -462,8 +462,8 @@ stdout = '''
       "interfaceEntities": 0,
       "implementationEntities": 2,
       "sample": [
-        "Logger",
-        "Logger::clock"
+        "Logger::clock",
+        "Logger"
       ]
     },
     {
@@ -472,8 +472,8 @@ stdout = '''
       "interfaceEntities": 0,
       "implementationEntities": 2,
       "sample": [
-        "Clock::size",
-        "meta_size"
+        "meta_size",
+        "Clock::size"
       ]
     }
   ],

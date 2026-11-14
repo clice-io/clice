@@ -17,7 +17,7 @@ stdout = '''
         "file": "${WS}/include/shapes/circle.h",
         "line": 7,
         "container": "shapes",
-        "symbol": "#dd68185c34da1cfd"
+        "symbol": "#7bad780e063d3758"
       },
       {
         "name": "circumference",
@@ -26,7 +26,7 @@ stdout = '''
         "file": "${WS}/src/circle.cpp",
         "line": 9,
         "container": "shapes::Circle",
-        "symbol": "#1792a4d7c19a13df"
+        "symbol": "#45a6ad3d0288a7de"
       },
       {
         "name": "Circle",
@@ -35,7 +35,7 @@ stdout = '''
         "file": "${WS}/include/shapes/circle.h",
         "line": 9,
         "container": "shapes::Circle",
-        "symbol": "#ed83a00043ec4620"
+        "symbol": "#b94a0e2e6f7f6b94"
       }
     ]
   },

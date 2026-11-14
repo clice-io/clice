@@ -46,7 +46,7 @@ stdout = '''
         "locator": "length path:main.cpp",
         "name": "length",
         "kind": "Parameter",
-        "symbol": "#48a9f18a4aaf9b1e path:${WS}/main.cpp",
+        "symbol": "#d9149263aeb9d400 path:${WS}/main.cpp",
         "newName": "size",
         "edits": 2,
         "conflicts": [],

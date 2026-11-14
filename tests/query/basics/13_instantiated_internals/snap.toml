@@ -11,7 +11,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#e713b5aad0f6b40b path:${WS}/main.cpp",
+    "symbol": "#430eafb001a70d0a path:${WS}/main.cpp",
     "references": [
       {
         "file": "${WS}/box.h",
@@ -40,7 +40,7 @@ stdout = '''
   "result": {
     "name": "radius",
     "kind": "Field",
-    "symbol": "#98f5ba17864bc461 path:${WS}/main.cpp",
+    "symbol": "#b7e4d6c06615278c path:${WS}/main.cpp",
     "references": [
       {
         "file": "${WS}/box.h",
@@ -73,18 +73,18 @@ stdout = '''
       "signature": null,
       "kind": "Field",
       "file": "${WS}/main.cpp",
-      "line": 15,
-      "container": "scoped_twice::Scoped",
-      "symbol": "#98f5ba17864bc461 path:${WS}/main.cpp"
+      "line": 5,
+      "container": "Local",
+      "symbol": "#430eafb001a70d0a path:${WS}/main.cpp"
     },
     {
       "name": "radius",
       "signature": null,
       "kind": "Field",
       "file": "${WS}/main.cpp",
-      "line": 5,
-      "container": "Local",
-      "symbol": "#e713b5aad0f6b40b path:${WS}/main.cpp"
+      "line": 15,
+      "container": "scoped_twice::Scoped",
+      "symbol": "#b7e4d6c06615278c path:${WS}/main.cpp"
     }
   ],
   "stale": []

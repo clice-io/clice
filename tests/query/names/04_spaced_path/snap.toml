@@ -15,7 +15,7 @@ stdout = '''
         "kind": "Function",
         "startLine": 2,
         "endLine": 2,
-        "symbol": "#cc85f8008b8ef85d path:\"${WS}/my dir/util.h\""
+        "symbol": "#cd4d14946966529c path:\"${WS}/my dir/util.h\""
       }
     ]
   },
@@ -24,13 +24,13 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice query definition \"#cc85f8008b8ef85d path:\\\"${WS}/my dir/util.h\\\"\""]
+[test."$ clice query definition \"#cd4d14946966529c path:\\\"${WS}/my dir/util.h\\\"\""]
 stdout = '''
 {
   "result": {
     "name": "helper",
     "kind": "Function",
-    "symbol": "#cc85f8008b8ef85d path:\"${WS}/my dir/util.h\"",
+    "symbol": "#cd4d14946966529c path:\"${WS}/my dir/util.h\"",
     "documentation": null,
     "definition": {
       "file": "${WS}/my dir/util.h",

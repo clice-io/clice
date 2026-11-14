@@ -11,13 +11,13 @@ stdout = '''
   "result": {
     "files": [
       {
-        "path": "${WS}/main.cpp",
-        "kind": "source",
+        "path": "${WS}/a.h",
+        "kind": "header",
         "moduleName": null
       },
       {
-        "path": "${WS}/a.h",
-        "kind": "header",
+        "path": "${WS}/main.cpp",
+        "kind": "source",
         "moduleName": null
       }
     ],

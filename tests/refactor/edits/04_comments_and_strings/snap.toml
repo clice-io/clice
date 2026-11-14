@@ -16,7 +16,7 @@ stdout = '''
         "locator": "geo",
         "name": "geo",
         "kind": "Namespace",
-        "symbol": "#b8d40a731e70f055",
+        "symbol": "#343ba92e720a5600",
         "newName": "shapes",
         "edits": 2,
         "conflicts": [],

@@ -364,8 +364,8 @@ void scan_with_preprocessor(
     std::optional<llvm::StringRef> content,
     llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs,
     ScanResult& result,
-    llvm::function_ref<void(clang::CompilerInstance&, clang::FrontendAction&, const DirectivesGetter&)>
-        body) {
+    llvm::function_ref<
+        void(clang::CompilerInstance&, clang::FrontendAction&, const DirectivesGetter&)> body) {
     if(!vfs) {
         vfs = new vfs::View();
     }
@@ -428,8 +428,9 @@ void scan_with_preprocessor(
 
 }  // namespace
 
-std::shared_ptr<const DirectiveCache::Entry>
-    DirectiveCache::directives(llvm::StringRef path, std::uint64_t hash, llvm::StringRef text) {
+std::shared_ptr<const DirectiveCache::Entry> DirectiveCache::directives(llvm::StringRef path,
+                                                                        std::uint64_t hash,
+                                                                        llvm::StringRef text) {
     {
         std::lock_guard lock(mutex);
         if(auto it = entries.find(path); it != entries.end() && it->second->hash == hash) {
@@ -551,25 +552,24 @@ ScanResult scan_module_decl(DirectiveCache& cache,
                             std::optional<llvm::StringRef> content,
                             llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs) {
     ScanResult result;
-    scan_with_preprocessor(cache,
-                           arguments,
-                           directory,
-                           content,
-                           std::move(vfs),
-                           result,
-                           [](clang::CompilerInstance& instance,
-                              clang::FrontendAction&,
-                              const DirectivesGetter&) {
-                               // Instead of Execute(), which processes the
-                               // entire file, lex and stop as soon as the
-                               // module declaration is found.
-                               auto& pp = instance.getPreprocessor();
-                               pp.EnterMainSourceFile();
-                               clang::Token tok;
-                               do {
-                                   pp.Lex(tok);
-                               } while(!pp.isInNamedModule() && tok.isNot(clang::tok::eof));
-                           });
+    scan_with_preprocessor(
+        cache,
+        arguments,
+        directory,
+        content,
+        std::move(vfs),
+        result,
+        [](clang::CompilerInstance& instance, clang::FrontendAction&, const DirectivesGetter&) {
+            // Instead of Execute(), which processes the
+            // entire file, lex and stop as soon as the
+            // module declaration is found.
+            auto& pp = instance.getPreprocessor();
+            pp.EnterMainSourceFile();
+            clang::Token tok;
+            do {
+                pp.Lex(tok);
+            } while(!pp.isInNamedModule() && tok.isNot(clang::tok::eof));
+        });
     return result;
 }
 

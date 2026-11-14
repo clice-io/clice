@@ -6,7 +6,6 @@ Session log: ${WS}/.clice/logs/${SESSION}
 exit = 0
 
 [test."$ clice analyze modules file util/b.cpp"]
-wrong = "b.cpp includes only lib/widen.h, yet widen is app's here; indexed in the other order (below) it is lib's: which file provides it should not depend on the order the units were indexed in"
 stdout = '''
 {
   "path": "util/b.cpp",
@@ -49,7 +48,7 @@ stdout = '''
   "annotations": [],
   "uses": [
     {
-      "module": "lib",
+      "module": "app",
       "entities": [
         "widen"
       ]
@@ -58,7 +57,7 @@ stdout = '''
   "usedBy": [],
   "affinity": [
     {
-      "module": "lib",
+      "module": "app",
       "entities": 1
     }
   ]

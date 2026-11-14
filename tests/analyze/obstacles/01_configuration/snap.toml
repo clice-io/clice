@@ -93,9 +93,9 @@ stdout = '''
       "implementationEntities": 4,
       "sample": [
         "fast",
-        "level",
+        "width",
         "ModeA",
-        "width"
+        "level"
       ]
     }
   ],

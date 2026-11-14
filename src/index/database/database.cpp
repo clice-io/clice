@@ -743,8 +743,9 @@ std::expected<MetaCheck, Corruption>
     return mdb_txn_commit(wtxn) == 0 ? MetaCheck::Ok : MetaCheck::Transient;
 }
 
-std::expected<std::unique_ptr<LmdbDatabase>, std::string>
-    open_lmdb_env(llvm::StringRef directory, std::size_t initial_mapsize, bool read_only) {
+std::expected<std::unique_ptr<LmdbDatabase>, std::string> open_lmdb_env(llvm::StringRef directory,
+                                                                        std::size_t initial_mapsize,
+                                                                        bool read_only) {
     auto path = path::join(directory, lmdb_file_name);
 
     // LMDB takes an empty file for a new database and writes its first
@@ -805,8 +806,8 @@ std::expected<std::unique_ptr<LmdbDatabase>, std::string>
         MDB_env* env = nullptr;
         if(int rc = mdb_env_create(&env)) {
             discard_created();
-            return std::unexpected(std::format(
-                "Cannot create the index database environment: {}", mdb_strerror(rc)));
+            return std::unexpected(
+                std::format("Cannot create the index database environment: {}", mdb_strerror(rc)));
         }
         configure(env, mapsize);
         // LIMITATION: a reader takes LMDB's own lock too, so a database
@@ -883,12 +884,12 @@ std::expected<std::unique_ptr<LmdbDatabase>, std::string>
             if(auto [length, declared] = coverage(env); length < declared) {
                 mdb_txn_abort(txn);
                 mdb_env_close(env);
-                return std::unexpected(std::format(
-                    "Index database at {} is shorter than its pages ({} of {}); run "
-                    "`clice index` to repair it",
-                    path,
-                    format_bytes(length),
-                    format_bytes(declared)));
+                return std::unexpected(
+                    std::format("Index database at {} is shorter than its pages ({} of {}); run "
+                                "`clice index` to repair it",
+                                path,
+                                format_bytes(length),
+                                format_bytes(declared)));
             }
         } else if(int cover_rc = cover_declared_pages(env)) {
             mdb_txn_abort(txn);
@@ -1035,8 +1036,9 @@ std::expected<std::unique_ptr<BlobDatabase>, std::string>
     return std::move(*db);
 }
 
-std::expected<std::unique_ptr<BlobDatabase>, std::string>
-    open_database(CacheStore& store, const DatabaseKey& key, bool read_only) {
+std::expected<std::unique_ptr<BlobDatabase>, std::string> open_database(CacheStore& store,
+                                                                        const DatabaseKey& key,
+                                                                        bool read_only) {
     // FIXME: no index persistence on remote filesystems (NFS, SMB, WSL drvfs):
     // their locking and cache coherence differ too much to trust LMDB or one
     // untested fallback there, so such sessions keep the index in memory.

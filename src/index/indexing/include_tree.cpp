@@ -117,18 +117,19 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
         auto add = [&](clang::SourceLocation location, clang::OptionalFileEntryRef target) {
             auto seen = unit.seen_at(location);
             auto position = target && seen.file == fid
-                                ? unit.positions(fid).position(seen.offset,
-                                                                  PositionEncoding::UTF8)
+                                ? unit.positions(fid).position(seen.offset, PositionEncoding::UTF8)
                                 : std::nullopt;
             if(!position) {
                 return;
             }
-            links.push_back({fid,
-                             {
-                                 .line = position->line + 1,
-                                 .column = position->character,
-                                 .target = unit.file_path(*target).str(),
-                             }});
+            links.push_back({
+                fid,
+                {
+                  .line = position->line + 1,
+                  .column = position->character,
+                  .target = unit.file_path(*target).str(),
+                  }
+            });
         };
         for(auto& has_include: written.has_includes) {
             add(has_include.location, has_include.file);

@@ -16,7 +16,7 @@ stdout = '''
         "locator": "Base::size",
         "name": "size",
         "kind": "Field",
-        "symbol": "#5edaf86359cfcd79",
+        "symbol": "#c350322930f81f68",
         "newName": "capacity",
         "edits": 2,
         "conflicts": [
@@ -66,7 +66,7 @@ stdout = '''
         "locator": "Derived::capacity",
         "name": "capacity",
         "kind": "Field",
-        "symbol": "#3dcb122da86eca9f",
+        "symbol": "#80e37e8e82dc5f4e",
         "newName": "size",
         "edits": 2,
         "conflicts": [
@@ -116,7 +116,7 @@ stdout = '''
         "locator": "Base::grow",
         "name": "grow",
         "kind": "Method",
-        "symbol": "#2005e6dfad12843c",
+        "symbol": "#306112250c16db1a",
         "newName": "Base",
         "edits": 3,
         "conflicts": [
@@ -172,7 +172,7 @@ stdout = '''
         "locator": "Derived",
         "name": "Derived",
         "kind": "Struct",
-        "symbol": "#990dbf9bf6ac7666",
+        "symbol": "#e323c1345836abf9",
         "newName": "capacity",
         "edits": 2,
         "conflicts": [
@@ -229,7 +229,7 @@ stdout = '''
         "locator": "alpha",
         "name": "alpha",
         "kind": "Namespace",
-        "symbol": "#abd6dc3c08c02fcf",
+        "symbol": "#2c3adf01f3a0a33b",
         "newName": "beta",
         "edits": 2,
         "conflicts": [
@@ -279,7 +279,7 @@ stdout = '''
         "locator": "volume",
         "name": "volume",
         "kind": "Function",
-        "symbol": "#0e47af8c45caf2a3",
+        "symbol": "#270889d45f5b78cb",
         "newName": "LIMIT",
         "edits": 2,
         "conflicts": [
@@ -329,7 +329,7 @@ stdout = '''
         "locator": "area",
         "name": "area",
         "kind": "Function",
-        "symbol": "#99ad4f80ff5d6ffc",
+        "symbol": "#d0d2146b227072ef",
         "newName": "volume",
         "edits": 3,
         "conflicts": [],
@@ -392,7 +392,7 @@ stdout = '''
         "locator": "factor path:main.cpp",
         "name": "factor",
         "kind": "Parameter",
-        "symbol": "#21444f8d4520085f path:${WS}/main.cpp",
+        "symbol": "#44305b53c0734c1e path:${WS}/main.cpp",
         "newName": "length",
         "edits": 2,
         "conflicts": [
@@ -443,7 +443,7 @@ stdout = '''
         "locator": "result path:main.cpp",
         "name": "result",
         "kind": "Variable",
-        "symbol": "#5019987308b788cd path:${WS}/main.cpp",
+        "symbol": "#a9415c8170499f5b path:${WS}/main.cpp",
         "newName": "length",
         "edits": 2,
         "conflicts": [],

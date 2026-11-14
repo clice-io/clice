@@ -17,7 +17,7 @@ stdout = '''
       "file": "${WS}/src/circle.cpp",
       "line": 5,
       "container": "shapes::Circle",
-      "symbol": "#c9fbbb30710c2348"
+      "symbol": "#a759f2e00cefff10"
     },
     {
       "name": "measure",
@@ -26,7 +26,7 @@ stdout = '''
       "file": "${WS}/include/shapes/shape.h",
       "line": 9,
       "container": "shapes::Shape",
-      "symbol": "#a34efd0bdb38a12d"
+      "symbol": "#f65062f3aa2f39e4"
     }
   ],
   "stale": []

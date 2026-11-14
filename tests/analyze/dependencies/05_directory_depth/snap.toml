@@ -12,7 +12,7 @@ stdout = '''
   "to": "src/core",
   "entities": [
     {
-      "id": "#478ec97a46ae1c6f",
+      "id": "#420db0ed7345959b",
       "entity": "Str",
       "owner": "src/core/str.h",
       "users": [

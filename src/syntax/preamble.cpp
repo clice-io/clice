@@ -98,8 +98,7 @@ std::optional<std::pair<std::string, bool>> pragma_stack(llvm::ArrayRef<Token> d
     if(name == "GCC" && word(2) == "visibility" && (word(3) == "push" || word(3) == "pop")) {
         return push_or_pop("visibility", word(3), "push");
     }
-    if(name == "clang" && word(2) == "assume_nonnull" &&
-       (word(3) == "begin" || word(3) == "end")) {
+    if(name == "clang" && word(2) == "assume_nonnull" && (word(3) == "begin" || word(3) == "end")) {
         return push_or_pop("assume_nonnull", word(3), "begin");
     }
     if(name == "clang" && word(2) == "attribute") {

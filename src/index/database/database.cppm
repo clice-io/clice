@@ -330,7 +330,8 @@ std::expected<std::unique_ptr<BlobDatabase>, std::string>
 /// a local filesystem. On a remote filesystem (NFS/SMB/9p — where LMDB is
 /// documented to break) it fails; a FUSE mount gets a warning but
 /// proceeds, since FUSE fronts anything from a local overlay to sshfs.
-std::expected<std::unique_ptr<BlobDatabase>, std::string>
-    open_database(CacheStore& store, const DatabaseKey& key, bool read_only = false);
+std::expected<std::unique_ptr<BlobDatabase>, std::string> open_database(CacheStore& store,
+                                                                        const DatabaseKey& key,
+                                                                        bool read_only = false);
 
 }  // namespace clice::index

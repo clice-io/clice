@@ -497,8 +497,8 @@ std::optional<SynthesizedContext>
         }
         auto resume = line_end(entry.content, cut.offset);
         auto end = splits && !macro_scope ? braces_close(lexical, entry.content, cut, resume)
-                   : open                     ? static_cast<std::uint32_t>(entry.content.size())
-                                              : resume;
+                   : open                 ? static_cast<std::uint32_t>(entry.content.size())
+                                          : resume;
         auto& tail = after.emplace_back(i, Fragment{}).second;
         if(is_last) {
             tail.text += "#if __INCLUDE_LEVEL__ == 1\n";

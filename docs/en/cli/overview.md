@@ -35,9 +35,9 @@ clice <command> [<operation>] [<target>...] [--option...]
 
 Every command ends with one of four exit codes, which its page details:
 
-| Code  | Meaning                                                                                                                                                                       |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`   | The command did what it was asked.                                                                                                                                            |
-| `1`   | It did it, and the answer is negative: lint findings, a file to format, a symbol or file not found, a rename conflict, a unit that failed to index.                            |
+| Code  | Meaning                                                                                                                                                                      |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `0`   | The command did what it was asked.                                                                                                                                           |
+| `1`   | It did it, and the answer is negative: lint findings, a file to format, a symbol or file not found, a rename conflict, a unit that failed to index.                          |
 | `2`   | It could not do it: the arguments or the configuration do not parse, there is nothing to work on (no project, no compilation database, no unit), the index cannot be opened. |
-| `130` | It was interrupted.                                                                                                                                                           |
+| `130` | It was interrupted.                                                                                                                                                          |

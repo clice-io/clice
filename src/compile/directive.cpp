@@ -476,7 +476,8 @@ public:
                 continue;
             } else if(name == "define" || name == "undef") {
                 add_unresolved(unit.create_location(fid, spelled.front().range.begin));
-            } else if(ranges::contains(std::array{"ifdef", "ifndef", "elifdef", "elifndef"}, name)) {
+            } else if(ranges::contains(std::array{"ifdef", "ifndef", "elifdef", "elifndef"},
+                                       name)) {
                 add_tested(fid, spelled.front(), content);
             }
         }

@@ -1,9 +1,8 @@
 [test."$ clice analyze modules"]
 stdout = '''
 {
-  "error": "no usable index; run `clice index` first",
+  "error": "No index cache at ${WS}/.clice; run `clice index` first",
   "stale": []
 }
 '''
-stderr = "error: No index cache at .clice; run `clice index` first"
-exit = 1
+exit = 2

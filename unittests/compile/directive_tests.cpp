@@ -322,8 +322,7 @@ ZEST_CASE(UnresolvedMacros) {
     // A skipped condition names the definition it tests when there is one.
     for(auto name: {"known_elif", "known", "nested_known"}) {
         ZEXPECT(ranges::any_of(macros, [&](const MacroRef& macro) {
-            return macro.kind == MacroRef::Ref &&
-                   unit->written_at(macro.loc).offset == point(name);
+            return macro.kind == MacroRef::Ref && unit->written_at(macro.loc).offset == point(name);
         }));
     }
 };

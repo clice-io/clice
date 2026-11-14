@@ -212,7 +212,7 @@ int run(Rename& opts) {
         *requests,
         {.editable = editable, .read = read, .units_pending = project.units_pending()});
     if(project.index.damaged()) {
-        return fail(project.damaged_index_error());
+        return fail(ProjectError{.message = project.damaged_index_error()});
     }
     auto& result = planned.result;
     // A unit --fresh failed to index answers from an index that may be old.

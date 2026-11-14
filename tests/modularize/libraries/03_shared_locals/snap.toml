@@ -684,6 +684,12 @@ stdout = '''
         "form": 0
       },
       {
+        "name": "fake_widen",
+        "file": "third/libc/cwide.h",
+        "used": true,
+        "form": 0
+      },
+      {
         "name": "fake_word",
         "file": "third/libc/cdual.h",
         "used": true,
@@ -788,7 +794,9 @@ stdout = '''
   },
   {
     "module": "third/widen",
-    "imports": [],
+    "imports": [
+      "libc"
+    ],
     "entries": [
       {
         "file": "third/widen/widen.h",
@@ -798,12 +806,6 @@ stdout = '''
       }
     ],
     "exports": [
-      {
-        "name": "fake_widen",
-        "file": "third/widen/widen.h",
-        "used": false,
-        "form": 0
-      },
       {
         "name": "widen_twice",
         "file": "third/widen/widen.h",

@@ -367,7 +367,7 @@ stdout = '''
   "result": {
     "name": "stale",
     "kind": "Function",
-    "symbol": "#42ee35fe113c83fa",
+    "symbol": "#658fc2490e6a5130",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -395,7 +395,7 @@ stdout = '''
   "result": {
     "name": "take",
     "kind": "Function",
-    "symbol": "#203f66e74a55e964",
+    "symbol": "#c874629f086376c5",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -423,7 +423,7 @@ stdout = '''
   "result": {
     "name": "secret",
     "kind": "Field",
-    "symbol": "#13372623af158c33",
+    "symbol": "#14b22595d97f5fb7",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -451,7 +451,7 @@ stdout = '''
   "result": {
     "name": "needs_size",
     "kind": "Function",
-    "symbol": "#a18072c49b73c60a",
+    "symbol": "#7ce88fdc152838e3",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -490,7 +490,7 @@ stdout = '''
   "result": {
     "name": "stale",
     "kind": "Function",
-    "symbol": "#42ee35fe113c83fa",
+    "symbol": "#658fc2490e6a5130",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -518,7 +518,7 @@ stdout = '''
   "result": {
     "name": "take",
     "kind": "Function",
-    "symbol": "#203f66e74a55e964",
+    "symbol": "#c874629f086376c5",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -546,7 +546,7 @@ stdout = '''
   "result": {
     "name": "secret",
     "kind": "Field",
-    "symbol": "#13372623af158c33",
+    "symbol": "#14b22595d97f5fb7",
     "references": [
       {
         "file": "${WS}/include/base.h",
@@ -574,7 +574,7 @@ stdout = '''
   "result": {
     "name": "needs_size",
     "kind": "Function",
-    "symbol": "#a18072c49b73c60a",
+    "symbol": "#7ce88fdc152838e3",
     "references": [
       {
         "file": "${WS}/include/base.h",

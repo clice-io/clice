@@ -55,7 +55,7 @@ stdout = '''
   "result": {
     "name": "Counter",
     "kind": "Struct",
-    "symbol": "#39f190c87dd1791c",
+    "symbol": "#5b95a7c0a91d01df",
     "references": [
       {
         "file": "${WS}/include/counter.h",

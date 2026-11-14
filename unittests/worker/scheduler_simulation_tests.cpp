@@ -87,15 +87,7 @@ SimResult known_run(SimSpec spec) {
 SimResult expect_near_known(const SimSpec& spec, double slower) {
     auto first = simulate(spec);
     expect_sound(spec, first);
-    auto known = known_run(spec);
-    std::println("SIM kills={} oom={} wall={:.0f} known={:.0f} ratio={:.3f} min_headroom={}MiB",
-                 first.memory_killed.size(),
-                 first.oom_kills,
-                 first.wall,
-                 known.wall,
-                 first.wall / known.wall,
-                 first.min_headroom >> 20);
-    ZEXPECT(first.wall <= slower * known.wall);
+    ZEXPECT(first.wall <= slower * known_run(spec).wall);
     return first;
 }
 
@@ -182,12 +174,7 @@ ZEST_CASE(MacLaptop) {
     spec.scheduler = {.background_jobs = 6, .max_workers = 6};
     auto result = expect_near_known(spec, 1.1);
     ZEXPECT(result.min_headroom > 0);
-    std::println("MacLaptop kills={} wall={:.0f} known={:.0f} min_headroom={}MiB lost={:.0f}",
-                 result.memory_killed.size(),
-                 result.wall,
-                 known_run(spec).wall,
-                 result.min_headroom >> 20,
-                 result.lost);
+    ZEXPECT(result.memory_killed.empty());
 }
 
 /// Small units first teach the session a small estimate; the heavy ones

@@ -16,7 +16,7 @@ stdout = '''
         "locator": "compute",
         "name": "compute",
         "kind": "Function",
-        "symbol": "#0129094638d1b328",
+        "symbol": "#5ed96e37759646ef",
         "newName": "int",
         "edits": 0,
         "conflicts": [
@@ -48,7 +48,7 @@ stdout = '''
         "locator": "compute",
         "name": "compute",
         "kind": "Function",
-        "symbol": "#0129094638d1b328",
+        "symbol": "#5ed96e37759646ef",
         "newName": "restrict",
         "edits": 0,
         "conflicts": [
@@ -80,7 +80,7 @@ stdout = '''
         "locator": "compute",
         "name": "compute",
         "kind": "Function",
-        "symbol": "#0129094638d1b328",
+        "symbol": "#5ed96e37759646ef",
         "newName": "1abc",
         "edits": 0,
         "conflicts": [
@@ -112,7 +112,7 @@ stdout = '''
         "locator": "compute",
         "name": "compute",
         "kind": "Function",
-        "symbol": "#0129094638d1b328",
+        "symbol": "#5ed96e37759646ef",
         "newName": "a-b",
         "edits": 0,
         "conflicts": [
@@ -144,7 +144,7 @@ stdout = '''
         "locator": "compute",
         "name": "compute",
         "kind": "Function",
-        "symbol": "#0129094638d1b328",
+        "symbol": "#5ed96e37759646ef",
         "newName": "",
         "edits": 0,
         "conflicts": [
@@ -176,7 +176,7 @@ stdout = '''
         "locator": "compute",
         "name": "compute",
         "kind": "Function",
-        "symbol": "#0129094638d1b328",
+        "symbol": "#5ed96e37759646ef",
         "newName": "_Compute",
         "edits": 2,
         "conflicts": [],
@@ -226,7 +226,7 @@ stdout = '''
         "locator": "compute",
         "name": "compute",
         "kind": "Function",
-        "symbol": "#0129094638d1b328",
+        "symbol": "#5ed96e37759646ef",
         "newName": "compute",
         "edits": 0,
         "conflicts": [],

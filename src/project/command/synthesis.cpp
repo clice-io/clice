@@ -83,11 +83,10 @@ Memo<Fid, HeaderContext>::Entry Project::synthesize(Fid header,
         }
         contents.push_back(std::move(observed->text));
         spellings.push_back(files.spelling(chain[i]));
-        entries.push_back(
-            {.path = spellings.back(),
-             .content = contents.back(),
-             .line = host.lines[i],
-             .macro_braces = host.macro_braces[i]});
+        entries.push_back({.path = spellings.back(),
+                           .content = contents.back(),
+                           .line = host.lines[i],
+                           .macro_braces = host.macro_braces[i]});
         files.disk.observe(chain[i], observed->obs);
         inputs.push_back(
             {.file = chain[i], .version = files.intern_version(chain[i], observed->obs.hash)});

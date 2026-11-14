@@ -122,9 +122,8 @@ bool needs_path(const clang::NamedDecl* decl, CompilationUnit& unit) {
     if(llvm::isa<clang::NamespaceAliasDecl>(decl)) {
         return false;
     }
-    bool no_linkage =
-        linkage == clang::Linkage::None || llvm::isa<clang::TypedefNameDecl>(decl) ||
-        (llvm::isa<clang::TagDecl>(decl) && !unit.context().getLangOpts().CPlusPlus);
+    bool no_linkage = linkage == clang::Linkage::None || llvm::isa<clang::TypedefNameDecl>(decl) ||
+                      (llvm::isa<clang::TagDecl>(decl) && !unit.context().getLangOpts().CPlusPlus);
     return no_linkage && in_source_file(decl->getLocation(), unit);
 }
 

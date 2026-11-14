@@ -135,7 +135,7 @@ exit = 0
 
 ["batch index per configuration"."$ clice index stats"]
 stderr = "error: No index cache at .clice/cache/v15/index/debug~50f0a9a717df05f7; run `clice index` first"
-exit = 1
+exit = 2
 
 ["batch index per configuration"."$ clice index --jobs 2"]
 stdout = '''

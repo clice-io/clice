@@ -324,9 +324,7 @@ struct Draft {
     /// macros from without including them.
     std::set<std::uint32_t> needed;
 
-    /// The headers that stay headers it includes itself, and the lines doing
-    /// so.
-    std::set<std::uint32_t> textual;
+    /// The lines including the headers that stay headers.
     llvm::DenseSet<std::uint32_t> textual_lines;
 
     std::set<std::uint32_t> macro_headers;
@@ -337,6 +335,12 @@ struct Draft {
 
     /// It uses macros of modules the rewrite leaves as they are.
     bool library_macros = false;
+
+    /// As a module unit, it opens a global module fragment: for what stays
+    /// included or moves there.
+    bool fragment() const {
+        return fragment_code || !needed.empty() || !macro_headers.empty();
+    }
 };
 
 }  // namespace
@@ -551,7 +555,6 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                         if(target == none || !rewriter.textual(target)) {
                             break;
                         }
-                        draft.textual.insert(target);
                         draft.textual_lines.insert(line);
                         // In the purview its declarations would be attached to
                         // the module.
@@ -634,7 +637,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                     continue;
                 }
                 pending.push_back(next);
-                if(units[next].kind == Unit::Kind::Internal && !drafts.at(next).textual.empty()) {
+                if(units[next].kind == Unit::Kind::Internal && drafts.at(next).fragment()) {
                     fragments.push_back(next);
                 }
             }
@@ -688,7 +691,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         // A module unit opens a global module fragment only for what stays
         // included or moves there, which may name what the wrapped modules
         // declare and test their macros: the prelude comes first.
-        auto fragment = draft.fragment_code || !draft.needed.empty() || !macro_includes.empty();
+        auto fragment = draft.fragment();
         if(!module_unit) {
             lines.push_back(prelude);
         } else if(fragment) {

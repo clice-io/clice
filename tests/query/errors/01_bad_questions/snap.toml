@@ -1,12 +1,11 @@
 [test."$ clice query symbol-search add"]
 stdout = '''
 {
-  "error": "the index could not be opened (the log above says why); run `clice index` or pass --fresh",
+  "error": "No index cache at ${WS}/.clice; run `clice index` first",
   "stale": []
 }
 '''
-stderr = "error: No index cache at .clice; run `clice index` first"
-exit = 1
+exit = 2
 
 [test."$ clice query call-graph add --direction caller"]
 stdout = '''

@@ -1,25 +1,2 @@
 ["pushed before the include"."main.cpp"]
-wrong = "the pushes before the include are lost to the body: its pops find nothing to restore and LIMIT stays undefined, two warnings and an error clang does not report"
-diagnostics = [
-    {
-        at = '#pragma ⟦pop_macro⟧("min")',
-        severity = "warning",
-        message = "pragma pop_macro could not pop 'min', no matching push_macro",
-        source = "clang",
-        code = "-Wignored-pragmas",
-    },
-    {
-        at = '#pragma ⟦pop_macro⟧("LIMIT")',
-        severity = "warning",
-        message = "pragma pop_macro could not pop 'LIMIT', no matching push_macro",
-        source = "clang",
-        code = "-Wignored-pragmas",
-    },
-    {
-        at = "return min(1, 2) + ⟦LIMIT⟧ + helper();",
-        severity = "error",
-        message = "use of undeclared identifier 'LIMIT'",
-        source = "clang",
-        code = "err_undeclared_var_use",
-    },
-]
+diagnostics = []
