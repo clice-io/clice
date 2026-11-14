@@ -43,9 +43,9 @@ inline std::vector<std::string> make_args(const std::string& file_path,
     return args;
 }
 
-/// A test's worker pool: `stateless` and `stateful` workers of the clice
-/// under test, logging into `tmp`, where a death quotes its worker's last
-/// lines from.
+/// A test's worker pool: `stateless` workers (at least one), all started
+/// at once, and `stateful` ones of the clice under test, logging into
+/// `tmp`, where a death quotes its worker's last lines from.
 inline WorkerPoolOptions worker_options(const TempDir& tmp,
                                         std::uint32_t stateless,
                                         std::uint32_t stateful) {
@@ -54,6 +54,7 @@ inline WorkerPoolOptions worker_options(const TempDir& tmp,
         .stateless_count = stateless,
         .stateful_count = stateful,
         .session_dir = tmp.path("workers"),
+        .min_stateless = stateless,
     };
 }
 

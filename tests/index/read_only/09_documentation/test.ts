@@ -17,7 +17,7 @@ const markers = [
 // Read-only, the cards come from the index: the comment documenting the
 // declaration in the header, not the one above the definition elsewhere.
 test("index cards carry documentation", async (t) => {
-    const s = await t.start({ config: { project: { readonly: "on" } } });
+    const s = await t.start({ lastRule: { readonly: "on" } });
     s.open("main.cpp", { pull: false });
     await s.sync();
     for (const name of markers) {
@@ -30,7 +30,7 @@ test("index cards carry documentation", async (t) => {
 // template's own comment, which the index finds right above it; a member alias
 // that copies that comment keeps it.
 test("index cards of template parameters", async (t) => {
-    const s = await t.start({ config: { project: { readonly: "on" } } });
+    const s = await t.start({ lastRule: { readonly: "on" } });
     s.open("main.cpp", { pull: false });
     s.open("header.h", { pull: false });
     await s.sync();
@@ -46,7 +46,8 @@ test("index cards of template parameters", async (t) => {
 
 test("index cards follow the options", async (t) => {
     const s = await t.start({
-        config: { project: { readonly: "on" }, documentation: { format: "plain", inherit: false } },
+        config: { documentation: { format: "plain", inherit: false } },
+        lastRule: { readonly: "on" },
     });
     s.open("main.cpp", { pull: false });
     await s.sync();
@@ -57,7 +58,7 @@ test("index cards follow the options", async (t) => {
 
 test("plain text client", async (t) => {
     const s = await t.start({
-        config: { project: { readonly: "on" } },
+        lastRule: { readonly: "on" },
         capabilities: { textDocument: { hover: { contentFormat: ["plaintext"] } } },
     });
     s.open("main.cpp", { pull: false });

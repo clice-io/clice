@@ -31,7 +31,9 @@ test("saved before the compile", async (t) => {
 // Without the includer's index, the include tree its compile took finds the
 // host all the same: the header's own new text moves nothing above it.
 test("the save switches without the includer's index", async (t) => {
-    const s = await t.start({ config: { rules: [{ patterns: ["main.cpp"], index: false }] } });
+    const s = await t.start({
+        config: { rules: [{ patterns: ["main.cpp"], background_index: false }] },
+    });
     expect(await s.errors("main.cpp")).toEqual([]);
     expect(await s.errors("h.h")).toEqual([]);
     s.edit("h.h", { replace: "return 1;", with: "return Host{2}.v;" });

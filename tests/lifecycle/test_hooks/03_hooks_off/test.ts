@@ -1,11 +1,11 @@
 import { WatchRequest } from "@clice/tools/protocol";
 import { refusal, test } from "@clice/tools/testing";
 
-// The test hooks answer only a server started with project.test_hooks:
+// The test hooks answer only a server started with CLICE_TEST_HOOKS=1:
 // an editor's server refuses them and counts no builds.
 
 test(async (t) => {
-    const s = await t.start({ config: { project: { test_hooks: false } } });
+    const s = await t.start({ env: { CLICE_TEST_HOOKS: "0" } });
     const uri = s.uri("main.cpp");
     await t.show("refused", {
         sync: await refusal(s.client.sync()),

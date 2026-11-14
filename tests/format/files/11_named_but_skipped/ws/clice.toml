@@ -1,0 +1,3 @@
+[[rules]]
+patterns = ["kept.cpp"]
+format = false

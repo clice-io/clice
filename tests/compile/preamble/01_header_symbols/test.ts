@@ -28,7 +28,7 @@ answers("indexed", { indexing: true, paths: SERVER }, async (a) => {
 });
 
 test("header edit refreshes", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     const call = t.at("main.cpp", "|foo();");
     await s.errors("main.cpp");
     await t.show("before", s.definition(call));

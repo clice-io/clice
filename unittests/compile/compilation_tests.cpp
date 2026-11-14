@@ -349,6 +349,46 @@ ZEST_CASE(CompletionSkipsOtherBodies) {
     }));
 }
 
+ZEST_CASE(RuleSkipsIncludedBodies) {
+    // A rule skipping a file's bodies skips them in every compile but the
+    // file's own: the error in the header's body is unseen, the focus
+    // file's shown.
+    add_file("dep.h", "inline int helper() { return missing_in_header; }\n");
+    add_focus("main.cpp", "#include \"dep.h\"\nint own() { return missing_in_source; }\n");
+    prepare();
+    params.function_bodies.rules = {{.skip = true}};
+    ZASSERT(try_compile());
+    auto reported = [&](llvm::StringRef name) {
+        return ranges::any_of(unit->diagnostics(), [&](const auto& diagnostic) {
+            return llvm::StringRef(diagnostic.message).contains(name);
+        });
+    };
+    ZEXPECT(!reported("missing_in_header"));
+    ZEXPECT(reported("missing_in_source"));
+}
+
+ZEST_CASE(OtherHeadersKeepBodies) {
+    // A rule skipping one header's bodies makes clang skip bodies in the
+    // whole compile, but only the files a rule names lose theirs: a
+    // preamble header no rule names keeps them, and the named one included
+    // past the preamble loses them.
+    add_file("other.h", "inline int other() { return missing_in_other; }\n");
+    add_file("dep.h", "inline int helper() { return missing_in_dep; }\n");
+    add_focus("main.cpp", "#include \"other.h\"\nint own;\n#include \"dep.h\"\n");
+    prepare();
+    params.function_bodies.rules = {
+        {.patterns = {"**/dep.h"}, .skip = true}
+    };
+    ZASSERT(try_compile());
+    auto reported = [&](llvm::StringRef name) {
+        return ranges::any_of(unit->diagnostics(), [&](const auto& diagnostic) {
+            return llvm::StringRef(diagnostic.message).contains(name);
+        });
+    };
+    ZEXPECT(reported("missing_in_other"));
+    ZEXPECT(!reported("missing_in_dep"));
+}
+
 ZEST_CASE(SuffixNeedsFocus) {
     // A compile not served the focus file's text — a preamble's build, a
     // compile of the file on disk — takes no suffix.

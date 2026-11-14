@@ -45,7 +45,7 @@ test("an edit until saved", async (t) => {
 test("hidden while read only", async (t) => {
     // Served from the index, which merges both contexts, the file compiles
     // once its other contexts are hidden.
-    const s = await t.start({ config: { project: { readonly: "auto" } } });
+    const s = await t.start({ lastRule: { readonly: "auto" } });
     await s.indexed();
     s.open("shared.h", { pull: false });
     await t.show("merged", s.documentSymbols("shared.h"));
@@ -55,7 +55,7 @@ test("hidden while read only", async (t) => {
 
 test("hidden where nothing compiles", async (t) => {
     // The index alone answers there: hiding is refused.
-    const s = await t.start({ config: { project: { readonly: "on" } } });
+    const s = await t.start({ lastRule: { readonly: "on" } });
     await s.indexed();
     s.open("shared.h", { pull: false });
     expect((await s.showOtherContexts("shared.h", false)).success).toBe(false);

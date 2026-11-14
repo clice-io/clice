@@ -3,6 +3,7 @@ module clice;
 import :feature.code_completion.cursor;
 import :feature.code_completion;
 import :support.fuzzy_matcher;
+import :support.json;
 import :syntax.position;
 
 namespace clice::feature {
@@ -115,7 +116,7 @@ auto directive_completion(const CompletionName& completing,
         item.sort_text = sort_text(*score * priority_weight(clang::CCP_CodePattern), std::nullopt);
         items.push_back(std::move(item));
     }
-    return completion_list(std::move(items), options.limit);
+    return completion_list(std::move(items), at_most(options.limit));
 }
 
 }  // namespace clice::feature

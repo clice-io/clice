@@ -4,11 +4,14 @@ import { test } from "@clice/tools/testing";
 // the first crash stays silent, each later edit earns one spaced retry, and
 // after three crashes in a row only a save retries.
 
-const QUIET = { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } };
+const QUIET = {
+    config: { diagnostics: { clang_tidy: false } },
+    lastRule: { background_index: false },
+};
 
 test(async (t) => {
     const s = await t.start({
-        config: QUIET,
+        ...QUIET,
         crash: { request: "compile", file: "main.cpp", pragma: true },
         env: { CLICE_TEST_CRASH_SPACING_MS: "0" },
     });

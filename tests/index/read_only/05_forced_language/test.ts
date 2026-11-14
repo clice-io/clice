@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // its command forces, not the one its suffix suggests: under C rules
 // `class` would be no keyword.
 test(async (t) => {
-    const s = await t.start({ config: { project: { readonly: "auto" } } });
+    const s = await t.start({ lastRule: { readonly: "auto" } });
     s.open("legacy.c", { pull: false });
     await s.sync();
     await t.show("tokens", s.semanticTokens("legacy.c"));

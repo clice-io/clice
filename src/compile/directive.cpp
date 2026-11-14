@@ -4,6 +4,7 @@ import :compile.compilation;
 import :compile.directive;
 import :syntax.lexer;
 import :syntax.scan;
+import :vfs.path;
 
 namespace clice {
 
@@ -197,6 +198,9 @@ public:
                   llvm::StringRef filename,
                   bool is_angled,
                   clang::OptionalFileEntryRef file) override {
+        if(!file) {
+            add_absent_embed(filename, is_angled, location);
+        }
         unit.collected_directives[unit.file_id(location)].has_embeds.emplace_back(clice::HasEmbed{
             .file_name = filename,
             .file = file,
@@ -210,6 +214,9 @@ public:
                         bool is_angled,
                         clang::OptionalFileEntryRef file,
                         const clang::LexEmbedParametersResult&) override {
+        if(!file) {
+            add_absent_embed(filename, is_angled, location);
+        }
         unit.collected_directives[unit.file_id(location)].embeds.emplace_back(Embed{
             .file_name = filename,
             .file = file,
@@ -227,6 +234,33 @@ public:
                       name,
                       angled,
                       [&](std::string place) { unit.absent_paths.insert(place); });
+    }
+
+    /// Where an embed lookup that found nothing looked
+    /// (Preprocessor::LookupEmbedFile): a quoted name in the includer's
+    /// directory and the working directory, then every name in each
+    /// --embed-dir.
+    void add_absent_embed(llvm::StringRef name, bool angled, clang::SourceLocation location) {
+        auto& files = unit.instance->getFileManager();
+        auto add = [&](llvm::StringRef directory) {
+            llvm::SmallString<256> candidate(directory);
+            path::push(candidate, name);
+            files.makeAbsolutePath(candidate);
+            unit.absent_paths.insert(Spelling::absolute(candidate).str());
+        };
+        if(path::is_absolute(name)) {
+            unit.absent_paths.insert(Spelling::absolute(name).str());
+            return;
+        }
+        if(!angled) {
+            if(auto includer = unit.SM().getFileEntryRefForID(unit.file_id(location))) {
+                add(includer->getDir().getName());
+            }
+            add(".");
+        }
+        for(auto& directory: unit.instance->getPreprocessorOpts().EmbedEntries) {
+            add(directory);
+        }
     }
 
     void InclusionDirective(clang::SourceLocation hash_loc,

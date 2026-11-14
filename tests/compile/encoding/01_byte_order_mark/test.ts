@@ -1,8 +1,8 @@
 import { expect } from "vitest";
 import { answers, test } from "@clice/tools/testing";
 
-// a.h, c.cpp and main.cpp start with a UTF-8 byte order mark, as files
-// saved "with BOM" do; data.bin starts with the same bytes.
+// a.h, answer.h, c.cpp and main.cpp start with a UTF-8 byte order mark, as
+// files saved "with BOM" do; data.bin starts with the same bytes.
 
 answers("first line", async (a) => {
     await a.show("user3", a.hover(a.at("c.cpp", "int |user3")));
@@ -25,7 +25,11 @@ test("marked host keeps the context", async (t) => {
 });
 
 test("embedded data keeps the mark", async (t) => {
-    // The mark is text's, not data's: #embed reads all five bytes.
+    // The mark is text's, not data's: #embed reads all five bytes, after
+    // __has_embed looked the file up too. A header already included keeps
+    // its text.
     const s = await t.start();
     expect(await s.errors("embed.cpp")).toEqual([]);
+    expect(await s.errors("checked.cpp")).toEqual([]);
+    expect(await s.errors("entered.cpp")).toEqual([]);
 });

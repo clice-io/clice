@@ -1,0 +1,25 @@
+["alpha first".stray]
+diagnostics = []
+
+["beta first".stray]
+diagnostics = []
+
+["dropped from a database".listed]
+diagnostics = [
+    {
+        at = "#⟦error⟧ borrowed from alpha",
+        severity = "error",
+        message = "borrowed from alpha",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
+]
+
+["dropped from a database".dropped]
+diagnostics = []
+
+["editor rules with a configuration".stray]
+diagnostics = []
+
+["editor rules with a configuration".guidance]
+value = ["Rules need a workspace folder to anchor their paths: a file outside every folder is served without them"]

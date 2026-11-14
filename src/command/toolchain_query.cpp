@@ -242,6 +242,9 @@ ClangReading read_as_clang(std::vector<std::string> args,
     if(cl_mode(family)) {
         mode = cl_driver_mode(args[0], family);
     }
+    if(!reads_clang_config(family)) {
+        mode.push_back(no_clang_config.str());
+    }
     // clang reads a target off its program's name in its main alone, never
     // when its library builds a compilation.
     auto target = named.empty() ? name_target(args[0]) : named;

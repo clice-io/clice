@@ -10,13 +10,7 @@ import { test } from "@clice/tools/testing";
 // sending everything.
 test("each unit is indexed once", async (t) => {
     const s = await t.start({
-        config: {
-            project: {
-                stateless_worker_count: 1,
-                min_stateless_worker_count: 1,
-                max_stateless_worker_count: 1,
-            },
-        },
+        config: { workers: { background: 1, max: 1 } },
     });
     await s.indexed();
     const { files } = await s.counts();

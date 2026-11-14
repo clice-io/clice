@@ -8,7 +8,7 @@ import { test } from "@clice/tools/testing";
 // compiles and is indexed again under its answer without an edit.
 test(async (t) => {
     const s = await t.start({
-        config: { tracker: { workspace_poll_seconds: 1 } },
+        config: { poll_seconds: 1 },
         env: { CLICE_TEST_QUERY_RETRY_MS: "0" },
     });
     await t.show("missing", s.diagnostics("main.cpp"));

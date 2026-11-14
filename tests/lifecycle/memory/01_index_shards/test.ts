@@ -16,7 +16,7 @@ test("a save writes the changed shard", async (t) => {
     // Open before the project starts: its first pass indexes the open file
     // like the closed ones, though the file's own compile parses every
     // function body too.
-    const s = await t.spawn({ config: { project: { skip_header_bodies: false } } });
+    const s = await t.spawn({ lastRule: { skip_function_body: false } });
     s.open("file0.cpp", { pull: false });
     await s.initialize();
     await s.diagnostics("file0.cpp");

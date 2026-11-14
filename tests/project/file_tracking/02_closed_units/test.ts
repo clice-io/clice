@@ -33,13 +33,12 @@ test("cdb flag change reindexes closed", async (t) => {
 
 // The flags change while no server runs: the next one's load owes lib.cpp
 // a reindex, and its index built under the old flags answers meanwhile —
-// here, with indexing off, for good.
+// here, the background index waiting out a long idle delay, until the end.
 test("cdb flag change while down keeps the index", async (t) => {
     const s = await t.start();
     await s.indexed();
     await s.stop();
     t.disk.database({ "main.cpp": ["-DFEATURE"], "lib.cpp": ["-DFEATURE"] });
-    const down = await t.start({ config: { project: { enable_indexing: false } } });
-    await down.sync();
+    const down = await t.start({ config: { workers: { background_delay_ms: 600_000 } } });
     await t.show("after restart", down.workspaceSymbols("feature_"));
 });

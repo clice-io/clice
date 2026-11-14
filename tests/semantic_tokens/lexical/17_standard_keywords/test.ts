@@ -14,7 +14,7 @@ answers("compiled", async (a) => {
 
 // The tokens the index serves each file before it compiles lex it alike.
 test("index", async (t) => {
-    const s = await t.start({ config: { project: { readonly: "on" } } });
+    const s = await t.start({ lastRule: { readonly: "on" } });
     for (const file of FILES) {
         s.open(file, { pull: false });
     }

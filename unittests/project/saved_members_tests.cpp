@@ -369,7 +369,7 @@ ZEST_CASE(ExcludedRuleDropsIndex) {
     IndexerFixture f;
     open_store(tmp, f.project);
     f.project.cdb.add_command(tmp.root, src, llvm::StringRef("clang++ -c main.cpp"));
-    f.project.settings.rules.push_back(Rule{.patterns = {"**/*.cpp"}, .index = false});
+    f.project.settings.rules.push_back(Rule{.patterns = {"**/*.cpp"}, .background_index = false});
     f.project.root = CanonicalPath(Spelling::absolute(tmp.root));
     finish_settings(f.project);
     f.load();

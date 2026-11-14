@@ -33,17 +33,6 @@ struct TUIndexOptions {
     /// among them is not walked, and its file's section lists the key as
     /// skipped.
     llvm::ArrayRef<std::uint64_t> known_instantiations;
-
-    /// Walk the standard library's own instantiations and macro expansions
-    /// too (decls::in_standard_library): what `std::sort` resolves in the
-    /// library's text. Without, they are neither walked nor keyed.
-    bool standard_library_instantiations = false;
-
-    /// Index the bodies of the functions library headers define too
-    /// (SemanticsOptions::library_bodies): the names they use inside.
-    /// Without, a library header's index holds its declarations alone —
-    /// the focus file's own text is always indexed whole.
-    bool library_bodies = false;
 };
 
 /// Index one TU and encode the result as its TU index blob: the include

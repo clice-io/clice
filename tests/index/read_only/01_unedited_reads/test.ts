@@ -6,9 +6,9 @@ import { test } from "@clice/tools/testing";
 // that needs one. "auto" turns a file to "off" at its first edit, or when
 // the index cannot serve it. Files open without the diagnostics pull an
 // editor of the push model never sends.
-const AUTO = { config: { project: { readonly: "auto" } } };
-const ON = { config: { project: { readonly: "on" } } };
-const OFF = { config: { project: { readonly: "off" } } };
+const AUTO = { lastRule: { readonly: "auto" } };
+const ON = { lastRule: { readonly: "on" } };
+const OFF = { lastRule: { readonly: "off" } };
 const EDITED = { after: "int main() { return twice(2); }\n", insert: "// edited\n" };
 
 test("index serves unedited reads", async (t) => {
@@ -127,7 +127,7 @@ test("diverged buffer serves no links", async (t) => {
 // answered by that compile.
 test("off compiles on demand", async (t) => {
     const s = await t.start({
-        config: { project: { readonly: "off", enable_indexing: false } },
+        lastRule: { readonly: "off", background_index: false },
     });
     s.open("main.cpp", { pull: false });
     await t.show("opened", s.pushes("main.cpp"));
@@ -194,4 +194,19 @@ test("unindexed header compiles", async (t) => {
     await t.show("hover", s.hover(t.at("header.h", "int |add(")));
     expect((await s.counts()).pch).toBe(1);
     await host.release();
+});
+
+// `readonly` is a rule's: it serves the files the rule matches alone.
+test("per file", async (t) => {
+    const other = await t.start({
+        config: { rules: [{ patterns: ["other.cpp"], readonly: "on" }] },
+    });
+    expect(await other.errors("main.cpp")).toEqual([]);
+    expect((await other.counts()).pch).toBe(1);
+    await other.stop();
+    const own = await t.start({ config: { rules: [{ patterns: ["main.cpp"], readonly: "on" }] } });
+    own.open("main.cpp", { pull: false });
+    await own.sync();
+    await t.show("own add", own.hover(t.marker("add")));
+    expect((await own.counts()).pch).toBe(0);
 });

@@ -10,7 +10,8 @@ const FILES = ["a.cpp", "b.cpp", "c.cpp"];
 
 test(async (t) => {
     const s = await t.start({
-        config: { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } },
+        config: { diagnostics: { clang_tidy: false } },
+        lastRule: { background_index: false },
         killWorkers: true,
     });
     const rounds = [];

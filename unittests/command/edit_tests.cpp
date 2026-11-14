@@ -139,11 +139,32 @@ ZEST_CASE(PrependAfterBinary) {
 
     CommandEdits options;
     llvm::SmallVector<std::string> prepend = {"-std=c++17", "-DB"};
-    options.extra_prepend = prepend;
+    options.extra.prepend = prepend;
     // Prepends sit ahead of the command's own flags, so the command wins
     // on collision. (Defines render canonicalized, as two tokens.)
     ZEXPECT(join_command(render_entry(database, fake("main.cpp"), options)) ==
             std::format("clang++ -std=c++17 -D B -D A {}", fake("main.cpp")));
+};
+
+ZEST_CASE(ExtraRemoveAfterRules) {
+    /// A run's own removes take out what the command and the rules give,
+    /// and its own appends after them stay.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    database.add_command("/fake", "main.cpp", "clang++ -DA -DB main.cpp"sv);
+
+    std::vector<CommandEdit> rules = {
+        {.kind = CommandEdit::Kind::Append, .flags = {"-DC"}}
+    };
+    std::vector<std::string> remove = {"-DA", "-DC", "-DD"};
+    std::vector<std::string> append = {"-DD"};
+    CommandEdits options{
+        .edits = rules,
+        .extra = {.append = append, .remove = remove}
+    };
+    ZEXPECT(join_command(render_entry(database, fake("main.cpp"), options)) ==
+            std::format("clang++ -D B -D D {}", fake("main.cpp")));
 };
 
 ZEST_CASE(RuleAnchorKeysMemo) {

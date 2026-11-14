@@ -217,7 +217,7 @@ void LSPClient::register_editing() {
                                                     project.project.dep_graph,
                                                     path_id,
                                                     project.search_of(path_id),
-                                                    settings.code_completion.limit));
+                                                    at_most(settings.code_completion.limit)));
     });
 
     // Signature help, asked of a stateless worker. Pauses background

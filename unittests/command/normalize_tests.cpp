@@ -123,6 +123,24 @@ ZEST_CASE(SharedKeys) {
     ZEXPECT(!key("a.cpp", "clang++ -include a.cpp a.cpp").has_value());
 };
 
+ZEST_CASE(UnreadableResponseRecorded) {
+    /// A response file nothing can read is recorded, which the compiler
+    /// would stop on; one that reads is expanded.
+    TempDir tmp;
+    tmp.touch("read.rsp", "-DREAD");
+    FileTable file_table;
+    CommandTable commands;
+    std::vector<std::string> unreadable;
+    Normalizer normalizer{.commands = commands, .files = file_table, .unreadable = &unreadable};
+    auto directory = Spelling::absolute(tmp.root);
+    auto command = normalizer.normalize(directory,
+                                        file_table.intern(Spelling("a.cpp", directory)),
+                                        llvm::StringRef("clang++ @read.rsp @gone.rsp -c a.cpp"));
+    ZEXPECT(command.has_value());
+    ZASSERT(unreadable.size() == 1u);
+    ZEXPECT(llvm::StringRef(unreadable[0]).ends_with("gone.rsp"));
+};
+
 ZEST_CASE(InternedCommand) {
     /// A hand-written command normalizes like an entry: one CommandID per
     /// (directory, spelling), the string and argv forms meeting on it, the

@@ -1,0 +1,7 @@
+# The workspace is ws/; outside/far.cpp sits beside it.
+[units]
+"ws/main.cpp" = []
+"ws/kept.cpp" = []
+
+[databases]
+ws = ["ws/main.cpp", "ws/kept.cpp"]

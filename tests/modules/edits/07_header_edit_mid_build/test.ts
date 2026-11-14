@@ -3,7 +3,7 @@ import { test } from "@clice/tools/testing";
 
 // leaf.h, in A's global module fragment, changes on disk while A builds.
 test(async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     const park = await s.park("pcm", "a.cppm", { at: "reply" });
     const first = s.errors("main.cpp");
     await park.reached();

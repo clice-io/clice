@@ -7,7 +7,7 @@ answers("compiled", (a) => a.show("main.cpp", a.documentLinks("main.cpp")));
 
 // The index answers the same before the file is compiled.
 test("index", async (t) => {
-    const s = await t.start({ config: { project: { readonly: "auto" } } });
+    const s = await t.start({ lastRule: { readonly: "auto" } });
     s.open("main.cpp", { pull: false });
     await s.indexed();
     await t.show("main.cpp", s.documentLinks("main.cpp"));

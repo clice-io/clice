@@ -200,14 +200,11 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
     auto max_resident = options.max_resident.value_or(default_max_resident(memory_state({}).limit));
     residency = Residency(max_resident);
 
-    if(options.max_stateless == 0)
-        options.max_stateless = default_max_stateless_worker_count();
     options.max_stateless = std::max(options.max_stateless, options.stateless_count);
     if(options.min_stateless == 0)
         options.min_stateless = 1;
-    // The configured floor is honored even above the startup count: idle
-    // scale-down must not shrink a scaled-up pool below it. Only the
-    // ceiling bounds it.
+    // The floor is what the pool starts with and idle scale-down keeps;
+    // only the ceiling bounds it.
     options.min_stateless = std::min(options.min_stateless, options.max_stateless);
     scheduler = WorkerScheduler({
         .background_jobs = options.stateless_count,
@@ -227,7 +224,7 @@ bool WorkerPool::start(const WorkerPoolOptions& opts) {
     sample();
     for(bool stateful: {false, true}) {
         auto& slots = workers(stateful);
-        for(std::uint32_t i = 0; i < (stateful ? options.stateful_count : options.stateless_count);
+        for(std::uint32_t i = 0; i < (stateful ? options.stateful_count : options.min_stateless);
             i += 1) {
             slots.push_back({.name = std::format("{}-{}", stateful ? "SF" : "SL", slots.size())});
             if(!launch(slots.size() - 1, stateful)) {

@@ -25,6 +25,63 @@ MasterServer::SecondName* LSPClient::second_name(llvm::StringRef spelling) {
     return path_id ? server.find_second_name(*path_id, spelling) : nullptr;
 }
 
+LSPClient::RawResult LSPClient::logged(RawResult answer,
+                                       std::string method,
+                                       std::string file,
+                                       std::shared_ptr<RequestWaits> waits) {
+    constexpr auto slow = chrono::milliseconds(200);
+    auto started = chrono::steady_clock::now();
+    auto result = co_await std::move(answer).catch_cancel();
+    auto ms = [](chrono::steady_clock::duration time) {
+        return chrono::duration_cast<chrono::milliseconds>(time).count();
+    };
+    auto took = chrono::steady_clock::now() - started;
+    constexpr std::array<std::string_view, 3> waited_for = {"its compile",
+                                                            "the background index",
+                                                            "a free worker"};
+    std::string waited;
+    for(auto [kind, spent]: views::enumerate(waits->spent)) {
+        if(ms(spent) == 0) {
+            continue;
+        }
+        auto what = waited_for[static_cast<std::size_t>(kind)];
+        waited += waited.empty() ? std::format(", {} ms of it waiting for {}", ms(spent), what)
+                                 : std::format(", {} ms for {}", ms(spent), what);
+    }
+    auto code = [&](auto expected) {
+        return result.has_error() &&
+               result.error().code == static_cast<protocol::integer>(expected);
+    };
+    bool cancelled = result.is_cancelled() || code(protocol::LSPErrorCodes::RequestCancelled) ||
+                     code(protocol::LSPErrorCodes::ContentModified);
+    bool failed = !cancelled && result.has_error();
+    std::string line;
+    if(cancelled) {
+        line = std::format("{} on {} cancelled after {} ms{}", method, file, ms(took), waited);
+    } else if(failed) {
+        line = std::format("{} on {} failed after {} ms{}: {}",
+                           method,
+                           file,
+                           ms(took),
+                           waited,
+                           result.error().message);
+    } else {
+        line = std::format("{} on {} answered in {} ms{}", method, file, ms(took), waited);
+    }
+    if(failed || took > slow) {
+        LOG_INFO("{}", line);
+    } else {
+        LOG_DEBUG("{}", line);
+    }
+    if(result.is_cancelled()) {
+        co_await async::cancel();
+    }
+    if(result.has_error()) {
+        co_await async::fail(std::move(result).error());
+    }
+    co_return std::move(*result);
+}
+
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     auto path = feature::to_path(uri);
     if(!path) {

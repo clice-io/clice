@@ -6,7 +6,7 @@ import { expect } from "vitest";
 // buffer's definitions count over its file on disk.
 
 test("before the index", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("include/codec.h", s.counterparts("include/codec.h"));
     await t.show("src/codec.cpp", s.counterparts("src/codec.cpp"));
 });

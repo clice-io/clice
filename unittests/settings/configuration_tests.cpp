@@ -71,7 +71,7 @@ ZEST_CASE(ChoosePrecedence) {
     std::vector<SettingsIssue> issues;
     ZEXPECT(choose_configuration(settings, "", true, issues) == "release");
 
-    ZASSERT(write_selected_configuration(settings.project.cache_dir, "debug"));
+    ZASSERT(write_selected_configuration(settings.cache_dir, "debug"));
     ZEXPECT(choose_configuration(settings, "", true, issues) == "debug");
     ZEXPECT(choose_configuration(settings, "release", true, issues) == "release");
     ZEXPECT(issues.empty());
@@ -98,12 +98,12 @@ ZEST_CASE(UnknownRequest) {
 ZEST_CASE(StaleSelection) {
     TempDir tmp;
     auto settings = tagged(tmp);
-    ZASSERT(write_selected_configuration(settings.project.cache_dir, "gone"));
+    ZASSERT(write_selected_configuration(settings.cache_dir, "gone"));
     std::vector<SettingsIssue> issues;
     ZEXPECT(choose_configuration(settings, "", true, issues) == "release");
     ZASSERT(issues.size() == 1U);
     ZEXPECT(issues[0].severity == SettingsIssue::Severity::Warning);
-    ZEXPECT(read_selected_configuration(settings.project.cache_dir) == "gone");
+    ZEXPECT(read_selected_configuration(settings.cache_dir) == "gone");
     ZEXPECT(choose_configuration(settings, "debug", true, issues) == "debug");
 };
 
@@ -112,7 +112,7 @@ ZEST_CASE(UntaggedIgnoresSelection) {
     Settings settings;
     settings.rules.push_back(Rule{.compile_commands = {"."}});
     settings.finalize(CanonicalPath(Spelling::absolute(tmp.root)));
-    ZASSERT(write_selected_configuration(settings.project.cache_dir, "release"));
+    ZASSERT(write_selected_configuration(settings.cache_dir, "release"));
     std::vector<SettingsIssue> issues;
     ZEXPECT(choose_configuration(settings, "", true, issues).empty());
     ZEXPECT(issues.empty());

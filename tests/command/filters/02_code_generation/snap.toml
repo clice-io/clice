@@ -31,7 +31,7 @@ error: The command stays a driver command: Cannot find driver: missing-clang++
 exit = 1
 
 [lto."$ clice command convert -- missing-g++ -flto=jobserver main.cpp"]
-stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -flto=jobserver ${WS}/main.cpp"
+stdout = "missing-g++ --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -flto=jobserver ${WS}/main.cpp"
 stderr = '''
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-g++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-g++
@@ -39,7 +39,7 @@ error: The command stays a driver command: Cannot find driver: missing-g++
 exit = 1
 
 [lto."$ clice command convert -- missing-g++ -flto=8 main.cpp"]
-stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
+stdout = "missing-g++ --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-g++; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-g++

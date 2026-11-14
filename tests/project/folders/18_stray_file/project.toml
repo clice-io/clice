@@ -1,0 +1,10 @@
+compiles = false
+
+# elsewhere/ is in neither folder and has no database of its own.
+[units]
+"alpha/main.cpp" = ["-DIN_ALPHA"]
+"beta/main.cpp" = ["-DIN_BETA"]
+
+[databases]
+alpha = ["alpha/main.cpp"]
+beta = ["beta/main.cpp"]

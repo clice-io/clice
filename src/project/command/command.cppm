@@ -1,5 +1,6 @@
 module clice:project.command;
 
+import :command.edit;
 import :command.table;
 import :index.symbol;
 import :project.memo;
@@ -264,13 +265,10 @@ struct ListedContext {
 /// a background resolution (indexing, batch runs, `clice inspect`) leaves
 /// them empty and so depends on nothing but the project on disk.
 struct CommandRequest {
-    /// Per-run additions to the database driver command (a lint plan's
-    /// clang-tool extra args), applied before toolchain resolution so the
-    /// driver interprets them. Unlike rule appends they are never
-    /// NVCC-translated; prepends land right after the binary name, appends
-    /// win over rule appends.
-    llvm::ArrayRef<std::string> extra_prepend;
-    llvm::ArrayRef<std::string> extra_append;
+    /// The run's own edits of the database driver command (a lint plan's
+    /// clang-tidy args), applied before toolchain resolution so the driver
+    /// interprets them.
+    ExtraArgs extra;
 
     /// The user's context choice for the file (clice/switchContext).
     const ContextChoice* choice = nullptr;

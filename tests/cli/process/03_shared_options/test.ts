@@ -18,7 +18,7 @@ test("log level", async (t) => {
 // clice.toml misspells, which the session log keeps beside its info lines;
 // `info` shows the info lines as well.
 test("valid log levels", async (t) => {
-    t.disk.write("clice.toml", "[project]\nmisspelled = 1\n");
+    t.disk.write("clice.toml", "[workers]\nmisspelled = 1\n");
     await t.cli("index --jobs 1", { env: { CLICE_LOG_LEVEL: "error" } });
     const [log] = t.disk.list(".clice/logs/*/index.log");
     await t.show("session log levels", levels(t.disk.read(log ?? ""), /^\[[^\]]*\] \[(\w+)\]/));

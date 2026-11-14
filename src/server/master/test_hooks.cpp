@@ -7,9 +7,10 @@ import :worker.test_hooks;
 
 namespace clice {
 
-/// Whether the project's background index has work wait_idle() waits for.
+/// Whether the project's index has work wait_idle() waits for: the wait for
+/// the writer lock before its background index, or that index's own.
 static bool indexing(ServedProject& project) {
-    return !project.project.background_index.idle();
+    return project.project.index_waits || !project.project.background_index.idle();
 }
 
 /// The requests of `editor` wait_idle() waits for: all but syncs.
@@ -60,6 +61,12 @@ std::vector<std::string> MasterServer::pending_work(const ipc::JSONPeer& editor)
     for(auto* project: waiting_projects) {
         lines.push_back(
             std::format("project {} waiting for its previous one to go", project->project.root));
+    }
+    for(auto& project: projects) {
+        if(project->project.index_waits) {
+            lines.push_back(
+                std::format("project {} waiting for the index writer lock", project->project.root));
+        }
     }
     for(auto& hold: hooks.holds()) {
         if(hold.parked) {

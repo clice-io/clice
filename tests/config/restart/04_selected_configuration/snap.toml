@@ -22,7 +22,7 @@ pushes = [
     [],
     [
         {
-            at = "⟦⟧[project]",
+            at = "⟦⟧[[rules]]",
             severity = "warning",
             message = "Build configuration release selected; it applies once clice restarts",
             source = "clice",
@@ -36,7 +36,7 @@ pushes = [
     [],
     [
         {
-            at = "⟦⟧[project]",
+            at = "⟦⟧[[rules]]",
             severity = "warning",
             message = "Build configuration release selected; it applies once clice restarts",
             source = "clice",

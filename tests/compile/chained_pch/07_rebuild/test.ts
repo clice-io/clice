@@ -7,7 +7,7 @@ import { test, type Serve, type TestContext } from "@clice/tools/testing";
 
 const WRITER = "build/CMakeFiles/app.dir/cmake_pch.hxx.cxx";
 const PCH = ".clice/cache/*/pch/*.pch";
-const config = { project: { enable_indexing: false } };
+const UNINDEXED = { lastRule: { background_index: false } };
 
 async function builds(s: Serve): Promise<{ base: number; top: number }> {
     await s.sync();
@@ -24,7 +24,7 @@ function base(t: TestContext): string {
 }
 
 test("a header of the base changes", async (t) => {
-    const s = await t.start({ config });
+    const s = await t.start(UNINDEXED);
     expect(await s.errors("main.cpp")).toEqual([]);
     t.disk.edit("include/base.h", { replace: "area(int side)", with: "area(int side, int scale)" });
     await t.show("edited", s.errors("main.cpp"));
@@ -35,7 +35,7 @@ test("a header of the base changes", async (t) => {
 });
 
 test("two edits in a row", async (t) => {
-    const s = await t.start({ config });
+    const s = await t.start(UNINDEXED);
     expect(await s.errors("main.cpp")).toEqual([]);
     t.disk.edit("include/base.h", { replace: "area(int side)", with: "area(int side, int scale)" });
     t.disk.edit("include/base.h", {
@@ -47,7 +47,7 @@ test("two edits in a row", async (t) => {
 });
 
 test("the base fails to build", async (t) => {
-    const s = await t.start({ config });
+    const s = await t.start(UNINDEXED);
     expect(await s.errors("main.cpp")).toEqual([]);
     t.disk.edit("include/base.h", { replace: "area(int side)", with: "area(missing side)" });
     await t.show("broken", s.diagnostics("main.cpp"));
@@ -60,7 +60,7 @@ test("the base fails to build", async (t) => {
 });
 
 test("the base is gone while the server runs", async (t) => {
-    const s = await t.start({ config });
+    const s = await t.start(UNINDEXED);
     expect(await s.errors("main.cpp")).toEqual([]);
     t.disk.rm(base(t));
     s.edit("main.cpp", { replace: "twice_area(2)", with: "twice_area(5)" });
@@ -72,7 +72,7 @@ test("the base is gone while the server runs", async (t) => {
 });
 
 test("the base is gone over a restart", async (t) => {
-    const s = await t.start({ config });
+    const s = await t.start(UNINDEXED);
     expect(await s.errors("main.cpp")).toEqual([]);
     await s.offline(() => {
         t.disk.rm(base(t));

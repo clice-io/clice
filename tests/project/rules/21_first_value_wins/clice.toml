@@ -1,0 +1,6 @@
+[[rules]]
+patterns = ["keep/**"]
+background_index = true
+
+[[rules]]
+background_index = false

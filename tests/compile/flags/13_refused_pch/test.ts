@@ -7,7 +7,7 @@ import { test } from "@clice/tools/testing";
 // their own flags select.
 
 test("refused pch", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     for (const file of ["main.cpp", "other.cpp"]) {
         expect(await s.errors(file)).toEqual([]);
     }

@@ -43,7 +43,7 @@ python = ">=3.13"
 nodejs = ">=24"
 # The LLVM tools the artifact checks run (scripts/check_artifact_deps.py), of
 # the xclang release MODULE.bazel builds with.
-xclang = "==23.1.5.1"
+xclang = "==23.1.5.2"
 
 # nodejs bundles npm on every platform including win-arm64. Floor 24: the tools
 # run as bare .ts (type stripping, default since node 23.6) and the
@@ -63,7 +63,7 @@ ninja = "*"
 [feature.test.target.linux-64.dependencies]
 # scripts/symbolize.py reads the release's GSYM with llvm-gsymutil, here
 # xclang's.
-xclang = "==23.1.5.1"
+xclang = "==23.1.5.2"
 
 # The NVCC toolchain tests drive a real nvcc; cudart is the runtime the
 # query compiles against and curand is included unconditionally by clang's
@@ -78,7 +78,7 @@ libcurand-dev = "*"
 [feature.toolchains.target.linux-64.dependencies]
 gxx = "15.*"
 clangxx = "21.*"
-xclang = "==23.1.5.1"
+xclang = "==23.1.5.2"
 dpcpp_linux-64 = "2026.2.*"
 
 [feature.toolchains.target.win-64.dependencies]
@@ -89,16 +89,16 @@ libcurand-dev = "*"
 
 # The same tools on arm64 Linux.
 [feature.test.target.linux-aarch64.dependencies]
-xclang = "==23.1.5.1"
+xclang = "==23.1.5.2"
 
 # On macOS, the system Apple clang emits vendor-specific flags that upstream
 # LLVM cannot parse. Providing upstream clang in PATH prevents fallback to
 # /usr/bin/clang++ for the tests.
 [feature.test.target.osx-64.dependencies]
-xclang = "==23.1.5.1"
+xclang = "==23.1.5.2"
 
 [feature.test.target.osx-arm64.dependencies]
-xclang = "==23.1.5.1"
+xclang = "==23.1.5.2"
 
 # On Windows LLVM's tools alone, for llvm-gsymutil: the clang the tests find
 # stays the one they find without it.
@@ -246,10 +246,10 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 # Same mitigation as feature.test: the server the editors start queries
 # xclang's clang for the fixtures' commands.
 [feature.editor.target.osx-arm64.dependencies]
-xclang = "==23.1.5.1"
+xclang = "==23.1.5.2"
 
 [feature.editor.target.osx-64.dependencies]
-xclang = "==23.1.5.1"
+xclang = "==23.1.5.2"
 
 # The editors' fixtures (tests/editors/NN_name) copied for one editor's
 # end-to-end tests under .cache/editors/<editor>, each named after its
@@ -263,7 +263,7 @@ depends-on = ["install-tests"]
 [feature.editor.tasks.nvim-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice .cache/editors/nvim && \
+CLICE_TEST_HOOKS=1 nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice .cache/editors/nvim && \
 node tools/testing/editors/gate.ts .cache/editors/nvim
 """
 depends-on = [{ task = "editor-prepare", args = ["nvim"] }]
@@ -272,7 +272,7 @@ depends-on = [{ task = "editor-prepare", args = ["nvim"] }]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "editors/vscode"
 cmd = """
-CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test && \
+CLICE_TEST_HOOKS=1 CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test && \
 node $PIXI_PROJECT_ROOT/tools/testing/editors/gate.ts $PIXI_PROJECT_ROOT/.cache/editors/vscode
 """
 depends-on = ["install-vscode", { task = "editor-prepare", args = ["vscode"] }]
@@ -281,7 +281,7 @@ depends-on = ["install-vscode", { task = "editor-prepare", args = ["vscode"] }]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "editors/vscode"
 cmd = """
-CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm test && \
+CLICE_TEST_HOOKS=1 CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm test && \
 node $PIXI_PROJECT_ROOT/tools/testing/editors/gate.ts $PIXI_PROJECT_ROOT/.cache/editors/vscode
 """
 depends-on = ["install-vscode", { task = "editor-prepare", args = ["vscode"] }]
@@ -368,6 +368,17 @@ format = {
         "format-yaml"
     ]
 }
+
+# conda-forge's prettier is a batch file on Windows, which fd, unaware of
+# PATHEXT, runs only by its full name.
+[feature.format.target.win-64.tasks]
+format-web = "fd -H -e js -e mjs -e ts -e css -X prettier.bat --write"
+format-markdown = "fd -H -e md -X prettier.bat --write"
+format-json = "fd -H -e json -E package-lock.json -E clice-config.schema.json -X prettier.bat --write"
+format-yaml = """
+fd -H -e yaml -e yml -E '*.snap.yml' -X prettier.bat --write && \
+fd -H "^\\.clang-(format|tidy)$" -X prettier.bat --write --parser yaml
+"""
 
 # ============================================================================== #
 #                                     LINT                                       #

@@ -3,8 +3,10 @@ stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}
   command:   ${WS}/missing-cc -std=c++20 -Werror -c main.cpp -o main.o
-  resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 -D FROM_RULE ${WS}/main.cpp
+  resolved:  ${WS}/missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 -D FROM_RULE ${WS}/main.cpp
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
+
+settings:  the defaults
 '''
 stderr = "warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands"
 exit = 0
@@ -33,6 +35,7 @@ stdout = '''
         "directory": "${WS}",
         "arguments": [
           "${WS}/missing-cc",
+          "--no-default-config",
           "-fno-delayed-template-parsing",
           "-resource-dir",
           "${RESOURCE}",
@@ -43,6 +46,44 @@ stdout = '''
         ]
       },
       "toolchainError": "Driver ${WS}/missing-cc not found or not executable"
+    }
+  ],
+  "settings": [
+    {
+      "name": "query_toolchain",
+      "value": "true"
+    },
+    {
+      "name": "background_index",
+      "value": "true"
+    },
+    {
+      "name": "skip_function_body",
+      "value": "unset"
+    },
+    {
+      "name": "index_function_body",
+      "value": "unset"
+    },
+    {
+      "name": "readonly",
+      "value": "off"
+    },
+    {
+      "name": "self_contained",
+      "value": "unset"
+    },
+    {
+      "name": "other_contexts",
+      "value": "true"
+    },
+    {
+      "name": "lint",
+      "value": "true"
+    },
+    {
+      "name": "format",
+      "value": "true"
     }
   ]
 }

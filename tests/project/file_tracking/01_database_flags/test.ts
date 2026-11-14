@@ -23,7 +23,7 @@ test("cdb stamped tick settles", async (t) => {
 });
 
 test("cdb polling loop live", async (t) => {
-    const s = await t.start({ config: { tracker: { workspace_poll_seconds: 1 } } });
+    const s = await t.start({ config: { poll_seconds: 1 } });
     await t.show("before", s.errors("main.cpp"));
     // No poll: the database loop's own ticks see the stamp settle and
     // reload.

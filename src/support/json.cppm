@@ -16,6 +16,24 @@ constexpr inline json::encode_options path_json{.invalid_utf8 = codec::invalid_u
 /// written as the documentation lists it.
 using LowercaseNames = codec::enum_names<kotatsu::naming::rename_policy::lower_snake>;
 
+/// The settings' word for a number the machine picks: `"auto"`.
+enum class Automatic : std::uint8_t { Auto };
+
+/// The settings' word for no limit: `"unlimited"`.
+enum class NoLimit : std::uint8_t { Unlimited };
+
+/// A count the settings give, or leave to the machine.
+using Count = std::variant<Automatic, std::uint32_t>;
+
+/// A limit the settings give, or lift.
+using Limit = std::variant<NoLimit, std::uint32_t>;
+
+/// The most `limit` lets through.
+inline std::uint32_t at_most(const Limit& limit) {
+    auto* count = std::get_if<std::uint32_t>(&limit);
+    return count ? *count : std::numeric_limits<std::uint32_t>::max();
+}
+
 /// `value` as the client's JSON, or `fallback` when it cannot be encoded.
 /// Text that is not UTF-8 — bytes a user's source may hold — is written as
 /// U+FFFD: what reaches the client must stay JSON it can read.
@@ -38,3 +56,10 @@ codec::raw_value to_raw(const T& value) {
 }
 
 }  // namespace clice
+
+/// The settings spell them in lowercase, as the documentation lists them.
+template <>
+struct kotatsu::codec::repr<clice::Automatic> : clice::LowercaseNames {};
+
+template <>
+struct kotatsu::codec::repr<clice::NoLimit> : clice::LowercaseNames {};

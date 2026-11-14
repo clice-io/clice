@@ -3,6 +3,7 @@ module clice;
 import :command.file_kind;
 import :project.command;
 import :project.project;
+import :settings.rules;
 import :vfs.disk_state;
 
 namespace clice {
@@ -12,6 +13,9 @@ std::optional<bool> Project::self_contained(const SelfContainmentKey& key, bool 
     // An X-macro list and the like compile only inside their includer.
     if(is_context_header_path(files.resolve(key.first))) {
         return false;
+    }
+    if(auto declared = rules.self_contained(files.resolve(key.first))) {
+        return declared;
     }
     auto* entry = hosting.self_containment.lookup(files, key);
     if(!entry) {

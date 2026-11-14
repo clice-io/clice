@@ -9,6 +9,7 @@ import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :project.graph.unit;
 import :project.project;
+import :settings.rules;
 import :settings.settings;
 import :support.logging;
 import :support.text;
@@ -133,7 +134,6 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     }
 
     if(!project.store) {
-        LOG_WARN("No PCH for {}: the cache directory cannot be used", request.params.file);
         co_return Result::Failed;
     }
     if(refused(project, pch_key, request.params.file)) {
@@ -149,6 +149,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     auto& bp = request.params;
     bp.project_root = project.root.str();
     bp.output_path = pending.tmp_path;
+    bp.indexing.function_bodies = project.rules.function_body_rules();
     std::optional<CacheStore::PendingEntry> pending_idx;
     IndexTransfer transfer;
     if(!bp.whole_file) {
@@ -336,6 +337,7 @@ PCHRequest Project::declared_pch_request(const CommandRef& unit) {
         auto& params = request.params;
         request.pch_key = cache_key({clang::getClangFullVersion(),
                                      pch_build_rule(false, false),
+                                     body_rules_key(rules),
                                      database_key.str(),
                                      params.directory,
                                      params.file,
@@ -462,6 +464,7 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     bool modular = imports.modular();
     auto pch_key = cache_key({clang::getClangFullVersion(),
                               pch_build_rule(skip_bodies, modular),
+                              body_rules_key(rules),
                               database_key.str(),
                               resolution.directory,
                               path::parent(path),
@@ -517,7 +520,7 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
                                                         const Imports& imports,
                                                         BuildOptions options) {
     BuiltPCH built;
-    if(settings.project.readonly == ReadonlyMode::On) {
+    if(rules.readonly(file_table.resolve(file)) == ReadonlyMode::On) {
         co_return built;
     }
     // Through depend, the attempt's edge to the PCH makes a staleness

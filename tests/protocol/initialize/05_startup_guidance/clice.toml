@@ -1,7 +1,5 @@
-[project]
 cache_dir = "${workspace}/.clice"
-enable_indexing = false
-test_hooks = true
+poll_seconds = 0
 
-[tracker]
-workspace_poll_seconds = 0
+[[rules]]
+background_index = false

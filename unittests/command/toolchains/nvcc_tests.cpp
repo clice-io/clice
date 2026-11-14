@@ -886,8 +886,8 @@ ZEST_CASE(ExtrasStayClangDialect) {
     CommandEdits options;
     llvm::SmallVector<std::string> prepend = {"-fno-gpu-rdc"};
     llvm::SmallVector<std::string> append = {"-fgpu-rdc"};
-    options.extra_prepend = prepend;
-    options.extra_append = append;
+    options.extra.prepend = prepend;
+    options.extra.append = append;
 
     auto flags = render_entry(db, "/tmp/kern.cu", options);
     ZEXPECT(llvm::StringRef(flags[1]) == "-fno-gpu-rdc");

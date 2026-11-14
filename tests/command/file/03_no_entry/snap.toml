@@ -1,4 +1,5 @@
 [test."$ clice command util.h"]
+stdout = "settings:  the defaults"
 stderr = "error: No compilation database lists util.h"
 exit = 1
 

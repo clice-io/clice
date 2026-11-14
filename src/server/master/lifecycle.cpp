@@ -117,7 +117,7 @@ void MasterServer::log_settings(const ServedProject& project) const {
 }
 
 void MasterServer::log_into(const ServedProject& project) {
-    auto& logging_dir = project.project.settings.project.logging_dir;
+    auto& logging_dir = project.project.settings.logging_dir;
     if(logging_dir.empty()) {
         return;
     }
@@ -160,29 +160,16 @@ void MasterServer::initialize() {
     WorkerPoolOptions pool_opts;
     pool_opts.stateful_count = 0;
     pool_opts.stateless_count = 0;
-    pool_opts.min_stateless = 0;
     pool_opts.max_stateless = 0;
-    bool unbounded = false;
-    auto machine_resident = default_max_resident(memory_state({}).limit);
-    std::size_t resident = 0;
     for(auto& project: projects) {
-        auto& settings = project->project.settings.project;
-        pool_opts.stateful_count =
-            std::max(pool_opts.stateful_count, settings.stateful_worker_count);
-        pool_opts.stateless_count =
-            std::max(pool_opts.stateless_count, settings.stateless_worker_count);
-        pool_opts.min_stateless =
-            std::max(pool_opts.min_stateless, settings.min_stateless_worker_count);
-        pool_opts.max_stateless =
-            std::max(pool_opts.max_stateless, settings.max_stateless_worker_count);
-        // 0 leaves the ceiling to the core count, the largest one.
-        unbounded = unbounded || settings.max_stateless_worker_count == 0;
-        auto documents = settings.max_resident_documents;
-        resident = std::max<std::size_t>(resident, documents == 0 ? machine_resident : documents);
+        auto& workers = project->project.settings.workers;
+        pool_opts.stateful_count = std::max(pool_opts.stateful_count, workers.foreground);
+        pool_opts.stateless_count = std::max(pool_opts.stateless_count, workers.background_count());
+        pool_opts.max_stateless = std::max(pool_opts.max_stateless, workers.max_count());
     }
-    pool_opts.max_resident = resident;
-    if(unbounded) {
-        pool_opts.max_stateless = 0;
+    // Let the tests evict documents with a few open.
+    if(auto documents = env_integer("CLICE_TEST_MAX_ASTS")) {
+        pool_opts.max_resident = *documents;
     }
     // Let integration tests hang a worker without waiting out the real
     // deadline.
@@ -195,7 +182,7 @@ void MasterServer::initialize() {
         log_settings(*project);
     }
 
-    if(projects.front()->project.settings.project.test_hooks) {
+    if(env_string("CLICE_TEST_HOOKS") == "1") {
         pool.hooks = &hooks;
     }
     if(pool.start(pool_opts)) {
@@ -211,7 +198,7 @@ void MasterServer::initialize() {
     // The documents opened before wait for their owners.
     for(auto& [path_id, document]: documents) {
         discover_around(path_id);
-        auto& owner = pick_owner(path_id);
+        auto& owner = document_owner(path_id);
         document.owner = &owner;
         owner.adopt(path_id);
     }
@@ -234,8 +221,7 @@ async::task<> MasterServer::poll_task() {
                 hooks.happened(LoopEvent::DiskChange);
             }
             for(auto& project: projects) {
-                if(project->project.settings.tracker.workspace_poll_seconds > 0 &&
-                   project->reload_databases(false)) {
+                if(project->project.settings.poll_seconds > 0 && project->reload_databases(false)) {
                     hooks.happened(LoopEvent::DatabaseChange);
                 }
             }

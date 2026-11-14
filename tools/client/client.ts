@@ -183,30 +183,26 @@ function offering(
 /// the test defaults — one worker of each kind (halves the per-test spawn
 /// cost; tests needing more pass their own counts), background polling
 /// disabled (tests drive ticks deterministically through the
-/// clice/internal/poll hook), background indexing without the idle wait
-/// that batches an editor's keystrokes (tests wait through
-/// clice/internal/sync, not the clock), and the test hooks on.
+/// clice/internal/poll hook), and background indexing without the idle
+/// wait that batches an editor's keystrokes (tests wait through
+/// clice/internal/sync, not the clock). The test hooks are the
+/// environment's (serverEnv).
 export function initializationOptionsFor(
     ws: Workspace,
     options: InitializeOptions,
 ): Record<string, unknown> {
     const initializationOptions = { ...(options.initializationOptions ?? {}) };
-    const project = {
-        ...((initializationOptions["project"] ?? {}) as Record<string, unknown>),
-    };
-    project["cache_dir"] = options.cacheDir ?? ws.path(".clice");
-    const tracker = {
-        ...((initializationOptions["tracker"] ?? {}) as Record<string, unknown>),
-    };
+    initializationOptions["cache_dir"] = options.cacheDir ?? ws.path(".clice");
     if (options.testDefaults ?? true) {
-        project["stateless_worker_count"] ??= 1;
-        project["stateful_worker_count"] ??= 1;
-        project["idle_timeout_ms"] ??= 0;
-        project["test_hooks"] ??= true;
-        tracker["workspace_poll_seconds"] ??= 0;
+        const workers = {
+            ...((initializationOptions["workers"] ?? {}) as Record<string, unknown>),
+        };
+        workers["background"] ??= 1;
+        workers["foreground"] ??= 1;
+        workers["background_delay_ms"] ??= 0;
+        initializationOptions["workers"] = workers;
+        initializationOptions["poll_seconds"] ??= 0;
     }
-    initializationOptions["project"] = project;
-    initializationOptions["tracker"] = tracker;
     return initializationOptions;
 }
 

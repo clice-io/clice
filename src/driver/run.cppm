@@ -4,6 +4,7 @@ import :driver.driver;
 import :feature.query;
 import :index.query;
 import :index.database.writer_lock;
+import :project.discovery;
 import :project.background;
 import :project.project;
 import :server.control;
@@ -35,6 +36,8 @@ inline std::expected<std::pair<Spelling, LoadedSettings>, ProjectError>
     options.configuration = where.build.configuration;
     CanonicalPath canonical(*root);
     logging::set_project_roots({canonical.str()});
+    auto shown = root->str();
+    options.root_name = shown;
     auto loaded = load_settings(canonical, options);
     std::vector<std::string> errors;
     for(auto& issue: loaded.issues) {
@@ -338,25 +341,34 @@ inline void show_path(FileTable& files, std::string& path) {
 
 /// Batch startup: the command's settings with the run's overrides
 /// (`workers` for the project's), the session file logger, and the worker
-/// pool. `log_tag` names the run's log after the subcommand.
-inline bool start_batch(BatchRun& run,
-                        const BatchProject& batch,
-                        std::uint32_t workers,
-                        llvm::StringRef log_tag) {
+/// pool; why the run cannot start, or has nothing to work on, else empty.
+/// `log_tag` names the run's log after the subcommand.
+inline std::string start_batch(BatchRun& run,
+                               const BatchProject& batch,
+                               std::uint32_t workers,
+                               llvm::StringRef log_tag) {
     auto& project = run.project;
     run.files.spell_root(batch.root);
     project.root = CanonicalPath(batch.root);
     project.settings = batch.loaded.settings;
-    auto& settings = project.settings.project;
-    settings.idle_timeout_ms = 0;
+    auto& settings = project.settings;
+    settings.workers.background_delay_ms = 0;
     if(workers != 0) {
-        settings.stateless_worker_count = workers;
-        settings.min_stateless_worker_count =
-            std::min(settings.min_stateless_worker_count, workers);
-        settings.max_stateless_worker_count = workers;
+        settings.workers.background = workers;
+        settings.workers.max = workers;
     }
 
     logging::stderr_logger(log_tag);
+    // A run with no file to work on says so before it writes anything
+    // under the root, its session log or its cache directory: without a
+    // database and a rule giving sources, only an earlier run's index
+    // could name one.
+    if(!fs::exists(settings.cache_dir)) {
+        project.use_configuration(batch.loaded.configuration);
+        if(!project.rules.declares_sources() && discovered_databases(project.root).empty()) {
+            return std::format("Nothing to {}: {}", log_tag, project.why_no_members(batch.root));
+        }
+    }
     if(!settings.logging_dir.empty()) {
         auto session_dir = logging::start_session_log(settings.logging_dir);
         if(logging::file_logger(session_dir)) {
@@ -377,15 +389,39 @@ inline bool start_batch(BatchRun& run,
     WorkerPoolOptions pool_opts;
     // Stateful workers host open documents; a batch run has none.
     pool_opts.stateful_count = 0;
-    pool_opts.stateless_count = settings.stateless_worker_count;
-    pool_opts.min_stateless = settings.min_stateless_worker_count;
-    pool_opts.max_stateless = settings.max_stateless_worker_count;
+    pool_opts.stateless_count = settings.workers.background_count();
+    pool_opts.max_stateless = settings.workers.max_count();
+    // A run has its units queued from the start: every worker starts at once.
+    pool_opts.min_stateless = pool_opts.stateless_count;
     pool_opts.session_dir = run.session_dir;
     if(!run.pool.start(pool_opts)) {
         LOG_ANOMALY(WorkerSpawnFail, "Failed to start worker pool");
-        return false;
+        return "the worker processes did not start";
     }
-    return true;
+    return {};
+}
+
+/// The index database a batch run writes its index into: open, or opened
+/// once the writer lock open() found held elsewhere comes free
+/// (Project::wait_for_writer). Else why there is none: the run's whole
+/// product would then die with it.
+inline async::task<std::string> writes_index(Project& project, Project::Opened& opened) {
+    auto& cache_dir = project.settings.cache_dir;
+    if(project.index_waits) {
+        auto lock = co_await project.wait_for_writer();
+        if(!lock) {
+            co_return index::held_writer_message({.state = index::WriterStatus::State::Held,
+                                                  .holder = index::WriterLock::holder(cache_dir)},
+                                                 cache_dir);
+        }
+        project.open_index(std::move(*lock), opened);
+    }
+    if(!project.database) {
+        co_return std::format("Cannot persist the index at {}: {}",
+                              std::string_view(cache_dir),
+                              opened.unwritable);
+    }
+    co_return std::string();
 }
 
 /// The shared tail of contract 2, then the pool.
@@ -448,12 +484,13 @@ struct ServerIndexed {
 /// serving writer when a server holds the lock, else by a batch run of this
 /// process, `on_progress` reporting it. Either runs a pass over the build
 /// under the hash gate, so only units whose inputs changed are recompiled
-/// — and an absent index gets built from nothing. An error when another
-/// process holds the lock, or the server refuses.
-inline std::expected<std::variant<ServerIndexed, BatchResult>, std::string>
+/// — and an absent index gets built from nothing. An error when the server
+/// refuses or does not answer; a batch run that finds another process
+/// keeping the lock fails (BatchResult::exit_code).
+inline std::expected<std::variant<ServerIndexed, BatchResult>, control::AskError>
     index_project(BatchProject project,
                   llvm::function_ref<void(const BatchProgress&)> on_progress) {
-    auto& cache_dir = project.loaded.settings.project.cache_dir;
+    auto& cache_dir = project.loaded.settings.cache_dir;
     auto writer = index::check_writer(cache_dir);
     switch(writer.state) {
         case index::WriterStatus::State::Server: {
@@ -463,9 +500,9 @@ inline std::expected<std::variant<ServerIndexed, BatchResult>, std::string>
             }
             return ServerIndexed{.pid = writer.endpoint.pid, .result = std::move(*result)};
         }
-        case index::WriterStatus::State::Held: {
-            return std::unexpected(index::held_writer_message(writer, cache_dir));
-        }
+        // A holder that cannot be asked — a batch run, a server on its way
+        // out — may let go soon: the run waits for it (writes_index).
+        case index::WriterStatus::State::Held:
         case index::WriterStatus::State::Free: break;
     }
     return run_batch_index({.project = std::move(project), .on_progress = on_progress});
@@ -486,7 +523,12 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
     };
     auto indexed = index_project({.root = root, .loaded = loaded}, report_progress);
     if(!indexed) {
-        return std::unexpected(std::move(indexed.error()));
+        // The index on disk answers instead, as old as the server left it.
+        if(indexed.error().unanswered) {
+            LOG_WARN("{}; answering from the index as it was saved", indexed.error().message);
+            return std::vector<std::string>();
+        }
+        return std::unexpected(std::move(indexed.error().message));
     }
     if(auto* server = std::get_if<ServerIndexed>(&*indexed)) {
         return std::move(server->result.failed);

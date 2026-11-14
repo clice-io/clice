@@ -6,7 +6,7 @@ import { test } from "@clice/tools/testing";
 // and parse the header with FAST_PATH defined.
 
 test("unit define", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("main.cpp", s.diagnostics("main.cpp"));
     await t.show("level", s.definition(t.marker("level")));
 });

@@ -5,10 +5,13 @@ import { test } from "@clice/tools/testing";
 // importer changes or is saved, or the module itself changes, and another
 // importer learns the crash without one of its own.
 
-const QUIET = { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } };
+const QUIET = {
+    config: { diagnostics: { clang_tidy: false } },
+    lastRule: { background_index: false },
+};
 
 test(async (t) => {
-    const s = await t.start({ config: QUIET, crash: { request: "buildPcm", file: "math.cppm" } });
+    const s = await t.start({ ...QUIET, crash: { request: "buildPcm", file: "math.cppm" } });
     const call = t.at("main.cpp", "return |add(1, 2)");
     s.open("main.cpp");
     await t.show("hover", s.hover(call));

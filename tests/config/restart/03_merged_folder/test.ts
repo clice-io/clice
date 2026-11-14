@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 test(async (t) => {
     const s = await t.start({ folders: [".", "sub"] });
     await s.sync();
-    t.disk.write("sub/clice.toml", "[project]\nenable_indexing = false\n");
+    t.disk.write("sub/clice.toml", "[[rules]]\nbackground_index = false\n");
     await s.poll("workspace");
     await t.show("asked", await s.restarted());
 });

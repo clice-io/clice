@@ -10,7 +10,7 @@ import { test } from "@clice/tools/testing";
 // the declarations in the file itself; counter.cppm's fragment imports and
 // goes without one. The open file's index has them too.
 test("compiles", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     for (const file of ["impl.cppm", "other.cppm", "lib.cppm", "counter.cppm", "main.cpp"]) {
         expect(await s.errors(file)).toEqual([]);
     }
@@ -34,7 +34,7 @@ test("compiles", async (t) => {
 // above the fragment's declarations leaves the file to parse whole, with
 // the include's own error.
 test("edits", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     s.open("other.cppm");
     s.edit("other.cppm", { replace: "    return 1;", with: "    return missing;" });
     await t.show("error", s.errors("other.cppm"));

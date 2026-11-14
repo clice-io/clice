@@ -44,7 +44,7 @@ test("body header edit", async (t) => {
 });
 
 test("both edits compile once", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("main.cpp")).toEqual([]);
     t.disk.edit("pre.h", { replace: "int pre()", with: "int pre_renamed()" });
     t.disk.edit("late.h", { replace: "int late()", with: "int late_renamed()" });
@@ -66,7 +66,7 @@ test("shared header edit", async (t) => {
 });
 
 test("same bytes are no change", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("main.cpp")).toEqual([]);
     const call = t.at("main.cpp", "return |pre();");
     await s.hover(call);

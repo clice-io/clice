@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // before the compile or the AST after it: go-to-definition reaches the
 // module.
 test("index", async (t) => {
-    const s = await t.start({ config: { project: { readonly: "auto" } } });
+    const s = await t.start({ lastRule: { readonly: "auto" } });
     s.open("main.cppm", { pull: false });
     await s.indexed();
     await t.show("main.cppm", s.documentLinks("main.cppm"));

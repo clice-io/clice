@@ -977,7 +977,11 @@ async::task<std::expected<Job, std::string>> ask_nvcc(llvm::ArrayRef<std::string
     /// the running machine's triple.
     std::expected<Job, std::string> job;
     if(cl_host) {
-        job = ask_clang(cuda_args, cl_driver_mode(*host, command.host), cwd);
+        auto mode = cl_driver_mode(*host, command.host);
+        if(!reads_clang_config(command.host)) {
+            mode.push_back(no_clang_config.str());
+        }
+        job = ask_clang(cuda_args, mode, cwd);
     } else if(!host_output->gcc_job.empty()) {
         job = query_as_gcc(*host_output, cuda_args, cwd);
     } else {

@@ -7,7 +7,7 @@ import { running, test, type Serve, type TestContext } from "@clice/tools/testin
 
 /// A server whose stateful worker runs the endless compile.
 async function hung(t: TestContext): Promise<Serve> {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     const park = await s.park("compile", "main.cpp", { at: "worker" });
     s.open("main.cpp", { pull: false });
     void s.hover(t.at("main.cpp", "constexpr long |x")).catch(() => undefined);

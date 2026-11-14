@@ -30,7 +30,7 @@ ext::ListConfigurationsResult list_configurations(const Project& project) {
             build.databases.push_back(feature::to_uri(database));
         }
     }
-    result.selected = read_selected_configuration(project.settings.project.cache_dir);
+    result.selected = read_selected_configuration(project.settings.cache_dir);
     result.default_configuration = project.settings.fallback_configuration().str();
     return result;
 }
@@ -51,8 +51,7 @@ static ext::SwitchConfigurationResult select_configuration(const Project& projec
         return refuse(
             std::format("the server runs with --configuration {}, which pins it", pinned));
     }
-    if(auto written = write_selected_configuration(project.settings.project.cache_dir, name);
-       !written) {
+    if(auto written = write_selected_configuration(project.settings.cache_dir, name); !written) {
         return refuse(std::format("the selection cannot be saved: {}", written.error().message()));
     }
     LOG_INFO("Selected configuration {}; it becomes active at the next start", name);

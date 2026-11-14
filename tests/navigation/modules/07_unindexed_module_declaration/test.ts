@@ -5,7 +5,9 @@ import { test } from "@clice/tools/testing";
 // all the same. The importer's compile is held, so the requests land before
 // it as they do when a user is quick, and find the declaration in that index.
 test(async (t) => {
-    const s = await t.start({ config: { rules: [{ patterns: ["math.cppm"], index: false }] } });
+    const s = await t.start({
+        config: { rules: [{ patterns: ["math.cppm"], background_index: false }] },
+    });
     await s.indexed();
     const compile = await s.park("compile", "main.cpp", { at: "worker" });
     s.open("main.cpp");

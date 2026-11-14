@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // leaves the store and A starts rebuilding it: M reads A's build only once
 // it is done. only.cpp answers once B is built, by when M has read A.
 test("rebuilt meanwhile", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("main.cpp")).toEqual([]);
     expect(await s.errors("other.cpp")).toEqual([]);
     expect(await s.errors("only.cpp")).toEqual([]);
@@ -31,7 +31,7 @@ test("rebuilt meanwhile", async (t) => {
 
 // The same, with nothing asking for A meanwhile.
 test("lost meanwhile", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("main.cpp")).toEqual([]);
     const b = await s.park("pcm", "b.cppm", { at: "reply" });
     t.disk.edit("b.cppm", { replace: "return 2;", with: "return 3;" });

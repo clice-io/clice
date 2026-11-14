@@ -276,11 +276,14 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
         /// and parks accumulated state after the original input's spot —
         /// the slot goes to the end so edits keep landing after it.
         if(id == clang_options::OPT_INPUT) {
+            llvm::StringRef token = parsed->values.empty() ? llvm::StringRef(parsed->spelling)
+                                                           : llvm::StringRef(parsed->values[0]);
+            if(token.starts_with("@") && unreadable) {
+                unreadable->push_back(spelled(token.drop_front(), directory, mounts).str());
+            }
             if(command.family == CompilerFamily::NVCC) {
                 continue;
             }
-            llvm::StringRef token = parsed->values.empty() ? llvm::StringRef(parsed->spelling)
-                                                           : llvm::StringRef(parsed->values[0]);
             if(!slot_placed && matches_entry(token)) {
                 place_slot();
             }
@@ -470,8 +473,8 @@ std::vector<std::string> Normalizer::expand_response_files(kotatsu::string_list_
         return {};
     };
     auto quoting = cl_mode(family) ? sys::cmd::Quoting::Windows : sys::cmd::Quoting::POSIX;
-    /// An unreadable response file stays as written: the real compile fails
-    /// the same way.
+    /// An unreadable response file stays as written, an input the parse
+    /// tells apart (Normalizer::unreadable).
     auto expanded =
         ranges::to<std::vector<std::string>>(sys::cmd::expand(arguments, quoting, read));
     if(family != CompilerFamily::NVCC) {

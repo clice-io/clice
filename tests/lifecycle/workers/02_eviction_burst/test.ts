@@ -12,7 +12,8 @@ test(async (t) => {
     // Without the index, whose entries would answer the burst's tokens, only
     // a compile can.
     const s = await t.start({
-        config: { project: { enable_indexing: false, max_resident_documents: 2 } },
+        lastRule: { background_index: false },
+        env: { CLICE_TEST_MAX_ASTS: "2" },
     });
     const files = Object.keys(UNITS);
     /// How many times each file compiled, once the server is idle.

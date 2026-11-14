@@ -14,7 +14,7 @@ test("stale request looks once", async (t) => {
     for (const file of ["a.h", "b.h"]) {
         t.disk.touch(file, new Date("2020-01-01T00:00:00Z"));
     }
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("main.cpp")).toEqual([]);
     const hover = () => s.hover(t.at("main.cpp", "|main()"));
     const completion = () => s.completion(t.at("main.cpp", "return a() + |b()"));

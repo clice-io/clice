@@ -8,7 +8,7 @@ import { test } from "@clice/tools/testing";
 // back; the preamble's PCH stores only its own records.
 
 test("late-parsed templates over the pch", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("main.cpp", s.diagnostics("main.cpp"));
     await t.show("hover", s.hover(t.marker("base")));
 });

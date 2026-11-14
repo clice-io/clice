@@ -72,7 +72,7 @@ ZEST_CASE(ExtrasReachBorrowedHeader) {
     project.dep_graph.build_reverse_map();
 
     std::vector<std::string> extras{"-DLINT_EXTRA"};
-    CommandRequest request{.extra_append = extras};
+    CommandRequest request{.extra = {.append = extras}};
     auto has_extra = [](llvm::ArrayRef<std::string> arguments) {
         return ranges::any_of(arguments,
                               [](llvm::StringRef arg) { return arg.contains("LINT_EXTRA"); });
@@ -288,19 +288,16 @@ ZEST_CASE(DialectOfLanguage) {
 ZEST_CASE(IdentityIsEffectiveCommand) {
     /// A unit's index is keyed by the command it compiles under, rules
     /// applied, with the project root written as `${workspace}`: a checkout
-    /// moved elsewhere keeps it, a rule whose configuration moves under
-    /// .clice/ — its relative paths mean another directory — changes it.
-    auto identity = [](TempDir& tmp, llvm::StringRef rule_directory) {
+    /// moved elsewhere keeps it, another flag a rule appends changes it.
+    auto identity = [](TempDir& tmp, std::string flag) {
         tmp.touch("src/main.cpp", "");
         FileTable files;
         Project project{files};
         project.settings.rules.push_back(Rule{
             .patterns = {"${workspace}/src/**"},
             .default_command = std::string("clang++"),
-            .append = {"-Iinc"},
+            .append = {std::move(flag)},
         });
-        project.settings.rules.back().directory =
-            rule_directory.empty() ? tmp.root : tmp.path(rule_directory);
         project.root = CanonicalPath(Spelling::absolute(tmp.root));
         project.commands.set_project_root(project.root);
         finish_settings(project);
@@ -309,12 +306,12 @@ ZEST_CASE(IdentityIsEffectiveCommand) {
     };
     TempDir checkout;
     TempDir moved;
-    auto at_root = identity(checkout, "");
+    auto at_root = identity(checkout, "-Iinc");
     ZEXPECT(at_root != 0u);
-    ZEXPECT(identity(moved, "") == at_root);
-    auto under_clice = identity(checkout, ".clice");
-    ZEXPECT(under_clice != 0u);
-    ZEXPECT(under_clice != at_root);
+    ZEXPECT(identity(moved, "-Iinc") == at_root);
+    auto other = identity(checkout, "-Iother");
+    ZEXPECT(other != 0u);
+    ZEXPECT(other != at_root);
 }
 
 };  // ZEST_SUITE(ResolveCommand)

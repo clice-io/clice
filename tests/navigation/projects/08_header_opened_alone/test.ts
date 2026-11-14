@@ -15,7 +15,7 @@ test("indexed", async (t) => {
 });
 
 test("unindexed", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     s.open("shared.h");
     const m = t.marker("decl");
     await t.show("decl", {

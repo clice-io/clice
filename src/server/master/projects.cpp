@@ -66,21 +66,42 @@ ServedProject* MasterServer::compiling_project(Fid path_id) {
     return borrowed != projects.end() ? borrowed->get() : nullptr;
 }
 
-ServedProject& MasterServer::pick_owner(Fid path_id) {
+ServedProject* MasterServer::pick_owner(Fid path_id) {
     assert(!projects.empty() && "picking an owner before the projects start");
     if(auto* compiling = compiling_project(path_id)) {
-        return *compiling;
+        return compiling;
     }
-    auto* holding =
-        deepest_holding(projects, files.resolve(path_id), [](ServedProject&) { return true; });
-    return holding ? *holding : *projects.front();
+    if(auto* holding =
+           deepest_holding(projects, files.resolve(path_id), [](ServedProject&) { return true; })) {
+        return holding;
+    }
+    auto rootless =
+        ranges::find_if(projects, [](auto& project) { return project->project.root.empty(); });
+    return rootless != projects.end() ? rootless->get() : nullptr;
+}
+
+ServedProject& MasterServer::document_owner(Fid path_id) {
+    if(auto* owner = pick_owner(path_id)) {
+        return *owner;
+    }
+    LOG_INFO("Serving the files outside every folder");
+    auto project = make_project(CanonicalPath());
+    projects.push_back(project);
+    projects_generation += 1;
+    project->configure(init_options, {});
+    log_settings(*project);
+    if(lifecycle == ServerLifecycle::Ready) {
+        project->start();
+    }
+    return *project;
 }
 
 ServedProject& MasterServer::owner_of(Fid path_id) {
     if(auto* document = find_document(path_id); document && document->owner) {
         return *document->owner;
     }
-    return pick_owner(path_id);
+    auto* owner = pick_owner(path_id);
+    return owner ? *owner : *projects.front();
 }
 
 std::shared_ptr<ServedProject> MasterServer::make_project(CanonicalPath root) {
@@ -103,7 +124,7 @@ std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef successor
     std::vector<CanonicalPath> dirs;
     auto take = [&](const ServedProject& project) {
         // The rootless project opens no store.
-        auto cache_dir = project.project.settings.project.cache_identity;
+        auto cache_dir = project.project.settings.cache_identity;
         if(!project.project.root.empty() && !cache_dir.empty()) {
             dirs.push_back(std::move(cache_dir));
         }
@@ -127,11 +148,21 @@ void MasterServer::update_owners() {
         if(!document.owner) {
             continue;
         }
-        if(auto& to = pick_owner(path_id); &to != document.owner) {
+        if(auto& to = document_owner(path_id); &to != document.owner) {
             change_owner(document, to);
             replace_shown(document);
         }
     }
+}
+
+void MasterServer::update_owners_later() {
+    if(lifecycle != ServerLifecycle::Ready) {
+        return;
+    }
+    bg_tasks.spawn([](MasterServer& server) -> async::task<> {
+        co_await async::yield();
+        server.update_owners();
+    }(*this));
 }
 
 void MasterServer::change_owner(Document& document, ServedProject& to) {
@@ -237,7 +268,10 @@ std::vector<CanonicalPath> MasterServer::project_roots() const {
             roots.push_back(std::move(root));
         }
     }
-    if(roots.empty()) {
+    auto stray = [](auto& entry) {
+        return entry.second.owner && entry.second.owner->project.root.empty();
+    };
+    if(roots.empty() || ranges::any_of(documents, stray)) {
         roots.emplace_back();
     }
     return roots;

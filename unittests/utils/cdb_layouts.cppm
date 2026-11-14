@@ -46,7 +46,7 @@ default_command = "clang++ -std=c++20 -DDEFAULTED -Iinclude"
 
 [[rules]]
 patterns = ["src/skip/**"]
-index = false
+background_index = false
 )"},
              {"include/lib.h", R"(inline int lib() {
     return 0;

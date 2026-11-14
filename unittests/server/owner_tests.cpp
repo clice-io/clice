@@ -6,6 +6,7 @@ import :settings.settings;
 import :unittests.server.served_project_fixture;
 import :unittests.utils;
 import :unittests.utils.cdb_helper;
+import :unittests.utils.project_fixture;
 import :unittests.utils.temp_dir;
 import :vfs.path;
 
@@ -52,7 +53,8 @@ ZEST_CASE(MoveWatchesSettings) {
     auto other =
         std::make_shared<ServedProject>(server, CanonicalPath(Spelling::absolute(tmp.path("b"))));
     // Nothing to compile as it moves.
-    other->project.settings.project.readonly = ReadonlyMode::On;
+    other->project.settings.rules.push_back(Rule{.readonly = ReadonlyMode::On});
+    finish_settings(other->project);
     server.projects.push_back(other);
     ServedProjectFixture::hold_flushes(*other);
     auto session = fixture.open(tmp.path("b/deep/sub/x.cpp"), "int x;\n");

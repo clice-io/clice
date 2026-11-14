@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 // The index records what `auto` stands for: a read-only file navigates
 // from it without compiling.
 test(async (t) => {
-    const s = await t.start({ config: { project: { readonly: "auto" } } });
+    const s = await t.start({ lastRule: { readonly: "auto" } });
     s.open("main.cpp", { pull: false });
     await s.sync();
     const m = t.marker("auto");

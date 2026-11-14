@@ -3,8 +3,10 @@ stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}
   command:   ${WS}/missing-cc -c main.cpp
-  resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D DEBUG ${WS}/main.cpp
+  resolved:  ${WS}/missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D DEBUG ${WS}/main.cpp
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
+
+settings:  the defaults
 '''
 stderr = "warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands"
 exit = 0
@@ -14,8 +16,10 @@ stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}
   command:   ${WS}/missing-cc -c main.cpp
-  resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D NDEBUG ${WS}/main.cpp
+  resolved:  ${WS}/missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D NDEBUG ${WS}/main.cpp
   error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
+
+settings:  the defaults
 '''
 stderr = "warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands"
 exit = 0

@@ -9,6 +9,7 @@ import :project.saved;
 import :settings.settings;
 import :support.json;
 import :support.logging;
+import :support.process;
 import :support.text;
 import :syntax.dependency_graph;
 import :vfs.cache_store;
@@ -25,37 +26,45 @@ Project::Project(FileTable& file_table,
 
 namespace {
 
+/// Of `nearby`, the databases discovery would only meet later — the
+/// persisted index's (see SavedMembers::databases), those above the file a
+/// run is about (see databases_above) — the ones belonging to the project,
+/// in the order Project::source_order ranks them: registration order, which
+/// the persisted command sequences follow, does not depend on the order
+/// files were opened in.
+llvm::SmallVector<Spelling> nearby_sources(const Project& project,
+                                           llvm::ArrayRef<Spelling> nearby) {
+    CanonicalRef root = project.root;
+    auto sources =
+        ranges::to<llvm::SmallVector<Spelling>>(views::filter(nearby, [&](const Spelling& source) {
+            // Where the database sits, as the walks below the root spell
+            // it, not what it links to: a compile_commands.json or a build
+            // directory symlinked to a tree outside still belongs to the
+            // root, unless a directory on the way is a project of its own.
+            return path::is_within(llvm::StringRef(source), llvm::StringRef(root)) &&
+                   nested_project(root, CanonicalPath(source)).empty();
+        }));
+    ranges::sort(sources, {}, [](const Spelling& source) {
+        return discovery_rank(llvm::StringRef(source));
+    });
+    return sources;
+}
+
 /// Register and load the build's sources: the databases the rules declare
 /// (existing or not; the server watches for them), else the ones
-/// discovered under the root plus `nearby`, the ones discovery would only
-/// meet later — the persisted index's (see SavedMembers::databases),
-/// those above the file a run is about (see databases_above).
+/// discovered under the root plus those of `nearby` (nearby_sources).
 void load_sources(Project& project, llvm::ArrayRef<Spelling> nearby) {
     CanonicalRef root = project.root;
     Timer cdb_timer;
     std::size_t entries = 0;
     auto paths = project.rules.declared_databases();
     if(!project.rules.declares_sources()) {
-        paths = discovered_databases(root);
         // Registered whether still there or not, like a declared one: the
         // server watches for its return, and the index it built keeps
-        // serving meanwhile. Sorted like Project::source_order ranks them, so
-        // registration order — which the persisted command sequences
-        // follow — does not depend on the order files were opened in.
-        auto stable = ranges::to<llvm::SmallVector<Spelling>>(
-            views::filter(nearby, [&](const Spelling& source) {
-                // Where the database sits, as the walks below the root spell
-                // it, not what it links to: a compile_commands.json or a build
-                // directory symlinked to a tree outside still belongs to the
-                // root, unless a directory on the way is a project of its
-                // own.
-                return path::is_within(llvm::StringRef(source), llvm::StringRef(root)) &&
-                       nested_project(root, CanonicalPath(source)).empty();
-            }));
-        ranges::sort(stable, {}, [](const Spelling& source) {
-            return discovery_rank(llvm::StringRef(source));
-        });
-        paths.append(stable.begin(), stable.end());
+        // serving meanwhile.
+        paths = discovered_databases(root);
+        auto sources = nearby_sources(project, nearby);
+        paths.append(sources.begin(), sources.end());
     }
     // One source per database, however many of its spellings discovery
     // found: the root's link to build/compile_commands.json is that
@@ -147,17 +156,46 @@ std::string unreadable_index(index::LoadResult result, std::string_view where) {
     std::unreachable();
 }
 
+/// Open the index database as its writer under `lock`, recording the
+/// project as the cache directory's owner; why the index is not persisted
+/// when another project owns the directory or no database opens, else
+/// empty.
+std::string open_writer(Project& project, index::WriterLock lock) {
+    auto& cache_dir = project.settings.cache_dir;
+    // The owner is recorded, and checked again, under the lock: another
+    // project may have become the directory's owner since the settings
+    // chose it.
+    CanonicalRef root = project.root;
+    auto shown = project.file_table.display(root);
+    if(owned_elsewhere(cache_dir, root)) {
+        auto why = std::format("Cache directory {} serves the project at {}",
+                               std::string_view(cache_dir),
+                               cache_dir_owner(cache_dir));
+        LOG_GUIDANCE("{}; {} keeps no index", why, shown);
+        return why;
+    }
+    set_cache_dir_owner(cache_dir, root, shown);
+    auto database = index::open_database(*project.store, project.database_key);
+    if(!database) {
+        LOG_GUIDANCE("{}; the index is not saved", database.error());
+        return std::move(database.error());
+    }
+    project.database = std::move(*database);
+    project.writer_lock = std::move(lock);
+    return {};
+}
+
 /// Open the cache store and the index database as `options` say; why the
-/// index cannot be read, for a run that reads it, or kept, for its writer
-/// (Opened), else empty.
-std::string open_store(Project& project, const Project::OpenOptions& options) {
+/// index cannot be read, for a run that reads it, or kept, for its writer,
+/// in `opened`.
+void open_store(Project& project, const Project::OpenOptions& options, Project::Opened& opened) {
     using Cache = Project::OpenOptions::Cache;
-    auto& cache_dir = project.settings.project.cache_dir;
+    auto& cache_dir = project.settings.cache_dir;
     if(options.cache == Cache::None || cache_dir.empty()) {
-        return {};
+        return;
     }
     bool read_only = options.cache == Cache::Read;
-    if(!read_only && project.settings.project.cache_dir_defaulted) {
+    if(!read_only && project.settings.cache_dir_defaulted) {
         CacheStore::write_ignore_markers(cache_dir);
     }
     // Read-only, the default cache directory exists as soon as the settings
@@ -167,16 +205,21 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
     auto store = CacheStore::open(cache_dir, cache_format_version, read_only);
     if(!store) {
         if(read_only && store.error() == std::errc::no_such_file_or_directory) {
-            return unreadable_index(index::LoadResult::Empty, cache_dir);
+            opened.unreadable = unreadable_index(index::LoadResult::Empty, cache_dir);
+            return;
         }
         auto why = std::format("Cannot use the cache directory {}: {}",
                                std::string_view(cache_dir),
                                store.error().message());
         if(read_only) {
-            return why;
+            opened.unreadable = std::move(why);
+            return;
         }
         LOG_GUIDANCE("{}; no preamble or module is precompiled, and the index is not saved", why);
-        return options.cache == Cache::Write ? why : std::string();
+        if(options.cache == Cache::Write) {
+            opened.unwritable = std::move(why);
+        }
+        return;
     }
     // Only a run loading the build's members compiles them; registering
     // scans the whole namespace, which a run reading the index alone
@@ -203,44 +246,64 @@ std::string open_store(Project& project, const Project::OpenOptions& options) {
         auto database = index::open_database(*project.store, key, /*read_only=*/true);
         if(database) {
             project.database = std::move(*database);
-            return {};
+            return;
         }
         if(!index::database_exists(*project.store, key)) {
-            return read_only ? unreadable_index(index::LoadResult::Empty,
-                                                index::database_directory(*project.store, key))
-                             : std::string();
+            if(read_only) {
+                opened.unreadable =
+                    unreadable_index(index::LoadResult::Empty,
+                                     index::database_directory(*project.store, key));
+            }
+            return;
         }
         if(!read_only) {
             LOG_WARN("{}; this run reads no index", database.error());
-            return {};
+            return;
         }
-        return std::move(database.error());
+        opened.unreadable = std::move(database.error());
+        return;
     }
-    if(!(project.writer_lock = index::WriterLock::acquire(cache_dir))) {
-        return std::format("Another clice process writes the index under {}",
-                           std::string_view(cache_dir));
+    auto lock = index::WriterLock::acquire(cache_dir);
+    if(!lock) {
+        if(lock.error() == index::WriterLock::Refused::Held) {
+            project.index_waits = true;
+        } else {
+            opened.unwritable = std::format("Cannot open the index writer lock under {}",
+                                            std::string_view(cache_dir));
+        }
+        return;
     }
-    // The owner is recorded, and checked again, under the lock: another
-    // project may have become the directory's owner since the settings
-    // chose it.
-    CanonicalRef root = project.root;
-    if(owned_elsewhere(cache_dir, root)) {
-        auto why = std::format("Cache directory {} serves the project at {}",
-                               std::string_view(cache_dir),
-                               cache_dir_owner(cache_dir));
-        LOG_GUIDANCE("{}; {} keeps no index", why, root);
-        project.writer_lock.reset();
-        return why;
+    opened.unwritable = open_writer(project, std::move(*lock));
+}
+
+/// Load the saved state — the index, the precompiled records, the context
+/// choices — `reconcile`d with the build when it is loaded, and mark the
+/// units deleted while no run wrote the index missing; why a run that
+/// `reads` the index cannot, or why its writer keeps it in memory, in
+/// `opened`.
+void load_saved_state(Project& project, bool reconcile, bool reads, Project::Opened& opened) {
+    auto& cache_dir = project.settings.cache_dir;
+    index::IndexReport report;
+    bool decoded = project.load_saved(reconcile, report);
+    project.take_report(report);
+    // A reader takes no fresh database for one it cannot read.
+    if(!decoded && project.database && project.database->read_only()) {
+        opened.unreadable = unreadable_index(index::LoadResult::Undecodable, cache_dir);
+        return;
     }
-    set_cache_dir_owner(cache_dir, root);
-    auto database = index::open_database(*project.store, key);
-    if(!database) {
-        LOG_WARN("{}; index persistence is disabled for this session", database.error());
-        project.writer_lock.reset();
-        return std::move(database.error());
+    if(!project.database) {
+        if(reads) {
+            opened.unreadable = unreadable_index(index::LoadResult::Unreadable, cache_dir);
+            return;
+        }
+        opened.unwritable =
+            "the header of its index database cannot be read; the database is left untouched";
     }
-    project.database = std::move(*database);
-    return {};
+    // A unit deleted while no server ran keeps its index until a look finds
+    // it missing (see FreshnessGate).
+    llvm::SmallVector<Fid> units;
+    project.index.for_each_unit([&](Fid tu) { units.push_back(tu); });
+    project.file_table.disk.find_missing(units);
 }
 
 }  // namespace
@@ -276,9 +339,7 @@ Project::Opened Project::open(const OpenOptions& options) {
                  llvm::join(llvm::split(database_key.resolved, '\n'), ", "));
     }
 
-    auto unavailable = open_store(*this, options);
-    (options.cache == Cache::Write ? opened.unwritable : opened.unreadable) =
-        std::move(unavailable);
+    open_store(*this, options, opened);
 
     if(database) {
         saved_members.read(*database);
@@ -301,33 +362,14 @@ Project::Opened Project::open(const OpenOptions& options) {
     }
 
     if(database && opened.unreadable.empty()) {
-        // A run reading the index alone binds its tables; with the build,
-        // the saved state is read as the writer reads it.
-        // The tables a run reading the index alone binds in place, fetched
-        // on first use.
-        auto& cache_dir = settings.project.cache_dir;
+        // A run reading the index alone binds its tables in place, fetched
+        // on first use; with the build, the saved state is read as the
+        // writer reads it.
         bool reads = options.cache != Cache::Write;
         if(reads && options.load != Load::Members) {
-            opened.unreadable = unreadable_index(index.open(*database), cache_dir);
+            opened.unreadable = unreadable_index(index.open(*database), settings.cache_dir);
         } else {
-            index::IndexReport report;
-            bool decoded = load_saved(options.load == Load::Members, report);
-            take_report(report);
-            // A reader takes no fresh database for one it cannot read.
-            if(!decoded && database && database->read_only()) {
-                opened.unreadable = unreadable_index(index::LoadResult::Undecodable, cache_dir);
-            } else if(!database && reads) {
-                opened.unreadable = unreadable_index(index::LoadResult::Unreadable, cache_dir);
-            } else if(!database) {
-                opened.unwritable =
-                    "the header of its index database cannot be read; the "
-                    "database is left untouched";
-            }
-            // A unit deleted while no server ran keeps its index until a
-            // look finds it missing (see FreshnessGate).
-            llvm::SmallVector<Fid> units;
-            index.for_each_unit([&](Fid tu) { units.push_back(tu); });
-            file_table.disk.find_missing(units);
+            load_saved_state(*this, options.load == Load::Members, reads, opened);
         }
     }
     // The store stays: a run building PCHs and PCMs (lint without --index)
@@ -343,6 +385,55 @@ Project::Opened Project::open(const OpenOptions& options) {
         index.stale_units();
     }
     return opened;
+}
+
+async::task<std::optional<index::WriterLock>> Project::wait_for_writer() {
+    auto wait = chrono::milliseconds(env_integer("CLICE_TEST_WRITER_WAIT_MS").value_or(5'000));
+    auto deadline = chrono::steady_clock::now() + wait;
+    while(true) {
+        auto lock = index::WriterLock::acquire(settings.cache_dir);
+        if(lock) {
+            co_return std::move(*lock);
+        }
+        if(lock.error() != index::WriterLock::Refused::Held ||
+           chrono::steady_clock::now() >= deadline) {
+            co_return std::nullopt;
+        }
+        // No event: a lock let go of in another process tells no one.
+        co_await async::sleep(chrono::milliseconds(100));
+    }
+}
+
+CDBDiff Project::open_index(index::WriterLock lock, Opened& opened) {
+    index_waits = false;
+    CDBDiff joined;
+    opened.unwritable = open_writer(*this, std::move(lock));
+    if(!database) {
+        return joined;
+    }
+    saved_members.read(*database);
+    if(!rules.declares_sources()) {
+        for(auto& source: nearby_sources(*this, saved_members.databases(index))) {
+            if(!cdb.find_source(source) && !cdb.find_same_file(source)) {
+                if(auto diff = cdb.reload_and_diff(cdb.add_source(source))) {
+                    joined.append(*diff);
+                }
+            }
+        }
+    }
+    bool recorded = false;
+    for(auto& path: saved_members.provisional(index)) {
+        if(fs::is_file(path)) {
+            recorded = record_provisional(file_table.intern(path)) || recorded;
+        }
+    }
+    if(!joined.empty() || recorded) {
+        joined.append(rebuild_dependency_graph().provisional);
+    }
+    load_saved_state(*this, true, false, opened);
+    index.stale_units();
+    opened.members = members();
+    return joined;
 }
 
 }  // namespace clice

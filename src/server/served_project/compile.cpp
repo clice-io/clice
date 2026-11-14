@@ -248,9 +248,13 @@ void ServedProject::inputs_changed(Session& session) {
     session.changed(Session::Clock::now());
 }
 
+ReadonlyMode ServedProject::readonly(Fid path_id) const {
+    return project.rules.readonly(project.file_table.resolve(path_id));
+}
+
 void ServedProject::start_compiling(Fid path_id) {
     auto& document = *find_document(path_id);
-    if(document.compiles || project.settings.project.readonly == ReadonlyMode::On) {
+    if(document.compiles || readonly(path_id) == ReadonlyMode::On) {
         return;
     }
     document.compiles = true;
@@ -312,6 +316,10 @@ async::task<bool> ServedProject::ensure_compiled(std::shared_ptr<Session> sessio
 
     if(!loaded.is_set()) {
         co_await loaded.wait();
+    }
+    // Refused while the compile waited for the project's index.
+    if(broken()) {
+        co_return false;
     }
 
     // A document closed or moved to another project never compiles here
@@ -607,8 +615,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
 async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool first) {
     params = {};
     params.indexing.known_instantiations = known_instantiations;
-    params.indexing.standard_library_instantiations =
-        project.settings.project.standard_library_instantiations;
+    params.indexing.function_bodies = project.rules.function_body_rules();
     params.path = file_path;
     params.version = session->version;
     params.text = session->text().str();
@@ -676,7 +683,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::modules() {
 
 async::task<std::optional<Result>> ServedProject::CompileAttempt::pch() {
     using feature::RequestKind::PCH;
-    if(project.settings.project.readonly != ReadonlyMode::On) {
+    if(served.readonly(path_id) != ReadonlyMode::On) {
         served.enter_phase(path_id, CompilePhase::Preamble);
     }
     auto waited = co_await project.build_pch(path_id,

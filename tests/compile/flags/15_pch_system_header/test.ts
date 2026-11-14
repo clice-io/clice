@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 // headers it includes stay the project's.
 
 test("system header", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await s.diagnostics("main.cpp");
     await t.show("tokens", s.semanticTokens("main.cpp"));
 });

@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 // The outline the index serves an unedited file tags a deprecated symbol as
 // the compiled file's does.
 test(async (t) => {
-    const s = await t.start({ config: { project: { readonly: "on" } } });
+    const s = await t.start({ lastRule: { readonly: "on" } });
     s.open("main.cpp", { pull: false });
     await s.sync();
     await t.show("outline", s.documentSymbols("main.cpp"), { parts: ["tags"] });

@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 // A module whose build failed is not built again for its importer's edits:
 // the same inputs fail again. Saving a fix is a new input.
 test(async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("before", s.errors("main.cpp"));
     const before = await s.errors("main.cpp");
     for (const n of [1, 2, 3]) {

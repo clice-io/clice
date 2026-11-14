@@ -204,7 +204,10 @@ releases it, so a cancel, an edit or a death lands mid-work; a park left
 unreleased goes with the server.
 
 **Server options**, given to `t.start` and kept by every restart of that
-server: `config` (initializationOptions in clice.toml's shape), `capabilities`,
+server: `config` (initializationOptions in clice.toml's shape), `lastRule`
+(fields of a last rule for every file, written after the settings file's
+rules: `{ background_index: false }` indexes nothing in the background),
+`capabilities`,
 `positionEncoding: "utf-8"` or `"utf-32"` (the client offers that encoding
 before UTF-16, and the server must take it; the actions convert at the
 protocol, so what a test shows reads the same in every encoding), `folders`,
@@ -453,8 +456,9 @@ public `clice/*` requests. An item is `method <name>`, `command <words>`,
 - **`editors/NN_name/`**: a project and the scenario every editor client runs
   on it (`scenario.json`, its fields in `tools/testing/editors/scenario.ts`).
   `pixi run -e editor editor-prepare <editor>` copies each under
-  `.cache/editors/<editor>/` with its database and the test hooks on;
-  `nvim-e2e` and `vscode-e2e` run the client on every copy, then fail on a
+  `.cache/editors/<editor>/` with its database; `nvim-e2e` and `vscode-e2e`
+  turn the test hooks on (`CLICE_TEST_HOOKS=1`), run the client on every
+  copy, then fail on a
   crash, an anomaly or an error-level line in the servers' logs
   (`tools/testing/editors/gate.ts`).
 - **`compat/`**: real build systems and compilers build a small project; clice

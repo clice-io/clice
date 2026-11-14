@@ -4,6 +4,7 @@ guide:
     - what-is-clice
     - quick-start
     - configuration
+    - indexing
 
 features:
   label: 语言服务器

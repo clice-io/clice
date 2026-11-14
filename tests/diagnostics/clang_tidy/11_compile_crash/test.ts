@@ -6,7 +6,7 @@ import { test } from "@clice/tools/testing";
 // and whose own run of the file would crash as well.
 test(async (t) => {
     const s = await t.start({
-        config: { project: { enable_indexing: false } },
+        lastRule: { background_index: false },
         crash: { request: "compile", file: "main.cpp", pragma: true },
     });
     const add = t.at("main.cpp", "int |add");

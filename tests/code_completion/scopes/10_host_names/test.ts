@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 // The header compiles after what main.cpp declares and includes first: its
 // PCH, built behind that text, names those too.
 test("names of the host", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("main.cpp")).toEqual([]);
     expect(await s.errors("ruler.h")).toEqual([]);
     await t.show("type", s.completion(t.at("ruler.h", "return Met|ers{")), { parts: ["insert"] });

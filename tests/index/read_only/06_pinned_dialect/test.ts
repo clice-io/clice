@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 // A file with two commands is lexed for the one its context pins: switched
 // to the C command, `class` is no keyword and goes unpainted.
 test(async (t) => {
-    const s = await t.start({ config: { project: { readonly: "on" } } });
+    const s = await t.start({ lastRule: { readonly: "on" } });
     s.open("dual.c", { pull: false });
     await s.sync();
     await t.show("contexts", s.contexts("dual.c"));

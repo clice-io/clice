@@ -339,7 +339,7 @@ public:
     /// tells of its index reaches the documents: an index attempt ending
     /// (the index_first in decide_compiling promised the index would serve
     /// the cold document, and one that finishes without a servable shard ends
-    /// that promise — it starts compiling like the disabled-indexing branch,
+    /// that promise — it starts compiling like a document no index serves,
     /// or, under readonly "on", which compiles no document, it answers
     /// empty; its run's skipped-body diagnostics show), shards changing (documents without a
     /// current file index serve these very shards, freshness clause 4: the client asks again for
@@ -372,10 +372,11 @@ public:
     /// index stops, the final state is persisted and the store closes.
     async::task<> shutdown();
 
-    /// The settings have errors: the project starts nothing, and the
-    /// files under its root answer every request at once with nothing.
+    /// The settings have errors, or another process keeps the project's
+    /// index: the project starts nothing, and the files under its root
+    /// answer every request at once with nothing.
     bool broken() const {
-        return has_error(settings_issues);
+        return has_error(settings_issues) || index_kept_elsewhere;
     }
 
     /// Whether the project's root holds `path`; the rootless project's
@@ -454,6 +455,9 @@ public:
     /// pull-driven — the next request that needs the AST starts it. Nothing
     /// under readonly "on", which never compiles a document.
     void start_compiling(Fid path_id);
+
+    /// How an open document is served: its rules' `readonly`.
+    ReadonlyMode readonly(Fid path_id) const;
 
     /// The document was edited: the latest compile is no longer current and
     /// the in-flight attempt's result is void. Fires the attempt's advisory
@@ -788,11 +792,16 @@ private:
     /// (readers holding the old shared_ptr are unaffected).
     void update_latest(Fid path_id, llvm::function_ref<void(DocumentCompile&)> edit);
 
-    /// Open the project (Project::open), queue what its index lacks, load
-    /// the context choices it saved, and start its store-lifetime services;
-    /// then watch its databases and files. Documents adopted before have
-    /// it decided now whether they compile. A broken project starts nothing.
+    /// Open the project (Project::open), then serve it — once its index is
+    /// this project's (open_index_task) when another process holds the
+    /// writer lock. A broken project starts nothing.
     void open();
+
+    /// Queue what the opened project's index lacks, load the context
+    /// choices it saved, and start its store-lifetime services; then watch
+    /// its databases and files. Documents adopted before have it decided
+    /// now whether they compile.
+    void serve();
 
     /// open() opened the project from disk and watches its build: never
     /// the rootless project, nor a broken one, nor before it starts.
@@ -808,8 +817,9 @@ private:
 
     /// When this project holds its cache directory's writer lock, the
     /// commands that find it taken ask this server to index for them:
-    /// listen on a loopback port and record it next to the lock (see
-    /// index/writer_lock.cppm). The record is removed at shutdown.
+    /// listen on a local socket only its user connects to (control::listen)
+    /// and record it next to the lock (see index/writer_lock.cppm). The
+    /// record and the socket are removed at shutdown.
     void start_control_listener();
 
     /// Schedule a save carrying dirty precompiled records or context choices; no-op
@@ -821,6 +831,12 @@ private:
 
     /// The periodic Project::checkpoint().
     async::task<> checkpoint_task();
+
+    /// What open() leaves while another process holds the writer lock: the
+    /// index, opened once the lock comes free (Project::wait_for_writer),
+    /// then serve(). The documents wait meanwhile; a lock still held when
+    /// the wait ends leaves the project unserved (index_kept_elsewhere).
+    async::task<> open_index_task();
 
     /// The default-sources loop, poll_sources on the workspace poll's pace,
     /// asking the compilers that could not be asked again: the documents
@@ -945,9 +961,13 @@ private:
     /// The open documents that belong here.
     llvm::DenseMap<Fid, ServedDocument> documents;
 
-    /// open() ran: documents adopted from now on have it decided at once
+    /// serve() ran: documents adopted from now on have it decided at once
     /// whether they compile.
     bool started = false;
+
+    /// Another process kept the writer lock of the project's index through
+    /// the wait (open_index_task): the project serves nothing (broken).
+    bool index_kept_elsewhere = false;
 
     /// start() found nothing to open the project for: no database and no
     /// document.
@@ -965,6 +985,14 @@ private:
     bool commands_missing = false;
 
     bool endpoint_recorded = false;
+
+    /// The control channel's socket (start_control_listener), removed at
+    /// shutdown; empty while there is none.
+    std::string control_socket;
+
+    /// The directory made for the socket when the cache directory's path is
+    /// too long for one, removed with the project.
+    std::optional<fs::TempDirectory> control_directory;
 
     bool metadata_flush_scheduled = false;
 
@@ -1137,7 +1165,9 @@ RequestResult<Params> ServedProject::send_stateless(const Ticket& ticket,
                                                     async::cancellation_token token,
                                                     bool& refused) {
     auto& session = *ticket.session;
+    auto queued = chrono::steady_clock::now();
     auto admitted = [&] {
+        ticket.waited(RequestWaits::Kind::Worker, queued);
         refused = !admits(session, kind, &dispatch, parses);
         return !refused;
     };
@@ -1177,8 +1207,13 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // the command may be stale, and adopt_pch refuses the PCH built under
     // it.
     auto generation = project.graph.generation(ast_node(path_id));
+    auto started = chrono::steady_clock::now();
     if(!loaded.is_set()) {
         co_await loaded.wait();
+    }
+    // Refused while the request waited for the project's index.
+    if(broken()) {
+        co_return empty_value<Result>();
     }
     auto resolution =
         co_await project.resolve_with_trees(path_id, [&] { return command_request(path_id); });
@@ -1207,6 +1242,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     params.pch = std::move(built->pch);
     params.pcms = project.imported_pcms(imports->imports.resolved());
     auto wait_ms = timer.precise_ms();
+    ticket.waited(RequestWaits::Kind::Compile, started);
 
     // A completion reply stays useful after edits at or past the cursor:
     // its ranges still hold, and the client filters it by what was typed

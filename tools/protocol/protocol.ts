@@ -337,7 +337,7 @@ export interface FileBuilds {
 
 export const StatsRequest = new RequestType0<StatsResult, void>("clice/internal/stats");
 
-/// clice/internal/sync — TEST-ONLY, present while project.test_hooks is on.
+/// clice/internal/sync — TEST-ONLY, present while CLICE_TEST_HOOKS=1.
 /// Answers once the server has no work left: no other request of the editor
 /// unanswered, no compile, PCH or PCM build and no index pass in flight or
 /// queued, a pass's save included, and no removed folder still shutting
@@ -366,7 +366,7 @@ export const SyncRequest = new RequestType<SyncParams, SyncResult, void>("clice/
 /// The builds a hold can park the reply of.
 export type BuildKind = "compile" | "pch" | "pcm" | "index";
 
-/// clice/internal/hold — TEST-ONLY, present while project.test_hooks is on.
+/// clice/internal/hold — TEST-ONLY, present while CLICE_TEST_HOOKS=1.
 /// Parks the next reply of a build of `kind` for the file between its arrival
 /// and its delivery: to the server the build is still in flight.
 /// clice/internal/held announces the parked reply; clice/internal/release
@@ -382,7 +382,7 @@ export interface HoldResult {
 
 export const HoldRequest = new RequestType<HoldParams, HoldResult, void>("clice/internal/hold");
 
-/// clice/internal/gate — TEST-ONLY, present while project.test_hooks is on.
+/// clice/internal/gate — TEST-ONLY, present while CLICE_TEST_HOOKS=1.
 /// Parks the work of the next request named `request` for the file in its
 /// worker, where the work starts: the worker is busy with it. `request` is
 /// the worker request's name as its crash tag spells it ("compile",
@@ -402,7 +402,7 @@ export const GateRequest = new RequestType<GateParams, HoldResult, void>("clice/
 /// sources loop found a compiler that could not be asked answer.
 export type LoopEvent = "databaseChange" | "diskChange" | "checkpoint" | "compilersAnswered";
 
-/// clice/internal/watch — TEST-ONLY, present while project.test_hooks is on.
+/// clice/internal/watch — TEST-ONLY, present while CLICE_TEST_HOOKS=1.
 /// Watches for the next `event` after it is placed. The reply is a hold id:
 /// clice/internal/held announces the event.
 export interface WatchParams {

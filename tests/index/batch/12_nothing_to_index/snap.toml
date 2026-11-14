@@ -1,0 +1,6 @@
+[test."$ clice index"]
+stderr = "error: Nothing to index: no compile_commands.json found in ${WS} or its direct subdirectories."
+exit = 2
+
+[test.created]
+value = []

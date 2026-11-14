@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // and the server ends instead of blocking.
 
 test(async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     // The editor's side of the pipe, which no action models.
     s.client.child.stdout.destroy();
     void s.client

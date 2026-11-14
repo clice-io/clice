@@ -21,7 +21,7 @@ answers("configured", { config: { code_completion: { all_scopes: false } } }, it
 // Before the document's first compile the completion builds the PCH, whose
 // identifiers name the preamble's.
 test("before the first compile", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     s.open("main.cpp", { pull: false });
     await t.show("names", s.completion(t.at("main.cpp", "return lib::helper|")), {
         parts: ["insert"],
@@ -31,7 +31,7 @@ test("before the first compile", async (t) => {
 // An include added since the held compile: the completion's own PCH holds
 // its names.
 test("an include added before the compile", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await s.diagnostics("main.cpp");
     const park = await s.park("compile", "main.cpp", { at: "worker" });
     s.edit("main.cpp", { after: '#include "lib.h"\n', insert: '#include "extra.h"\n' });
@@ -58,7 +58,7 @@ test("a namespace bringing in names", async (t) => {
 // A header edited since the document's compile: the completion's PCH, built
 // anew, holds names the one before does not.
 test("a header edited before the compile", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await s.diagnostics("main.cpp");
     const park = await s.park("compile", "main.cpp", { at: "worker" });
     s.open("lib.h");
@@ -74,7 +74,7 @@ test("a header edited before the compile", async (t) => {
 // around the point, app's using-declaration bringing in helper_value, and
 // the one a block's using-directive names, helper_detail's.
 test("nothing typed", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await s.diagnostics("main.cpp");
     await t.show(
         "in a namespace",

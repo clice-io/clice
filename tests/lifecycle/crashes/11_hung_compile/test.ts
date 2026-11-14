@@ -6,7 +6,8 @@ import { test } from "@clice/tools/testing";
 
 test(async (t) => {
     const s = await t.start({
-        config: { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } },
+        config: { diagnostics: { clang_tidy: false } },
+        lastRule: { background_index: false },
         env: { CLICE_TEST_REQUEST_DEADLINE_MS: "2000" },
         // The deadline's kill names its request without a crash of the
         // worker's own: the note below is how it shows.

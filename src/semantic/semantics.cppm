@@ -295,12 +295,12 @@ struct SemanticsOptions {
     /// features share.
     std::optional<llvm::ArrayRef<const clang::Decl*>> written;
 
-    /// With all_files, also traverse the bodies and constructor
-    /// initializers of the functions written in library headers
-    /// (CompilationUnit::in_library) other than the focus file. Without,
-    /// their declarations alone: what they name inside is the library's
-    /// own, which only a reader of its code asks about.
-    bool library_bodies = true;
+    /// With all_files, traverse the bodies and constructor initializers of
+    /// the functions written in the files whose bodies the index leaves out
+    /// (CompilationUnit::indexes_bodies) too.
+    /// Without, their declarations alone: what they name inside is a
+    /// library's own, which only a reader of its code asks about.
+    bool every_body = true;
 };
 
 /// The semantic map of the focus file, built once after a successful

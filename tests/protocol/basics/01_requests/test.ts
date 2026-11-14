@@ -7,7 +7,7 @@ import { test } from "@clice/tools/testing";
 test("before the compile", async (t) => {
     // No background index: the answer cannot come from a shard indexed
     // meanwhile.
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     s.open("main.cpp", { pull: false });
     await t.show("hover", s.hover(t.marker("add")));
     await t.show("diagnostics", s.diagnostics("main.cpp"));

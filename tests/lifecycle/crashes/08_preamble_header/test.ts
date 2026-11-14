@@ -1,12 +1,15 @@
 import { test } from "@clice/tools/testing";
 
-const QUIET = { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } };
+const QUIET = {
+    config: { diagnostics: { clang_tidy: false } },
+    lastRule: { background_index: false },
+};
 
 // A change to a header the preamble includes is a retry, with no save of
 // the file itself.
 test("a header change retries", async (t) => {
     const s = await t.start({
-        config: QUIET,
+        ...QUIET,
         crash: { request: "buildPch", file: "main.cpp" },
         env: { CLICE_TEST_CRASH_SPACING_MS: "0" },
     });
@@ -27,7 +30,7 @@ test("a header change retries", async (t) => {
 // corruption: the pair is rebuilt and the compile run once more, and only
 // that second crash is the file's.
 test("a crash reading the preamble rebuilds it", async (t) => {
-    const s = await t.start({ config: QUIET, crash: { request: "compile", file: "main.cpp" } });
+    const s = await t.start({ ...QUIET, crash: { request: "compile", file: "main.cpp" } });
     s.open("main.cpp");
     await t.show("hover", s.hover(t.marker("add")));
     await t.show("crashes", await s.crashes());

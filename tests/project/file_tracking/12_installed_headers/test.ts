@@ -4,7 +4,8 @@ import { test } from "@clice/tools/testing";
 test("requests look at workspace files only", async (t) => {
     // clang-tidy's configuration lookups would add looks of their own.
     const s = await t.start({
-        config: { project: { enable_indexing: false }, diagnostics: { clang_tidy: false } },
+        config: { diagnostics: { clang_tidy: false } },
+        lastRule: { background_index: false },
     });
     expect(await s.errors("main.cpp")).toEqual([]);
     const use = t.at("main.cpp", "return |INSTALLED");
@@ -19,7 +20,7 @@ test("requests look at workspace files only", async (t) => {
 
 test("save looks at installed headers", async (t) => {
     t.disk.touch("sysroot/usr/include/installed.h", new Date("2020-01-01T00:00:00Z"));
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("installed 1", s.errors("check.cpp"));
     // An upgrade rewrites the installed header; nothing asks until a save.
     t.disk.write("sysroot/usr/include/installed.h", "#define INSTALLED 2\n");

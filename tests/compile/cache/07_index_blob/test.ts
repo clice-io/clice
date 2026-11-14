@@ -17,7 +17,7 @@ async function rebuilt(t: TestContext, s: Serve, damaged: string | undefined): P
 }
 
 test("damaged index is rebuilt", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("main.cpp")).toEqual([]);
     const [index] = t.disk.list(INDEX);
     await s.offline(() => {
@@ -28,7 +28,7 @@ test("damaged index is rebuilt", async (t) => {
 });
 
 test("missing index is rebuilt", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("main.cpp")).toEqual([]);
     const [index] = t.disk.list(INDEX);
     await s.offline(() => {

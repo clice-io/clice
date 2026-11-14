@@ -893,7 +893,8 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
         return clice::compile({
             .kind = CompilationKind::Content,
             .input = std::move(checked),
-            .skip_bodies = project.settings.project.skip_header_bodies,
+            .skip_bodies = true,
+            .function_bodies = project.rules.function_body_rules(),
         });
     };
     if(auto key = resolution.self_containment; key && !resolution.self_contained) {
@@ -968,11 +969,13 @@ void run_feature(FileEntry& entry,
                  const FeatureSpec& spec,
                  const SourceFile& file,
                  const CompilationInput& input,
-                 const Settings& settings) {
+                 const Project& project) {
+    auto& settings = project.settings;
     CompilationParams params{
         .kind = CompilationKind::Content,
         .input = input,
-        .skip_bodies = settings.project.skip_header_bodies,
+        .skip_bodies = true,
+        .function_bodies = project.rules.function_body_rules(),
     };
     if(settings.diagnostics.clang_tidy) {
         auto resolution = tidy::resolve_tidy_params(file.path);
@@ -1066,7 +1069,7 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
         LOG_ERROR("--host: {}", input.error());
         return 1;
     }
-    run_feature(entry, spec, *file, *input, project.settings);
+    run_feature(entry, spec, *file, *input, project);
     if(!input->pch.first.empty()) {
         fs::remove(input->pch.first);
     }

@@ -93,7 +93,7 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
             serve_folders();
         }
     }
-    auto& owner = pick_owner(path_id);
+    auto& owner = document_owner(path_id);
     document.owner = &owner;
     owner.adopt(path_id);
     watch_settings();

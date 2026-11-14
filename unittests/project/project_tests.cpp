@@ -1,5 +1,6 @@
 module clice;
 
+import :index.database.writer_lock;
 import :project.discovery;
 import :project.project;
 import :settings.settings;
@@ -122,6 +123,32 @@ ZEST_CASE(WriterThenReader) {
     ZASSERT(reader.database != nullptr);
     ZEXPECT(reader.database->read_only());
     ZEXPECT(!reader.writer_lock.has_value());
+}
+
+ZEST_CASE(SecondWriterWaits) {
+    // A writer finding the lock held leaves its index closed, taking no
+    // build's entries, until the lock comes free: then it opens it as the
+    // writer.
+    open(project, {.cache = Project::OpenOptions::Cache::Write});
+    ZASSERT(project.writer_lock.has_value());
+
+    FileTable second_files;
+    Project second{second_files};
+    open(second, {.cache = Project::OpenOptions::Cache::Write});
+    ZEXPECT(second.index_waits);
+    ZEXPECT(second.database == nullptr);
+
+    project.database.reset();
+    project.writer_lock.reset();
+    auto lock = index::WriterLock::acquire(second.settings.cache_dir);
+    ZASSERT(lock.has_value());
+    Project::Opened opened;
+    second.open_index(std::move(*lock), opened);
+    ZEXPECT(!second.index_waits);
+    ZEXPECT(opened.unwritable.empty());
+    ZASSERT(second.database != nullptr);
+    ZEXPECT(!second.database->read_only());
+    ZEXPECT(second.writer_lock.has_value());
 }
 
 };  // ZEST_SUITE(ProjectOpen)

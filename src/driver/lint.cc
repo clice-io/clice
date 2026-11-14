@@ -295,8 +295,8 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     Timer timer;
     auto& project = run.project;
 
-    if(!start_batch(run, batch, batch.workers, "lint")) {
-        result.error = "the worker processes did not start";
+    if(auto unstarted = start_batch(run, batch, batch.workers, "lint"); !unstarted.empty()) {
+        result.error = std::move(unstarted);
         result.exit_code = 2;
         // See index_batch: stop the partially started pool or the loop
         // never drains.
@@ -313,19 +313,18 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
             with_index ? Project::OpenOptions::Cache::Write : Project::OpenOptions::Cache::Build,
     });
 
-    auto& members = opened.members;
-    if(members.empty()) {
+    if(auto unwritable = with_index ? co_await writes_index(project, opened) : std::string();
+       !unwritable.empty()) {
+        result.error = std::move(unwritable);
+    } else if(opened.members.empty()) {
         result.error = std::format("Nothing to lint: {}", project.why_no_members(batch.root));
-    } else if(with_index && !project.database) {
-        result.error = std::format("Cannot persist the index at {}: {}",
-                                   std::string_view(project.settings.project.cache_dir),
-                                   opened.unwritable);
     }
     if(result.error) {
         result.exit_code = 2;
         co_await shutdown(run);
         co_return;
     }
+    auto& members = opened.members;
 
     // One run per command a file compiles under: a file several database
     // entries list lints under each distinct command, as clang-tidy runs
