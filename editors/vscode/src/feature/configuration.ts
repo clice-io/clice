@@ -2,7 +2,6 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
-import { LanguageStatus } from "./status";
 import type {
     LinkedBuild,
     ListConfigurationsResult,
@@ -16,27 +15,12 @@ function buildDirectory(build: LinkedBuild): string {
     return vscode.workspace.asRelativePath(path.dirname(database.fsPath));
 }
 
-/// A linked build in a word: the configuration sharing its databases, else
-/// the last two directories of its first one.
-function buildName(build: LinkedBuild): string {
-    if (build.configuration) {
-        return build.configuration;
-    }
-    return buildDirectory(build).split(/[\\/]/).slice(-2).join("/");
-}
-
-/** The build configuration switcher: a language status item naming the
- * configuration the project of the active editor runs (only while its
- * rules declare any) and the build its links resolve to, and a quick pick
- * that persists a new choice for that project, which the server applies by
- * asking to be restarted. */
+/** The build configuration switcher: a quick pick naming the configuration
+ * the project of the active editor runs and the build its links resolve to,
+ * which persists a new choice for that project, applied by the server asking
+ * to be restarted. The editor's context menu offers it while the project's
+ * rules declare configurations (`clice.configurations`). */
 export function registerBuildConfiguration(client: ClientHandle, ext: vscode.ExtensionContext) {
-    const status = new LanguageStatus("clice.configuration", "clice: build configuration");
-    const switchConfiguration: vscode.Command = {
-        title: "Switch",
-        command: "clice.switchConfiguration",
-    };
-
     /// The document naming the project; without one the server answers
     /// for its first folder.
     function project(): { uri?: string } {
@@ -68,16 +52,10 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
         if (current !== generation) {
             return;
         }
-        if (!result || result.configurations.length === 0) {
-            status.hide();
-            return;
-        }
-        status.show(
-            result.build ? `${result.active} → ${buildName(result.build)}` : result.active,
-            result.selected && result.selected !== result.active
-                ? `the build configuration; ${result.selected} is selected for the next start`
-                : "the build configuration",
-            switchConfiguration,
+        void vscode.commands.executeCommand(
+            "setContext",
+            "clice.configurations",
+            (result?.configurations.length ?? 0) > 0,
         );
     }
 
@@ -143,10 +121,9 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
     }
 
     ext.subscriptions.push(
-        status,
         vscode.commands.registerCommand("clice.switchConfiguration", select),
         // A (re)started server may run another configuration; a stopped
-        // one has nothing to show (the request fails and hides the item).
+        // one has none (the request fails).
         client.onDidChangeState((event) => {
             if (event.newState === State.Starting) {
                 return;

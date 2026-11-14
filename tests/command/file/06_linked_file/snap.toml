@@ -4,7 +4,7 @@ ${WS}/deep/src/compile_commands.json:
   directory: ${WS}/deep/src
   command:   ${WS}/missing-cc -c lib.cpp
   resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/deep/src/lib.cpp
-  error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
+  error:     the compiler could not be queried: the compiler ${WS}/missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: the compiler missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands"
 exit = 0

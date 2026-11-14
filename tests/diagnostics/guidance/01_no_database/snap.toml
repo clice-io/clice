@@ -3,7 +3,7 @@ diagnostics = [
     {
         at = '⟦⟧#include "config.h"',
         severity = "warning",
-        message = "No compilation database entry for this file (compile command was synthesized from defaults), so some includes may not be found. Configure compile_commands.json for accurate diagnostics.",
+        message = "compile_commands.json has no entry for this file, so clice compiles it with a default command, which may miss its include paths. Add the file to the build and regenerate compile_commands.json, or give it a command with a `default_command` rule in clice.toml.",
         source = "clice",
         code = "inferred-compile-command",
         link = "https://docs.clice.io/clice/guide/quick-start#project-setup",

@@ -143,6 +143,22 @@ tests/code_completion/scopes/03_import_insertion
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**Written scopes**
+
+A name a header the file does not include yet declares completes after the namespace written before it (`std::vec`)
+
+It comes with the `#include` that brings it, whether the file already knows
+the namespace or not. After a namespace alias, a macro or a class, only what
+the file reaches is offered.
+
+```case
+tests/code_completion/scopes/20_written_qualifiers
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Member Access
@@ -392,7 +408,8 @@ tests/code_completion/templates/07_deduced_variables
 An `auto` parameter of a lambda completes the members of the type the lambda is called with
 
 The call can come after the lambda, or be the algorithm the lambda is
-passed to. A lambda called with several types completes nothing.
+passed to. A lambda called with several types completes the names every one
+of them has.
 
 ```case
 tests/code_completion/templates/14_generic_lambda_parameters
@@ -424,6 +441,24 @@ After `m.find(1)->` over a `lib::map<int, T>`, `first` is a `const int` and `sec
 
 ```case
 tests/code_completion/templates/29_library_specialization_members
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Several instantiations**
+
+A template the code calls with several types completes the names every one of them has
+
+Each name is listed with the overloads each type declares for it. Inside a
+branch of an `if constexpr`, only the types that take the branch count. A
+call written before the template counts as well as one after it; past eight
+types, the first eight decide. When one of the types is not a class, no
+name is shared and nothing is offered.
+
+```case
+tests/code_completion/templates/36_several_instantiations
 ```
 
 <!-- END CAPABILITY -->
@@ -768,7 +803,7 @@ tests/code_completion/ranking/02_expected_type
 
 ## Trigger Characters
 
-Registered: `. < > : " /` and space.
+Registered: `. < > : " / #` and space.
 
 | Character | Context        | Behavior                                            |
 | --------- | -------------- | --------------------------------------------------- |
@@ -779,3 +814,4 @@ Registered: `. < > : " /` and space.
 | `"`       | `#include "`   | Include path completion                             |
 | `/`       | Path separator | Include path continuation                           |
 | ` `       | After `import` | Module name completion (extension-gated)            |
+| `#`       | Line start     | Directive name completion; any other `#` is ignored |

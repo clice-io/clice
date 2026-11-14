@@ -404,6 +404,28 @@ ZEST_CASE(ResolveWithoutConfig) {
         ranges::all_of(resolution.files, [](const ReportedInput& file) { return file.absent; }));
 }
 
+ZEST_CASE(InvalidConfigLocated) {
+    TempDir tmp;
+    tmp.touch(".clang-tidy", "Checks: '-*'\nHeaderFilterRegex: [\n");
+    tmp.touch("a.cpp");
+    auto resolution = tidy::resolve_tidy_params(tmp.path("a.cpp"));
+    ZEXPECT(!resolution.error.empty());
+    ZASSERT(!resolution.locations.empty());
+    ZEXPECT(resolution.locations[0].path == tmp.path(".clang-tidy"));
+    // On the second line, where the list starts and never ends.
+    ZEXPECT(resolution.locations[0].offset >= 13U);
+}
+
+ZEST_CASE(DottedExtensionRefused) {
+    TempDir tmp;
+    tmp.touch(".clang-tidy", "HeaderFileExtensions: ['.h', 'hpp']\n");
+    tmp.touch("a.cpp");
+    auto resolution = tidy::resolve_tidy_params(tmp.path("a.cpp"));
+    ZEXPECT(llvm::StringRef(resolution.error).contains("HeaderFileExtensions lists `.h`"));
+    // The defaults stand in, which a context built from them reads safely.
+    ZEXPECT(!resolution.params.header_file_extensions);
+}
+
 ZEST_CASE(ExtraArgsCommandSplit) {
     // -W warning flags stay on the warning-options path where the Checks
     // gate applies; driver pass-throughs and everything else reach the

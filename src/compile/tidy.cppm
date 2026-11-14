@@ -6,6 +6,14 @@ import :support.prelude;
 
 namespace clice::tidy {
 
+/// A place in a configuration file, a byte offset into it, and what is
+/// wrong there.
+struct ErrorLocation {
+    std::string path;
+    std::uint32_t offset = 0;
+    std::string message;
+};
+
 /// The effective clang-tidy configuration for a file, and the places the
 /// resolution looked for a .clang-tidy: those it read, by the hash of
 /// their text, and those it found none at — a change at any of them can
@@ -15,8 +23,12 @@ struct TidyResolution {
     std::vector<ReportedInput> files;
 
     /// Why a configuration file on the way did not parse, as clang-tidy
-    /// reports it; the resolution reads on past it as clang-tidy does.
+    /// reports it, or names an extension clang-tidy cannot read; the
+    /// resolution reads on past it as clang-tidy does.
     std::string error;
+
+    /// The places in the configuration files `error` points at.
+    std::vector<ErrorLocation> locations;
 };
 
 /// Resolve the effective clang-tidy configuration for `file` from its
@@ -24,6 +36,11 @@ struct TidyResolution {
 /// semantics). Files without any configuration resolve to empty checks —
 /// the consumer's default set applies.
 TidyResolution resolve_tidy_params(llvm::StringRef file);
+
+/// The checks `params` enables that the editor shape runs only under
+/// TidyParams::slow_checks: those not known to be fast enough to run on
+/// every edit, the slow and the never measured.
+std::vector<std::string> slow_checks(const TidyParams& params);
 
 /// The plan's compilation-affecting extra args, split for clang-tidy's
 /// own insertion points on the driver command: extra_args_before prepend
@@ -89,11 +106,12 @@ public:
 /// clang-tidy's consumer collecting the findings, which applies the
 /// suppression comments, the header filters and the Checks a compiler
 /// warning needs to be a finding. Otherwise the editor shape, clangd's:
-/// checks classified fast only, minus those unusable on code mid-edit,
-/// over the focus file's top-level declarations, suppression comments read
-/// there only. `preamble_inactive` holds the inactive regions of the
-/// consumed PCH's preamble share (flat begin/end offset pairs), whose
-/// `#include`s the preamble replay skips.
+/// checks classified fast only unless TidyParams::slow_checks, minus those
+/// unusable on code mid-edit, over the focus file's top-level
+/// declarations, suppression comments read there only.
+/// `preamble_inactive` holds the inactive regions of the consumed PCH's
+/// preamble share (flat begin/end offset pairs), whose `#include`s the
+/// preamble replay skips.
 std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
                                             const TidyParams& params,
                                             bool batch,

@@ -14,8 +14,8 @@ errors = [
     {
         at = "import ⟦Self;⟧",
         severity = "error",
-        message = "cyclic dependency in module 'Self': Self -> Self",
-        source = "clang",
-        code = "err_module_cycle",
+        message = "module 'Self' does not build: its imports cycle back to it (Self → Self)",
+        source = "clice",
+        code = "module-cycle",
     },
 ]

@@ -142,7 +142,7 @@ ZEST_CASE(BothFailuresNamed) {
     auto ref = add("a.cpp", {argv0.c_str(), "-x", "bogus"});
     auto resolved = f.toolchain.resolve(ref.command, ref.language);
     ZASSERT(!resolved);
-    ZEXPECT(llvm::StringRef(resolved.error()).contains("not found"));
+    ZEXPECT(llvm::StringRef(resolved.error()).contains("does not exist or cannot run"));
     ZEXPECT(llvm::StringRef(resolved.error()).contains("language not recognized: 'bogus'"));
     auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
     ZEXPECT(rendered.query_failure.empty());

@@ -4,9 +4,9 @@ ${WS}/compile_commands.json:
   directory: ${WS}
   command:   ${WS}/missing-cc -std=c++20 -Werror -c main.cpp -o main.o
   resolved:  ${WS}/missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 -D FROM_RULE ${WS}/main.cpp
-  error:     the compiler could not be queried: Driver ${WS}/missing-cc not found or not executable
+  error:     the compiler could not be queried: the compiler ${WS}/missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: the compiler missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands"
 exit = 0
 
 [test."$ clice command main.cpp --json"]
@@ -42,10 +42,10 @@ stdout = '''
           "${WS}/main.cpp"
         ]
       },
-      "toolchainError": "Driver ${WS}/missing-cc not found or not executable"
+      "toolchainError": "the compiler ${WS}/missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine"
     }
   ]
 }
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: the compiler missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands"
 exit = 0

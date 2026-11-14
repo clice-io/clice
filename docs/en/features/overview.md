@@ -20,12 +20,12 @@ Language Server Protocol features available when using clice as an editor backen
 
 | Feature                                   | Status                                   |
 | ----------------------------------------- | ---------------------------------------- |
-| [Code Completion](./completion.md)        | 53 supported                             |
+| [Code Completion](./completion.md)        | 55 supported                             |
 | [Hover](./hover.md)                       | 72 supported                             |
 | [Signature Help](./signature-help.md)     | 21 supported · 1 partial · 2 unsupported |
-| [Code Navigation](./navigation.md)        | 115 supported · 8 unsupported            |
+| [Code Navigation](./navigation.md)        | 117 supported · 6 unsupported            |
 | [Rename](./rename.md)                     | 9 supported                              |
-| [Diagnostics](./diagnostics.md)           | 10 supported · 1 partial                 |
+| [Diagnostics](./diagnostics.md)           | 12 supported · 1 partial                 |
 | [Code Action](./code-action.md)           | 38 supported                             |
 | [Semantic Tokens](./semantic-tokens.md)   | 61 supported                             |
 | [Inlay Hints](./inlay-hints.md)           | 40 supported                             |
@@ -36,7 +36,7 @@ Language Server Protocol features available when using clice as an editor backen
 | [Formatting](./formatting.md)             | 4 supported                              |
 | [C++20 Modules](./modules.md)             | 9 supported                              |
 | [Header Contexts](./header-contexts.md)   | 6 supported                              |
-| [Compilation](./compilation.md)           | 8 supported                              |
+| [Compilation](./compilation.md)           | 9 supported                              |
 
 <!-- END GENERATED OVERVIEW -->
 

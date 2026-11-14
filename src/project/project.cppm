@@ -31,6 +31,7 @@ import :support.failure;
 import :support.prelude;
 import :support.signal;
 import :syntax.dependency_graph;
+import :syntax.scan;
 import :vfs.cache_store;
 import :vfs.file_table;
 import :vfs.path;
@@ -647,6 +648,10 @@ struct Project {
     /// from its working directory.
     Rendered render(const CommandRef& command, const RenderOptions& options = {});
 
+    /// The module declaration of `text`, a file's own up to a point, as the
+    /// preprocessor reads it under `command`.
+    ScanResult declared_module(const CommandRef& command, llvm::StringRef text);
+
     /// A file's final compile command: select_command, then the context
     /// restoring the includer's preprocessor state of a header that needs
     /// it, rendered. Logs where the command came from, once per change.
@@ -1120,30 +1125,32 @@ struct Project {
     /// what did not build: a build that
     /// crashed its worker is recorded through `fail` on what it was known to
     /// read (`known`), and one that failed on the user's code on what it read
-    /// (read_inputs over `before`); any other failure is clice's own breakage,
+    /// (read_inputs over `before`), with its reply; any other failure is clice's own breakage,
     /// an anomaly. The interest class is read at dispatch time: a foreground
     /// waiter may have joined after the attempt started. The advisory token
     /// rides into the pool, which cancels the request over IPC while this frame
     /// keeps awaiting the real reply (contract 2). The reply of a build that
     /// succeeded; else the attempt's result — Stale for a build the attempt
     /// withdrew, which is no decision on it.
-    async::task<std::expected<worker::PrecompiledBuildResult, Result>>
-        send_precompiled(Attempt& attempt,
-                         const worker::BuildPCHParams& params,
-                         llvm::StringRef label,
-                         llvm::StringRef why,
-                         Inputs known,
-                         const Inputs& before,
-                         llvm::function_ref<void(FailureRecord, Inputs)> fail);
+    async::task<std::expected<worker::PrecompiledBuildResult, Result>> send_precompiled(
+        Attempt& attempt,
+        const worker::BuildPCHParams& params,
+        llvm::StringRef label,
+        llvm::StringRef why,
+        Inputs known,
+        const Inputs& before,
+        llvm::function_ref<void(FailureRecord, Inputs, const worker::PrecompiledBuildResult*)>
+            fail);
 
-    async::task<std::expected<worker::PrecompiledBuildResult, Result>>
-        send_precompiled(Attempt& attempt,
-                         const worker::BuildPCMParams& params,
-                         llvm::StringRef label,
-                         llvm::StringRef why,
-                         Inputs known,
-                         const Inputs& before,
-                         llvm::function_ref<void(FailureRecord, Inputs)> fail);
+    async::task<std::expected<worker::PrecompiledBuildResult, Result>> send_precompiled(
+        Attempt& attempt,
+        const worker::BuildPCMParams& params,
+        llvm::StringRef label,
+        llvm::StringRef why,
+        Inputs known,
+        const Inputs& before,
+        llvm::function_ref<void(FailureRecord, Inputs, const worker::PrecompiledBuildResult*)>
+            fail);
 
     // saved.cpp
 

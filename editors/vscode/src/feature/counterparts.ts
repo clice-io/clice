@@ -5,9 +5,10 @@ import type { CounterpartsResult } from "@clice/tools/protocol" with {
     "resolution-mode": "import",
 };
 
-/** Switch Source/Header: open the file the active one pairs with — at once
- * when the server names one candidate decisive, otherwise through a quick
- * pick listing every candidate with what pairs it. */
+/** Switch Header and Source (Module Interface and Implementation): open the
+ * file the active one pairs with — at once when the server names one
+ * candidate decisive, otherwise through a quick pick listing every candidate
+ * with what pairs it. */
 export function registerCounterparts(client: ClientHandle, ext: vscode.ExtensionContext) {
     async function switchSourceHeader() {
         const document = vscode.window.activeTextEditor?.document;
@@ -44,7 +45,7 @@ export function registerCounterparts(client: ClientHandle, ext: vscode.Extension
             };
         });
         const chosen = await vscode.window.showQuickPick(items, {
-            title: "Switch Source/Header",
+            title: "Switch Header and Source (Module Interface and Implementation)",
             placeHolder: "File to open",
             matchOnDescription: true,
         });

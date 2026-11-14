@@ -15,10 +15,12 @@ import :vfs.file_table;
 namespace clice::feature {
 
 /// The project's names the index offers for the name `typed`
-/// (ScopeCandidate), with whether it holds more.
+/// (ScopeCandidate), of the scope a qualifier names when one is written,
+/// with whether it holds more.
 static auto offer_names(const index::IndexQuery& query,
                         const DependencyGraph& graph,
-                        llvm::StringRef typed) -> CompileCompletion {
+                        llvm::StringRef typed,
+                        const std::optional<WrittenScope>& written) -> CompileCompletion {
     CompileCompletion compile;
     auto kind_of = [](SymbolKind kind) {
         using Kind = protocol::CompletionItemKind;
@@ -40,7 +42,12 @@ static auto offer_names(const index::IndexQuery& query,
     };
     namespace stdlib = clang::tooling::stdlib;
     bool builds_std = !graph.lookup_module("std").empty();
-    auto found = index::completables(query, typed, scope_candidate_limit);
+    auto found = written ? index::completables(query,
+                                               typed,
+                                               scope_candidate_limit,
+                                               written->segments,
+                                               written->global)
+                         : index::completables(query, typed, scope_candidate_limit);
     for(auto& [symbol, chain, declared]: found.names) {
         bool macro = symbol.kind == SymbolKind::Macro;
         ScopeCandidate candidate{
@@ -143,10 +150,17 @@ auto code_complete(const CompletionInputs& inputs)
     }
 
     // A number names nothing.
-    if(auto typed = offset ? Prefix::from(text, *offset).spelling : llvm::StringRef();
-       inputs.options.all_scopes && completing.directive.empty() && !typed.empty() &&
-       !clang::isDigit(typed.front())) {
-        return offer_names(inputs.query, inputs.graph, typed);
+    // LIMITATION: the index is asked for the scope as written, before the
+    // compile resolves it: after a namespace alias (`fs::pa`) or a macro
+    // naming the namespace, a name a header the file does not include
+    // declares there is not offered.
+    if(auto prefix = offset ? std::optional(Prefix::from(text, *offset)) : std::nullopt;
+       prefix && inputs.options.all_scopes && completing.directive.empty() &&
+       !prefix->spelling.empty() && !clang::isDigit(prefix->spelling.front())) {
+        return offer_names(inputs.query,
+                           inputs.graph,
+                           prefix->spelling,
+                           written_scope(text, prefix->typed.begin, dialect));
     }
     return CompileCompletion{};
 }

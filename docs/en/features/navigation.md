@@ -502,16 +502,13 @@ tests/navigation/references/06_access_kinds
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#177 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Reference enclosing context**
 
 Each reference reaches the editor as a bare location, without the function that encloses it
 
-clangd attaches the enclosing function through an extension field
-(`containerName`) for a client that declares support for it; clice does not
-read that declaration yet. `clice query references` names the function each
-reference lies in.
+`clice query references` names the function each reference lies in.
 
 ```case
 tests/navigation/references/07_enclosing_functions
@@ -1557,11 +1554,11 @@ tests/document_highlights/symbols/03_macros
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: unsupported clangd#1921 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Control flow keywords**
 
-A `break` or `continue` does not highlight the loop it leaves yet
+A `break` or `continue` does not highlight the loop it leaves
 
 ```case
 tests/document_highlights/symbols/08_control_flow
@@ -1607,7 +1604,7 @@ tests/document_highlights/access_kinds/03_reference_arguments
 
 Writing through `object.member` writes the member and reads the object
 
-A designated initializer or a constructor's member initializer names the field without writing it. Fields of an anonymous union highlight like any other field.
+A designated initializer or a constructor's member initializer writes the field. Fields of an anonymous union highlight like any other field.
 
 ```case
 tests/document_highlights/access_kinds/06_member_access
@@ -1847,7 +1844,7 @@ tests/workspace_symbols/projects/03_worktree_copies
 
 ## Switch Source/Header
 
-Open the file the current one pairs with: a header's source, a source's header, a module interface's implementation units, an implementation unit's interface. In VS Code it is **Switch Source/Header** in the editor's right-click menu, `Alt+O`, or **clice: Switch Source/Header** in the Command Palette; Neovim runs it as `:LspCliceSwitchSourceHeader`, and `clice query counterparts <file>` answers the same on the command line. Zed lets no extension add a command, and its own _switch source header_ works with clangd only.
+Open the file the current one pairs with: a header's source, a source's header, a module interface's implementation units, an implementation unit's interface. In VS Code it is **Switch Header and Source (Module Interface and Implementation)** in the editor's right-click menu, `Alt+O`, or **clice: Switch Header and Source (Module Interface and Implementation)** in the Command Palette; Neovim runs it as `:LspCliceSwitchSourceHeader`, and `clice query counterparts <file>` answers the same on the command line. Zed lets no extension add a command, and its own _switch source header_ works with clangd only.
 
 The candidates come from what the build and the index already know, so nothing is compiled for the answer: the files of the same name on the other side — in the file's own directory, or elsewhere in the workspace when one includes the other —, the declarations one holds that the other defines, and module declarations. Each candidate carries its reasons. The editor opens the best one directly when it is the only candidate or beats every other: it has each of the other's reasons among shared declarations and the same name, at least as many shared declarations, and either a reason more, twice the shared declarations when both share some, or — neither sharing any — a module pairing the other lacks. Otherwise it lists the candidates to pick from.
 

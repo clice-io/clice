@@ -1,0 +1,4 @@
+[test.guidance]
+value = [
+    "1 file of the project is not UTF-8 (${WS}/main.cpp): clice reads source as UTF-8, so its non-ASCII text shows garbled and positions after it can be off; save it as UTF-8",
+]

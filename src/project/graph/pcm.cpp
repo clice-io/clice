@@ -445,7 +445,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
         why,
         std::move(known),
         before,
-        [&](FailureRecord record, Inputs inputs) {
+        [&](FailureRecord record, Inputs inputs, const worker::PrecompiledBuildResult* built) {
             // A build whose imports left the disk under it failed on the
             // missing file: the next wait builds them again, and the module
             // with them.
@@ -455,12 +455,16 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
                 key.clear();
                 record.cause = "an import's module file left the cache during the build";
             }
+            ModuleBuildFailed failed{.key = std::move(key),
+                                     .record = std::move(record),
+                                     .import_lost = lost};
+            if(built && !lost) {
+                failed.first_error = built->first_error;
+                failed.error_count = built->error_count;
+            }
             // An attempt overtaken in flight records its inputs all the same:
             // they no longer match, and its successor rebuilds.
-            project.pcms[node].failure = {
-                {.key = std::move(key), .record = std::move(record), .import_lost = lost},
-                std::move(inputs)
-            };
+            project.pcms[node].failure = {std::move(failed), std::move(inputs)};
         });
     if(!built) {
         if(built.error() == Result::Failed) {
@@ -699,7 +703,16 @@ std::vector<feature::ModuleFailure> Project::module_failures(llvm::ArrayRef<Node
             if(!last || !last->failure || last->failure->result.record.crashed()) {
                 continue;
             }
-            failure.error = last->failure->result.record.cause;
+            auto& failed = last->failure->result;
+            failure.error = failed.record.cause;
+            if(auto& first = failed.first_error; first && !first->file.empty()) {
+                failure.error_at = feature::DiagnosticNote{
+                    .path = first->file,
+                    .range = {first->offset, first->offset},
+                    .message = "the error the module's build failed on",
+                };
+            }
+            failure.more_errors = failed.error_count > 0 ? failed.error_count - 1 : 0;
         }
         for(auto unit: chain.modules) {
             failure.chain.push_back(dep_graph.module_of(unit.file()).str());

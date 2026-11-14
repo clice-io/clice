@@ -77,15 +77,15 @@ static bool rewritten_since(FileTable& files, const Inputs& read) {
 }
 
 template <typename Params>
-static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
-    send_build(Project& project,
-               Attempt& attempt,
-               const Params& params,
-               llvm::StringRef label,
-               llvm::StringRef why,
-               Inputs known,
-               const Inputs& before,
-               llvm::function_ref<void(FailureRecord, Inputs)> fail) {
+static async::task<std::expected<worker::PrecompiledBuildResult, Result>> send_build(
+    Project& project,
+    Attempt& attempt,
+    const Params& params,
+    llvm::StringRef label,
+    llvm::StringRef why,
+    Inputs known,
+    const Inputs& before,
+    llvm::function_ref<void(FailureRecord, Inputs, const worker::PrecompiledBuildResult*)> fail) {
     constexpr bool pch = std::same_as<Params, worker::BuildPCHParams>;
     constexpr llvm::StringRef what = pch ? "PCH" : "PCM";
     LOG_INFO("Building the {} of {}: {}", what, label, why);
@@ -101,7 +101,7 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
                  .cancel = attempt.token()});
         },
         [&](const ipc::Error& error) {
-            fail(failed_build(worker::death_of(error), error.message), std::move(known));
+            fail(failed_build(worker::death_of(error), error.message), std::move(known), nullptr);
         });
     if(result.has_value() && result.value().success) {
         LOG_INFO("Built the {} of {} in {} ms", what, label, timer.ms());
@@ -130,11 +130,11 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
         std::string shown = built.error;
         if(built.error_count > 1) {
             shown = std::format("{} (and {}, all in the worker's log)",
-                                built.first_error,
+                                built.first_error.message,
                                 counted(built.error_count - 1, "more error", "more errors"));
         }
         LOG_WARN("The {} build of {} failed: {}", what, label, shown);
-        fail(failed_build({}, built.first_error), std::move(read));
+        fail(failed_build({}, built.first_error.message), std::move(read), &built);
     } else if(!result.has_value() && worker::is_operational_error(result.error())) {
         LOG_WARN("The {} build of {} failed: {}", what, label, message);
     } else if constexpr(pch) {
@@ -145,25 +145,25 @@ static async::task<std::expected<worker::PrecompiledBuildResult, Result>>
     co_return std::unexpected(Result::Failed);
 }
 
-async::task<std::expected<worker::PrecompiledBuildResult, Result>>
-    Project::send_precompiled(Attempt& attempt,
-                              const worker::BuildPCHParams& params,
-                              llvm::StringRef label,
-                              llvm::StringRef why,
-                              Inputs known,
-                              const Inputs& before,
-                              llvm::function_ref<void(FailureRecord, Inputs)> fail) {
+async::task<std::expected<worker::PrecompiledBuildResult, Result>> Project::send_precompiled(
+    Attempt& attempt,
+    const worker::BuildPCHParams& params,
+    llvm::StringRef label,
+    llvm::StringRef why,
+    Inputs known,
+    const Inputs& before,
+    llvm::function_ref<void(FailureRecord, Inputs, const worker::PrecompiledBuildResult*)> fail) {
     return send_build(*this, attempt, params, label, why, std::move(known), before, fail);
 }
 
-async::task<std::expected<worker::PrecompiledBuildResult, Result>>
-    Project::send_precompiled(Attempt& attempt,
-                              const worker::BuildPCMParams& params,
-                              llvm::StringRef label,
-                              llvm::StringRef why,
-                              Inputs known,
-                              const Inputs& before,
-                              llvm::function_ref<void(FailureRecord, Inputs)> fail) {
+async::task<std::expected<worker::PrecompiledBuildResult, Result>> Project::send_precompiled(
+    Attempt& attempt,
+    const worker::BuildPCMParams& params,
+    llvm::StringRef label,
+    llvm::StringRef why,
+    Inputs known,
+    const Inputs& before,
+    llvm::function_ref<void(FailureRecord, Inputs, const worker::PrecompiledBuildResult*)> fail) {
     return send_build(*this, attempt, params, label, why, std::move(known), before, fail);
 }
 

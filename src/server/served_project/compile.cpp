@@ -407,6 +407,10 @@ struct ServedProject::CompileAttempt {
     /// attempt.
     async::task<std::optional<Result>> send(worker::CompileResult& reply, bool& resend);
 
+    /// What clice knows of how the parse ran, by which its warnings explain
+    /// the errors the parse raises.
+    feature::CompileDiagnostics facts() const;
+
     /// What the reply raised, with what clice knows of how the parse ran:
     /// the preamble's diagnostics, the imports that failed or that several
     /// modules provide, a clang-tidy configuration that does not parse.
@@ -492,6 +496,20 @@ async::task<Result> ServedProject::CompileAttempt::run() {
     if(project.settings.diagnostics.clang_tidy &&
        project.rules.lintable(project.file_table.resolve(path_id))) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
+        auto slow_checks = project.settings.diagnostics.slow_clang_tidy_checks;
+        tidy_config->params.slow_checks = slow_checks.value_or(false);
+        if(!slow_checks && tidy_config->error.empty() &&
+           served.named_slow_checks.insert(tidy_config->params.checks).second) {
+            if(auto checks = tidy::slow_checks(tidy_config->params); !checks.empty()) {
+                LOG_GUIDANCE(
+                    "The clang-tidy configuration of {} enables checks too slow for an editor, or "
+                    "not measured for one, which do not run on open files: {}. Set "
+                    "`slow_clang_tidy_checks = true` under `[diagnostics]` to run them, or "
+                    "`false` to leave them out without this message; `clice lint` runs them.",
+                    file_path,
+                    llvm::join(checks, ", "));
+            }
+        }
         auto& suspects = session->suspects;
         if(tidy_config->error.empty() && !suspects.tidy && suspects.pch.empty() &&
            !session->crash_record(Compile) && !session->crash_stops(Tidy, Session::Clock::now())) {
@@ -870,14 +888,10 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
             compiled.output = CompileOutput{
                 .version = setup_fail ? std::optional(session->version) : std::nullopt,
                 .text = session->source,
-                .diagnostics =
-                    {
-                                  .source = resolution.ref.source,
-                                  .own = std::move(reply.diagnostics),
-                                  .query_failure = resolution.query_failure,
-                                  },
+                .diagnostics = facts(),
                 .failed = setup_fail,
             };
+            compiled.output->diagnostics.own = std::move(reply.diagnostics);
         });
         served.push_output(*session, true);
         co_return Result::Failed;
@@ -894,6 +908,22 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
     co_return std::nullopt;
 }
 
+feature::CompileDiagnostics ServedProject::CompileAttempt::facts() const {
+    auto display = [&](Fid file) {
+        return file.valid() ? project.file_table.display(file) : std::string();
+    };
+    auto& directory = resolution.directory;
+    return {
+        .source = resolution.ref.source,
+        .command_of = display(resolution.candidate.from()),
+        .outside_project = !served.holds(project.file_table.resolve(path_id)),
+        .missing_directory =
+            !directory.empty() && !fs::is_directory(directory) ? directory : std::string(),
+        .unmatched_host = display(resolution.unmatched_host),
+        .query_failure = resolution.query_failure,
+    };
+}
+
 void ServedProject::CompileAttempt::assemble(std::vector<feature::FileDiagnostic>& diagnostics) {
     if(preamble_index && preamble_index->matches(params.text)) {
         diagnostics =
@@ -905,7 +935,7 @@ void ServedProject::CompileAttempt::assemble(std::vector<feature::FileDiagnostic
         diagnostics.push_back(feature::ambiguous_module(choice, session->text()));
     }
     if(tidy_config && !tidy_config->error.empty()) {
-        diagnostics.insert(diagnostics.begin(), feature::invalid_tidy_config(tidy_config->error));
+        diagnostics.insert(diagnostics.begin(), feature::invalid_tidy_config(*tidy_config));
     }
 }
 
@@ -969,17 +999,10 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     next->output = CompileOutput{
         .version = session->version,
         .text = session->source,
-        .diagnostics =
-            {
-                          .source = resolution.ref.source,
-                          .own = std::move(diagnostics),
-                          .unconfirmed = std::move(unconfirmed),
-                          .unmatched_host = resolution.unmatched_host.valid()
-                                      ? project.file_table.display(resolution.unmatched_host)
-                                      : std::string(),
-                          .query_failure = resolution.query_failure,
-                          },
+        .diagnostics = facts(),
     };
+    next->output->diagnostics.own = std::move(diagnostics);
+    next->output->diagnostics.unconfirmed = std::move(unconfirmed);
     next->output->diagnostics.skipped = served.shown_skipped_diagnostics(*session, *next->output);
 
     // The fresh ticket the send checked holds the document here: a move bumps

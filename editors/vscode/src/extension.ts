@@ -24,6 +24,7 @@ import { registerBuildConfiguration } from "./feature/configuration";
 import { registerCompilationContext } from "./feature/context";
 import { registerConflictCheck } from "./feature/conflicts";
 import { registerCounterparts } from "./feature/counterparts";
+import { registerIncludeCompletion } from "./feature/includes";
 import { registerInactiveRegions } from "./feature/inactive";
 import { registerRefactorCommands } from "./feature/refactor";
 
@@ -343,6 +344,7 @@ export async function activate(context: ExtensionContext) {
     void vscode.commands.executeCommand("setContext", "clice.languages", LANGUAGES);
     const documentSelector = LANGUAGES.map((language) => ({ scheme: "file", language }));
     const inactive = registerInactiveRegions(() => client, context);
+    const includes = registerIncludeCompletion(() => client, documentSelector, context);
     const clientOptions: LanguageClientOptions = {
         documentSelector,
         // Read at every start, as the launch settings are.
@@ -383,7 +385,7 @@ export async function activate(context: ExtensionContext) {
                         return [];
                     }
                 }
-                return next(document, position, context, token);
+                return includes(document, position, context, token, next);
             },
         },
     };
@@ -407,7 +409,8 @@ export async function activate(context: ExtensionContext) {
     );
 
     registerBuildConfiguration(client, context);
-    registerCompilationContext(client, context, registerCompileCommand(client, context));
+    registerCompileCommand(client, context);
+    registerCompilationContext(client, context);
     registerConflictCheck(client, context);
     registerCounterparts(client, context);
     registerAliasRedirect(context);

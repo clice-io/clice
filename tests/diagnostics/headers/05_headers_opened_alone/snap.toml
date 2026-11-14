@@ -3,7 +3,7 @@ diagnostics = [
     {
         at = "⟦⟧#pragma once",
         severity = "warning",
-        message = "No compilation database entry for this file (compile command was inferred from an including file), so some includes may not be found. Configure compile_commands.json for accurate diagnostics.",
+        message = "This header compiles under the command of ${WS}/src/user.cpp, which includes it, and some of its includes are not found there: ${WS}/src/user.cpp likely misses them as well.",
         source = "clice",
         code = "inferred-compile-command",
     },

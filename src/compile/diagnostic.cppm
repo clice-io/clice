@@ -16,7 +16,9 @@ enum class DiagnosticLevel : std::uint8_t {
 enum class DiagnosticSource : std::uint8_t {
     Clang,
     ClangTidy,
-    /// clice's own, about a file as a whole; no compile reports one.
+    /// clice's own words: about a file as a whole, or about what clice does
+    /// not do for a compile (a header unit it does not build, a module that
+    /// did not build); `DiagnosticID::name` is its code.
     Clice,
 };
 
@@ -30,12 +32,14 @@ struct DiagnosticID {
     /// The source of diagnostic.
     DiagnosticSource source;
 
-    /// The clang-tidy check that reported it, or the compiler's warning
-    /// option that controls it (`unused-variable`); empty for neither.
+    /// The clang-tidy check that reported it, clice's code for one clice
+    /// words itself (`header-unit`), or the compiler's warning option that
+    /// controls it (`unused-variable`); empty for none.
     llvm::StringRef name;
 
-    /// The code an editor shows it by: the check, `-W` and the warning
-    /// option, else clang's name for it (`err_undeclared_var_use`).
+    /// The code an editor shows it by: the check or clice's code, `-W` and
+    /// the warning option, else clang's name for it
+    /// (`err_undeclared_var_use`).
     std::string diagnostic_code() const;
 
     /// Whether this diagnostic reports a failure to read a prebuilt
@@ -72,6 +76,11 @@ struct Diagnostic {
 
     /// The notes clang attached to it, in order.
     std::vector<Diagnostic> notes;
+
+    /// Where the focus file asks for the template instantiation it arose
+    /// in, the innermost such request; none outside an instantiation. clang
+    /// notes the requests with an instantiation's first diagnostic alone.
+    std::optional<LocalSourceRange> requested;
 };
 
 }  // namespace clice

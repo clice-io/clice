@@ -58,7 +58,7 @@ on every kind:
 | `abstract`       | a pure virtual method, or a class with one                                                                                  |
 | `defaultLibrary` | declared in a system header or built into the compiler                                                                      |
 | `documentation`  | inside a documentation comment                                                                                              |
-| `modification`   | the entity changes there: assigned, incremented, passed by reference or address to non-const                                |
+| `modification`   | the entity changes there: assigned, incremented, initialized as a member, passed by reference or address to non-const       |
 
 A name a declaration gives carries where it is visible from: `local` (in its
 function or block), `member` (in its class), `internal` (in its translation

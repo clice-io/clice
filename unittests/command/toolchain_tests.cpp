@@ -202,7 +202,7 @@ ZEST_CASE(FailedQueryRetries) {
     auto b = add("b.cpp", {tmp.c_path("clang"), "-std=c++20"});
     llvm::SmallVector<CommandRef> refs = {a, b};
     f.toolchain.warm(refs);
-    ZEXPECT(llvm::StringRef(f.failure(b)).contains("not found"));
+    ZEXPECT(llvm::StringRef(f.failure(b)).contains("does not exist or cannot run"));
 
     auto driver = fake_clang(clang_job);
     auto retried = f.toolchain.resolve(a.command, a.language);
@@ -223,9 +223,9 @@ ZEST_CASE(FailedQueryUnqueried) {
     // and ABI names clang's target does not know (arm64 Linux builds GCC
     // with -mabi=lp64).
     auto ref = add("a.c", {tmp.c_path("aarch64-linux-gnu-gcc"), "-mabi=lp64", "-c"});
-    ZEXPECT(llvm::StringRef(f.failure(ref)).contains("not found"));
+    ZEXPECT(llvm::StringRef(f.failure(ref)).contains("does not exist or cannot run"));
     auto rendered = f.toolchain.render(ref, f.db.spelling(ref.file));
-    ZEXPECT(llvm::StringRef(rendered.query_failure).contains("not found"));
+    ZEXPECT(llvm::StringRef(rendered.query_failure).contains("does not exist or cannot run"));
     ZEXPECT(adjacent(rendered.argv, "-triple", "aarch64-unknown-linux-gnu"));
     ZEXPECT(!contains(rendered.argv, "lp64"));
 

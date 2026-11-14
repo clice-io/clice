@@ -4,9 +4,9 @@ ${WS}/compile_commands.json:
   directory: ${WS}
   command:   cl-missing.exe /Tcalpha.c /Tpbeta.c /c
   resolved:  cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /TC ${WS}/alpha.c
-  error:     the compiler could not be queried: Cannot find driver: cl-missing.exe
+  error:     the compiler could not be queried: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Cannot find driver: cl-missing.exe; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands"
 exit = 0
 
 ["per-file languages"."$ clice command beta.c"]
@@ -15,23 +15,23 @@ ${WS}/compile_commands.json:
   directory: ${WS}
   command:   cl-missing.exe /Tcalpha.c /Tpbeta.c /c
   resolved:  cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /TP ${WS}/beta.c
-  error:     the compiler could not be queried: Cannot find driver: cl-missing.exe
+  error:     the compiler could not be queried: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Cannot find driver: cl-missing.exe; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands"
 exit = 0
 
 ["cl spellings"."$ clice command convert -- cl-missing.exe /W3 -Wno-unused-variable /J /Zp4 /Iinc /FIpre.h /std:c++17 /c a.cpp"]
 stdout = "cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /W1 -Wno-unused-variable /J /Zp4 -I ${WS}/inc /FIpre.h /std:c++17 ${WS}/a.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: cl-missing.exe; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: cl-missing.exe
+warning: Cannot ask the compiler for its default settings: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["cl spellings"."$ clice command convert -- cl-missing.exe -std=c++20 /c b.cpp"]
 stdout = "cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /clang:-std=c++20 ${WS}/b.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: cl-missing.exe; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: cl-missing.exe
+warning: Cannot ask the compiler for its default settings: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1

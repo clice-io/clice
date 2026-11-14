@@ -15,6 +15,7 @@ import :feature.folding_ranges;
 import :feature.hover;
 import :feature.inlay_hints;
 import :feature.navigation;
+import :feature.protocol;
 import :feature.selection_ranges;
 import :feature.semantic_tokens;
 import :feature.signature_help;
@@ -167,6 +168,11 @@ struct FeatureParams {
 
     /// The whole file, a marker's range, or a point as an empty range.
     LocalSourceRange range;
+
+    /// The project, and the command the file compiles under, for what the
+    /// server answers before any compile.
+    Project& project;
+    CommandRef command;
 };
 
 /// A feature: its operation and line of help, what it is asked about, what
@@ -603,13 +609,38 @@ CompilationParams completion_at(const FeatureParams& params) {
 
 std::optional<codec::raw_value> run_code_completion(const FeatureParams& params) {
     const auto& settings = params.settings;
+    auto& project = params.project;
     // The replies of an editor client that takes everything an item can carry.
-    return to_raw_json(
-        feature::code_complete(completion_at(params),
-                               settings.code_completion,
-                               settings.documentation,
-                               {.snippets = true, .insert_replace = true, .markdown = true})
-            .list);
+    feature::CompletionClient client{.snippets = true, .insert_replace = true, .markdown = true};
+    // As the server answers: a directive name, an include path and a module
+    // name before any compile, the rest by one.
+    SourceText source(params.unit.focus_file().content(), params.unit.lang_options());
+    protocol::CompletionParams request;
+    request.text_document.uri = feature::to_uri(project.file_table.resolve(params.command.file));
+    request.position = *source.positions().position(params.range.begin, PositionEncoding::UTF16);
+    auto answer = feature::code_complete({
+        .file = params.command.file,
+        .source = source,
+        .params = request,
+        .encoding = PositionEncoding::UTF16,
+        .options = settings.code_completion,
+        .client = client,
+        .graph = project.dep_graph,
+        .search = [&] { return project.toolchain.search_config(params.command); },
+        .declared_module =
+            [&](llvm::StringRef text) { return project.declared_module(params.command, text); },
+        .open_units = [] { return std::vector<feature::OpenUnit>(); },
+        .query = project.index_query,
+        .documentation = settings.documentation,
+    });
+    if(auto* list = std::get_if<protocol::CompletionList>(&answer)) {
+        return to_raw_json(*list);
+    }
+    return to_raw_json(feature::code_complete(completion_at(params),
+                                              settings.code_completion,
+                                              settings.documentation,
+                                              client)
+                           .list);
 }
 
 std::optional<codec::raw_value> run_signature_help(const FeatureParams& params) {
@@ -962,7 +993,9 @@ void run_feature(FileEntry& entry,
                  const FeatureSpec& spec,
                  const SourceFile& file,
                  const CompilationInput& input,
-                 const Settings& settings) {
+                 Project& project,
+                 const CommandRef& command) {
+    const auto& settings = project.settings;
     CompilationParams params{
         .kind = CompilationKind::Content,
         .input = input,
@@ -998,7 +1031,14 @@ void run_feature(FileEntry& entry,
     }
 
     auto run = [&](LocalSourceRange range) {
-        return spec.run({.unit = *unit, .input = input, .settings = settings, .range = range});
+        return spec.run({
+            .unit = *unit,
+            .input = input,
+            .settings = settings,
+            .range = range,
+            .project = project,
+            .command = command,
+        });
     };
     const auto& [points, ranges] = file.markers;
     std::vector<std::pair<std::string, LocalSourceRange>> places;
@@ -1060,7 +1100,11 @@ int run_inspect(const Options& opts, const FeatureSpec& spec) {
         LOG_ERROR("--host: {}", input.error());
         return 1;
     }
-    run_feature(entry, spec, *file, *input, project.settings);
+    auto command = project
+                       .select_command(project.file_table.intern(Spelling::absolute(file->path)),
+                                       CommandRequest{.choice = choice ? &*choice : nullptr})
+                       .ref;
+    run_feature(entry, spec, *file, *input, project, command);
     if(!input->pch.first.empty()) {
         fs::remove(input->pch.first);
     }

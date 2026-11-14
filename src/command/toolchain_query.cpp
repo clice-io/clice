@@ -52,15 +52,21 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
         // (ncurses' ncurses.h -> curses.h) are read by clice's compiles as
         // the link file itself: nothing follows them but the driver here.
         if(error == std::errc::permission_denied && fs::cygwin::read_symlink(target, found)) {
-            return std::unexpected(
-                std::format("Driver {} is a Cygwin symlink to {}: name the program it links to",
-                            found,
-                            target));
+            return std::unexpected(std::format(
+                "the compiler {} is a Cygwin symlink to {}, which Windows cannot run: name {} "
+                "in the command instead",
+                found,
+                target,
+                target));
         }
+        constexpr llvm::StringRef remedy =
+            "install it, or regenerate compile_commands.json if it was written on another machine";
         if(bare) {
-            return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
+            return std::unexpected(
+                std::format("the compiler {} is not on clice's PATH; {}", driver.str(), remedy));
         }
-        return std::unexpected(std::format("Driver {} not found or not executable", name));
+        return std::unexpected(
+            std::format("the compiler {} does not exist or cannot run; {}", name, remedy));
     }
     return found;
 }
@@ -151,7 +157,8 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     auto input = fs::TempFile::create(dir, "query-toolchain-", "." + temp_suffix_for(spec.kind));
     if(!input) {
         co_return std::unexpected(
-            std::format("Failed to create temp file: {}", input.error().message()));
+            std::format("clice cannot create the file it asks the compiler about: {}",
+                        input.error().message()));
     }
     // A Windows compiler may open its input without sharing it for writing.
     input->file().close();

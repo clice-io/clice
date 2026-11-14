@@ -128,15 +128,15 @@ tests/diagnostics/guidance/01_no_database
 
 ## 发布
 
-- [x] 编译完成时推送诊断
+- [x] 编译完成时推送诊断；只接收推送诊断的客户端保存编辑过的文件时，会重新收到它的诊断
 - [x] 文件关闭时清除诊断
 - [x] 在 VS Code 中，“问题”面板只在有编辑器或标签页显示某个文件时列出该文件的诊断，即使文件关闭后另一个扩展仍让它保持打开也是如此
 - [x] 保存头文件或修改 `.clang-tidy` 后，clice 会让客户端重新请求包含它的已打开文件，这些文件随之重新编译——拉取诊断的客户端收到诊断刷新请求，其他客户端收到语义高亮刷新请求，前提是客户端支持该请求；与 clangd 一样，诊断以头文件保存后的内容为准，而不是它未保存的缓冲区
 - [x] 按文件对诊断分组（打开的文件和头文件）
-- [x] 诊断 `code` 字段：警告对应的选项（`-Wunused-variable`）、其他诊断在 clang 中的名称、clang-tidy 检查名
-- [x] `codeDescription` 将 clang-tidy 检查结果链接到该检查的文档
+- [x] 诊断 `code` 字段：警告对应的选项（`-Wunused-variable`）、其他诊断在 clang 中的名称、clang-tidy 检查名，以及 clice 为自己报告的问题所起的名称（`module-not-built`、`inferred-compile-command`）
+- [x] `codeDescription` 将 clang-tidy 检查结果链接到该检查的文档，将 worker 崩溃链接到 clice 的问题跟踪器
 - [ ] `codeDescription` 中提供指向 Clang 文档的链接
-- [x] 诊断 `source` 字段区分 clang 与 clang-tidy
+- [x] 诊断 `source` 字段区分 clang、clang-tidy 与 clice
 - [ ] 可配置计算诊断前的防抖延迟（[clangd#1471](https://github.com/clangd/clangd/issues/1471)）
 - [ ] 后台索引完成后重新计算已打开文件的诊断（[clangd#2604](https://github.com/clangd/clangd/issues/2604)）
 
@@ -227,6 +227,20 @@ tests/diagnostics/clang_tidy/02_default_checks
 
 <!-- BEGIN CAPABILITY: supported -->
 
+**不运行的检查**
+
+对编辑器来说过慢的检查会点名告知，不会被悄悄略过
+
+已打开的文件既不运行对编辑器来说过慢的检查，也不运行在编辑中的代码上不可靠的检查。对于 `.clang-tidy` 启用的过慢检查，clice 会列出一次它们的名字，并说明如何运行；`clice lint` 两类都会运行。
+
+```case
+tests/diagnostics/clang_tidy/03_editor_exclusions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
 **使用 NOLINT 抑制诊断**
 
 `NOLINT` 注释会抑制所在行的检查结果，也会抑制编译器警告
@@ -267,9 +281,23 @@ tests/diagnostics/clang_tidy/09_turned_off
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**运行过慢的检查**
+
+设置 `slow_clang_tidy_checks = true` 后，对编辑器来说过慢的检查也会运行
+
+对编辑器来说过慢的检查（例如 `misc-const-correctness`）只有在明确要求时才会在已打开的文件上运行：文件的每次编译都要等它们完成。
+
+```case
+tests/diagnostics/clang_tidy/20_slow_checks
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
-- [x] 对编辑器来说过慢的检查，以及在编辑中的代码上不可靠的检查，不在编辑器中运行；`clice lint` 会运行它们
+- [x] 对编辑器来说过慢的检查，只有在 `slow_clang_tidy_checks` 要求时才会在已打开的文件上运行，clice 会列出它略过的检查；在编辑中的代码上不可靠的检查始终不运行；`clice lint` 会运行所有这些检查
 - [x] `performance-use-std-move` 既不在编辑器中运行，也不在 `clice lint` 中运行：在 clice 所基于的 LLVM 中，它处理从 PCH 或模块中读取的类时会崩溃
 - [x] 对 `.clang-tidy` 的修改会在已打开文件下次编译时生效
 - [x] 某个 clang-tidy 检查崩溃时，只暂停该文件的 clang-tidy，不影响它的其他功能

@@ -289,6 +289,9 @@ struct ConfigFiles : clang::tidy::FileOptionsProvider {
     /// Each configuration file that did not parse, as the parser reports it.
     std::string error;
 
+    /// The places in them the parser's messages point at.
+    std::vector<ErrorLocation> locations;
+
     llvm::ErrorOr<clang::tidy::ClangTidyOptions> parse(llvm::MemoryBufferRef config) {
         std::string messages;
         llvm::raw_string_ostream os(messages);
@@ -296,6 +299,14 @@ struct ConfigFiles : clang::tidy::FileOptionsProvider {
             config,
             [&](const llvm::SMDiagnostic& diagnostic) {
                 diagnostic.print(nullptr, os, /*ShowColors=*/false);
+                if(auto at = diagnostic.getLoc(); at.isValid()) {
+                    locations.push_back({
+                        .path = config.getBufferIdentifier().str(),
+                        .offset =
+                            static_cast<std::uint32_t>(at.getPointer() - config.getBufferStart()),
+                        .message = diagnostic.getMessage().str(),
+                    });
+                }
             });
         if(parsed) {
             return parsed;
@@ -307,31 +318,43 @@ struct ConfigFiles : clang::tidy::FileOptionsProvider {
     }
 };
 
-std::optional<bool> is_fast_tidy_check(llvm::StringRef check) {
+/// Whether `check` is measured fast enough to run on every edit.
+bool is_fast_check(llvm::StringRef check) {
     static auto fast = llvm::StringMap<bool>{
 #define FAST(CHECK, TIME) {#CHECK, true},
 #define SLOW(CHECK, TIME) {#CHECK, false},
 // todo: move me to llvm toolchain headers.
-#include "compile/tidy_fast_checks.inc"
+#include "compile/tidy_check_costs.inc"
     };
 
-    if(auto it = fast.find(check); it != fast.end()) {
-        return it->second;
-    }
-    return std::nullopt;
+    auto it = fast.find(check);
+    return it != fast.end() && it->second;
+}
+
+/// Every check clang-tidy registers.
+const tidy::ClangTidyCheckFactories& all_checks() {
+    const static auto factories = [] {
+        tidy::ClangTidyCheckFactories factories;
+        for(const auto& e: tidy::ClangTidyModuleRegistry::entries()) {
+            e.instantiate()->addCheckFactories(factories);
+        }
+        return factories;
+    }();
+    return factories;
 }
 
 tidy::ClangTidyCheckFactories get_fast_checks(const tidy::ClangTidyCheckFactories& all) {
     tidy::ClangTidyCheckFactories fast;
     for(const auto& factory: all) {
-        if(is_fast_tidy_check(factory.getKey()).value_or(false)) {
+        if(is_fast_check(factory.getKey())) {
             fast.registerCheckFactory(factory.first(), factory.second);
         }
     }
     return fast;
 }
 
-tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
+/// The Checks glob list a run of `params` enables.
+std::string enabled_checks(const TidyParams& params, bool batch) {
     // These default checks are chosen for:
     //  - low false-positive rate
     //  - providing a lot of value
@@ -353,8 +376,10 @@ tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
                          // simplify appending in the lambda. So including an
                          // empty string here will force that.
                          "",
-                         // clangd runs include-cleaner itself, apart from
-                         // clang-tidy.
+                         // Check records the IWYU pragmas and which headers
+                         // are self-contained as the compile enters each
+                         // header, which a compile against a PCH never does
+                         // for the preamble's.
                          "-misc-include-cleaner",
 
                          // Check relies on seeing conditional directives, which
@@ -371,35 +396,43 @@ tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
                          "-bugprone-unchecked-optional-access",
                          "-abseil-unchecked-statusor-access");
 
-    tidy::ClangTidyOptions opts = default_options();
-
-    // clang::clangd::provideEnvironment
-    if(std::string user; !sys::user_name(user)) {
-        opts.User = std::move(user);
-    }
     // A batch run is clang-tidy's: its default list, the compiler's
     // warnings, which a configuration's Checks extend, so they stay
     // findings unless it says -*. (The static analyzer, the rest of that
     // list, is not built in.) The editor's is clangd's: its default checks
     // (clang::clangd::provideDefaultChecks) without a configuration, which
     // never gates the compiler's warnings.
+    std::string checks;
     if(batch) {
-        opts.Checks =
+        checks =
             params.checks.empty() ? "clang-diagnostic-*" : "clang-diagnostic-*," + params.checks;
     } else {
-        opts.Checks = params.checks.empty() ? default_checks : params.checks;
+        checks = params.checks.empty() ? default_checks : params.checks;
     }
     // clang::clangd::disableUnusableChecks, after the configuration's own
     // list so that no configuration enables them again. A batch run never
     // parses code mid-edit.
     if(!batch) {
-        opts.Checks->append(bad_checks);
+        checks += bad_checks;
     }
-    // performance-use-std-move looks for a record's move assignment among
-    // the methods it has, and ends in llvm_unreachable when it is not
-    // there, which a release LLVM compiles into running past the last one:
-    // a record from a PCH or a module crashes the worker that way.
-    opts.Checks->append(",-performance-use-std-move");
+    // LIMITATION: performance-use-std-move never runs, in the editor or in
+    // `clice lint`, whatever the configuration says. It looks for a record's
+    // move assignment among the methods it has, and ends in llvm_unreachable
+    // when it is not there, which a release LLVM compiles into running past
+    // the last one: a record from a PCH or a module crashes the worker that
+    // way.
+    checks += ",-performance-use-std-move";
+    return checks;
+}
+
+tidy::ClangTidyOptions create_options(const TidyParams& params, bool batch) {
+    tidy::ClangTidyOptions opts = default_options();
+
+    // clang::clangd::provideEnvironment
+    if(std::string user; !sys::user_name(user)) {
+        opts.User = std::move(user);
+    }
+    opts.Checks = enabled_checks(params, batch);
     for(auto& [key, value]: params.options) {
         opts.CheckOptions.insert_or_assign(key, tidy::ClangTidyOptions::ClangTidyValue(value));
     }
@@ -678,17 +711,8 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
         }
     }
 
-    /// No need to run clang-tidy or IncludeFixerif we are not going to report
-    /// diagnostics.
-    const static auto all_factories = [] {
-        tidy::ClangTidyCheckFactories factories;
-        for(const auto& e: tidy::ClangTidyModuleRegistry::entries()) {
-            e.instantiate()->addCheckFactories(factories);
-        }
-        return factories;
-    }();
     tidy::ClangTidyCheckFactories factories =
-        batch ? all_factories : get_fast_checks(all_factories);
+        batch || params.slow_checks ? all_checks() : get_fast_checks(all_checks());
     // Like clang-tidy: nodes in system headers are not even matched unless
     // the configuration asks for their findings.
     clang::ast_matchers::MatchFinder::MatchFinderOptions finder_options;
@@ -741,6 +765,22 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     return checker;
 }
 
+std::vector<std::string> slow_checks(const TidyParams& params) {
+    auto options = default_options();
+    options.Checks = enabled_checks(params, /*batch=*/false);
+    ClangTidyContext context(
+        std::make_unique<DefaultOptionsProvider>(ClangTidyGlobalOptions(), std::move(options)));
+    std::vector<std::string> slow;
+    for(const auto& factory: all_checks()) {
+        auto name = factory.getKey();
+        if(!is_fast_check(name) && context.isCheckEnabled(name)) {
+            slow.push_back(name.str());
+        }
+    }
+    ranges::sort(slow);
+    return slow;
+}
+
 TidyResolution resolve_tidy_params(llvm::StringRef file) {
     // clang-tidy's own provider: walks the file's ancestor directories
     // reading .clang-tidy, honoring InheritParentConfig. The defaults
@@ -752,6 +792,32 @@ TidyResolution resolve_tidy_params(llvm::StringRef file) {
 
     TidyResolution resolution;
     resolution.error = llvm::StringRef(provider.error).rtrim().str();
+    resolution.locations = std::move(provider.locations);
+    // clang-tidy reads an extension without its dot, in letters and digits;
+    // the context a run builds reports any other through a diagnostics
+    // engine it cannot have yet, and crashes.
+    for(auto [option, extensions]: {
+            std::pair{"HeaderFileExtensions",         &opts.HeaderFileExtensions        },
+            std::pair{"ImplementationFileExtensions", &opts.ImplementationFileExtensions},
+    }) {
+        if(!*extensions) {
+            continue;
+        }
+        auto invalid = ranges::find_if(**extensions, [](llvm::StringRef extension) {
+            return !ranges::all_of(extension.trim(), clang::isAlphanumeric);
+        });
+        if(invalid != (*extensions)->end()) {
+            if(!resolution.error.empty()) {
+                resolution.error += '\n';
+            }
+            resolution.error += std::format(
+                "{} lists `{}`, but clang-tidy takes an extension without its dot, in letters "
+                "and digits (`h`, not `.h`)",
+                option,
+                *invalid);
+            extensions->reset();
+        }
+    }
     auto& params = resolution.params;
     params.checks = opts.Checks.value_or(std::string());
     for(auto& [key, value]: opts.CheckOptions) {
@@ -777,7 +843,13 @@ namespace clice {
 
 auto CompilationUnit::take_tidy_findings() -> std::vector<clang::tidy::ClangTidyError> {
     assert(checker && checker->batch && "take_tidy_findings: no batch clang-tidy run");
-    return checker->findings.take();
+    auto findings = checker->findings.take();
+    for(auto& finding: findings) {
+        if(auto it = reworded.find(finding.Message.Message); it != reworded.end()) {
+            finding.Message.Message = it->second;
+        }
+    }
+    return findings;
 }
 
 }  // namespace clice

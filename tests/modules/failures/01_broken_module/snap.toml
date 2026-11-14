@@ -14,9 +14,15 @@ errors = [
     {
         at = "import ⟦Bad;⟧",
         severity = "error",
-        message = "could not build module 'Bad': use of undeclared identifier 'UNDEFINED_SYMBOL'",
-        source = "clang",
-        code = "err_module_not_built",
+        message = "module 'Bad' does not build: use of undeclared identifier 'UNDEFINED_SYMBOL'",
+        source = "clice",
+        code = "module-not-built",
+        related = [
+            {
+                at = "bad.cppm │ return ⟦⟧UNDEFINED_SYMBOL + good();",
+                message = "the error the module's build failed on",
+            },
+        ],
     },
 ]
 
@@ -25,9 +31,9 @@ errors = [
     {
         at = "import ⟦Bad;⟧",
         severity = "error",
-        message = "could not build module 'Bad': use of undeclared identifier 'UNDEFINED_SYMBOL'",
-        source = "clang",
-        code = "err_module_not_built",
+        message = "module 'Bad' does not build: use of undeclared identifier 'UNDEFINED_SYMBOL'",
+        source = "clice",
+        code = "module-not-built",
     },
 ]
 

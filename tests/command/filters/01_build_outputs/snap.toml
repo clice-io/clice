@@ -1,159 +1,159 @@
 [objects."$ clice command convert -- missing-g++ main.cpp"]
 stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-g++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-g++
+warning: Cannot ask the compiler for its default settings: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 [objects."$ clice command convert -- missing-clang++ -c main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 [objects."$ clice command convert -- missing-clang++ -o main.o main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 [objects."$ clice command convert -- missing-clang++ -c -o main.o main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 [objects."$ clice command convert -- cl-missing.exe /c /Fomain.cpp.o main.cpp"]
 stdout = "cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: cl-missing.exe; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: cl-missing.exe
+warning: Cannot ask the compiler for its default settings: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 [objects."$ clice command convert -- CL-missing.exe /FIfoo.h /c main.cpp"]
 stdout = "CL-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /FIfoo.h ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: CL-missing.exe; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: CL-missing.exe
+warning: Cannot ask the compiler for its default settings: the compiler CL-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler CL-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["precompiled headers"."$ clice command convert -- missing-g++ -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx -o main.cpp.o -c main.cpp"]
 stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=gnu++20 -Winvalid-pch -include cmake_pch.hxx ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-g++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-g++
+warning: Cannot ask the compiler for its default settings: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["precompiled headers"."$ clice command convert -- missing-clang++ -Winvalid-pch -Xclang -include-pch -Xclang cmake_pch.hxx.pch -Xclang -include -Xclang cmake_pch.hxx -o main.cpp.o -c main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Winvalid-pch -Xclang -include -Xclang cmake_pch.hxx ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["precompiled headers"."$ clice command convert -- cl-missing.exe /Yufoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp"]
 stdout = "cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /FIfoo.h ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: cl-missing.exe; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: cl-missing.exe
+warning: Cannot ask the compiler for its default settings: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["precompiled headers"."$ clice command convert -- cl-missing.exe /Ycfoo.h /FIfoo.h /Fpfoo.h_v143.pch /c /Fomain.cpp.o main.cpp"]
 stdout = "cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /FIfoo.h ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: cl-missing.exe; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: cl-missing.exe
+warning: Cannot ask the compiler for its default settings: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-clang++ -std=c++20 -MD -MF main.d -MT main.o main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-gcc -Wp,-MMD,arch/x86/.main.o.d -std=gnu11 main.cpp"]
 stdout = "missing-gcc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=gnu11 ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-gcc; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-gcc
+warning: Cannot ask the compiler for its default settings: the compiler missing-gcc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-gcc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-clang++ -Wp,-MD,main.d -Wp,-MT,main.o,-MP -Wp,-MQmain.o main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-g++ -Wp,-D_FORTIFY_SOURCE=2 main.cpp"]
 stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wp,-D_FORTIFY_SOURCE=2 ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-g++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-g++
+warning: Cannot ask the compiler for its default settings: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-g++ -Wp,-MMD,main.d,-DNDEBUG main.cpp"]
 stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wp,-MMD,main.d,-DNDEBUG ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-g++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-g++
+warning: Cannot ask the compiler for its default settings: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-g++ -Wp,-fclice-unknown main.cpp"]
 stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wp,-fclice-unknown ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-g++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-g++
+warning: Cannot ask the compiler for its default settings: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["dependency files"."$ clice command convert -- missing-g++ -Wp,-include -Wp,config.h main.cpp"]
 stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -Wp,-include -Wp,config.h ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-g++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-g++
+warning: Cannot ask the compiler for its default settings: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["other outputs"."$ clice command convert -- missing-clang++ -std=c++20 -MJ main.o.json -ftime-trace=main.json -save-temps=obj --serialize-diagnostics main.dia main.cpp"]
 stdout = "missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-clang++
+warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["other outputs"."$ clice command convert -- missing-g++ -std=gnu++20 -Wa,-adhlns=main.lst -Xassembler --noexecstack main.cpp"]
 stdout = "missing-g++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=gnu++20 ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-g++; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: missing-g++
+warning: Cannot ask the compiler for its default settings: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler missing-g++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1
 
 ["other outputs"."$ clice command convert -- cl-missing.exe /std:c++20 /c /Famain.asm /FRmain.sbr /Femain.exe /sourceDependencies main.json /showIncludes /showFilenames main.cpp"]
 stdout = "cl-missing.exe --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /std:c++20 ${WS}/main.cpp"
 stderr = '''
-warning: Cannot ask the compiler for its default settings: Cannot find driver: cl-missing.exe; clang's own driver reads its commands
-error: The command stays a driver command: Cannot find driver: cl-missing.exe
+warning: Cannot ask the compiler for its default settings: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
+error: The command stays a driver command: the compiler cl-missing.exe is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
 exit = 1

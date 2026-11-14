@@ -10,6 +10,7 @@ import :support.logging;
 import :support.text;
 import :syntax.dependency_graph;
 import :vfs.file_table;
+import :vfs.path;
 
 namespace clice {
 
@@ -238,6 +239,17 @@ struct Cascade {
     }
 };
 
+/// The first five of `files` by path, joined for a message, `...` after
+/// when there are more.
+std::string first_paths(const FileTable& table, llvm::ArrayRef<Fid> files) {
+    constexpr std::size_t named = 5;
+    auto paths = files | views::transform([&](Fid file) { return table.display(file); }) |
+                 ranges::to<std::vector>();
+    ranges::sort(paths);
+    auto shown = llvm::join(views::take(paths, named), ", ");
+    return paths.size() > named ? shown + ", ..." : shown;
+}
+
 }  // namespace
 
 llvm::SmallVector<Fid> Project::readers(Fid file) const {
@@ -338,6 +350,31 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
              report.scan_cache_hits,
              includes,
              counted(modules, "module", "modules"));
+    if(!report.missing.empty()) {
+        bool one = report.missing.size() == 1;
+        LOG_WARN(
+            "{} the compile commands name {} not exist ({}): the database is older than the "
+            "tree, or the build writes {} later",
+            counted(report.missing.size(), "file", "files"),
+            one ? "does" : "do",
+            first_paths(file_table, report.missing),
+            one ? "it" : "them");
+    }
+    auto not_utf8 = report.not_utf8 | views::filter([&](Fid file) {
+                        return !root.empty() && path::is_within(file_table.resolve(file), root);
+                    }) |
+                    ranges::to<std::vector>();
+    if(!not_utf8.empty()) {
+        bool one = not_utf8.size() == 1;
+        LOG_GUIDANCE(
+            "{} of the project {} not UTF-8 ({}): clice reads source as UTF-8, so {} non-ASCII "
+            "text shows garbled and positions after it can be off; save {} as UTF-8",
+            counted(not_utf8.size(), "file", "files"),
+            one ? "is" : "are",
+            first_paths(file_table, not_utf8),
+            one ? "its" : "their",
+            one ? "it" : "them");
+    }
     changes.scan = std::move(report);
     return changes;
 }

@@ -15,7 +15,8 @@ value = '''
             ":",
             "\"",
             "/",
-            " "
+            " ",
+            "#"
         ]
     },
     "hoverProvider": true,

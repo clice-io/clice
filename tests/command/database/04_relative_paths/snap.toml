@@ -4,9 +4,9 @@ ${WS}/compile_commands.json:
   directory: ${WS}/project/build
   command:   missing-clang++ -std=c++20 src/main.cpp
   resolved:  missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 ${WS}/project/build/src/main.cpp
-  error:     the compiler could not be queried: Cannot find driver: missing-clang++
+  error:     the compiler could not be queried: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands"
 exit = 0
 
 [test."$ clice command other/build/src/main.cpp"]
@@ -15,9 +15,9 @@ ${WS}/compile_commands.json:
   directory: ${WS}/other/build
   command:   missing-clang++ -std=c++17 src/main.cpp
   resolved:  missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++17 ${WS}/other/build/src/main.cpp
-  error:     the compiler could not be queried: Cannot find driver: missing-clang++
+  error:     the compiler could not be queried: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands"
 exit = 0
 
 [test."$ clice command src/main.cpp"]
@@ -30,7 +30,7 @@ ${WS}/compile_commands.json:
   directory: ${WS}/project/gen
   command:   missing-clang++ -std=c++23 ../src/./main.cpp
   resolved:  missing-clang++ -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++23 ${WS}/project/gen/../src/main.cpp
-  error:     the compiler could not be queried: Cannot find driver: missing-clang++
+  error:     the compiler could not be queried: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine
 '''
-stderr = "warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-clang++; clang's own driver reads its commands"
+stderr = "warning: Cannot ask the compiler for its default settings: the compiler missing-clang++ is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands"
 exit = 0

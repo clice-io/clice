@@ -1,0 +1,31 @@
+[answers.macro_condition.completion]
+items = [
+    { label = "amount", kind = "Field", detail = "int" },
+    { label = "total() const", kind = "Method", detail = "int" },
+]
+
+[answers.requires_typename.completion]
+items = [
+    { label = "Value", kind = "Class" },
+    { label = "holder<class T>", kind = "Class" },
+]
+incomplete = true
+
+[answers.requires_global.completion]
+items = [
+    { label = "Global", kind = "Class" },
+    { label = "Result", kind = "Class" },
+    { label = "check(lib::Value v)", kind = "Function", detail = "void" },
+    { label = "compare(int, int)", kind = "Function", detail = "Result" },
+    { label = "global<class T>", kind = "TypeParameter" },
+    { label = "lib", kind = "Module" },
+    { label = "nested<class T>", kind = "TypeParameter" },
+]
+incomplete = true
+
+[answers.namespace_scope.completion]
+items = [
+    { label = "Value", kind = "Class" },
+    { label = "holder<class T>", kind = "Class" },
+]
+incomplete = true

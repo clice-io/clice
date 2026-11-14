@@ -1,0 +1,17 @@
+[test."stray.cpp"]
+diagnostics = [
+    {
+        at = '⟦⟧#include "nope.h"',
+        severity = "warning",
+        message = "This file lies outside the project, so clice compiles it with the command of ${WS}/app/main.cpp, which may miss its include paths.",
+        source = "clice",
+        code = "inferred-compile-command",
+    },
+    {
+        at = '#include ⟦"nope.h"⟧',
+        severity = "error",
+        message = "'nope.h' file not found",
+        source = "clang",
+        code = "err_pp_file_not_found",
+    },
+]

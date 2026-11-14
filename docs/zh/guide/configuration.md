@@ -272,7 +272,17 @@ clice 会在后台查看磁盘上的文件，以发现编辑器之外发生的�
 | ------------ | ------ | ------ |
 | `clang_tidy` | `bool` | `true` |
 
-对已打开的文件运行 clang-tidy 并提供它的修复，使用最近的 `.clang-tidy` 配置的检查（没有该文件时使用一小组默认检查）。对编辑器来说过慢的检查，以及在编辑中的代码上不可靠的检查，都不会运行；`clice lint` 不检查的文件不运行 clang-tidy。只有在 clang-tidy 运行时，`NOLINT` 注释才会同时屏蔽编译器警告。
+对已打开的文件运行 clang-tidy 并提供它的修复，使用最近的 `.clang-tidy` 配置的检查（没有该文件时使用一小组默认检查）。对编辑器来说过慢的检查，除非将 `slow_clang_tidy_checks` 设为 `true`，否则不会运行，在编辑中的代码上不可靠的检查则始终不运行；`clice lint` 不检查的文件不运行 clang-tidy。只有在 clang-tidy 运行时，`NOLINT` 注释才会同时屏蔽编译器警告。
+
+</div>
+
+<div class="config-option">
+
+| 选项                     | 类型   | 默认值 |
+| ------------------------ | ------ | ------ |
+| `slow_clang_tidy_checks` | `bool` | 未设置 |
+
+在已打开的文件上也运行 `.clang-tidy` 启用的、对编辑器来说过慢或尚未针对编辑器测过耗时的检查（`misc-const-correctness` 会让大文件的编译时间翻倍）：文件的每次编译都要等它们完成。未设置时，clice 略过这些检查，并把它们的名字列出一次；设为 `false` 则不提示、直接略过。无论如何设置，`clice lint` 都会运行它们。
 
 </div>
 
@@ -958,9 +968,9 @@ tests/project/rules/09_remove_flags
 
 ## 切换配置
 
-规则上的 `configuration` 标签构成一份菜单，每个项目中有一个标签生效；不带标签的规则始终适用。生效的那个按优先级依次是 `--configuration <tag>` 参数（`clice serve`、`clice index`、`clice lint` 和 `clice inspect` 都接受它）、持久化的选择、`default_configuration`。选择在编辑器中完成——在 VS Code 中，C 或 C++ 文件的语言状态（语言模式旁的 `{}`）显示生效的配置并可打开菜单，其他客户端调用 `clice/switchConfiguration`——并存放在 `state.json` 中，该文件位于 `cache_dir` 下，绝不写入 `clice.toml`；它在服务器再次启动时生效，而服务器会请编辑器重启它，与编辑了配置文件时一样。每个配置在 `cache_dir` 下保留各自的索引，因此来回切换绝不会重新索引某个配置已经索引过的内容。批处理命令也通过这些标签选择索引：`clice index --configuration release` 构建 release 配置的索引，`clice index stats` 报告按同样方式解析出的配置所对应的索引。
+规则上的 `configuration` 标签构成一份菜单，每个项目中有一个标签生效；不带标签的规则始终适用。生效的那个按优先级依次是 `--configuration <tag>` 参数（`clice serve`、`clice index`、`clice lint` 和 `clice inspect` 都接受它）、持久化的选择、`default_configuration`。选择在编辑器中完成——在 VS Code 中通过 C 或 C++ 编辑器右键菜单里的 **Switch Build Configuration**，它列出各配置并标出生效的那个，其他客户端调用 `clice/switchConfiguration`——并存放在 `state.json` 中，该文件位于 `cache_dir` 下，绝不写入 `clice.toml`；它在服务器再次启动时生效，而服务器会请编辑器重启它，与编辑了配置文件时一样。每个配置在 `cache_dir` 下保留各自的索引，因此来回切换绝不会重新索引某个配置已经索引过的内容。批处理命令也通过这些标签选择索引：`clice index --configuration release` 构建 release 配置的索引，`clice index stats` 报告按同样方式解析出的配置所对应的索引。
 
-有些构建系统则是把一个符号链接指向某个构建的目录来选定构建。设置了 `resolve_symlinks = true` 的规则按其 `compile_commands` 经符号链接和 Windows junction 解析出的真实路径来区分构建：链接指向的每个构建各有一份索引；链接改指别处时，运行中的服务器会请求在那个构建的索引上重启；链接再次指回某个构建时，它的索引仍保持离开时的样子。规则只在直接写明该构建的数据库这一点上不同的配置，与它共用索引。VS Code 在配置旁写出所用的构建（`active → debug`）：与它共用索引的配置，否则是构建路径的最后两级目录。索引会一直保留到被删除为止：每份索引都是 `cache_dir` 中 `index` 目录下的一个目录，以配置名和构建路径的最后几级目录命名。
+有些构建系统则是把一个符号链接指向某个构建的目录来选定构建。设置了 `resolve_symlinks = true` 的规则按其 `compile_commands` 经符号链接和 Windows junction 解析出的真实路径来区分构建：链接指向的每个构建各有一份索引；链接改指别处时，运行中的服务器会请求在那个构建的索引上重启；链接再次指回某个构建时，它的索引仍保持离开时的样子。规则只在直接写明该构建的数据库这一点上不同的配置，与它共用索引。在 VS Code 中，Switch Build Configuration 会写出生效配置的链接解析到哪个构建，并标出与它共用索引的配置。索引会一直保留到被删除为止：每份索引都是 `cache_dir` 中 `index` 目录下的一个目录，以配置名和构建路径的最后几级目录命名。
 
 <!-- BEGIN GENERATED ITEMS: project/configurations -->
 

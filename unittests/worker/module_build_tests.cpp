@@ -319,7 +319,7 @@ ZEST_CASE(BuildPCMFirstError) {
         ZASSERT(result);
         ZEXPECT(!result.value().success);
         ZEXPECT(result.value().has_user_errors);
-        ZEXPECT(result.value().first_error == "use of undeclared identifier 'missing_one'");
+        ZEXPECT(result.value().first_error.message == "use of undeclared identifier 'missing_one'");
 
         done = true;
         sl.peer->close_output();

@@ -65,6 +65,17 @@ CDBDiff diff_snapshots(const llvm::DenseMap<Fid, llvm::SmallVector<std::string, 
     return diff;
 }
 
+/// What simdjson says is wrong, without the error code in front and the
+/// note that the error is fatal after.
+std::string json_problem(simdjson::error_code error) {
+    llvm::StringRef message = simdjson::error_message(error);
+    if(auto [code, rest] = message.split(": ");
+       !rest.empty() && ranges::all_of(code, [](char c) { return llvm::isUpper(c) || c == '_'; })) {
+        message = rest;
+    }
+    return message.take_front(message.find("This is a fatal")).trim().rtrim('.').str();
+}
+
 }  // namespace
 
 std::string per_file_option(const CommandTable& commands,
@@ -219,14 +230,40 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(padded).get(doc)) {
-        LOG_WARN("The compilation database {} is not valid JSON: {}",
-                 path,
-                 simdjson::error_message(error));
+        LOG_GUIDANCE("The compilation database {} is not valid JSON ({}); it is not loaded",
+                     path,
+                     json_problem(error));
         return std::nullopt;
     }
+    // The document reads as the entries are taken: a broken structure shows
+    // as the entry it falls in failing to read, at the place it is.
+    auto invalid = [&](simdjson::error_code error) {
+        const char* at = nullptr;
+        if(doc.current_location().get(at)) {
+            LOG_GUIDANCE("The compilation database {} is not valid JSON ({}); it is not loaded",
+                         path,
+                         json_problem(error));
+            return;
+        }
+        auto before = llvm::StringRef(json_buf).take_front(at - json_buf.data());
+        auto line_start = before.rfind('\n');
+        auto column =
+            line_start == llvm::StringRef::npos ? before.size() + 1 : before.size() - line_start;
+        LOG_GUIDANCE(
+            "The compilation database {} is not valid JSON at line {}, column {} ({}); it is not "
+            "loaded",
+            path,
+            before.count('\n') + 1,
+            column,
+            json_problem(error));
+    };
 
     simdjson::ondemand::array arr;
     if(auto error = doc.get_array().get(arr)) {
+        if(simdjson::is_fatal(error)) {
+            invalid(error);
+            return std::nullopt;
+        }
         // PowerShell's ConvertTo-Json writes a one-entry array as the entry.
         simdjson::dom::parser checker;
         simdjson::dom::object single;
@@ -242,11 +279,10 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     }
 
     // Parse into a local vector and only swap it in at the end: a file that
-    // fails to read or parse at the top level leaves the loaded entries
-    // intact, so reload_and_diff() reports no change instead of dropping
-    // every file. A file truncated mid-array is NOT caught here (the
-    // entries before the cut still swap in) — the CDB poll's two-tick
-    // debounce is what keeps half-written files from being read.
+    // fails to read or parse leaves the loaded entries intact, so
+    // reload_and_diff() reports no change instead of dropping every file.
+    // The CDB poll's two-tick debounce keeps half-written files from being
+    // read at all.
     std::vector<CompilationEntry> new_entries;
     Normalizer normalizer{.commands = command_table, .files = file_table, .inputs = &source.inputs};
 
@@ -260,9 +296,11 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // get_string writes every string of the document into one buffer, as
     // large as the database by its end.
     std::string dir_storage, file_storage, command_storage, arg_storage;
+    // Why the last read of an entry's value failed.
+    simdjson::error_code read_error{};
     auto text_of = [&](auto&& value, std::string& storage) -> std::optional<std::string_view> {
         simdjson::ondemand::raw_json_string raw;
-        if(value.get_raw_json_string().get(raw)) {
+        if((read_error = value.get_raw_json_string().get(raw))) {
             return std::nullopt;
         }
         const char* first = raw.raw();
@@ -280,7 +318,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         storage.resize(last - first + json_padding);
         auto* out = reinterpret_cast<std::uint8_t*>(storage.data());
         std::string_view text;
-        if(json_parser.unescape(raw, out).get(text)) {
+        if((read_error = json_parser.unescape(raw, out).get(text))) {
             return std::nullopt;
         }
         return text;
@@ -293,15 +331,24 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     llvm::DenseMap<SharedKey, CommandID> shared;
     std::uint32_t index = 0;
     std::uint32_t skipped = 0;
+    bool broken = false;
     auto skip_entry = [&](llvm::StringRef reason) {
+        if(simdjson::is_fatal(read_error)) {
+            invalid(read_error);
+            broken = true;
+            return;
+        }
         LOG_WARN("Skipping entry {} of the compilation database {}: {}", index, path, reason);
         skipped += 1;
     };
     for(auto element: arr) {
+        if(broken) {
+            break;
+        }
         auto skip = llvm::make_scope_exit([&] { index += 1; });
 
         simdjson::ondemand::object obj;
-        if(element.get_object().get(obj)) {
+        if((read_error = element.get_object().get(obj))) {
             skip_entry("it is not an object");
             continue;
         }
@@ -340,6 +387,10 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                 count += 1;
             }
             args.resize(count);
+            if(malformed && simdjson::is_fatal(read_error)) {
+                invalid(read_error);
+                return std::nullopt;
+            }
             if(malformed || args.empty()) {
                 continue;
             }
@@ -441,6 +492,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                                .spelling = spelling});
     }
 
+    if(broken) {
+        return std::nullopt;
+    }
     if(skipped != 0) {
         LOG_GUIDANCE("{} of the compilation database {} {} skipped; the log names {}",
                      counted(skipped, "entry", "entries"),
