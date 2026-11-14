@@ -563,7 +563,7 @@ std::optional<CompilationEntry>
                                      llvm::StringRef file,
                                      kotatsu::string_list_ref arguments) {
     auto base = Spelling::absolute(directory);
-    auto fid = file_table.intern_entry(Spelling(file, base));
+    auto fid = file_table.intern(Spelling(file, base));
     Normalizer normalizer{.commands = command_table, .files = file_table};
     return append_test_command(fid, normalizer.normalize(base, fid, arguments));
 }
@@ -572,7 +572,7 @@ std::optional<CompilationEntry> CompilationDatabase::add_command(llvm::StringRef
                                                                  llvm::StringRef file,
                                                                  llvm::StringRef command) {
     auto base = Spelling::absolute(directory);
-    auto fid = file_table.intern_entry(Spelling(file, base));
+    auto fid = file_table.intern(Spelling(file, base));
     Normalizer normalizer{.commands = command_table, .files = file_table};
     return append_test_command(fid, normalizer.normalize(base, fid, command));
 }

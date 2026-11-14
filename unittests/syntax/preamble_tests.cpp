@@ -115,7 +115,15 @@ class Forward;
 export module foo;
 )";
     ZEXPECT(preamble_bound(src, src.find("class")) == 0u);
-    ZEXPECT(preamble_bound(src, src.find("#include <b>")) == src.find("Forward;") + 8);
+    ZEXPECT(preamble_bound(src, src.find("#include <b>")) == 0u);
+
+    llvm::StringRef defines = R"(
+module;
+#include <a>
+#define X 1
+export module foo;
+)";
+    ZEXPECT(preamble_bound(defines, defines.find("#define")) == defines.find("<a>") + 3);
 }
 
 ZEST_CASE(BoundBeforeLimit) {
@@ -156,6 +164,15 @@ int x;
 #include <a>
 )";
     ZEXPECT(preamble_bound(nonnull) == 0u);
+
+    llvm::StringRef fragment = R"(
+module;
+#pragma push_macro("min")
+#include <a>
+export module m;
+#pragma pop_macro("min")
+)";
+    ZEXPECT(preamble_bound(fragment) == 0u);
 }
 
 ZEST_CASE(StopsAtCode) {

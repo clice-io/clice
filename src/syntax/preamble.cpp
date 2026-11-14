@@ -18,14 +18,14 @@ std::uint32_t directive_bound(llvm::StringRef content, std::uint32_t limit) {
     // declaration, declarations written in it too: clang accepts the module
     // declaration only as the first declaration it parses itself, those of
     // the PCH not counting. A fragment cut at `limit` before a declaration
-    // of its own leaves that declaration to the body, so the file parses
-    // without a PCH; one reaching no module declaration ends at its
-    // directives, as any preamble does.
+    // of its own, or before an include, leaves declarations to the body, so
+    // the file parses without a PCH; one reaching no module declaration ends
+    // at its directives, as any preamble does.
     std::uint32_t directives = 0;
     std::uint32_t before_limit = 0;
     bool fragment = false;
     bool code = false;
-    bool code_past_limit = false;
+    bool declares_past_limit = false;
     for(auto token = lexer.advance(); !token.is_eof(); token = lexer.advance()) {
         if(!token.is_at_start_of_line) {
             continue;
@@ -35,8 +35,12 @@ std::uint32_t directive_bound(llvm::StringRef content, std::uint32_t limit) {
             break;
         }
         bool line_code = false;
+        bool includes = false;
         std::uint32_t end = 0;
         if(token.kind == clang::tok::hash) {
+            auto name = lexer.next();
+            includes = spelled(name, "include") || spelled(name, "include_next") ||
+                       spelled(name, "import");
             /// For preprocessor directive, consume the whole directive: the
             /// bound is the end of the token before the eod.
             lexer.advance_until(clang::tok::eod);
@@ -48,7 +52,7 @@ std::uint32_t directive_bound(llvm::StringRef content, std::uint32_t limit) {
             break;
         } else if(spelled(token, "export") ? spelled(lexer.next(), "module")
                                            : spelled(token, "module")) {
-            return code_past_limit ? 0 : before_limit;
+            return declares_past_limit ? 0 : before_limit;
         } else {
             line_code = true;
             end = token.range.end;
@@ -63,7 +67,7 @@ std::uint32_t directive_bound(llvm::StringRef content, std::uint32_t limit) {
             }
         }
         if(past_limit) {
-            code_past_limit |= line_code;
+            declares_past_limit |= line_code || includes;
             continue;
         }
         code |= line_code;
