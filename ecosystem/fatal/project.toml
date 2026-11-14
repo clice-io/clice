@@ -3,7 +3,7 @@ repository = "https://github.com/facebook/fatal"
 commit = "26502c39b02609ccec7d5373c4351eac1fcc3277"
 
 [configurations.clang]
-about = "C++17, every test built by clang through a CMake build of its own: the project has none"
+about = "C++17, every test and benchmark under fatal/ built by clang through a CMake build of its own: the project has none, and its lessons include a driver it lacks"
 platforms = ["linux", "windows"]
 database = "build/compile_commands.json"
 
@@ -14,7 +14,7 @@ run = [
     """require("fs").writeFileSync("CMakeLists.txt", [
     "cmake_minimum_required(VERSION 3.16)",
     "project(fatal LANGUAGES CXX)",
-    "file(GLOB_RECURSE sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)",
+    "file(GLOB_RECURSE sources CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/fatal/*.cpp)",
     "add_library(fatal_tests OBJECT EXCLUDE_FROM_ALL ${sources})",
     "target_include_directories(fatal_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})",
     "target_compile_features(fatal_tests PRIVATE cxx_std_17)",
