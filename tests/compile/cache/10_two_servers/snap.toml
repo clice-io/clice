@@ -1,0 +1,18 @@
+["a second window is refused".changed]
+errors = [
+    {
+        at = "return s.⟦x⟧;",
+        severity = "error",
+        message = "no member named 'x' in 'Shared'",
+        source = "clang",
+        code = "err_no_member",
+    },
+]
+
+["a second window is refused".guidance]
+value = [
+    "Another clice process (pid #) keeps the index in ${WS}/.clice: nothing under ${WS} is served until it lets go and clice restarts",
+]
+
+["a second window is refused".refused]
+diagnostics = []
