@@ -167,7 +167,11 @@ struct BorrowableCommands {
     };
 
     llvm::SmallVector<Command> commands;
-    llvm::StringMap<llvm::SmallVector<std::uint32_t>> search_dirs;
+
+    /// The commands by the directories their header search looks in,
+    /// identities, built when a header first borrows: a source never asks.
+    std::optional<llvm::StringMap<llvm::SmallVector<std::uint32_t>>> search_dirs;
+
     std::uint64_t epoch = 0;
 };
 
