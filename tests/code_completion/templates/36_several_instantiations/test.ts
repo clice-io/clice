@@ -9,6 +9,6 @@ import { answers } from "@clice/tools/testing";
 // nothing to share.
 answers(async (a) => {
     for (const m of a.markers()) {
-        await a.show(m.name, a.completion(m));
+        await a.show(m.name, a.completion(m), { parts: ["insert"] });
     }
 });

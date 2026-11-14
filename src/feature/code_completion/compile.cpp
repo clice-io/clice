@@ -1148,6 +1148,30 @@ struct CollectedItem {
     const clang::NamedDecl* documented = nullptr;
 };
 
+/// The label details of an item standing for `count` overloads of a name.
+protocol::CompletionItemLabelDetails bundle_details(std::size_t count) {
+    protocol::CompletionItemLabelDetails details;
+    details.detail = std::format("(…) +{} overload{}", count - 1, count > 2 ? "s" : "");
+    return details;
+}
+
+/// Make `item`, one overload of a name, stand for all `count` of them: a
+/// call it inserts takes its parentheses with the cursor between them in
+/// place of its placeholders.
+void bundle(protocol::CompletionItem& item, std::size_t count) {
+    item.label_details = bundle_details(count);
+    if(item.insert_text_format != protocol::InsertTextFormat::Snippet) {
+        return;
+    }
+    std::visit(
+        [&](auto& edit) {
+            if(llvm::StringRef(edit.new_text).starts_with(item.label + "(")) {
+                edit.new_text = escape_snippet(item.label) + "($0)";
+            }
+        },
+        *item.text_edit);
+}
+
 /// The function template `context` is in, through the lambdas and local
 /// classes inside it.
 const clang::FunctionDecl* enclosing_template(const clang::DeclContext* context) {
@@ -1365,10 +1389,12 @@ public:
         }
         calls.truncate(
             std::min<std::size_t>(calls.size(), CompilationParams::Instantiating::limit));
-        // Each instantiation lists all its names: the reply's limit cuts the
-        // names they share.
+        // Each instantiation lists all its names, each overload apart: the
+        // reply's limit cuts the names they share, and one bundle holds the
+        // overloads of a name every instantiation declares.
         auto every = options;
         every.limit = 0;
+        every.bundle_overloads = false;
         auto name_of = [](const protocol::CompletionItem& item) -> llvm::StringRef {
             return item.filter_text ? *item.filter_text : item.label;
         };
@@ -1398,10 +1424,31 @@ public:
         }
         output.clear();
         documented.clear();
+        // The overloads in each bundle, by the item standing for it.
+        llvm::StringMap<std::size_t> bundles;
+        std::vector<std::size_t> overloads;
         for(auto&& [item, decl]: views::zip(items, described)) {
-            if(having.lookup(name_of(item)) == calls.size()) {
-                output.push_back(std::move(item));
-                documented.push_back(decl);
+            if(having.lookup(name_of(item)) != calls.size()) {
+                continue;
+            }
+            using enum protocol::CompletionItemKind;
+            if(options.bundle_overloads &&
+               (item.kind == Function || item.kind == Method || item.kind == Constructor)) {
+                auto [it, inserted] = bundles.try_emplace(item.label, output.size());
+                if(!inserted) {
+                    overloads[it->second] += 1;
+                    output[it->second].sort_text =
+                        std::min(*output[it->second].sort_text, *item.sort_text);
+                    continue;
+                }
+            }
+            output.push_back(std::move(item));
+            documented.push_back(decl);
+            overloads.push_back(1);
+        }
+        for(auto&& [item, count]: views::zip(output, overloads)) {
+            if(count > 1) {
+                bundle(item, count);
             }
         }
         return true;
@@ -2847,10 +2894,7 @@ public:
 
         for(auto& entry: overloads) {
             if(entry.count > 1) {
-                protocol::CompletionItemLabelDetails details;
-                details.detail =
-                    std::format("(…) +{} overload{}", entry.count - 1, entry.count > 2 ? "s" : "");
-                entry.item.label_details = std::move(details);
+                entry.item.label_details = bundle_details(entry.count);
                 if(!entry.bundled_insert.empty()) {
                     std::visit([&](auto& edit) { edit.new_text = std::move(entry.bundled_insert); },
                                *entry.item.text_edit);
