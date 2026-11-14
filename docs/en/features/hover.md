@@ -285,7 +285,7 @@ tests/hover/aliases/03_c_anonymous_structs
 
 Hovering `auto` shows the type it stands for, in a template as the template would write it
 
-A type only instantiation can work out, such as that of `value + 1`, is not deduced yet.
+A type only instantiation can work out, such as that of `value + 1`, is not deduced.
 
 ```case
 tests/hover/deduced_types/01_auto
@@ -818,7 +818,7 @@ tests/hover/documentation/12_gtk_doc
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#2669 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Formulas**
 

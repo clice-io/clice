@@ -1,77 +1,44 @@
 # Build from Source
 
-clice depends on C++23 features and requires a modern C++ toolchain. We also need to link against LLVM/Clang to parse ASTs. Both come from [xclang](https://github.com/clice-io/xclang), clice-io's clang toolchain: [Bazel](https://bazel.build) builds clice with xclang's toolchain and links the prebuilt LLVM/Clang libraries of the same xclang release, both downloaded by Bazel itself. The two must match: the libraries hold ThinLTO bitcode, which only the toolchain of that release reads.
+clice builds with [Bazel](https://bazel.build) alone. Bazel downloads everything the build uses: the C++ toolchain and the prebuilt LLVM/Clang libraries of one [xclang](https://github.com/clice-io/xclang) release, clice-io's clang toolchain, and the other libraries clice links. The repository's pixi and npm set up the tools the tests and the docs need; building clice needs neither.
 
-To simplify setup and keep builds reproducible, we **strongly recommend** [pixi](https://pixi.prefix.dev/latest) to manage the development environment. Dependency versions are pinned in `pixi.toml`; Bazel's are in `MODULE.bazel`.
+## Requirements
 
-## Quick Start
+- Bazel, run through [bazelisk](https://github.com/bazelbuild/bazelisk), which fetches the release `.bazelversion` names.
+- git and [Node.js](https://nodejs.org) on `PATH`: the build stamps clice with the version `git describe` gives, through a Node script.
+- On Windows, a Bash, which [Git for Windows](https://gitforwindows.org) provides, and a short output root: Bazel's default one is too deep for Windows paths. Put it in `%USERPROFILE%\.bazelrc`:
 
-Install pixi following the [official guide](https://pixi.prefix.dev/latest/installation).
+  ```
+  startup --output_user_root=C:/b
+  ```
 
-We ship several tasks; the commands below build and run tests:
-
-```shell
-# build (default RelWithDebInfo) into build/RelWithDebInfo
-pixi run build
-
-# unit tests + cases
-pixi run test
-```
-
-For finer-grained tasks (first argument sets the build type):
+## Building
 
 ```shell
-pixi run build Debug
-pixi run unit-test Debug
-pixi run cases-test Debug
+bazel build //:bin/clice
 ```
 
-`pixi run build` builds `//:dist` with Bazel. Each build type has a directory of its own, `build/<type>`, whose `bin` is Bazel's output tree of that type: clice is `build/<type>/bin/bin/clice`, next to the resource directory it reads clang's headers from, `build/<type>/bin/lib/clang`; the tests and the editors run it from there.
+clice is `build/RelWithDebInfo/bin/bin/clice`, beside the resource directory it reads clang's headers from, `build/RelWithDebInfo/bin/lib/clang`.
 
-> [!TIP]
-> Run `pixi shell` to enter a shell with all env vars configured, and `npx bazel` there for Bazel itself.
+The build types are configurations, each with a directory of its own, `build/<type>`:
 
-## Bazel
-
-Bazel is run through [bazelisk](https://github.com/bazelbuild/bazelisk), an npm package of the repository (`npm install` installs it), which fetches the Bazel release `.bazelversion` names:
-
-```shell
-npx bazel build //:bin/clice //:bin/unittests
-```
-
-The build types are configurations of `bazel/clice.bazelrc`:
-
-| Configuration             | Effect                                             |
-| ------------------------- | -------------------------------------------------- |
-| `--config=RelWithDebInfo` | The default: optimized, with debug info            |
-| `--config=Debug`          | Light optimization (`-O1`), with Address Sanitizer |
-
-Options after `--` reach Bazel through `pixi run build`, for example `pixi run build RelWithDebInfo -- //:package`.
+| Configuration             | Effect                                                                              |
+| ------------------------- | ----------------------------------------------------------------------------------- |
+| `--config=RelWithDebInfo` | The default: optimized, with debug info                                             |
+| `--config=Debug`          | Light optimization (`-O1`) with Address Sanitizer, on x86_64 Linux and arm64 macOS |
 
 `--platforms=@xclang//platforms:<triple>` builds for another architecture of the host's operating system, for example `--platforms=@xclang//platforms:aarch64-unknown-linux-gnu` on x86_64 Linux.
 
 The LLVM/Clang libraries hold ThinLTO bitcode, so every link of a program redoes their code generation, minutes per program. lld keeps what it generated in a cache, `/var/tmp/xclang-thinlto` (`C:/xclang-thinlto` on Windows), and later links take seconds.
 
-`npx bazel build //:package //:symbols` builds the release archive and the symbol package, clice's GSYM for `scripts/symbolize.py`: `clice.tar.gz` and `clice-symbol.tar.xz` in `build/<type>/bin` (`.zip` on Windows).
+`bazel build //:package //:symbols` builds the release archive and the symbol package, which `scripts/symbolize.py` reads: `clice.tar.gz` and `clice-symbol.tar.xz` in `build/<type>/bin` (`.zip` on Windows).
 
-`npx bazel run @compdb//:refresh` writes a `compile_commands.json` of clice's own sources to the repository root, for clice to work on its own code.
+## Working on clice
 
-On Windows, Bazel's default output root is too deep for Windows paths; put a short one in `%USERPROFILE%\.bazelrc`:
+`bazel run @compdb//:refresh -- --output_groups=+compilation_prerequisites_INTERNAL_` writes a `compile_commands.json` of clice's own sources to the repository root, for clice to work on its own code; the output group builds the generated headers the commands read.
 
-```
-startup --output_user_root=C:/b
-```
+The tests need the tools pixi installs. `bazel build //:dist` builds clice with the unit tests, then `pixi run test` runs the unit tests and the cases (`--config=Debug` and `pixi run test Debug` for the Debug build); [`tests/README.md`](https://github.com/clice-io/clice/blob/main/tests/README.md) says how a case is written.
 
-Bazel also needs a Bash on Windows, which [Git for Windows](https://gitforwindows.org) provides.
+## Another LLVM Build
 
-## About LLVM
-
-clice calls Clang APIs to parse C++ code, so it must link against LLVM/Clang, of the exact version it is written for: the system LLVM package cannot be used directly.
-
-Every [xclang](https://github.com/clice-io/xclang/releases) release publishes prebuilt LLVM/Clang libraries (the `libclang-*` archives) for all six targets, built by that release's toolchain, and its Bazel module makes them repositories Bazel downloads with the toolchain.
-
-> [!IMPORTANT]
->
-> Debug builds enable Address Sanitizer and link the ASan-instrumented libraries xclang publishes for x86_64 Linux and arm64 macOS; the other targets have none, and no Debug build: the module of the third-party libraries in `modules/` has no debug configuration for them, and a compilation of theirs without `NDEBUG` stops at its `#error`.
-
-A build of LLVM/Clang of one's own replaces the release's with `--repo_env=XCLANG_LIBCLANG_ROOT=<directory>` (`XCLANG_LIBCLANG_ASAN_ROOT` for the ASan one); it has to be built the way xclang builds it, by xclang's `scripts/toolchain.ts`; see [xclang](https://github.com/clice-io/xclang).
+clice links the LLVM/Clang libraries of the exact version it is written for, not the system's. A build of one's own replaces the release's with `--repo_env=XCLANG_LIBCLANG_ROOT=<directory>` (`XCLANG_LIBCLANG_ASAN_ROOT` for the ASan one); it has to be built the way xclang builds it, by xclang's `scripts/toolchain.ts`.

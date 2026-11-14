@@ -3,8 +3,10 @@ guide:
   items:
     - what-is-clice
     - quick-start
+    - editors
     - configuration
     - indexing
+    - from-clangd
 
 features:
   label: Language Server
@@ -60,6 +62,3 @@ dev:
   collapsed: false
   items:
     - build
-    - contribution
-    - extension
-    - test-and-debug

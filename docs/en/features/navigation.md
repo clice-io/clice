@@ -76,7 +76,7 @@ tests/navigation/definition/06_local_symbols
 
 **Unresolved variable types**
 
-A variable whose type does not resolve can not be navigated to from its uses yet
+A variable whose type does not resolve can not be navigated to from its uses
 
 Go-to-definition on a later use of the variable returns nothing, although
 its declaration is right there.
@@ -886,7 +886,7 @@ tests/navigation/implicit_targets/01_override_and_final
 
 **`break` / `continue`**
 
-`break` and `continue` do not navigate to their enclosing control statement yet
+`break` and `continue` do not navigate to their enclosing control statement
 
 Go-to-definition on `break` or `continue` does not reach the head of the
 loop or switch it controls.
@@ -1712,7 +1712,7 @@ tests/workspace_symbols/queries/04_query_syntax
 
 **Search by mangled (linker) name**
 
-Mangled linker names do not resolve to their source functions yet
+Mangled linker names do not resolve to their source functions
 
 ```case
 tests/workspace_symbols/queries/05_mangled_names
@@ -1865,7 +1865,7 @@ tests/workspace_symbols/projects/03_worktree_copies
 
 Open the file the current one pairs with: a header's source, a source's header, a module interface's implementation units, an implementation unit's interface. In VS Code it is **Switch Header and Source (Module Interface and Implementation)** in the editor's right-click menu, `Alt+O`, or **clice: Switch Header and Source (Module Interface and Implementation)** in the Command Palette; Neovim runs it as `:LspCliceSwitchSourceHeader`, and `clice query counterparts <file>` answers the same on the command line. Zed lets no extension add a command, and its own _switch source header_ works with clangd only.
 
-The candidates come from what the build and the index already know, so nothing is compiled for the answer: the files of the same name on the other side — in the file's own directory, or elsewhere in the workspace when one includes the other —, the declarations one holds that the other defines, and module declarations. Each candidate carries its reasons. The editor opens the best one directly when it is the only candidate or beats every other: it has each of the other's reasons among shared declarations and the same name, at least as many shared declarations, and either a reason more, twice the shared declarations when both share some, or — neither sharing any — a module pairing the other lacks. Otherwise it lists the candidates to pick from.
+The candidates come from what the build and the index already know, so nothing is compiled for the answer: the files of the same name on the other side — in the file's own directory, or elsewhere in the project when one includes the other —, the declarations one holds that the other defines, and module declarations. Each candidate carries its reasons. The editor opens the best one directly when it is the only candidate or beats every other: it has each of the other's reasons among shared declarations and the same name, at least as many shared declarations, and either a reason more, twice the shared declarations when both share some, or — neither sharing any — a module pairing the other lacks. Otherwise it lists the candidates to pick from.
 
 ### Headers and Sources
 

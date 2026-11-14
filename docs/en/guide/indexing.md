@@ -8,14 +8,17 @@ When the server starts, the background index compiles every translation unit of 
 
 For each file the index records its declarations, definitions and references, what calls what, what derives from what, and the template instantiations the units make. Inside a function body it records the names the body uses, unless `index_function_body` leaves the file's bodies out: by default the bodies of system headers (the standard library, an `-isystem` directory) are left out, and so are the instantiations of templates written there. The rest of a system header — its declarations, its types, its templates — is indexed.
 
-The index is saved in the cache directory. The next server, or `clice index` run, loads it and compiles again only the units whose files changed since. `clice index` builds or updates the index from the command line; while a server serves the project, it asks that server to do it.
+The index is saved in the cache directory, every five minutes while it is built and when the run ends. The next server, or `clice index` run, loads it and compiles again only the units whose files changed since. `clice index` builds or updates the index from the command line; while a server serves the project, it asks that server to do it.
+
+One process writes a project's index at a time. A second editor window on the same project waits up to five seconds for the first to let go, as an editor restarting its server waits for the old one to save; then it serves nothing of that project and says which process keeps the index.
 
 ## A Faster First Index
 
-The first index of a big project compiles every unit once. Three things shorten it:
+The first index of a big project compiles every unit once; it is a cost paid once, as later starts compile only what changed, and one interrupted resumes where it stopped. The session log says where its time goes: a line for each unit with how long it took, and with `CLICE_PERF=1` in the environment a `[perf:index]` line per unit splitting that time into indexing and merging, and one for the whole run. Four things shorten it:
 
 - **More workers.** `[workers] background` is how many units compile at once: by default half the machine's physical cores. On a machine with many cores and memory to spare, raise it.
-- **Fewer units.** A rule with `background_index = false` keeps the files it matches from being compiled as units of their own: tests, examples, benchmarks or generated sources you do not navigate in. A header they include is still indexed through the other units including it.
+- **Enough memory.** A unit starts only when the machine's memory leaves room for it, and the newest one stops when memory runs short, so on a machine short of memory more workers do not help: the log says when background work waits for memory. A unit that does not fit even alone is named by `clice index`, with the memory its worker reached.
+- **Fewer units.** A rule with `background_index = false` keeps the files it matches from being compiled as units of their own: tests, examples, benchmarks or generated sources you do not navigate in. A header they include is still indexed through the other units including it. A compilation database that lists headers, as some generators write them, makes each a unit of its own beside the sources including it; a rule over `**/*.h` with `background_index = false` keeps those out.
 - **Skipped bodies.** A rule with `skip_function_body = true` makes every compile but the file's own skip the function bodies of the files it matches, templates included, in the editor and in the background index alike. Put it on third-party code: the units of your project then parse only the declarations of the libraries they include, and a module of the library they import is built with its bodies skipped too. Function templates that forward their arguments, such as `std::make_unique`, are still parsed, and so are `constexpr` functions and those returning `auto`, which the compiler needs.
 
 ```toml
@@ -27,7 +30,7 @@ lint = false
 format = false
 
 [[rules]]
-patterns = ["benchmarks/**"]
+patterns = ["benchmarks/**", "**/*.h"]
 background_index = false
 
 [workers]

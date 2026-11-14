@@ -51,7 +51,7 @@ This is the main engine, responsible for resolving various kinds of dependent na
 - **DependentNameType** (e.g., `typename Container::value_type`): looks up `value_type` among the template's members, matches partial specializations, expands typedefs, and re-expresses the result using the caller's parameters
 - **DependentTemplateSpecializationType** (e.g., `Alloc::rebind<U>`): resolves dependent template specializations, with a fast path for standard library patterns tried first
 - **TemplateTypeParmType** (e.g., `T`): looks up the parameter's bound value or default argument via the instantiation stack
-- **DecltypeType** (e.g., `decltype(var)`): resolves simple variable references to their declared type
+- **DecltypeType** (e.g., `decltype(var)`, `decltype(make(x))`): resolves a variable to its declared type and a call to what the overload it chooses returns
 
 **Substitute policy (cycle breaking)**
 
@@ -155,10 +155,8 @@ Walk-based features (inlay hints, folding ranges, document symbols) still skip i
 
 ## Known Limitations
 
-Expression-level deduction was deliberately left out of the resolver rewrite — corner cases there are endless, and the resolver's contract is to degrade gracefully (return the name unresolved) rather than guess. The known gaps, all in that family:
+The resolver works out what the written code determines and leaves the rest unresolved rather than guess. What stays unresolved, or resolves otherwise than the compiler would:
 
-- **Non-type template parameter expressions**: Compound NTTP expressions are not substituted or deduced (e.g., selecting a partial specialization keyed on `N + 1`); only direct parameter values flow through.
-- **Constraint evaluation**: Constrained partial specializations are detected but their constraints are not evaluated — a specialization selected purely by a `requires` clause degrades to unresolved instead of being chosen.
-- **Complex `decltype`**: Only the simple case `decltype(var)` is handled; member access, function calls, and other complex expressions are not supported, and a dependent `decltype` used as a scope qualifier makes the whole chain unresolvable.
-- **Deep dependent member chains**: Chained member access (`box.inner.leaf`) resolves one hop; the type of the intermediate member is not fed back into lookup for the next hop. `x.template foo<T>()` member expressions are likewise not implemented.
-- **Operator lookup**: Operators in dependent contexts (e.g., `a + b` where `a`'s type depends on a template parameter) are not resolved by the resolver itself. Independently of the resolver, occurrences inside template bodies can still be colored and navigated through instantiation information when instantiations exist (see the "Instantiations as Implementations" section).
+- **Expressions on dependent operands.** A value expression folds once its operands are known (`N + 1` with `N` given), and matches a pattern spelled the same way (`trait<X, X + 1>` against `trait<N, N + 1>`); one it cannot prove equal to the pattern stays dependent. The type of an operator expression on a dependent operand (`value + 1`) is not deduced, while subscripts, `->` and calls through member operators resolve.
+- **Choices the code leaves open.** A constraint that depends on an unknown argument, two partial specializations neither of which is more specialized, a base class naming itself through `decltype`, and a `decltype` of a call that needs argument-dependent lookup leave the name dependent.
+- **Overloads told apart by reference binding.** Among overloads that differ in how they bind an argument or the object — `const U&&` against `const int&`, a template binding the object without adding `const` against a `const` member, an explicit object parameter — the resolver can choose another overload than the compiler, or none.

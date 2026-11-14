@@ -475,7 +475,7 @@ A macro invocation is replaced by the code it expands to.
 
 <!-- BEGIN GENERATED ITEMS: code_actions/macro -->
 
-<!-- BEGIN CAPABILITY: supported clangd#820 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Expand a macro invocation**
 
@@ -509,7 +509,7 @@ A name no included header declares offers the header that does, from the standar
 
 <!-- BEGIN GENERATED ITEMS: code_actions/include -->
 
-<!-- BEGIN CAPABILITY: supported clangd#1017 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Standard library include**
 

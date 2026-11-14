@@ -2,22 +2,13 @@
 
 ## Core
 
-- [x] Clang diagnostics (errors, warnings, notes)
-- [x] Severity mapping (Error, Warning)
-- [x] Diagnostic ranges with source locations
-- [x] Warnings raised by directives in the preamble (`#warning`, `#pragma message`, macro redefinitions)
-- [x] File URI conversion for cross-file diagnostics
-- [x] Pull diagnostics model (`textDocument/diagnostic`) for clients that declare support for it; other clients get their diagnostics pushed
-- [x] Every missing `#include` is reported, not just the first, and the code after it is still checked
-- [x] A compile command clang rejects before parsing (an unknown target) shows clang's reason at the top of the file
-- [ ] Show the full include chain for diagnostics originating in header files ([clangd#1392](https://github.com/clangd/clangd/issues/1392))
+Diagnostics are clang's errors and warnings on an open file, clang-tidy's findings, and clice's own messages about the setup.
 
-  ```
-  // current:  "In included file: expected ';'"
-  // expected: "In main.cpp → utils.h → detail/impl.h: expected ';'"
-  ```
-
-- [x] Diagnostics for template instantiation errors in preamble headers, once the background index has compiled the file ([clangd#137](https://github.com/clangd/clangd/issues/137))
+- A client that pulls diagnostics (`textDocument/diagnostic`) asks for them; any other client gets them pushed when a compile finishes.
+- Every missing `#include` is reported, not just the first, and the code after it is still checked.
+- Warnings raised by directives in the preamble (`#warning`, `#pragma message`, macro redefinitions) show like any other.
+- A compile command clang rejects before parsing (an unknown target) shows clang's reason at the top of the file.
+- Errors of template instantiations inside headers show once the background index has compiled the file ([clangd#137](https://github.com/clangd/clangd/issues/137)).
 
 ## Errors in Included Headers
 
@@ -111,7 +102,7 @@ A file the compilation database does not list still compiles, with a command cli
 
 A file no compilation database lists compiles with a guessed command and says so
 
-Without a `compile_commands.json` entry, a file still compiles, with a command clice guesses. A workspace without any database is told so in a message the editor shows, and when the guess leaves an include unresolved, a warning at the top of the file explains why and links to the setup guide. Once the database lists the file, the warning goes, and the errors left are the code's own.
+Without a `compile_commands.json` entry, a file still compiles, with a command clice guesses. A project without any database is told so in a message the editor shows, and when the guess leaves an include unresolved, a warning at the top of the file explains why and links to the setup guide. Once the database lists the file, the warning goes, and the errors left are the code's own.
 
 ```case
 tests/diagnostics/guidance/01_no_database
@@ -123,22 +114,15 @@ tests/diagnostics/guidance/01_no_database
 
 ## Tags
 
-- [x] `Deprecated` tag for `-Wdeprecated` diagnostics and clang-tidy findings about deprecated headers and aliases
-- [x] `Unnecessary` tag for unused variable/parameter warnings and `misc-unused-*` clang-tidy findings
+- `Deprecated` marks `-Wdeprecated` diagnostics and clang-tidy findings about deprecated headers and aliases.
+- `Unnecessary` marks unused variable and parameter warnings and `misc-unused-*` findings.
 
 ## Publishing
 
-- [x] Push diagnostics on compilation completion; a client that takes only pushed diagnostics gets them anew when it saves an edited file
-- [x] Clear diagnostics on file close
-- [x] In VS Code, Problems lists a file's diagnostics only while an editor or a tab shows the file, even when another extension keeps the file open after it is closed
-- [x] A saved header, or an edited `.clang-tidy`, asks the client to request the open files including it again, which recompiles them — through a diagnostic refresh for a client that pulls diagnostics, a semantic token refresh for one that does not, when the client takes it; diagnostics follow headers as saved, not their unsaved buffers, as in clangd
-- [x] Per-file diagnostic grouping (the open file + headers)
-- [x] Diagnostic `code` field: a warning's option (`-Wunused-variable`), clang's name for any other diagnostic, the clang-tidy check, a name of clice's own for what clice reports (`module-not-built`, `inferred-compile-command`)
-- [x] `codeDescription` linking a clang-tidy finding to its check's documentation, and a worker crash to clice's issue tracker
-- [ ] `codeDescription` with links to Clang documentation
-- [x] Diagnostic `source` field distinguishing clang, clang-tidy and clice
-- [ ] Configurable debounce delay before computing diagnostics ([clangd#1471](https://github.com/clangd/clangd/issues/1471))
-- [ ] Recompute diagnostics in open files when background indexing completes ([clangd#2604](https://github.com/clangd/clangd/issues/2604))
+- A client that takes only pushed diagnostics gets them when a compile of the file finishes, and anew when it saves an edited file; closing the file clears them.
+- A saved header, or an edited `.clang-tidy`, recompiles the open files it affects: a client that pulls diagnostics is asked to pull them again, the others get them pushed. Diagnostics follow headers as saved, not their unsaved buffers, as in clangd.
+- In VS Code, Problems lists a file's diagnostics only while an editor or a tab shows the file, even when another extension keeps the file open after it is closed.
+- Each diagnostic carries a `code` — a warning's option (`-Wunused-variable`), clang's name for any other diagnostic, the clang-tidy check, or a name of clice's own (`module-not-built`, `inferred-compile-command`) — and its `source`: clang, clang-tidy or clice. A clang-tidy finding links to its check's documentation, a worker crash to clice's issue tracker.
 
 ## Diagnostic Suppression
 
@@ -162,34 +146,18 @@ tests/diagnostics/suppression/01_by_code
 
 <!-- END GENERATED ITEMS -->
 
-- [x] `// NOLINT` comment suppression
-- [x] `// NOLINTNEXTLINE` comment suppression
-- [x] `// NOLINTBEGIN` / `// NOLINTEND` block suppression
-- [ ] `NOLINT` for include-cleaner diagnostics ([clangd#1982](https://github.com/clangd/clangd/issues/1982))
-- [ ] Configurable severity per diagnostic category in config file ([clangd#1937](https://github.com/clangd/clangd/issues/1937))
-- [ ] Filter diagnostics by version control diff — only show warnings near changed lines ([clangd#822](https://github.com/clangd/clangd/issues/822))
+`// NOLINT`, `// NOLINTNEXTLINE` and `// NOLINTBEGIN` / `// NOLINTEND` comments silence clang-tidy's findings on their lines, and the compiler's warnings too while clang-tidy runs on the file.
 
 ## Diagnostic Actions
 
-- [x] Fixes the compiler and clang-tidy attach to their diagnostics, offered as quick fixes
-- [x] A clang-tidy fix is cleaned up as `clang-tidy --fix` cleans it: no `,` or `:` left dangling by what it removes
-- [x] An include a fix adds to a module unit goes into its global module fragment, opened once
+- The fixes the compiler and clang-tidy attach to their diagnostics are offered as quick fixes.
+- A clang-tidy fix is cleaned up as `clang-tidy --fix` cleans it: no `,` or `:` left dangling by what it removes.
+- An include a fix adds to a module unit goes into its global module fragment, opened once.
 
 ## Header Diagnostics
 
-- [ ] Include-cleaner diagnostics for unused and missing `#include` directives
-- [x] Suppress false `-Wunused-function` for static inline functions in headers ([clangd#1211](https://github.com/clangd/clangd/issues/1211))
-
-  ```cpp
-  // utils.h
-  static inline int helper() { return 42; }
-  // should NOT warn "unused function" when checking header standalone
-  ```
-
-- [x] No false `-Wunused-function` or `-Wunused-member-function` for a declaration used only inside a header's function body, which the editor skips: the background index reports the unused ones ([clangd#363](https://github.com/clangd/clangd/issues/363), [clangd#636](https://github.com/clangd/clangd/issues/636))
-- [ ] Propagate `-Wpadded` and similar layout warnings from headers ([clangd#1429](https://github.com/clangd/clangd/issues/1429))
-- [ ] Suppress false `-Wempty-translation-unit` from preamble optimization ([clangd#2358](https://github.com/clangd/clangd/issues/2358))
-- [ ] Thread safety analysis across header boundaries ([clangd#2386](https://github.com/clangd/clangd/issues/2386))
+- A `static inline` function a header defines and the file does not call raises no `-Wunused-function` ([clangd#1211](https://github.com/clangd/clangd/issues/1211)).
+- A declaration used only inside a header's function body, which the editor skips, raises no false `-Wunused-function` or `-Wunused-member-function`: the background index reports the ones that are unused ([clangd#363](https://github.com/clangd/clangd/issues/363), [clangd#636](https://github.com/clangd/clangd/issues/636)).
 
 ## clang-tidy Integration
 
@@ -297,39 +265,10 @@ tests/diagnostics/clang_tidy/20_slow_checks
 
 <!-- END GENERATED ITEMS -->
 
-- [x] Checks too slow for an editor run on open files only when `slow_clang_tidy_checks` asks for them, and clice names the ones it leaves out; those unreliable on code being edited are always left out; `clice lint` runs them all
-- [x] `performance-use-std-move` left out of both the editor and `clice lint`: in the LLVM clice is built on, it crashes on classes read from a PCH or a module
-- [x] `.clang-tidy` edits apply to open files at their next compile
-- [x] A crash of a clang-tidy check pauses clang-tidy on that file, not its other features
-- [x] Suppress clang-tidy warnings originating in system-header macros ([clangd#1587](https://github.com/clangd/clangd/issues/1587), [clangd#2000](https://github.com/clangd/clangd/issues/2000))
-- [ ] Clang static analyzer support ([clangd#905](https://github.com/clangd/clangd/issues/905))
-- [ ] Version-specific clang-tidy documentation links ([clangd#2136](https://github.com/clangd/clangd/issues/2136))
-- [ ] Diagnostics for preprocessor directives that precede code ([clangd#2501](https://github.com/clangd/clangd/issues/2501))
-
-## Diagnostic Display
-
-- [ ] Correct diagnostic range for qualified type names — underline the full name, not just the base ([clangd#1035](https://github.com/clangd/clangd/issues/1035))
-
-  ```cpp
-  ns::Inner obj(42);
-  //  ^^^^^ only base name underlined
-  // should underline "ns::Inner"
-  ```
-
-- [ ] Show optimization remarks (`-Rpass`) as diagnostics ([clangd#2519](https://github.com/clangd/clangd/issues/2519))
-- [x] Project-wide warning listing: `clice lint` ([clangd#1973](https://github.com/clangd/clangd/issues/1973))
-
-## Config File Diagnostics
-
-- [x] A malformed `.clang-tidy` is reported at the top of the files it configures, and runs no check ([clangd#2313](https://github.com/clangd/clangd/issues/2313))
-- [ ] Report diagnostics for malformed `.clang-format` files ([clangd#2591](https://github.com/clangd/clangd/issues/2591))
-
-## Diagnostic Correctness
-
-Known issues that should be handled correctly:
-
-- [ ] Macro redefinition warning pointing to the same location ([clangd#2479](https://github.com/clangd/clangd/issues/2479))
-- [ ] Wrong `-Wmissing-braces` fix suggestion for nested array initialization ([clangd#2434](https://github.com/clangd/clangd/issues/2434))
-- [ ] Invalid severity 0 when preamble invalidation mixes diagnostic messages ([clangd#2124](https://github.com/clangd/clangd/issues/2124))
-- [ ] Undeclared identifier diagnostic hidden by correction-related diagnostics ([clangd#547](https://github.com/clangd/clangd/issues/547))
-- [ ] Misleading downstream diagnostics when `--include` file is missing ([clangd#2229](https://github.com/clangd/clangd/issues/2229))
+- Checks too slow for an editor run on open files only when `slow_clang_tidy_checks` asks for them, and clice names the ones it leaves out; those unreliable on code being edited are always left out; `clice lint` runs them all.
+- `performance-use-std-move` is left out of both the editor and `clice lint`: in the LLVM clice is built on, it crashes on classes read from a PCH or a module.
+- `.clang-tidy` edits apply to open files at their next compile.
+- A crash of a clang-tidy check pauses clang-tidy on that file, not its other features.
+- clang-tidy's warnings that originate in macros of system headers are left out ([clangd#1587](https://github.com/clangd/clangd/issues/1587), [clangd#2000](https://github.com/clangd/clangd/issues/2000)).
+- A malformed `.clang-tidy` is reported at the top of the files it configures, and runs no check ([clangd#2313](https://github.com/clangd/clangd/issues/2313)).
+- `clice lint` lists the warnings of the whole project ([clangd#1973](https://github.com/clangd/clangd/issues/1973)).

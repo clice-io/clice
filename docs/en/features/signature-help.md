@@ -155,7 +155,7 @@ tests/signature_help/call_contexts/06_lambdas
 A new-expression's constructor arguments drive signature help
 
 Written with parentheses, it lists the constructors; written with braces, it
-shows nothing yet.
+shows nothing.
 
 ```case
 tests/signature_help/call_contexts/07_new_expressions
@@ -167,7 +167,7 @@ tests/signature_help/call_contexts/07_new_expressions
 
 **Subscript operators**
 
-An overloaded `operator[]` shows no signature help yet
+An overloaded `operator[]` shows no signature help
 
 ```case
 tests/signature_help/call_contexts/08_subscripts

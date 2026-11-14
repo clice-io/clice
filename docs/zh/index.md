@@ -13,8 +13,8 @@ hero:
       text: 快速开始
       link: ./guide/quick-start
     - theme: alt
-      text: 参与贡献
-      link: ./dev/contribution
+      text: 从源码构建
+      link: ./dev/build
   image:
     src: /mascot/hero-working.webp
     alt: clice

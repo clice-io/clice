@@ -23,7 +23,12 @@ $ clice command src/main.cpp
   command:   /usr/bin/g++ -std=c++20 -O2 -Werror -o main.o -c ../src/main.cpp
   resolved:  /usr/bin/g++ -cc1 -main-file-name main.cpp -triple x86_64-unknown-linux-gnu -O2 … -internal-isystem /usr/include/c++/13 … -std=c++20 … -x c++ /home/me/project/src/main.cpp
   hidden:    112 of the files in /usr/lib/gcc/x86_64-linux-gnu/13/include
+
+settings:  background_index = false (/home/me/project/clice.toml:6)
+           the rest by default
 ```
+
+After the entries, `settings` lists what the [rules](../guide/configuration.md#rules) decide for the file — `background_index`, `skip_function_body`, `readonly`, `lint` and the other per-file fields — each with the rule deciding it, the file and the line where the rule starts; a field no rule sets takes its default. `--json` lists every field under `settings`, with its `value` and, where a rule decides it, that `rule`.
 
 The exit code is 0 when the file's entries are listed, 1 when the file does not exist or no database lists it, 2 when a database changes while it is read or the arguments do not parse.
 

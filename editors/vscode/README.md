@@ -95,6 +95,3 @@ symbol packages that let us reconstruct the exact stack.
 
 For protocol-level debugging, set `clice.trace.server` to `verbose`: every
 LSP message then appears in the `clice (LSP trace)` output channel.
-
-Extension development is documented in the
-[contributor guide](https://docs.clice.io/clice/dev/extension).

@@ -22,7 +22,7 @@ See [build from source](../dev/build.md) for detailed instructions.
 
 For clice to correctly understand your code (e.g., find header file locations), you need to provide a `compile_commands.json` file, also known as a [compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html). The compilation database provides compilation options for each source file.
 
-By default, clice loads every `compile_commands.json` in your workspace root and its immediate subdirectories (e.g. `build/`), and the ones above a file when you open it — a nested project's database loads the first time one of its files is opened. A subdirectory with a `clice.toml` or `.clice/config.toml` of its own is a project of its own, whose databases the root never loads. This discovery is off as soon as any rule declares a source, a database or a `default_command` alike. You can name the databases explicitly with the `compile_commands` option in [clice.toml](./configuration.md), and describe files that have no database entry with a rule's `default_command`.
+By default, clice loads every `compile_commands.json` in the project's root directory and its immediate subdirectories (e.g. `build/`), and the ones above a file when you open it — a nested project's database loads the first time one of its files is opened. A subdirectory with a `clice.toml` or `.clice/config.toml` of its own is a project of its own, whose databases the root never loads. This discovery is off as soon as any rule declares a source, a database or a `default_command` alike. You can name the databases explicitly with the `compile_commands` option in [clice.toml](./configuration.md), and describe files that have no database entry with a rule's `default_command`.
 
 ### CMake
 
@@ -40,11 +40,26 @@ This option only works with Makefile and Ninja generators. For other generators 
 
 ### Bazel
 
-Use [bazel-compile-commands-extractor](https://github.com/hedronvision/bazel-compile-commands-extractor):
+Use the `compdb` module of clice's Bazel registry. Add the registry and the module to the project:
+
+```
+# .bazelrc
+common --registry=https://bazel.clice.io/
+common --registry=https://bcr.bazel.build/
+```
+
+```python
+# MODULE.bazel
+bazel_dep(name = "compdb", version = "0.1.0", dev_dependency = True)
+```
+
+Then write `compile_commands.json` beside `MODULE.bazel`:
 
 ```bash
-bazel run @hedron_compile_commands//:refresh_all
+bazel run @compdb//:refresh -- --output_groups=+compilation_prerequisites_INTERNAL_
 ```
+
+It covers `//...`; targets after `--` narrow it. The added output group builds what the commands read but do not build: the generated headers and the `_virtual_includes` directories through which Bazel exposes a library's headers. Without it, those headers are missing until something else builds them, and every file including them reports them not found.
 
 ### Visual Studio
 

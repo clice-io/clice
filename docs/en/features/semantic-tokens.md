@@ -1021,10 +1021,8 @@ compiled away, dim the same way. The clice VS Code extension renders the
 regions dimmed out of the box; other editors style the modifier directly
 (e.g. `@lsp.mod.inactive` in Neovim).
 
-- [x] Dim inactive preprocessor branches ([clangd#132](https://github.com/clangd/clangd/issues/132))
-- [x] Correct inactive boundaries with `#elif` chains ([clangd#602](https://github.com/clangd/clangd/issues/602))
-- [x] Preserve syntax highlighting within inactive regions ([clangd#1664](https://github.com/clangd/clangd/issues/1664))
-- [x] Keep inactive regions distinct from comments ([clangd#1545](https://github.com/clangd/clangd/issues/1545))
+- Inactive preprocessor branches are dimmed ([clangd#132](https://github.com/clangd/clangd/issues/132)), with the right boundaries in `#elif` chains ([clangd#602](https://github.com/clangd/clangd/issues/602)).
+- The syntax colors stay within them ([clangd#1664](https://github.com/clangd/clangd/issues/1664)), and they stay distinct from comments ([clangd#1545](https://github.com/clangd/clangd/issues/1545)).
 
 A branch the preprocessor skips is dimmed, whichever directive opens it. In a header, the dimmed branches are those its [host](./header-contexts.md) skips. Code another context of the file compiles keeps its semantic kinds while dimmed. The dimming follows an edit to a condition as you type.
 
@@ -1070,10 +1068,10 @@ tests/semantic_tokens/inactive/08_edited_condition
 
 ## Protocol Support
 
-- [x] Full document semantic tokens (`textDocument/semanticTokens/full`)
-- [x] Range requests (`textDocument/semanticTokens/range`): the tokens a range overlaps
-- [x] Delta updates (`textDocument/semanticTokens/full/delta`): the changes since the answer the editor holds
-- [x] UTF-16 positions, or UTF-8 or UTF-32 for an editor that offers them; a token spanning lines split per line
+- Full document semantic tokens (`textDocument/semanticTokens/full`).
+- Range requests (`textDocument/semanticTokens/range`): the tokens a range overlaps.
+- Delta updates (`textDocument/semanticTokens/full/delta`): the changes since the answer the editor holds.
+- UTF-16 positions, or UTF-8 or UTF-32 for an editor that offers them; a token spanning lines is split per line.
 
 ## Known Limitations
 

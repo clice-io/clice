@@ -16,7 +16,7 @@ clice is one binary. Editors launch `clice serve` and talk to it over LSP; the o
 | `modularize` | Wrap third-party libraries as C++20 modules, rewrite the program into module units.   | [modularize](./modularize.md)  |
 | `scan`       | Scan the include and module dependencies of the build, and time the scan.             | [scan](./scan.md)              |
 
-`inspect` works today but has no page yet; its operations and options are documented by `clice inspect --help`.
+`inspect` has no page: `clice inspect --help` documents its operations and options.
 
 ## Arguments
 

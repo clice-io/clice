@@ -72,9 +72,9 @@ Full docs at [**docs.clice.io/clice**](https://docs.clice.io/clice/) covering co
 
 ## Contributing
 
-See the [contribution guide](https://docs.clice.io/clice/dev/contribution) or join our [Discord](https://discord.gg/PA3UxW2VA3).
+See [building from source](https://docs.clice.io/clice/dev/build) or join our [Discord](https://discord.gg/PA3UxW2VA3).
 
 ```shell
-pixi run build   # configure + build
-pixi run test    # unit + integration + smoke tests
+bazel build //:dist   # clice and the unit tests
+pixi run test         # the unit tests and the cases
 ```
