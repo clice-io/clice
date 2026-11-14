@@ -528,14 +528,15 @@ std::optional<bool> CompilationUnit::skips_bodies(clang::FileID fid) {
 
 bool CompilationUnit::indexes_bodies(clang::SourceLocation location) {
     auto fid = file_id(SM().getExpansionLoc(location));
-    if(kind() == CompilationKind::Content && focus_file().contains(fid)) {
+    bool focus = focus_file().contains(fid);
+    if(focus && kind() == CompilationKind::Content) {
         return true;
     }
     auto& rule = body_rule(fid);
     if(rule.skip.value_or(false)) {
         return false;
     }
-    return rule.index.value_or(!in_library(location));
+    return rule.index.value_or(focus || !in_library(location));
 }
 
 bool CompilationUnit::encloses_focus_file(const clang::Decl* decl) {

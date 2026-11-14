@@ -31,7 +31,7 @@ test("dropped from a database", async (t) => {
 // a file outside every folder compiles without them.
 test("editor rules with a configuration", async (t) => {
     const s = await t.start({
-        folders: ["alpha", "beta"],
+        folders: ["alpha"],
         config: {
             default_configuration: "debug",
             rules: [{ configuration: "debug", append: ["-DIN_ALPHA"] }],
