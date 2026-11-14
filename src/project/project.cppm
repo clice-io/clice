@@ -571,6 +571,13 @@ struct Project {
     /// commands_epoch.
     Affected update_members(CDBDiff commands, llvm::ArrayRef<OpenFile> open = {});
 
+    /// Ask again the compilers that could not be asked, once their cooldown
+    /// passed: when one answers, every unit whose index it changes the
+    /// identity of (command_identity) reindexes. Whether one answered: the
+    /// open documents compiled without their compiler's answer compile
+    /// again, which is the owner's to tell.
+    bool ask_compilers_again();
+
     // discovery.cpp
 
     /// The sentence the guidance of a project without a database ends with:
@@ -678,7 +685,9 @@ struct Project {
     /// index records it: the default selection (candidates' first) as the
     /// rules edit it (apply_rules), its hash the key of the unit's include
     /// tree (tree_request); 0 when the build compiles it under none. A run's
-    /// extras are not part of it.
+    /// extras are not part of it. A command clang's own driver reads for
+    /// want of its compiler's answer (Toolchain::unqueried) has another
+    /// identity: the compiler answering at last reindexes the unit.
     std::uint64_t command_identity(Fid unit);
 
     /// The command of the entry writing the precompiled header that the

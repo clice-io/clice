@@ -324,7 +324,14 @@ const clang::LangOptions& Project::dialect(Fid file, const ContextChoice* choice
 
 std::uint64_t Project::command_identity(Fid unit) {
     auto candidates = this->candidates(unit);
-    return candidates.empty() ? 0 : tree_request(unit, candidates.front()).key.second;
+    if(candidates.empty()) {
+        return 0;
+    }
+    auto request = tree_request(unit, candidates.front());
+    if(toolchain.unqueried(request.command.command, request.command.language)) {
+        return llvm::hash_combine(request.key.second, llvm::StringRef("unqueried"));
+    }
+    return request.key.second;
 }
 
 std::optional<CommandRef> Project::pch_writer(Fid file,

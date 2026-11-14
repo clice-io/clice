@@ -342,6 +342,22 @@ Project::Rebuilt Project::rebuild_dependency_graph() {
     return changes;
 }
 
+bool Project::ask_compilers_again() {
+    if(!toolchain.retry_failed()) {
+        return false;
+    }
+    llvm::SmallVector<Fid> units;
+    index.for_each_unit([&](Fid unit) { units.push_back(unit); });
+    for(auto unit: units) {
+        if(index.indexed_command(unit) != command_identity(unit)) {
+            index.mark_outdated(unit);
+            background_index.enqueue(unit, ReindexReason::ContentChanged);
+        }
+    }
+    background_index.schedule();
+    return true;
+}
+
 Affected Project::update_members(CDBDiff commands, llvm::ArrayRef<OpenFile> open) {
     if(commands.empty()) {
         // With nothing reloaded the graph is the build's: only a file just

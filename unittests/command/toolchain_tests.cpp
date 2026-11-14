@@ -217,6 +217,21 @@ ZEST_CASE(FailedQueryRetries) {
     ZEXPECT(resolution->query_failure == "");
 }
 
+ZEST_CASE(FailedQueryAskedAgain) {
+    // A compiler installed once its query failed answers when asked again
+    // past the cooldown: its commands are no longer unqueried.
+    f.toolchain.set_failed_retry(chrono::seconds(0));
+    auto a = add("a.cpp", {tmp.c_path("clang"), "-std=c++17"});
+    ZEXPECT(!f.failure(a).empty());
+    ZEXPECT(f.toolchain.unqueried(a.command, a.language));
+    ZEXPECT(!f.toolchain.retry_failed());
+
+    auto driver = fake_clang(clang_job);
+    ZEXPECT(f.toolchain.retry_failed());
+    ZEXPECT(!f.toolchain.unqueried(a.command, a.language));
+    ZEXPECT(!f.toolchain.retry_failed());
+}
+
 ZEST_CASE(FailedQueryUnqueried) {
     // A compiler that cannot be queried is read as an unqueried one is: by
     // clang's own driver, for the target its name sets, without the CPU

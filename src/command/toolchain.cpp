@@ -258,7 +258,11 @@ std::size_t forwarded_start(llvm::ArrayRef<std::string> tokens, const Command& c
 Toolchain::Toolchain(CommandTable& commands,
                      FileTable& files,
                      chrono::steady_clock::duration failed_retry) :
-    commands(commands), files(files), query_policy{.cooldown = failed_retry} {}
+    commands(commands), files(files), query_policy{.cooldown = failed_retry} {
+    if(auto ms = env_integer("CLICE_TEST_QUERY_RETRY_MS")) {
+        query_policy.cooldown = chrono::milliseconds(*ms);
+    }
+}
 
 Toolchain::~Toolchain() = default;
 
@@ -540,9 +544,9 @@ Toolchain::QueryAdmission Toolchain::admit_query(CommandID id, InputKind input) 
         return admission;
     }
     if(auto failed_it = failed.find(admission.key); failed_it != failed.end()) {
-        if(failed_it->second.stops(query_policy, FailureRecord::Clock::now())) {
+        if(failed_it->second.record.stops(query_policy, FailureRecord::Clock::now())) {
             admission.kind = QueryAdmission::Kind::CoolingDown;
-            admission.error = failed_it->second.cause;
+            admission.error = failed_it->second.record.cause;
             return admission;
         }
         // Cooldown over: the failure may have been transient — retry the
@@ -564,12 +568,36 @@ Toolchain::QueryAdmission Toolchain::admit_query(CommandID id, InputKind input) 
 
 void Toolchain::commit_query(llvm::StringRef key,
                              CommandID id,
+                             InputKind input,
                              const std::expected<Job, std::string>& job) {
     if(!job) {
-        failed[key].fail(query_policy, {}, job.error(), FailureRecord::Clock::now());
+        auto& entry = failed[key];
+        entry.record.fail(query_policy, {}, job.error(), FailureRecord::Clock::now());
+        entry.command = id;
+        entry.input = input;
         return;
     }
     queries.try_emplace(key, frontend(*job, commands.get(id)));
+}
+
+bool Toolchain::unqueried(CommandID id, InputKind input) {
+    return !failed.empty() && commands.get(id).query_toolchain &&
+           failed.contains(query_key(id, input).key);
+}
+
+bool Toolchain::retry_failed() {
+    std::vector<CommandRef> due;
+    auto now = FailureRecord::Clock::now();
+    for(auto& entry: failed) {
+        if(!entry.second.record.stops(query_policy, now)) {
+            due.push_back({.command = entry.second.command,
+                           .language = entry.second.input,
+                           .source = CommandSource::Database});
+        }
+    }
+    auto known = queries.size();
+    warm(due, true);
+    return queries.size() != known;
 }
 
 std::expected<Toolchain::ResolvedCommand, std::string> Toolchain::resolve(CommandID id,
@@ -593,7 +621,7 @@ std::expected<Toolchain::ResolvedCommand, std::string> Toolchain::resolve(Comman
 
         auto [ended] = async::run(query_one(admission.spec));
         auto& result = *ended;
-        commit_query(admission.key, id, result);
+        commit_query(admission.key, id, input, result);
         if(!result) {
             if(runs_compiler) {
                 LOG_WARN(
@@ -627,10 +655,11 @@ std::expected<Toolchain::ResolvedCommand, std::string>
     return ResolvedCommand{.id = resolved->id, .query_failure = std::move(failure)};
 }
 
-void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
+void Toolchain::warm(llvm::ArrayRef<CommandRef> refs, bool again) {
     struct Pending {
         std::string key;
         CommandID command;
+        InputKind input;
         QuerySpec spec;
 
         /// A build chose the compiler: the builtin command's names one
@@ -652,8 +681,11 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
             pending[it->second].chosen |= chosen;
             continue;
         }
-        pending.push_back(
-            {std::move(admission.key), ref.command, std::move(admission.spec), chosen});
+        pending.push_back({std::move(admission.key),
+                           ref.command,
+                           ref.language,
+                           std::move(admission.spec),
+                           chosen});
     }
 
     if(pending.empty()) {
@@ -668,6 +700,7 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     struct QueryResult {
         std::string key;
         CommandID command;
+        InputKind input;
         std::expected<Job, std::string> result;
         bool chosen;
     };
@@ -677,7 +710,7 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     auto make_task = [](Pending p, async::semaphore& drivers) -> async::task<QueryResult> {
         auto running = co_await drivers.scoped_acquire();
         auto result = co_await query_one(p.spec);
-        co_return QueryResult{std::move(p.key), p.command, std::move(result), p.chosen};
+        co_return QueryResult{std::move(p.key), p.command, p.input, std::move(result), p.chosen};
     };
 
     auto query_all = [&]() -> async::task<kotatsu::small_vector<QueryResult>> {
@@ -698,6 +731,8 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
     for(auto& o: *results) {
         if(o.result) {
             succeeded += 1;
+        } else if(again) {
+            LOG_DEBUG("The compiler still cannot be asked: {}", o.result.error());
         } else if(o.chosen) {
             LOG_WARN(
                 "Cannot ask the compiler for its default settings: {}; clang's own "
@@ -706,9 +741,16 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs) {
         } else {
             LOG_WARN("Cannot ask clice's default compiler for its settings: {}", o.result.error());
         }
-        commit_query(o.key, o.command, o.result);
+        commit_query(o.key, o.command, o.input, o.result);
     }
 
+    if(again) {
+        if(succeeded != 0) {
+            LOG_INFO("{} that could not be asked before answered",
+                     counted(succeeded, "compiler", "compilers"));
+        }
+        return;
+    }
     LOG_INFO("Queried {} for default settings; {} failed",
              counted(total, "compiler", "compilers"),
              total - succeeded);

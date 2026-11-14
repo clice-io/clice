@@ -499,6 +499,18 @@ async::task<> ServedProject::sources_poll_task() {
         // Time is the feature: the workspace loop's pace.
         co_await async::sleep(interval);
         co_await poll_sources();
+        if(!project.ask_compilers_again()) {
+            continue;
+        }
+        Affected affected;
+        for(auto& [path_id, document]: documents) {
+            auto& latest = document.latest;
+            if(latest && latest->output && !latest->output->diagnostics.query_failure.empty()) {
+                affected.stale.push_back(path_id);
+            }
+        }
+        follow(affected);
+        server.hooks.happened(LoopEvent::CompilersAnswered);
     }
 }
 

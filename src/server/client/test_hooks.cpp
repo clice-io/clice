@@ -174,7 +174,7 @@ void LSPClient::register_test_hooks() {
             if(!event) {
                 co_await async::fail(
                     ipc::Error{protocol::ErrorCode::InvalidParams,
-                               R"(a watch names "databaseChange", "diskChange" or "checkpoint")"});
+                               R"(a watch names "databaseChange", "diskChange", "checkpoint" or "compilersAnswered")"});
             }
             co_return to_raw(ext::HoldResult{srv.hooks.watch(*event)});
         });

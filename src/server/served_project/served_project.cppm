@@ -822,7 +822,9 @@ private:
     /// The periodic Project::checkpoint().
     async::task<> checkpoint_task();
 
-    /// The default-sources loop, poll_sources on the workspace poll's pace.
+    /// The default-sources loop, poll_sources on the workspace poll's pace,
+    /// asking the compilers that could not be asked again: the documents
+    /// compiled without the answer of one that answers compile again.
     /// Spawned by start() unless polling is off.
     async::task<> sources_poll_task();
 

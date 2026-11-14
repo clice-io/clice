@@ -54,8 +54,9 @@ public:
 
     /// Pre-query in parallel, deduplicated by query key, running as many
     /// drivers at once as the process has CPUs. Blocks until all unique
-    /// queries complete.
-    void warm(llvm::ArrayRef<CommandRef> refs);
+    /// queries complete. `again`: they retry failed ones, whose failures
+    /// were reported then.
+    void warm(llvm::ArrayRef<CommandRef> refs, bool again = false);
 
     /// A compile argv and how the command came to it.
     struct RenderedCommand {
@@ -96,6 +97,14 @@ public:
     void set_failed_retry(chrono::steady_clock::duration retry) {
         query_policy.cooldown = retry;
     }
+
+    /// Whether clang's own driver reads the command for want of its
+    /// compiler's answer: the compiler's last query for it failed.
+    bool unqueried(CommandID id, InputKind input);
+
+    /// Ask again every compiler whose query failed and whose cooldown has
+    /// passed: whether one answered.
+    bool retry_failed();
 
 private:
     struct QueryKey {
@@ -186,6 +195,7 @@ private:
     /// its time.
     void commit_query(llvm::StringRef key,
                       CommandID id,
+                      InputKind input,
                       const std::expected<Job, std::string>& job);
 
 private:
@@ -200,8 +210,16 @@ private:
     /// record's cause. Avoids re-spawning the same failing driver query for
     /// every file that shares the key (see clangd's SystemIncludeExtractor
     /// for precedent); a key is queried again once query_policy's cooldown
-    /// passes.
-    llvm::StringMap<FailureRecord> failed;
+    /// passes, by the command and language it failed for (retry_failed).
+    struct FailedQuery {
+        FailureRecord record;
+
+        CommandID command = invalid_command;
+
+        InputKind input;
+    };
+
+    llvm::StringMap<FailedQuery> failed;
 
     FailurePolicy query_policy;
 
