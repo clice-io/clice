@@ -662,6 +662,7 @@ struct FileScanner {
                     {path_id, group.command, group.language, CommandSource::Database},
                     files.spelling(path_id));
                 auto declared = scan_module_decl(
+                    graph.directives,
                     rendered.argv,
                     cdb.commands().get(group.command).directory,
                     observed->text,

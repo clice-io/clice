@@ -2,12 +2,15 @@ module clice;
 
 import :syntax.scan;
 import :unittests.utils.annotation;
+import :unittests.utils.temp_dir;
 import :unittests.utils;
 
 namespace clice::testing {
 namespace {
 
 ZEST_SUITE(Scan) {
+
+DirectiveCache cache;
 
 ZEST_CASE(BasicIncludes) {
     auto result = scan_quick(R"(
@@ -192,13 +195,34 @@ ZEST_CASE(PreciseWithContent) {
     vfs->add("header.h", "import dep;");
 
     auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
-    ZEXPECT(scan_precise(args, TestVFS::root(), {}, vfs).modules.size() == 1u);
-    ZEXPECT(scan_precise(args, TestVFS::root(), llvm::StringRef(), vfs).modules.empty());
+    ZEXPECT(scan_precise(cache, args, TestVFS::root(), {}, vfs).modules.size() == 1u);
+    ZEXPECT(scan_precise(cache, args, TestVFS::root(), llvm::StringRef(), vfs).modules.empty());
 
     args.back() = empty_path.c_str();
-    auto remapped = scan_precise(args, TestVFS::root(), R"(#include "header.h")", vfs);
+    auto remapped = scan_precise(cache, args, TestVFS::root(), R"(#include "header.h")", vfs);
     ZASSERT(remapped.modules.size() == 1u);
     ZEXPECT(remapped.modules[0] == "dep");
+}
+
+ZEST_CASE(SharedDirectivesFollowChanges) {
+    // A header rewritten between two scans sharing the cache, to the same
+    // size and with its modification time put back, is read again by its
+    // bytes.
+    TempDir tmp;
+    tmp.touch("main.cpp", R"(#include "header.h")");
+    tmp.touch("header.h", "import aa;");
+    auto main_path = tmp.path("main.cpp");
+    auto args = std::vector<const char*>{"clang++", "-std=c++20", main_path.c_str()};
+    auto first = scan_precise(cache, args, tmp.root);
+    ZASSERT(first.modules.size() == 1u);
+    ZEXPECT(first.modules[0] == "aa");
+
+    auto modified = file_mtime_ns(tmp.path("header.h"));
+    tmp.touch("header.h", "import bb;");
+    ZASSERT(set_file_mtime(tmp.path("header.h"), modified));
+    auto second = scan_precise(cache, args, tmp.root);
+    ZASSERT(second.modules.size() == 1u);
+    ZEXPECT(second.modules[0] == "bb");
 }
 
 ZEST_CASE(PreciseHonorsWorkingDirectory) {
@@ -217,10 +241,10 @@ ZEST_CASE(PreciseHonorsWorkingDirectory) {
                                          absolute.c_str(),
                                          "-Irel",
                                          main_path.c_str()};
-    ZEXPECT(scan_precise(args, TestVFS::root(), {}, vfs).modules.size() == 1u);
+    ZEXPECT(scan_precise(cache, args, TestVFS::root(), {}, vfs).modules.size() == 1u);
 
     args[2] = "-working-directory=other";
-    ZEXPECT(scan_precise(args, TestVFS::root(), {}, vfs).modules.size() == 1u);
+    ZEXPECT(scan_precise(cache, args, TestVFS::root(), {}, vfs).modules.size() == 1u);
 }
 
 ZEST_CASE(DirectiveCutAtEnd) {
@@ -238,7 +262,8 @@ ZEST_CASE(DirectiveCutAtEnd) {
                                          forced.c_str(),
                                          main_path.c_str()};
     auto result =
-        scan_precise(args,
+        scan_precise(cache,
+                     args,
                      TestVFS::root(),
                      llvm::StringRef("#define VERSION_CODE()\r\n  #if(MSVC)VERSION_CODE("),
                      vfs);
@@ -282,6 +307,7 @@ ZEST_CASE(MixedDirectives) {
 /// marked file is the scanned file.
 struct ModuleScanFixture {
     llvm::IntrusiveRefCntPtr<TestVFS> vfs = llvm::makeIntrusiveRefCnt<TestVFS>();
+    DirectiveCache cache;
     std::string scanned_path;
     std::vector<const char*> args;
 
@@ -313,11 +339,11 @@ struct ModuleScanFixture {
     }
 
     ScanResult decl() {
-        return scan_module_decl(args, TestVFS::root(), {}, vfs);
+        return scan_module_decl(cache, args, TestVFS::root(), {}, vfs);
     }
 
     ScanResult precise() {
-        return scan_precise(args, TestVFS::root(), {}, vfs);
+        return scan_precise(cache, args, TestVFS::root(), {}, vfs);
     }
 };
 

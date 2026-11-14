@@ -141,6 +141,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
     auto scan_args_base = base_cc1_args(standard, triple);
 
     std::vector<ScannedModule> modules;
+    DirectiveCache cache;
     for(auto& mod: all_modules) {
         auto args = scan_args_base;
         args.push_back(TestVFS::path(mod.filename));
@@ -150,7 +151,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
             argv.push_back(arg.c_str());
         }
 
-        auto result = scan_precise(argv, TestVFS::root(), {}, vfs);
+        auto result = scan_precise(cache, argv, TestVFS::root(), {}, vfs);
         if(result.provided_module().empty()) {
             continue;
         }
