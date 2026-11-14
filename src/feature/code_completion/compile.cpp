@@ -1627,12 +1627,13 @@ public:
         processing = true;
         // A tentative parse that keeps what it parsed at the point
         // (`requires { typename lib:: }`) made the completion that stands
-        // through `unloaded`: the names of a namespace qualifying it come
-        // again, read.
+        // through `unloaded`: the names of a namespace, or of the global one,
+        // qualifying it come again, read.
         if(unloaded_reply && !resolving) {
+            using enum clang::NestedNameSpecifier::Kind;
             if(auto spec = context.getCXXScopeSpecifier();
-               spec &&
-               (*spec)->getScopeRep().getKind() == clang::NestedNameSpecifier::Kind::Namespace) {
+               spec && ((*spec)->getScopeRep().getKind() == Namespace ||
+                        (*spec)->getScopeRep().getKind() == Global)) {
                 auto qualifier = **spec;
                 if(replace([&] {
                        sema.CodeCompletion().CodeCompleteQualifiedId(

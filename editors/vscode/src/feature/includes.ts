@@ -104,6 +104,14 @@ export function registerIncludeCompletion(
         const request: Request = { uri: document.uri.toString(), line: position.line, ...typing };
         last = request;
         const answer = await next(document, position, completionContext, token);
+        // A request typing overtook tells nothing of the name: the next
+        // keystroke asks again.
+        if (token.isCancellationRequested) {
+            if (last === request) {
+                last = undefined;
+            }
+            return answer;
+        }
         const items = Array.isArray(answer) ? answer : (answer?.items ?? []);
         request.empty = items.length === 0;
         for (const item of items) {

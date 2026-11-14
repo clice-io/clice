@@ -21,6 +21,9 @@ void check(lib::Value v) {
 template <class T>
 concept nested = requires { typename lib::§(requires_typename); };
 
+template <class T>
+concept global = requires { typename ::§(requires_global); };
+
 void plain() {
     lib::§(namespace_scope);
 }

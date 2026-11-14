@@ -10,6 +10,17 @@ items = [
     { label = "holder<class T>", kind = "Class" },
 ]
 
+[answers.requires_global.completion]
+items = [
+    { label = "Global", kind = "Class" },
+    { label = "Result", kind = "Class" },
+    { label = "check(lib::Value v)", kind = "Function", detail = "void" },
+    { label = "compare(int, int)", kind = "Function", detail = "Result" },
+    { label = "global<class T>", kind = "TypeParameter" },
+    { label = "lib", kind = "Module" },
+    { label = "nested<class T>", kind = "TypeParameter" },
+]
+
 [answers.namespace_scope.completion]
 items = [
     { label = "Value", kind = "Class" },

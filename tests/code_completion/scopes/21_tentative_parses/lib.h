@@ -1,5 +1,7 @@
 #pragma once
 
+struct Global {};
+
 namespace lib {
 
 struct Value {
