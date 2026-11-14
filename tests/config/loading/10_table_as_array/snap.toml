@@ -2,9 +2,9 @@
 pushes = [
     [
         {
-            at = "⟦[[project]]⟧ @1",
+            at = "⟦[[workers]]⟧ @1",
             severity = "error",
-            message = "invalid type: expected table, got array at project",
+            message = "invalid type: expected table, got array at workers",
             source = "clice",
         },
     ],

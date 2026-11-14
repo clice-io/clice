@@ -4,33 +4,16 @@ Indexed 1 translation unit in #s: 1 file shard (# B), 2 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 stderr = '''
-error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
-warning: Toolchain resolve failed for ${WS}/main.cpp: Driver ${WS}/missing-cc not found or not executable
+warning: The compilation database compile_commands.json names response files that cannot be read, and the commands naming them compile without their options: absent.rsp. A build may delete them once it has run; build again to bring them back
+warning: Cannot ask the compiler for its default settings: Driver missing-cc not found or not executable; clang's own driver reads its commands
 '''
 exit = 0
 
 [test."$ clice query compile-command main.cpp"]
 stdout = '''
 {
-  "result": {
-    "file": "${WS}/main.cpp",
-    "directory": "${WS}",
-    "arguments": [
-      "${WS}/missing-cc",
-      "-resource-dir",
-      "${RESOURCE}",
-      "-D",
-      "KEPT=0",
-      "${WS}/main.cpp"
-    ],
-    "source": "database",
-    "toolchainError": "Driver ${WS}/missing-cc not found or not executable"
-  },
+  "error": "unknown subcommand 'compile-command'",
   "stale": []
 }
 '''
-stderr = '''
-error: Toolchain query failed: Driver ${WS}/missing-cc not found or not executable
-warning: Toolchain resolve failed for ${WS}/main.cpp: Driver ${WS}/missing-cc not found or not executable
-'''
-exit = 0
+exit = 2

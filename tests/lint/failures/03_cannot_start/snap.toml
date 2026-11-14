@@ -2,6 +2,9 @@
 stderr = "error: Nothing to lint: no compile_commands.json found in ${WS} or its direct subdirectories."
 exit = 2
 
+["no database".created]
+value = []
+
 ["no default source"."$ clice lint --jobs 2"]
 stderr = "error: Nothing to lint: no file on disk matches a rule with a default_command."
 exit = 2

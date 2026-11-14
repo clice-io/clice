@@ -551,9 +551,11 @@ public:
     /// preamble.
     bool in_preamble(clang::FileID fid);
 
-    /// Whether this compile skips the function bodies of `fid`, not its focus
-    /// file, as the rules say (CompilationParams::function_bodies); nullopt
-    /// when none says, the compile's own choice standing.
+    /// Whether this compile skips the function bodies of `fid` as the rules
+    /// say (CompilationParams::function_bodies); nullopt when none says, the
+    /// compile's own choice standing. The focus file's bodies are its own
+    /// compile's, unless the compile builds a precompiled header or a
+    /// module's interface for the files reading it.
     std::optional<bool> skips_bodies(clang::FileID fid);
 
     /// Whether the index records what the function bodies at `location` use

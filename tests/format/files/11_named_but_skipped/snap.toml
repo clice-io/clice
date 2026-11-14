@@ -1,7 +1,7 @@
-[test."$ clice format ../outside/far.cpp --workspace ws"]
-stdout = "No files to format under ${WS}/ws."
-exit = 0
+[test."$ clice format --check ../outside/far.cpp"]
+stderr = "${WS}/ws/../outside/far.cpp: outside the project at ${WS}/ws"
+exit = 2
 
-[test."$ clice format kept.cpp --workspace ws"]
-stdout = "No files to format under ${WS}/ws."
-exit = 0
+[test."$ clice format --check kept.cpp"]
+stderr = "${WS}/ws/kept.cpp: a rule says `format = false`"
+exit = 2

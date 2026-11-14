@@ -516,8 +516,11 @@ auto CompilationUnit::body_rule(clang::FileID fid) -> const BodyRule& {
 }
 
 std::optional<bool> CompilationUnit::skips_bodies(clang::FileID fid) {
-    // A module's interface keeps every body its importers may instantiate.
-    if(kind() == CompilationKind::ModuleInterface) {
+    // A precompiled header or a module's interface is built for the files
+    // reading it, not as its focus file's own compile.
+    bool serves_readers =
+        kind() == CompilationKind::PrecompiledHeader || kind() == CompilationKind::ModuleInterface;
+    if(fid == focus_file().file() && !serves_readers) {
         return std::nullopt;
     }
     return body_rule(fid).skip;

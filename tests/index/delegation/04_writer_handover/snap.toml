@@ -1,0 +1,21 @@
+["a restart takes the index over"."$ clice index"]
+stdout = '''
+Indexed 0 translation units in #s: 2 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["a second window reads the index"."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 2 file shards (# KB), 6 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["a second window reads the index".guidance]
+value = []
+
+["a second window reads the index".symbols]
+workspace_symbols = [
+    { name = "compute()", kind = "Function", at = "main.cpp │ int ⟦compute⟧() { return add(1, 2); }" },
+]

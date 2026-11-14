@@ -4,5 +4,5 @@ import { test } from "@clice/tools/testing";
 // would stop on it, and clice, which leaves it out of the command, says so.
 test(async (t) => {
     await t.cli("index");
-    await t.cli("query compile-command main.cpp");
+    await t.cli("command main.cpp");
 });

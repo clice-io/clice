@@ -16,7 +16,7 @@ The first index of a big project compiles every unit once. Three things shorten 
 
 - **More workers.** `[workers] background` is how many units compile at once: by default half the machine's physical cores. On a machine with many cores and memory to spare, raise it.
 - **Fewer units.** A rule with `background_index = false` keeps the files it matches from being compiled as units of their own: tests, examples, benchmarks or generated sources you do not navigate in. A header they include is still indexed through the other units including it.
-- **Skipped bodies.** A rule with `skip_function_body = true` makes every compile but the file's own skip the function bodies of the files it matches, templates included, in the editor and in the background index alike. Put it on third-party code: the units of your project then parse only the declarations of the libraries they include. Function templates that forward their arguments, such as `std::make_unique`, are still parsed, and so are `constexpr` functions and those returning `auto`, which the compiler needs.
+- **Skipped bodies.** A rule with `skip_function_body = true` makes every compile but the file's own skip the function bodies of the files it matches, templates included, in the editor and in the background index alike. Put it on third-party code: the units of your project then parse only the declarations of the libraries they include, and a module of the library they import is built with its bodies skipped too. Function templates that forward their arguments, such as `std::make_unique`, are still parsed, and so are `constexpr` functions and those returning `auto`, which the compiler needs.
 
 ```toml
 [[rules]]

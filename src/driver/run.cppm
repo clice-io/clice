@@ -213,6 +213,10 @@ struct BatchResult {
     /// The session log directory; empty when file logging is off.
     std::string session_dir;
 
+    /// Why a run that never started indexing could not write the index
+    /// (writes_index).
+    std::string unwritable;
+
     /// Index state remained that the final save could not commit; a rerun
     /// cannot resume from it.
     bool unsaved = false;
@@ -321,27 +325,28 @@ inline bool start_batch(BatchRun& run,
 
 /// The index database a batch run writes its index into: open, or opened
 /// once the writer lock open() found held elsewhere comes free
-/// (Project::wait_for_writer). False, the cause logged, when there is none:
-/// the run's whole product would then die with it.
-inline async::task<bool> writes_index(Project& project, const Project::Opened& opened) {
+/// (Project::wait_for_writer). Else why there is none: the run's whole
+/// product would then die with it.
+inline async::task<std::string> writes_index(Project& project, Project::Opened& opened) {
     auto& cache_dir = project.settings.cache_dir;
     if(opened.writer_elsewhere) {
         auto lock = co_await project.wait_for_writer();
         if(!lock) {
-            LOG_ERROR("{}",
-                      index::held_writer_message({.state = index::WriterStatus::State::Held,
-                                                  .holder = index::WriterLock::holder(cache_dir)},
-                                                 cache_dir));
-            co_return false;
+            co_return index::held_writer_message(
+                {.state = index::WriterStatus::State::Held,
+                 .holder = index::WriterLock::holder(cache_dir)},
+                cache_dir);
         }
         project.open_index(std::move(lock));
+        // The saved index brings the files it recorded as members.
+        opened.members = project.members();
     }
     if(!project.database) {
-        LOG_ERROR("Cannot persist the index at {}: the warning above says why; fix that and rerun",
-                  std::string_view(cache_dir));
-        co_return false;
+        co_return std::format(
+            "Cannot persist the index at {}: the warning above says why; fix that and rerun",
+            std::string_view(cache_dir));
     }
-    co_return true;
+    co_return std::string();
 }
 
 /// The shared contract-11 tail, then the pool.
@@ -454,6 +459,9 @@ inline std::expected<std::vector<std::string>, std::string> refresh(const Spelli
     }
     auto& result = std::get<BatchResult>(*indexed);
     if(!result.completed) {
+        if(!result.unwritable.empty()) {
+            return std::unexpected(std::move(result.unwritable));
+        }
         return std::unexpected(result.interrupted ? "indexing interrupted"
                                                   : "indexing failed; see the log");
     }

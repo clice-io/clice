@@ -1,5 +1,5 @@
 ["as an entry"."$ clice command convert -- missing-cc -std=c++20 -c main.cpp -o main.o"]
-stdout = "missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 -D FROM_RULE ${WS}/main.cpp"
+stdout = "missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 -D FROM_RULE ${WS}/main.cpp"
 stderr = '''
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-cc
@@ -13,6 +13,7 @@ stdout = '''
   "file": "${WS}/main.cpp",
   "arguments": [
     "missing-cc",
+    "--no-default-config",
     "-fno-delayed-template-parsing",
     "-resource-dir",
     "${RESOURCE}",
@@ -30,7 +31,7 @@ error: The command stays a driver command: Cannot find driver: missing-cc
 exit = 1
 
 ["the source in its place"."$ clice command convert -- missing-cc -x c++ -c tool"]
-stdout = "missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -x c++ -D FROM_RULE ${WS}/tool"
+stdout = "missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -x c++ -D FROM_RULE ${WS}/tool"
 stderr = '''
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-cc
@@ -38,7 +39,7 @@ error: The command stays a driver command: Cannot find driver: missing-cc
 exit = 1
 
 ["the source in its place"."$ clice command convert -- missing-cc -working-directory sub -c main.cpp"]
-stdout = "missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -working-directory ${WS}/sub -D FROM_RULE ${WS}/sub/main.cpp"
+stdout = "missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -working-directory ${WS}/sub -D FROM_RULE ${WS}/sub/main.cpp"
 stderr = '''
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-cc
@@ -46,7 +47,7 @@ error: The command stays a driver command: Cannot find driver: missing-cc
 exit = 1
 
 ["the source in its place"."$ clice command convert -- missing-cc -x c++ main.c -x c -c"]
-stdout = "missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -x c++ -D FROM_RULE ${WS}/main.c -x c"
+stdout = "missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -x c++ -D FROM_RULE ${WS}/main.c -x c"
 stderr = '''
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-cc
@@ -62,7 +63,7 @@ error: The command stays a driver command: Cannot find driver: missing-cc
 exit = 1
 
 ["in a subdirectory"."$ clice command convert --workspace .. -- missing-cc -c main.cpp"]
-stdout = "missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D FROM_RULE ${WS}/sub/main.cpp"
+stdout = "missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D FROM_RULE ${WS}/sub/main.cpp"
 stderr = '''
 warning: Cannot ask the compiler for its default settings: Cannot find driver: missing-cc; clang's own driver reads its commands
 error: The command stays a driver command: Cannot find driver: missing-cc

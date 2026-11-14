@@ -1,9 +1,6 @@
 [test."$ clice index"]
 stdout = '''
-Indexed 2 translation units in #s: 1 file shard (# B), 1 symbol.
-1 translation unit compiled with errors; the index holds what parsed:
-  ${WS}/src/._main.cpp
-    ${WS}/src/._main.cpp:1:2: expected unqualified-id
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0

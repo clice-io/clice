@@ -1,0 +1,29 @@
+["a stopped server"."$ clice index"]
+stdout = "Indexed through the running clice server (pid #)."
+exit = 0
+
+["a stopped server"."$ clice query symbol-search compute --fresh"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "compute",
+        "signature": "()",
+        "kind": "Function",
+        "file": "${WS}/main.cpp",
+        "line": 4,
+        "container": null,
+        "symbol": "#81df9416985c4402"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+stderr = "warning: the clice server (pid #) does not answer; answering from the index as it was saved"
+exit = 0
+
+["a stopped server"."$ clice index #2"]
+stderr = "error: the clice server (pid #) does not answer"
+exit = 1

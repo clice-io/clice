@@ -4,7 +4,7 @@ pushes = [
         {
             at = "⟦clang_tdy⟧ = true",
             severity = "warning",
-            message = "unknown field 'clang_tdy' at project",
+            message = "unknown field 'clang_tdy' at diagnostics",
             source = "clice",
         },
     ],

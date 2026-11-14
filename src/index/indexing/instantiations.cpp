@@ -87,6 +87,11 @@ bool Builder::resolves_in(clang::FileID fid) {
     return fid.isValid() && !unit.from_context(fid);
 }
 
+bool Builder::walks(const clang::Decl* pattern, clang::FileID home) {
+    return resolves_in(home) &&
+           (unit.focus_file().contains(home) || unit.indexes_bodies(pattern->getLocation()));
+}
+
 std::vector<const clang::Decl*> Builder::walked_instantiations() {
     std::vector<const clang::Decl*> walked;
     for(const auto* decl: unit.instantiations()) {
@@ -95,7 +100,7 @@ std::vector<const clang::Decl*> Builder::walked_instantiations() {
         }
         // An instantiation runs its template's body, where the template is.
         auto home = home_of(decl);
-        if(!resolves_in(home) || !unit.indexes_bodies(pattern_of(decl)->getLocation())) {
+        if(!walks(pattern_of(decl), home)) {
             continue;
         }
         auto key = unit.get<EntityTable>().entity(llvm::cast<clang::NamedDecl>(decl));
@@ -271,7 +276,7 @@ void Builder::project_bases(const clang::CXXRecordDecl* record) {
         return;
     }
     auto home = home_of(record);
-    if(!resolves_in(home) || !unit.indexes_bodies(pattern->getLocation())) {
+    if(!walks(pattern, home)) {
         return;
     }
     const auto& known = written_in(home);

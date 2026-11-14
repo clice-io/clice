@@ -1,0 +1,6 @@
+["an editor connecting again shuts the server down".shutdown]
+value = '{"jsonrpc":"2.0","id":1,"result":null}'
+
+["an editor connecting again shuts the server down".exit]
+code = 0
+signal = ""

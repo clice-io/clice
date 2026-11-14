@@ -1,0 +1,57 @@
+["in the file"."clice.toml"]
+pushes = [
+    [
+        {
+            at = 'cache_dir = ⟦"cache"⟧',
+            severity = "error",
+            message = "moved to the top-level `cache_dir` in clice 1.0 at project.cache_dir",
+            source = "clice",
+        },
+        {
+            at = "enable_indexing = ⟦false⟧",
+            severity = "error",
+            message = "moved to a last pattern-less rule's `background_index = false` in clice 1.0 at project.enable_indexing",
+            source = "clice",
+        },
+        {
+            at = "stateless_worker_count = ⟦4⟧",
+            severity = "error",
+            message = "moved to `workers.background` in clice 1.0 at project.stateless_worker_count",
+            source = "clice",
+        },
+        {
+            at = "skip_header_bodies = ⟦false⟧",
+            severity = "error",
+            message = "moved to the rules' `skip_function_body` in clice 1.0 at project.skip_header_bodies",
+            source = "clice",
+        },
+        {
+            at = "workspace_poll_seconds = ⟦10⟧",
+            severity = "error",
+            message = "moved to the top-level `poll_seconds` in clice 1.0 at tracker.workspace_poll_seconds",
+            source = "clice",
+        },
+        {
+            at = "index = ⟦false⟧",
+            severity = "error",
+            message = "moved to `background_index` in clice 1.0 at rules[0].index",
+            source = "clice",
+        },
+    ],
+]
+
+["on the command line"."$ clice index"]
+stderr = '''
+error: clice.toml:2:13: moved to the top-level `cache_dir` in clice 1.0 at project.cache_dir
+clice.toml:3:19: moved to a last pattern-less rule's `background_index = false` in clice 1.0 at project.enable_indexing
+clice.toml:5:22: moved to the rules' `skip_function_body` in clice 1.0 at project.skip_header_bodies
+clice.toml:4:26: moved to `workers.background` in clice 1.0 at project.stateless_worker_count
+clice.toml:12:9: moved to `background_index` in clice 1.0 at rules[0].index
+clice.toml:8:26: moved to the top-level `poll_seconds` in clice 1.0 at tracker.workspace_poll_seconds
+'''
+exit = 2
+
+["in the editor's settings".guidance]
+value = [
+    "initializationOptions: moved to the rules' `readonly` in clice 1.0 at project.readonly. Nothing under ${WS} is served until they are fixed and clice restarts",
+]

@@ -11,6 +11,7 @@ stdout = '''
     "file": "main.cpp",
     "arguments": [
       "${WS}/missing-cc",
+      "--no-default-config",
       "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",
@@ -26,6 +27,7 @@ stdout = '''
     "file": "util.cpp",
     "arguments": [
       "${WS}/missing-cc",
+      "--no-default-config",
       "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",
@@ -53,6 +55,7 @@ stdout = '''
     "file": "../main.cpp",
     "arguments": [
       "missing-cc",
+      "--no-default-config",
       "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",

@@ -2,9 +2,9 @@
 pushes = [
     [
         {
-            at = 'enable_indexing = ⟦"yes"⟧',
+            at = 'poll_seconds = ⟦"yes"⟧',
             severity = "error",
-            message = "invalid type: expected boolean, got string at project.enable_indexing",
+            message = "invalid type: expected integer, got string at poll_seconds",
             source = "clice",
         },
     ],
@@ -17,9 +17,9 @@ diagnostics = []
 pushes = [
     [
         {
-            at = 'enable_indexing = ⟦"yes"⟧',
+            at = 'poll_seconds = ⟦"yes"⟧',
             severity = "error",
-            message = "invalid type: expected boolean, got string at project.enable_indexing",
+            message = "invalid type: expected integer, got string at poll_seconds",
             source = "clice",
         },
     ],

@@ -145,9 +145,8 @@ std::unique_ptr<clang::CompilerInvocation>
     front_opts.SkipFunctionBodies =
         params.skip_bodies || params.kind == CompilationKind::Completion ||
         params.instantiating.has_value() ||
-        (params.kind != CompilationKind::ModuleInterface &&
-         ranges::any_of(params.function_bodies.rules,
-                        [](const FunctionBodyRules::Rule& rule) { return rule.skip == true; }));
+        ranges::any_of(params.function_bodies.rules,
+                       [](const FunctionBodyRules::Rule& rule) { return rule.skip == true; });
     // A precompiled header or module embedding its sources overrides them in
     // every compile reading it, where another holding the same files then
     // refuses to load. clice reads the files on disk and checks them for
@@ -447,16 +446,18 @@ public:
     /// skipping bodies, and by every completion's parse, which skips each
     /// body but the one holding the point and a forwarding function's,
     /// whose body tells signature help the constructor a call reaches.
+    // LIMITATION: clang keeps the body of a constexpr function, never asking
+    // here, but not of a `[[msvc::constexpr]]` one: a constant expression
+    // calling such a function whose body is skipped fails. MSVC's STL marks
+    // only forwarding templates so (construct_at), which are kept.
     bool shouldSkipFunctionBody(clang::Decl* decl) final {
         if(unit.kind() == CompilationKind::Completion) {
             return !likely_forwarding(decl) &&
                    clang::MultiplexConsumer::shouldSkipFunctionBody(decl);
         }
         auto file = unit.produced_at(decl->getLocation()).file;
-        if(file != unit.focus_file().file()) {
-            if(auto skips = unit.skips_bodies(file)) {
-                return *skips && !likely_forwarding(decl);
-            }
+        if(auto skips = unit.skips_bodies(file)) {
+            return *skips && !likely_forwarding(decl);
         }
         if(auto& instantiating = unit.params.instantiating;
            instantiating && file == unit.focus_file().file()) {

@@ -6,8 +6,5 @@ Linted 1 translation unit in #s: 1 finding.
 exit = 1
 
 ["beside a server"."$ clice lint --index --jobs 2"]
-stderr = '''
-warning: Another clice process (pid #) is writing the index cache at .clice; index persistence is disabled for this process
-error: Cannot persist the index at .clice; see the log for the cause and rerun
-'''
+stderr = "error: another clice process (pid #) holds the index writer lock at .clice; retry when it is done"
 exit = 2

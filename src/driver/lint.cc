@@ -266,14 +266,16 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
             with_index ? Project::OpenOptions::Cache::Write : Project::OpenOptions::Cache::Build,
     });
 
-    auto& members = opened.members;
-    if(members.empty()) {
-        LOG_ERROR("Nothing to lint: {}", project.why_no_members(batch.root));
+    if(auto unwritable = with_index ? co_await writes_index(project, opened) : std::string();
+       !unwritable.empty()) {
+        LOG_ERROR("{}", unwritable);
         result.exit_code = 2;
         co_await shutdown(run);
         co_return;
     }
-    if(with_index && !co_await writes_index(project, opened)) {
+    auto& members = opened.members;
+    if(members.empty()) {
+        LOG_ERROR("Nothing to lint: {}", project.why_no_members(batch.root));
         result.exit_code = 2;
         co_await shutdown(run);
         co_return;

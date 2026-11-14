@@ -9,6 +9,7 @@ import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :project.graph.unit;
 import :project.project;
+import :settings.rules;
 import :support.logging;
 import :syntax.dependency_graph;
 import :syntax.header_context;
@@ -294,6 +295,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
     bp.project_root = project.root.str();
     bp.arguments = resolution->arguments;
     bp.hidden = resolution->hidden;
+    bp.indexing.function_bodies = project.rules.function_body_rules();
     auto imports = co_await project.scan_imports(path_id, *resolution, std::nullopt);
     project.graph.set_edges(attempt.node(), imports.declared);
 
@@ -395,6 +397,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
                                safe_module_name,
                                cache_key({clang::getClangFullVersion(),
                                           pcm_version,
+                                          body_rules_key(project.rules),
                                           project.database_key.str(),
                                           bp.directory,
                                           file_path,

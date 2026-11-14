@@ -23,8 +23,10 @@ test("backslash", async (t) => {
     await t.show("clice.toml", s.pushes("clice.toml"));
 });
 
+// The test client sets foreground and background itself, and the editor's
+// settings win over the file's.
 test("worker count", async (t) => {
-    t.disk.write("clice.toml", "[workers]\nforeground = 0\nbackground = 0\n");
+    t.disk.write("clice.toml", "[workers]\nmax = 0\n");
     const s = await t.start();
     await t.show("clice.toml", s.pushes("clice.toml"));
 });

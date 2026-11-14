@@ -57,6 +57,6 @@ exit = 0
 stderr = "error: invalid --config-overlay: INCOMPLETE_ARRAY_OR_OBJECT: JSON document ended early in the middle of an object or array. This is a fatal and unrecoverable error."
 exit = 2
 
-["a wrong type"."$ clice inspect semantic-tokens main.cpp --config-overlay \"{\\\"project\\\": {\\\"enable_indexing\\\": \\\"yes\\\"}}\""]
-stderr = "error: --config-overlay: invalid type: expected boolean, got string at project.enable_indexing"
+["a wrong type"."$ clice inspect semantic-tokens main.cpp --config-overlay \"{\\\"poll_seconds\\\": \\\"yes\\\"}\""]
+stderr = "error: --config-overlay: invalid type: expected integer, got string at poll_seconds"
 exit = 2

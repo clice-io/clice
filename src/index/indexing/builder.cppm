@@ -221,6 +221,12 @@ private:
     /// a borrowed includer context, whose host indexes them.
     bool resolves_in(clang::FileID fid);
 
+    /// Whether the index walks what an instantiation made from `pattern`,
+    /// written in `home`, resolves: `home` resolves here, and the rules
+    /// index its bodies, the focus file's always, as its reader asks about
+    /// them (SemanticsOptions::every_body).
+    bool walks(const clang::Decl* pattern, clang::FileID home);
+
     /// The function and variable instantiations to walk; the known ones a
     /// file holds go to its skipped keys.
     std::vector<const clang::Decl*> walked_instantiations();

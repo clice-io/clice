@@ -4,7 +4,7 @@ pushes = [
         {
             at = 'readonly = ⟦"On"⟧',
             severity = "error",
-            message = "unknown enum value 'On' at project.readonly",
+            message = "unknown enum value 'On' at rules[0].readonly",
             source = "clice",
         },
     ],
@@ -22,13 +22,28 @@ pushes = [
     ],
 ]
 
-["worker count"."clice.toml"]
+[backslash."clice.toml"]
 pushes = [
     [
         {
-            at = "min_stateless_worker_count = ⟦0⟧",
+            at = 'patterns = [⟦"src\\**"⟧]',
             severity = "error",
-            message = "a worker count must be at least 1 at project.min_stateless_worker_count",
+            message = "'src\\**' holds a backslash: separate directories with `/` on every platform, and match a literal `*`, `?`, `[` or `{` with a range such as `[*]` at rules[0].patterns[0]",
+            source = "clice",
+        },
+    ],
+]
+
+["worker count"."clice.toml"]
+pushes = [[]]
+
+[limit."clice.toml"]
+pushes = [
+    [
+        {
+            at = "limit = ⟦0⟧",
+            severity = "error",
+            message = 'a limit must be at least 1; "unlimited" lifts it at references.limit',
             source = "clice",
         },
     ],

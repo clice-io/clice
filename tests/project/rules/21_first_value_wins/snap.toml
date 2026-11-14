@@ -1,0 +1,46 @@
+["a narrow rule before a broad one"."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["a narrow rule before a broad one"."$ clice query symbol-search kept"]
+stdout = '''
+{
+  "result": {
+    "symbols": [
+      {
+        "name": "kept",
+        "signature": "()",
+        "kind": "Function",
+        "file": "${WS}/keep/a.cpp",
+        "line": 1,
+        "container": null,
+        "symbol": "#681117ee69f46561"
+      }
+    ]
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["a narrow rule before a broad one"."$ clice query symbol-search skipped"]
+stdout = '''
+{
+  "result": {
+    "symbols": []
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+["a broad rule before a narrow one"."$ clice index"]
+stdout = '''
+Indexed 0 translation units in #s: 0 file shards (# B), 0 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+stderr = "warning: clice.toml:6:20: never applies: rules[0], a rule for every file, sets background_index first; a rule for some files goes before the rule for all at rules[1].background_index"
+exit = 0

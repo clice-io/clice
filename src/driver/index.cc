@@ -151,7 +151,9 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     // or an unreadable header disabled persistence) the run would
     // only warm this process's memory and a rerun would start from
     // nothing — fail instead of pretending.
-    if(!co_await writes_index(project, opened)) {
+    if(auto unwritable = co_await writes_index(project, opened); !unwritable.empty()) {
+        LOG_ERROR("{}", unwritable);
+        result.unwritable = std::move(unwritable);
         result.exit_code = 1;
         co_await shutdown(run);
         co_return;

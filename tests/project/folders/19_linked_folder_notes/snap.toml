@@ -1,0 +1,13 @@
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "int ⟦value⟧ = 2;",
+        severity = "error",
+        message = "redefinition of 'value'",
+        source = "clang",
+        code = "err_redefinition",
+        related = [
+            { at = "real/inc/a.h │ int ⟦value⟧ = 1;", message = "previous definition is here" },
+        ],
+    },
+]

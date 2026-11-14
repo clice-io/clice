@@ -11,7 +11,6 @@ import :project.graph.unit;
 import :project.project;
 import :settings.rules;
 import :settings.settings;
-import :support.json;
 import :support.logging;
 import :support.text;
 import :syntax.preamble;
@@ -24,13 +23,6 @@ import :worker.protocol;
 namespace clice {
 
 namespace {
-
-/// What of the rules a PCH's content depends on: the function bodies its
-/// build skips. A change of them takes a restart, which reads the PCHs on
-/// disk again.
-std::string body_rules_key(const Rules& rules) {
-    return json::to_string(rules.function_body_rules()).value_or("");
-}
 
 /// Discard the pairs the key's entry names, and forget the entry unless it
 /// holds what failed of the key: an entry whose pairs the store's LRU

@@ -3147,6 +3147,21 @@ ZEST_CASE(LibraryInstantiationsUnwalked) {
     ZEXPECT(view.instantiation_shard(*library).resolutions().size() == 3u);
 }
 
+ZEST_CASE(FocusInstantiationsWalked) {
+    // A rule leaving the focus file's bodies out of the index leaves what
+    // its own instantiations resolve in: its reader asks about them.
+    function_bodies.rules = {
+        {.patterns = {"**/main.cpp"}, .index = false}
+    };
+    build(R"(
+        struct A { void go(); };
+        template <typename T>
+        void run(T t) { t.go(); }
+        void use() { run(A{}); }
+    )");
+    ZEXPECT(keys().size() == 1u);
+}
+
 ZEST_CASE(ExplicitInstantiationsWalked) {
     // An explicit instantiation declaration instantiates no initializer,
     // the definition does.

@@ -1,4 +1,5 @@
 [test."$ clice command a.cpp"]
+stdout = "settings:  the defaults"
 stderr = '''
 warning: Skipping entry 0 of the compilation database compile_commands.json: a.cpp holds bytes that are not UTF-8
 warning: 1 entry of the compilation database compile_commands.json is skipped; the log names it
@@ -11,8 +12,10 @@ stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}
   command:   missing-cc -std=c++20 -c b.cpp
-  resolved:  missing-cc -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 ${WS}/b.cpp
+  resolved:  missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -std=c++20 ${WS}/b.cpp
   error:     the compiler could not be queried: Cannot find driver: missing-cc
+
+settings:  the defaults
 '''
 stderr = '''
 warning: Skipping entry 0 of the compilation database compile_commands.json: a.cpp holds bytes that are not UTF-8
@@ -40,6 +43,7 @@ stdout = '''
     "file": "b.cpp",
     "arguments": [
       "missing-cc",
+      "--no-default-config",
       "-fno-delayed-template-parsing",
       "-resource-dir",
       "${RESOURCE}",

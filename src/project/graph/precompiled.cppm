@@ -1,6 +1,7 @@
 module clice:project.graph.precompiled;
 
 import :project.graph.task_graph;
+import :settings.rules;
 import :support.failure;
 import :support.prelude;
 import :vfs.cache_store;
@@ -113,6 +114,11 @@ struct Precompiled {
 /// Length-prefix each part (so embedded NULs cannot create colliding
 /// splits) and return the 32-hex xxh3_128bits cache key.
 std::string cache_key(llvm::ArrayRef<llvm::StringRef> parts);
+
+/// What of the rules a PCH's or a PCM's content depends on: the function
+/// bodies its build skips and indexes. A change of them takes a restart,
+/// which reads the products on disk again.
+std::string body_rules_key(const Rules& rules);
 
 /// The name in the store of a new build under `key`: the key and a nonce,
 /// so a rebuild publishes beside the product it replaces, never over it.
