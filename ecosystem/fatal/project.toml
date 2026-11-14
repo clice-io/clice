@@ -4,6 +4,7 @@ commit = "26502c39b02609ccec7d5373c4351eac1fcc3277"
 
 [configurations.clang]
 about = "C++17, every test built by clang through a CMake build of its own: the project has none"
+platforms = ["linux", "windows"]
 database = "build/compile_commands.json"
 
 [[configurations.clang.prepare]]

@@ -338,7 +338,7 @@ struct Draft {
 
     /// As a module unit, it opens a global module fragment: for what stays
     /// included or moves there.
-    bool fragment() const {
+    bool opens_fragment() const {
         return fragment_code || !needed.empty() || !macro_headers.empty();
     }
 };
@@ -637,7 +637,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
                     continue;
                 }
                 pending.push_back(next);
-                if(units[next].kind == Unit::Kind::Internal && drafts.at(next).fragment()) {
+                if(units[next].kind == Unit::Kind::Internal && drafts.at(next).opens_fragment()) {
                     fragments.push_back(next);
                 }
             }
@@ -691,7 +691,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
         // A module unit opens a global module fragment only for what stays
         // included or moves there, which may name what the wrapped modules
         // declare and test their macros: the prelude comes first.
-        auto fragment = draft.fragment();
+        auto fragment = draft.opens_fragment();
         if(!module_unit) {
             lines.push_back(prelude);
         } else if(fragment) {
