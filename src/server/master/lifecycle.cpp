@@ -36,6 +36,13 @@ MasterServer::MasterServer(async::event_loop& loop, std::string requested_config
         }(*this));
     };
     polling.spawn(files.disk.end_turns(loop));
+    polling.spawn([](async::event_loop& loop) -> async::task<> {
+        while(logging::flush_stderr()) {
+            // No event: a pipe's writer is told nothing when its reader
+            // takes the bytes that hold the switch back.
+            co_await async::sleep(chrono::milliseconds(20), loop);
+        }
+    }(loop));
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) the client is told

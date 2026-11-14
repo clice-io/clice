@@ -105,48 +105,6 @@ PipeSwitch switch_to_nonblocking(int fd) {
                                                          : PipeSwitch::Refused;
 }
 
-/// Delivers the rest of a line whose head the pipe took, then the gap
-/// report, staged when drops are unreported, then the backlog, as far as
-/// the pipe takes them. The gap is older than any survivor, so its report
-/// goes before them and lives outside the backlog: continued pressure can
-/// evict buffered lines but never the count itself.
-void pump(PipeOutput& output) {
-    if(output.pipe == PipeSwitch::Busy) {
-        output.pipe = switch_to_nonblocking(output.fd);
-    }
-    if(output.pipe != PipeSwitch::Done) {
-        return;
-    }
-    // The first `count` bytes of the backlog; true when the pipe took them.
-    auto deliver = [&](std::size_t count) {
-        auto [written, _] = write_out(output.fd, std::string_view(output.pending).substr(0, count));
-        if(written > 0) {
-            output.front_partial = output.pending[written - 1] != '\n';
-            output.pending.erase(0, written);
-        }
-        output.front_partial = output.front_partial && !output.pending.empty();
-        return written == count;
-    };
-    if(output.front_partial && !deliver(output.pending.find('\n') + 1)) {
-        return;
-    }
-    if(output.unreported > 0 && output.note.empty()) {
-        output.note = std::format("[logging] dropped {} stderr line(s): client not draining\n",
-                                  output.unreported);
-        output.unreported = 0;
-    }
-    if(!output.note.empty()) {
-        output.note_sent +=
-            write_out(output.fd, std::string_view(output.note).substr(output.note_sent)).first;
-        if(output.note_sent < output.note.size()) {
-            return;
-        }
-        output.note.clear();
-        output.note_sent = 0;
-    }
-    deliver(output.pending.size());
-}
-
 /// Evict whole oldest lines until the backlog fits its budget. Never cut
 /// the tail of a line whose head already reached the pipe; the budget is
 /// soft by at most that one line.
@@ -418,6 +376,48 @@ void trap(AnomalyId id) {
 
 }  // namespace
 
+/// Delivers the rest of a line whose head the pipe took, then the gap
+/// report, staged when drops are unreported, then the backlog, as far as
+/// the pipe takes them. The gap is older than any survivor, so its report
+/// goes before them and lives outside the backlog: continued pressure can
+/// evict buffered lines but never the count itself.
+void flush(PipeOutput& output) {
+    if(output.pipe == PipeSwitch::Busy) {
+        output.pipe = switch_to_nonblocking(output.fd);
+    }
+    if(output.pipe != PipeSwitch::Done) {
+        return;
+    }
+    // The first `count` bytes of the backlog; true when the pipe took them.
+    auto deliver = [&](std::size_t count) {
+        auto [written, _] = write_out(output.fd, std::string_view(output.pending).substr(0, count));
+        if(written > 0) {
+            output.front_partial = output.pending[written - 1] != '\n';
+            output.pending.erase(0, written);
+        }
+        output.front_partial = output.front_partial && !output.pending.empty();
+        return written == count;
+    };
+    if(output.front_partial && !deliver(output.pending.find('\n') + 1)) {
+        return;
+    }
+    if(output.unreported > 0 && output.note.empty()) {
+        output.note = std::format("[logging] dropped {} stderr line(s): client not draining\n",
+                                  output.unreported);
+        output.unreported = 0;
+    }
+    if(!output.note.empty()) {
+        output.note_sent +=
+            write_out(output.fd, std::string_view(output.note).substr(output.note_sent)).first;
+        if(output.note_sent < output.note.size()) {
+            return;
+        }
+        output.note.clear();
+        output.note_sent = 0;
+    }
+    deliver(output.pending.size());
+}
+
 PipeOutput pipe_output(PipeOutput output) {
     // A pipe that cannot be switched must never be written: a blocking
     // write to it is exactly the wedge this output exists to prevent.
@@ -426,7 +426,7 @@ PipeOutput pipe_output(PipeOutput output) {
 }
 
 void write(PipeOutput& output, std::string_view text) {
-    pump(output);
+    flush(output);
     if(output.pipe == PipeSwitch::Refused) {
         output.dropped += 1;
         return;
@@ -439,7 +439,7 @@ void write(PipeOutput& output, std::string_view text) {
     }
     output.pending.append(text);
     shed_over_capacity(output);
-    pump(output);
+    flush(output);
 }
 
 void write(FileOutput& output, std::string_view text) {
@@ -512,6 +512,15 @@ void stderr_logger(std::string_view name, StderrReader stderr_reader) {
             "it is ignored",
             given);
     }
+}
+
+bool flush_stderr() {
+    std::lock_guard lock(mutex);
+    if(!editor) {
+        return false;
+    }
+    flush(*editor);
+    return editor->pipe == PipeSwitch::Busy;
 }
 
 void set_project_roots(llvm::ArrayRef<std::string> paths) {

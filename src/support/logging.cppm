@@ -157,7 +157,8 @@ enum class PipeSwitch : std::uint8_t {
 /// Windows refuses the switch while the pipe holds bytes the reader has
 /// not taken yet, as at process start when something wrote to stderr
 /// first (mimalloc writes a newline). Lines then wait in the buffer and
-/// the switch is retried before each write, until the reader catches up.
+/// the switch is retried before each write and by each flush, until the
+/// reader catches up.
 struct PipeOutput {
     int fd = 2;
 
@@ -192,6 +193,10 @@ struct PipeOutput {
 
 /// `output`, its fd switched to non-blocking if it is a pipe.
 PipeOutput pipe_output(PipeOutput output);
+
+/// Pushes the note and backlog as far as the pipe allows, first retrying a
+/// switch Windows refused.
+void flush(PipeOutput& output);
 
 /// Writes `text`, then pushes the note and backlog as far as the pipe
 /// allows.
@@ -231,6 +236,13 @@ void write(FileOutput& output, std::string_view text);
 /// process's warnings without it. Called from main, before any other thread
 /// starts.
 void stderr_logger(std::string_view name, StderrReader reader = StderrReader::Terminal);
+
+/// Flushes an editor's stderr (PipeOutput); whether its switch to
+/// non-blocking still waits for the editor to read. The server calls it
+/// until it does not: quiet after its first lines, it writes nothing that
+/// would retry the switch, and a socket client waiting for those very
+/// lines would wait for good.
+bool flush_stderr();
 
 /// The lines the calling thread logs write paths under these project roots
 /// relative to them: to the one root, or for several to the deepest
