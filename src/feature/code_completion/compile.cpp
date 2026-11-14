@@ -800,15 +800,24 @@ bool unqualified_name(clang::CodeCompletionContext& context) {
     }
 }
 
-/// The namespace the qualifier of the name being completed names, outermost
-/// first, inline and anonymous ones left out: as Sema resolves it, or as the
-/// text spells it while no declaration of it is visible (`std::` before any
-/// standard header). None for an unqualified name, and one a class
-/// qualifies.
-std::optional<std::vector<std::string>> qualifying_namespace(clang::Sema& sema,
-                                                             clang::CodeCompletionContext& context,
-                                                             llvm::StringRef content,
-                                                             std::uint32_t name) {
+/// The namespace a qualifier names, outermost first, inline and anonymous
+/// ones left out.
+struct Qualifying {
+    std::vector<std::string> segments;
+
+    /// Spelled from a namespace around the point, whichever declares it:
+    /// none does where the file can see it yet.
+    bool relative = false;
+};
+
+/// The namespace the qualifier of the name being completed names: as Sema
+/// resolves it, or as the text spells it while no declaration of it is
+/// visible (`std::` before any standard header). None for an unqualified
+/// name, and one a class qualifies.
+std::optional<Qualifying> qualifying_namespace(clang::Sema& sema,
+                                               clang::CodeCompletionContext& context,
+                                               llvm::StringRef content,
+                                               std::uint32_t name) {
     auto spec = context.getCXXScopeSpecifier();
     if(!spec || (*spec)->isEmpty()) {
         return std::nullopt;
@@ -818,8 +827,11 @@ std::optional<std::vector<std::string>> qualifying_namespace(clang::Sema& sema,
         if(!written) {
             return std::nullopt;
         }
-        return written->segments | views::transform(&llvm::StringRef::str) |
-               ranges::to<std::vector>();
+        return Qualifying{
+            .segments = written->segments | views::transform(&llvm::StringRef::str) |
+                        ranges::to<std::vector>(),
+            .relative = !written->global,
+        };
     }
     auto* scope = sema.computeDeclContext(**spec);
     if(!scope || !scope->isFileContext()) {
@@ -833,7 +845,7 @@ std::optional<std::vector<std::string>> qualifying_namespace(clang::Sema& sema,
         }
     }
     ranges::reverse(segments);
-    return segments;
+    return Qualifying{.segments = std::move(segments)};
 }
 
 /// Whether `offset` of `content` lies in a global module fragment: after a
@@ -1156,17 +1168,18 @@ protocol::CompletionItemLabelDetails bundle_details(std::size_t count) {
 }
 
 /// Make `item`, one overload of a name, stand for all `count` of them: a
-/// call it inserts takes its parentheses with the cursor between them in
-/// place of its placeholders.
-void bundle(protocol::CompletionItem& item, std::size_t count) {
+/// call it inserts takes its parentheses, with the cursor between them for a
+/// client taking snippets, in place of its own arguments.
+void bundle(protocol::CompletionItem& item, std::size_t count, bool snippets) {
     item.label_details = bundle_details(count);
-    if(item.insert_text_format != protocol::InsertTextFormat::Snippet) {
+    if(!snippets) {
         return;
     }
     std::visit(
         [&](auto& edit) {
             if(llvm::StringRef(edit.new_text).starts_with(item.label + "(")) {
                 edit.new_text = escape_snippet(item.label) + "($0)";
+                item.insert_text_format = protocol::InsertTextFormat::Snippet;
             }
         },
         *item.text_edit);
@@ -1448,7 +1461,7 @@ public:
         }
         for(auto&& [item, count]: views::zip(output, overloads)) {
             if(count > 1) {
-                bundle(item, count);
+                bundle(item, count, client.snippets);
             }
         }
         return true;
@@ -2499,7 +2512,10 @@ public:
         auto qualifying = unqualified
                               ? std::nullopt
                               : qualifying_namespace(sema, context, content, prefix.typed.begin);
-        bool offers_names = options.all_scopes && !resolving && (unqualified || qualifying);
+        // A nested run replacing Sema's reply completes a class, in a context
+        // that may look unqualified; the one reading a namespace again
+        // (`requires { typename lib:: }`) has it qualified.
+        bool offers_names = options.all_scopes && (qualifying || (unqualified && !resolving));
         // The index is asked once a letter is typed (`std::` alone would
         // match all of it): until then the client must ask again.
         if(offers_names && prefix.spelling.empty()) {
@@ -2517,6 +2533,24 @@ public:
                 }
             }
             ranges::reverse(around);
+
+            /// Whether `scope` is the namespace the qualifier names, which a
+            /// relative one does from any namespace around the point.
+            auto qualified_by = [&](llvm::ArrayRef<std::string> scope) {
+                llvm::ArrayRef<std::string> written = qualifying->segments;
+                if(scope.size() < written.size() ||
+                   !ranges::equal(scope.take_back(written.size()), written)) {
+                    return false;
+                }
+                auto from = scope.drop_back(written.size());
+                return from.empty() ||
+                       (qualifying->relative && from.size() <= around.size() &&
+                        ranges::equal(from,
+                                      views::take(around, from.size()),
+                                      [](llvm::StringRef name, const clang::NamespaceDecl* space) {
+                                          return name == space->getName();
+                                      }));
+            };
 
             /// Whether a namespace or a class between the completion point
             /// and the namespace `shared` deep around it declares a scope
@@ -2696,7 +2730,7 @@ public:
                    })) {
                     continue;
                 }
-                if(qualifying && (candidate.macro || !ranges::equal(segments, *qualifying))) {
+                if(qualifying && (candidate.macro || !qualified_by(segments))) {
                     continue;
                 }
                 // Sema offers the macros defined here already, and no

@@ -88,6 +88,19 @@ struct Bar {
     int get(int, const char*);
 };
 
+struct Lamp {
+    void dim(int level = 0);
+};
+
+struct Fan {
+    void dim(int level);
+};
+
+template <class T>
+void adjust(T device) {
+    device.dim§(default_argument);
+}
+
 template <class F>
 void both(F f) {
     f(Foo{});
@@ -121,4 +134,6 @@ void use() {
     pick(Last{});
     probe(Vector{});
     probe(1);
+    adjust(Lamp{});
+    adjust(Fan{});
 }

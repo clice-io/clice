@@ -18,3 +18,9 @@ void use() {
     Local::ves§(class_scope);
     store::§(nothing_typed);
 }
+
+namespace outer {
+void nest() {
+    inner::Wid§(relative_qualifier);
+}
+}  // namespace outer

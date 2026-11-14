@@ -61,6 +61,11 @@ items = [
 [answers.non_class.completion]
 items = []
 
+[answers.default_argument.completion]
+items = [
+    { label = "dim(…) +1 overload", kind = "Method", insert = "dim($0)", snippet = true },
+]
+
 [answers.passed_lambda.completion]
 items = [
     { label = "get(…) +2 overloads", kind = "Method", insert = "get($0)", snippet = true },

@@ -64,3 +64,15 @@ items = [
     { label = "ostream", kind = "Class", insert = "ostream" },
 ]
 incomplete = true
+
+[answers.relative_qualifier.completion]
+items = [
+    {
+        label = "Widget",
+        kind = "Class",
+        insert = "Widget",
+        edits = [
+            { at = "⟦⟧ @-22", text = '#include "gadgets.h"' },
+        ],
+    },
+]

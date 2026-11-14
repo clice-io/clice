@@ -9,6 +9,7 @@ items = [
     { label = "Value", kind = "Class" },
     { label = "holder<class T>", kind = "Class" },
 ]
+incomplete = true
 
 [answers.requires_global.completion]
 items = [
@@ -20,6 +21,7 @@ items = [
     { label = "lib", kind = "Module" },
     { label = "nested<class T>", kind = "TypeParameter" },
 ]
+incomplete = true
 
 [answers.namespace_scope.completion]
 items = [
