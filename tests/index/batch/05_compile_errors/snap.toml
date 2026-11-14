@@ -23,7 +23,6 @@ stdout = '''
   "exitCode": 0,
   "interrupted": false,
   "completed": true,
-  "error": "",
   "indexedTus": 6,
   "shardCount": 7,
   "shardBytes": "#",
@@ -95,7 +94,6 @@ stdout = '''
   ],
   "sessionDir": "${WS}/.clice/logs/${SESSION}",
   "unsaved": false,
-  "saveError": "",
   "damaged": false,
   "seconds": "#"
 }

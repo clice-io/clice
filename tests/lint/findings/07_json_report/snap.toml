@@ -4,7 +4,6 @@ stdout = '''
   "exitCode": 1,
   "interrupted": false,
   "completed": true,
-  "error": "",
   "checkedTus": 1,
   "failedTus": 0,
   "findings": [
@@ -37,7 +36,6 @@ stdout = '''
     }
   ],
   "unsaved": false,
-  "saveError": "",
   "seconds": "#"
 }
 '''

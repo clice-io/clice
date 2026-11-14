@@ -1,4 +1,4 @@
-["rewrites program modules"."$ clice index --jobs 1"]
+["rewrites program modules"."$ clice index"]
 stdout = '''
 Indexed 8 translation units in #s: 32 file shards (# KB), 75 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
@@ -432,7 +432,7 @@ exit = 0
 '''
 "wrap/std.macros.h" = "+#pragma once"
 
-["rejected partitions"."$ clice index --jobs 1"]
+["rejected partitions"."$ clice index"]
 stdout = '''
 Indexed 8 translation units in #s: 32 file shards (# KB), 75 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}

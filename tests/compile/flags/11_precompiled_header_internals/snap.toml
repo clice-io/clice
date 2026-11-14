@@ -227,15 +227,6 @@ stdout = '''
       "name": "radius",
       "signature": null,
       "kind": "Field",
-      "file": "${WS}/src/local.cpp",
-      "line": 13,
-      "container": "scoped_twice::Scoped",
-      "symbol": "#1cba68b1f10029aa path:${WS}/src/local.cpp"
-    },
-    {
-      "name": "radius",
-      "signature": null,
-      "kind": "Field",
       "file": "${WS}/include/shapes.h",
       "line": 11,
       "container": "Hidden",
@@ -249,6 +240,15 @@ stdout = '''
       "line": 3,
       "container": "Local",
       "symbol": "#c3a0eeca78c0e576 path:${WS}/src/local.cpp"
+    },
+    {
+      "name": "radius",
+      "signature": null,
+      "kind": "Field",
+      "file": "${WS}/src/local.cpp",
+      "line": 13,
+      "container": "scoped_twice::Scoped",
+      "symbol": "#1cba68b1f10029aa path:${WS}/src/local.cpp"
     }
   ],
   "stale": []

@@ -40,8 +40,8 @@ stdout = '''
       "interfaceEntities": 2,
       "implementationEntities": 0,
       "sample": [
-        "length",
-        "Str"
+        "Str",
+        "length"
       ]
     },
     {

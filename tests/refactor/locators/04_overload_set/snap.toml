@@ -16,7 +16,7 @@ stdout = '''
         "locator": "scale",
         "name": "scale",
         "kind": "Function",
-        "symbol": "#3333d979512f6c74",
+        "symbol": "#4dec092aa59fa14a",
         "newName": "resize",
         "edits": 4,
         "conflicts": [],

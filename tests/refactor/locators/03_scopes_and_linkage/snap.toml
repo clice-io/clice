@@ -25,21 +25,21 @@ stdout = '''
         "candidates": [
           {
             "name": "f",
-            "signature": "(double x)",
-            "kind": "Function",
-            "file": "${WS}/src/main.cpp",
-            "line": 2,
-            "container": "b",
-            "symbol": "#2958be403d89dcba"
-          },
-          {
-            "name": "f",
             "signature": "(int x)",
             "kind": "Function",
             "file": "${WS}/src/main.cpp",
             "line": 1,
             "container": "a",
             "symbol": "#9c57e69129319909"
+          },
+          {
+            "name": "f",
+            "signature": "(double x)",
+            "kind": "Function",
+            "file": "${WS}/src/main.cpp",
+            "line": 2,
+            "container": "b",
+            "symbol": "#2958be403d89dcba"
           }
         ]
       }
@@ -74,21 +74,21 @@ stdout = '''
         "candidates": [
           {
             "name": "helper",
-            "signature": "(double x)",
-            "kind": "Function",
-            "file": "${WS}/src/two.cpp",
-            "line": 1,
-            "container": null,
-            "symbol": "#019182782be5f93b path:${WS}/src/two.cpp"
-          },
-          {
-            "name": "helper",
             "signature": "(int x)",
             "kind": "Function",
             "file": "${WS}/src/one.cpp",
             "line": 1,
             "container": null,
             "symbol": "#201240d4973fe70a path:${WS}/src/one.cpp"
+          },
+          {
+            "name": "helper",
+            "signature": "(double x)",
+            "kind": "Function",
+            "file": "${WS}/src/two.cpp",
+            "line": 1,
+            "container": null,
+            "symbol": "#019182782be5f93b path:${WS}/src/two.cpp"
           }
         ]
       }
@@ -174,7 +174,7 @@ stdout = '''
         "locator": "S::g",
         "name": "g",
         "kind": "Method",
-        "symbol": "#5d51fc1073617c87",
+        "symbol": "#f19c7722b3f68f76",
         "newName": "h",
         "edits": 6,
         "conflicts": [],

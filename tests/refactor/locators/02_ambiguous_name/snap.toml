@@ -28,18 +28,18 @@ stdout = '''
             "signature": null,
             "kind": "Variable",
             "file": "${WS}/main.cpp",
-            "line": 6,
-            "container": "b",
-            "symbol": "#67bd9c94304f12f5"
+            "line": 2,
+            "container": "a",
+            "symbol": "#acee15cf19159e64"
           },
           {
             "name": "value",
             "signature": null,
             "kind": "Variable",
             "file": "${WS}/main.cpp",
-            "line": 2,
-            "container": "a",
-            "symbol": "#acee15cf19159e64"
+            "line": 6,
+            "container": "b",
+            "symbol": "#67bd9c94304f12f5"
           }
         ]
       }
@@ -102,7 +102,7 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice refactor rename \"#acee15cf19159e64\" amount"]
+[test."$ clice refactor rename \"#67bd9c94304f12f5\" amount"]
 stdout = '''
 {
   "result": {
@@ -110,10 +110,10 @@ stdout = '''
     "renames": [
       {
         "line": null,
-        "locator": "#acee15cf19159e64",
+        "locator": "#67bd9c94304f12f5",
         "name": "value",
         "kind": "Variable",
-        "symbol": "#acee15cf19159e64",
+        "symbol": "#67bd9c94304f12f5",
         "newName": "amount",
         "edits": 2,
         "conflicts": [],
@@ -127,14 +127,14 @@ stdout = '''
         "file": "${WS}/main.cpp",
         "edits": [
           {
-            "line": 2,
+            "line": 6,
             "column": 5,
             "name": "value",
             "newName": "amount"
           },
           {
             "line": 9,
-            "column": 23,
+            "column": 34,
             "name": "value",
             "newName": "amount"
           }
@@ -150,16 +150,14 @@ stdout = '''
 '''
 exit = 0
 
-[test."$ clice refactor rename \"#acee15cf19159e64\" amount".files]
+[test."$ clice refactor rename \"#67bd9c94304f12f5\" amount".files]
 "main.cpp" = '''
- namespace a {
+
+ namespace b {
 -int value;
 +int amount;
  }
 
-…
- }
-
 -int use() { return a::value + b::value; }
-+int use() { return a::amount + b::value; }
++int use() { return a::value + b::amount; }
 '''

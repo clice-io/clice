@@ -1,4 +1,4 @@
-[test."$ clice index --jobs 1"]
+[test."$ clice index"]
 stdout = '''
 Indexed 3 translation units in #s: 25 file shards (# KB), 46 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}

@@ -92,10 +92,10 @@ stdout = '''
       "interfaceEntities": 0,
       "implementationEntities": 4,
       "sample": [
-        "fast",
-        "width",
         "ModeA",
-        "level"
+        "fast",
+        "level",
+        "width"
       ]
     }
   ],

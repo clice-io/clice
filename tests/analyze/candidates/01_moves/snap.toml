@@ -65,8 +65,8 @@ stdout = '''
       "implementationEntities": 3,
       "sample": [
         "Str",
-        "Traits<Str>::value",
-        "Traits<Str>"
+        "Traits<Str>",
+        "Traits<Str>::value"
       ]
     },
     {
@@ -76,8 +76,8 @@ stdout = '''
       "implementationEntities": 3,
       "sample": [
         "Clock",
-        "format_str",
-        "Clock::name"
+        "Clock::name",
+        "format_str"
       ]
     },
     {
@@ -294,8 +294,8 @@ stdout = '''
       "implementationEntities": 3,
       "sample": [
         "Str",
-        "Traits<Str>::value",
-        "Traits<Str>"
+        "Traits<Str>",
+        "Traits<Str>::value"
       ]
     },
     {
@@ -305,8 +305,8 @@ stdout = '''
       "implementationEntities": 3,
       "sample": [
         "Clock",
-        "format_str",
-        "Clock::name"
+        "Clock::name",
+        "format_str"
       ]
     },
     {

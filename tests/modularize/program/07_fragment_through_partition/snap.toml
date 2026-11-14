@@ -1,0 +1,151 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 2 translation units in #s: 6 file shards (# KB), 7 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --out wrap"]
+stdout = '''
+{
+  "wrapping": {
+    "stdSources": [],
+    "modules": [
+      {
+        "name": "kit",
+        "source": "kit.cppm",
+        "imports": [],
+        "includeRoots": [],
+        "mirrors": []
+      }
+    ],
+    "mirrors": [],
+    "macros": "macros.h",
+    "prelude": "prelude.h",
+    "warnings": []
+  },
+  "rewriting": {
+    "modules": [
+      {
+        "name": "app.core",
+        "primary": "app/core.cppm",
+        "interfaces": [
+          "app/core/count.cppm",
+          "app/core_prelude.cppm"
+        ],
+        "partitions": [
+          "app/core/bits.cppm",
+          "app/core/set.cppm"
+        ],
+        "sources": [
+          "app/core/count.cpp"
+        ],
+        "imports": []
+      }
+    ],
+    "importers": [
+      "app/main.cpp"
+    ],
+    "macros": [],
+    "removed": [
+      "app/core/bits.h",
+      "app/core/count.h",
+      "app/core/set.h"
+    ],
+    "moved": [],
+    "warnings": []
+  }
+}
+'''
+exit = 0
+
+[test."$ clice modularize --scope \"app/**\" --scope \"third/**\" --partition partition.json --out wrap".files]
+"app/core.cppm" = '''
++export module app.core;
++
++export import :core.count;
++export import :core_prelude;
+'''
+"app/core/bits.cppm" = '''
++module;
++
++#include "wrap/prelude.h"
++#include <kit/roaring.h>
++
++module app.core:core.bits;
++
++import :core_prelude;
++
++using Bitmap = Roaring;
+'''
+"app/core/bits.h" = "(removed)"
+"app/core/count.cpp" = '''
+-#include "core/count.h"
+-#include "core/set.h"
++module app.core;
+
++import :core.bits;
++import :core.set;
++
+ int count() {
+     Set set;
+'''
+"app/core/count.cppm" = '''
++export module app.core:core.count;
++
++import :core_prelude;
++
++export {
++
++int count();
++}
+'''
+"app/core/count.h" = "(removed)"
+"app/core/set.cppm" = '''
++module app.core:core.set;
++
++import :core_prelude;
++import :core.bits;
++
++struct Set {
++    Bitmap bits;
++};
+'''
+"app/core/set.h" = "(removed)"
+"app/core_prelude.cppm" = '''
++export module app.core:core_prelude;
++
++import kit;
+'''
+"app/main.cpp" = '''
+-#include "core/count.h"
++#include "wrap/prelude.h"
++import app.core;
+
+ int main() {
+'''
+"wrap/.modularize" = '''
++kit.macros.h
++kit.cppm
++macros.h
++prelude.h
+'''
+"wrap/kit.cppm" = '''
++module;
++
++
++export module kit;
++
+'''
+"wrap/kit.macros.h" = "+#pragma once"
+"wrap/macros.h" = '''
++#pragma once
++
++#include "kit.macros.h"
+'''
+"wrap/prelude.h" = '''
++#pragma once
++
++import kit;
++#include "macros.h"
+'''

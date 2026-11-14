@@ -47,8 +47,8 @@ stdout = '''
       "interfaceEntities": 2,
       "implementationEntities": 0,
       "sample": [
-        "length",
-        "Str"
+        "Str",
+        "length"
       ]
     },
     {
@@ -76,8 +76,8 @@ stdout = '''
       "interfaceEntities": 0,
       "implementationEntities": 2,
       "sample": [
-        "Logger::clock",
-        "Logger"
+        "Logger",
+        "Logger::clock"
       ]
     },
     {
