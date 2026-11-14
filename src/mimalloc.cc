@@ -19,6 +19,13 @@
 // kernel when it reuses a page. It takes malloc and operator new over
 // itself (--@mimalloc//:override), its malloc zone the system libraries'
 // allocations too.
+//
+// FIXME: on Windows two of mimalloc's process-attach hooks run its post-init
+// (`_mi_options_post_init`), and the second run writes the newline the first
+// left in its delayed-output buffer to stderr: every process starts with a
+// stray newline there, which keeps an editor's stderr pipe from switching to
+// non-blocking until the editor reads it (logging::PipeOutput). Fix it in
+// the registry's mimalloc: the post-init runs once.
 
 #ifdef _WIN32
 #include <cstddef>
