@@ -205,9 +205,35 @@ struct Rewriter {
                (partition.kinds[module] == ModuleKind::Program || kept.contains(file));
     }
 
-    std::string partition_of(std::uint32_t file) const {
-        auto& primary = partition.primaries[partition.module_of[file]];
-        return partition_name(facts.files[file].path, path::parent(primary, posix));
+    /// Each rewritten header's partition name, unique in its module.
+    llvm::DenseMap<std::uint32_t, std::string> partition_names{};
+
+    const std::string& partition_of(std::uint32_t file) const {
+        return partition_names.find(file)->second;
+    }
+
+    /// Name the partitions of the rewritten headers by their paths, in path
+    /// order: two whose paths give one name (`a-b.h` and `a_b.h`) tell
+    /// themselves apart by a number.
+    void name_partitions() {
+        std::vector<std::uint32_t> headers;
+        for(std::uint32_t file = 0; file < facts.files.size(); file += 1) {
+            if(rewritten(file) && header(file)) {
+                headers.push_back(file);
+            }
+        }
+        ranges::sort(headers, {}, [&](std::uint32_t file) { return facts.files[file].path; });
+        std::set<std::pair<std::uint32_t, std::string>> taken;
+        for(auto file: headers) {
+            auto module = partition.module_of[file];
+            auto& primary = partition.primaries[module];
+            auto name = partition_name(facts.files[file].path, path::parent(primary, posix));
+            auto unique = name;
+            for(int n = 2; !taken.emplace(module, unique).second; n += 1) {
+                unique = std::format("{}_{}", name, n);
+            }
+            partition_names[file] = std::move(unique);
+        }
     }
 
     /// The header a file using what `file` declares includes.
@@ -379,6 +405,7 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
 
     auto units = module_units(facts, partition);
     Rewriter rewriter{.facts = facts, .partition = partition, .units = units};
+    rewriter.name_partitions();
     for(std::uint32_t module = 0; module < interfaces.size(); module += 1) {
         if(partition.kinds[module] == ModuleKind::Wrapped) {
             for(auto& header: interfaces[module].textual) {
