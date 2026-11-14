@@ -310,9 +310,7 @@ public:
         if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(X);
            function && !options.every_body && !visiting_root &&
            function->doesThisDeclarationHaveABody()) {
-            auto location = function->getLocation();
-            if(!unit.indexes_bodies(location) &&
-               !unit.focus_file().contains(unit.file_id(location))) {
+            if(!unit.indexes_bodies(function->getLocation())) {
                 skipped_body = function->getBody();
             }
         }

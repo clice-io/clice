@@ -2580,6 +2580,30 @@ ZEST_CASE(LibraryBodiesLeftOut) {
     ZEXPECT(helpers_in("own.h") == 1);
 }
 
+ZEST_CASE(OpenFileBodiesIndexed) {
+    // A rule leaving a file's bodies out of the index holds for the file's
+    // own unit, but not for the file open in the editor.
+    auto helpers = [&](CompilationKind compilation) {
+        kind = compilation;
+        add_focus("main.cpp", R"(
+            int helper();
+            int twice() { return helper() + helper(); }
+        )");
+        prepare();
+        params.function_bodies.rules = {
+            {.patterns = {"**/main.cpp"}, .index = false}
+        };
+        ZASSERT(try_compile());
+        decode_index(index::build_tu_index(*unit));
+        return ranges::count_if(tu_index.focus_file_index.occurrences,
+                                [&](const index::Occurrence& occurrence) {
+                                    return tu_index.symbols[occurrence.target].name == "helper";
+                                });
+    };
+    ZEXPECT(helpers(CompilationKind::Whole) == 1);
+    ZEXPECT(helpers(CompilationKind::Content) == 3);
+}
+
 };  // ZEST_SUITE(Indexer)
 
 /// A TU index blob holding only the minimal path table verification demands,
@@ -3147,18 +3171,23 @@ ZEST_CASE(LibraryInstantiationsUnwalked) {
     ZEXPECT(view.instantiation_shard(*library).resolutions().size() == 3u);
 }
 
-ZEST_CASE(FocusInstantiationsWalked) {
-    // A rule leaving the focus file's bodies out of the index leaves what
-    // its own instantiations resolve in: its reader asks about them.
+ZEST_CASE(OpenFileInstantiationsWalked) {
+    // A rule leaving a file's bodies out of the index leaves out what its
+    // instantiations resolve, in the file's own unit too, but for the file
+    // open in the editor: its reader asks about them.
     function_bodies.rules = {
         {.patterns = {"**/main.cpp"}, .index = false}
     };
-    build(R"(
+    llvm::StringRef code = R"(
         struct A { void go(); };
         template <typename T>
         void run(T t) { t.go(); }
         void use() { run(A{}); }
-    )");
+    )";
+    build(code);
+    ZEXPECT(keys().empty());
+
+    build(code, {}, CompilationKind::Content);
     ZEXPECT(keys().size() == 1u);
 }
 

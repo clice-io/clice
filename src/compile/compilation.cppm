@@ -561,7 +561,8 @@ public:
     /// Whether the index records what the function bodies at `location` use
     /// and what the instantiations of the templates there resolve: as the
     /// rules for its file say, else unless it is a library's (in_library).
-    /// A file whose bodies the rules skip has none recorded.
+    /// A file whose bodies the rules skip has none recorded. The file open
+    /// in the editor (a Content compile's focus file) is recorded whole.
     bool indexes_bodies(clang::SourceLocation location);
 
     /// Where the file was entered: its `#include`; for the file a module

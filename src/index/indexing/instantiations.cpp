@@ -88,8 +88,7 @@ bool Builder::resolves_in(clang::FileID fid) {
 }
 
 bool Builder::walks(const clang::Decl* pattern, clang::FileID home) {
-    return resolves_in(home) &&
-           (unit.focus_file().contains(home) || unit.indexes_bodies(pattern->getLocation()));
+    return resolves_in(home) && unit.indexes_bodies(pattern->getLocation());
 }
 
 std::vector<const clang::Decl*> Builder::walked_instantiations() {

@@ -320,7 +320,7 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
         compiled.format = rule.format;
         compiled_rules.push_back(std::move(compiled));
     }
-    if(!default_configuration.empty() && !declares(default_configuration)) {
+    if(!root.empty() && !default_configuration.empty() && !declares(default_configuration)) {
         auto tags = configurations();
         problem(tags.empty() ? std::format("{} names a configuration, but no rule declares one",
                                            default_configuration)

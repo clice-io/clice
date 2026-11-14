@@ -297,7 +297,7 @@ struct SemanticsOptions {
 
     /// With all_files, traverse the bodies and constructor initializers of
     /// the functions written in the files whose bodies the index leaves out
-    /// (CompilationUnit::indexes_bodies) other than the focus file too.
+    /// (CompilationUnit::indexes_bodies) too.
     /// Without, their declarations alone: what they name inside is a
     /// library's own, which only a reader of its code asks about.
     bool every_body = true;

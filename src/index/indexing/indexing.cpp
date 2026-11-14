@@ -376,7 +376,7 @@ void Builder::see_from(const Semantics& semantics, std::uint32_t i) {
         return;
     }
     auto location = decl->getLocation();
-    if(!unit.indexes_bodies(location) && !unit.focus_file().contains(unit.file_id(location))) {
+    if(!unit.indexes_bodies(location)) {
         place_resolver = nullptr;
         return;
     }

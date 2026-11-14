@@ -527,7 +527,11 @@ std::optional<bool> CompilationUnit::skips_bodies(clang::FileID fid) {
 }
 
 bool CompilationUnit::indexes_bodies(clang::SourceLocation location) {
-    auto& rule = body_rule(file_id(location));
+    auto fid = file_id(SM().getExpansionLoc(location));
+    if(kind() == CompilationKind::Content && focus_file().contains(fid)) {
+        return true;
+    }
+    auto& rule = body_rule(fid);
     if(rule.skip.value_or(false)) {
         return false;
     }

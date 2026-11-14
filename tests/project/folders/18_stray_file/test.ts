@@ -26,3 +26,17 @@ test("dropped from a database", async (t) => {
     expect(await s.poll("cdb")).toBe(1);
     await t.show("dropped", s.diagnostics("elsewhere/stray.cpp"));
 });
+
+// The editor's rules, and the configuration they declare, are the folders':
+// a file outside every folder compiles without them.
+test("editor rules with a configuration", async (t) => {
+    const s = await t.start({
+        folders: ["alpha", "beta"],
+        config: {
+            default_configuration: "debug",
+            rules: [{ configuration: "debug", append: ["-DIN_ALPHA"] }],
+        },
+    });
+    await t.show("stray", s.diagnostics("elsewhere/stray.cpp"));
+    await t.show("guidance", await s.guidance());
+});

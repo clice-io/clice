@@ -469,6 +469,22 @@ ZEST_CASE(LibraryBodiesUnindexed) {
     ZEXPECT(unit->indexes_bodies(declared("own")->getLocation()));
 }
 
+ZEST_CASE(OpenFileBodiesIndexed) {
+    // A rule leaving a file's bodies out holds in the file's own unit, but
+    // not in the editor's compile of it.
+    add_focus("main.cpp", "int own;\n");
+    for(auto compilation: {CompilationKind::Whole, CompilationKind::Content}) {
+        kind = compilation;
+        prepare();
+        params.function_bodies.rules = {
+            {.patterns = {"**/main.cpp"}, .index = false},
+        };
+        ZASSERT(try_compile());
+        ZEXPECT(unit->indexes_bodies(declared("own")->getLocation()) ==
+                (compilation == CompilationKind::Content));
+    }
+}
+
 ZEST_CASE(BuiltinFiles) {
     add_files("main.cpp", R"cpp(
 #[a.h]

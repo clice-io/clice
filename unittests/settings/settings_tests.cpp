@@ -330,6 +330,16 @@ ZEST_CASE(FinalizeEmptyWorkspace) {
     ZEXPECT(settings.logging_dir.empty());
 }
 
+ZEST_CASE(FinalizeEmptyWorkspaceDropsConfiguration) {
+    // The files outside every folder are served without the rules, and so
+    // without the configuration they declare.
+    Settings settings;
+    settings.rules.push_back({.configuration = "debug"});
+    settings.default_configuration = "debug";
+    ZEXPECT(settings.finalize(CanonicalPath()).empty());
+    ZEXPECT(settings.compiled_rules.empty());
+}
+
 ZEST_CASE(FinalizePreservesSet) {
     Settings settings;
     settings.cache_dir = "/custom";
