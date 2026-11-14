@@ -58,7 +58,13 @@ std::expected<std::string, std::string> find_driver(llvm::StringRef driver, llvm
                             target));
         }
         if(bare) {
-            return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
+            // Meson's database names a bare cl or clang-cl, on PATH only in a
+            // developer prompt.
+            search.directories = {visual_studio_bin(path::stem(driver, path::Style::Windows))};
+            if(search.directories[0].empty() || sys::find_program(found, name, search)) {
+                return std::unexpected(std::format("Cannot find driver: {}", driver.str()));
+            }
+            return found;
         }
         return std::unexpected(std::format("Driver {} not found or not executable", name));
     }

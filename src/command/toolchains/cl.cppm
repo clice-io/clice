@@ -33,6 +33,13 @@ CLOutput parse_cl_output(llvm::StringRef out);
 /// sets, which naming a toolset would make clang ignore, lists the build's.
 std::vector<std::string> cl_driver_mode(llvm::StringRef driver, CompilerFamily family);
 
+/// The directory where the newest toolset Visual Studio installed keeps
+/// `program`, cl or Visual Studio's own clang-cl, for this machine's
+/// architecture; empty when there is none, or `program` is neither. A
+/// developer prompt puts it on PATH, an editor that started clice outside
+/// one does not.
+std::string visual_studio_bin(llvm::StringRef program);
+
 /// cl and clang-cl: asked to preprocess a file naming their macros, the
 /// driver tells the C++ standard it compiles in — what `/std:c++latest`
 /// means moves from one version to the next — and cl its version, where
