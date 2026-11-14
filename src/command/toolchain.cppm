@@ -11,6 +11,12 @@ import :vfs.file_table;
 
 namespace clice {
 
+/// How Toolchain::warm runs its queries.
+struct WarmOptions {
+    /// They retry failed ones, whose failures were reported then.
+    bool retry = false;
+};
+
 /// Resolves driver-level commands into full cc1-level configurations by
 /// querying the compiler driver, in two layers:
 ///
@@ -51,11 +57,6 @@ public:
     /// driver; an error only when that driver cannot read the command
     /// either.
     std::expected<ResolvedCommand, std::string> resolve(CommandID id, InputKind input);
-
-    struct WarmOptions {
-        /// The queries retry failed ones, whose failures were reported then.
-        bool retry = false;
-    };
 
     /// Pre-query in parallel, deduplicated by query key, running as many
     /// drivers at once as the process has CPUs. Blocks until all unique
