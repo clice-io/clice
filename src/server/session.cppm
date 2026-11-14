@@ -199,6 +199,26 @@ private:
     std::uint64_t crashes = 0;
 };
 
+/// What a request waited for on its way to its answer, which its log line
+/// tells (LSPClient::on_document).
+struct RequestWaits {
+    enum class Kind : std::uint8_t {
+        /// Its compile: the project's opening, the modules, the PCH, the
+        /// parse.
+        Compile,
+        /// The background index's attempt at its file.
+        Index,
+        /// A worker free to take it.
+        Worker,
+    };
+
+    std::array<chrono::steady_clock::duration, 3> spent{};
+
+    void add(Kind kind, chrono::steady_clock::duration time) {
+        spent[static_cast<std::size_t>(kind)] += time;
+    }
+};
+
 /// A request's hold on the buffer it was asked about: the generation
 /// snapshot taken as the request is dispatched.
 /// Every later decision — adopting a compile product, committing a worker
@@ -211,6 +231,10 @@ struct Ticket {
     std::shared_ptr<Session> session;
     std::uint64_t generation = 0;
 
+    /// Where the request records what it waits for; null for work no
+    /// request asked for.
+    std::shared_ptr<RequestWaits> waits;
+
     /// An empty ticket for no session: a document not open.
     static Ticket take(std::shared_ptr<Session> session) {
         auto generation = session ? session->generation : 0;
@@ -219,6 +243,13 @@ struct Ticket {
 
     bool fresh() const {
         return session->generation == generation;
+    }
+
+    /// Count the time since `started` as the request's wait of `kind`.
+    void waited(RequestWaits::Kind kind, chrono::steady_clock::time_point started) const {
+        if(waits) {
+            waits->add(kind, chrono::steady_clock::now() - started);
+        }
     }
 };
 

@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "${WS}",
+    "file": "third_party/lib.cpp",
+    "arguments": ["${WS}/missing-cc", "-c", "third_party/lib.cpp"]
+  },
+  {
+    "directory": "${WS}",
+    "file": "src/main.cpp",
+    "arguments": ["${WS}/missing-cc", "-c", "src/main.cpp"]
+  }
+]

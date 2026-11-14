@@ -190,9 +190,9 @@ async::task<ext::SwitchContextResult>
         }
     }
     // A choice applies to an open document; one closed meanwhile keeps the
-    // choice it had.
+    // choice it had, and a folder removed meanwhile takes none.
     auto* document = find_document(path_id);
-    if(!document || !document->owner) {
+    if(!document || !document->owner || !ranges::contains(projects, target)) {
         co_return result;
     }
     auto* previous = choice(path_id) ? choice(path_id)->project : nullptr;
@@ -265,7 +265,7 @@ async::task<ext::CurrentContextResult> MasterServer::current_context(Fid path_id
     }
     auto* active = owner->active_choice(path_id);
     result.automatic = active == nullptr;
-    result.other_contexts = !own_context_only.contains(path_id);
+    result.other_contexts = shows_other_contexts(path_id);
     if(auto item = project.current_context_item(path_id, resolution)) {
         result.context = to_item(files, std::move(*item));
     }
@@ -298,7 +298,7 @@ ext::SwitchContextResult MasterServer::reset_context(Fid path_id) {
     choices.erase(it);
     save_choices(*project);
     auto& owner = *document->owner;
-    if(auto& to = pick_owner(path_id); &to != &owner) {
+    if(auto& to = document_owner(path_id); &to != &owner) {
         change_owner(*document, to);
     } else {
         owner.choice_changed(*document->session);
@@ -312,10 +312,11 @@ ext::SwitchContextResult MasterServer::show_other_contexts(Fid path_id, bool sho
     auto* owner = document ? document->owner : nullptr;
     // A project that never compiles answers from its index alone, which
     // merges every context.
-    if(!show && owner && owner->project.settings.project.readonly == ReadonlyMode::On) {
+    if(!show && owner && owner->readonly(path_id) == ReadonlyMode::On) {
         return {};
     }
-    bool changed = show ? own_context_only.erase(path_id) : own_context_only.insert(path_id).second;
+    bool changed = shows_other_contexts(path_id) != show;
+    other_contexts_choices[path_id] = show;
     if(!changed) {
         return {.success = true};
     }
@@ -327,6 +328,14 @@ ext::SwitchContextResult MasterServer::show_other_contexts(Fid path_id, bool sho
         client->refresh();
     }
     return {.success = true};
+}
+
+bool MasterServer::shows_other_contexts(Fid path_id) {
+    if(auto it = other_contexts_choices.find(path_id); it != other_contexts_choices.end()) {
+        return it->second;
+    }
+    auto& owner = owner_of(path_id);
+    return owner.project.rules.other_contexts(owner.project.file_table.resolve(path_id));
 }
 
 }  // namespace clice

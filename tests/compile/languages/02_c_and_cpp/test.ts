@@ -10,7 +10,7 @@ answers("hover", async (a) => {
 });
 
 test("languages keep their own pch", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("lib.c")).toEqual([]);
     expect(await s.errors("main.cpp")).toEqual([]);
     await s.sync();

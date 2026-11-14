@@ -3,6 +3,7 @@ module clice:feature.inlay_hints;
 import :compile.compilation;
 import :index.query;
 import :index.symbol;
+import :support.json;
 import :support.prelude;
 import :syntax.position;
 import :vfs.ids;
@@ -15,32 +16,32 @@ struct InlayHintLengths {
     KANNOTATE(&types,
               description =
                   "Maximum length in characters of a deduced type or of "
-                  "deduced template arguments; `0` means no limit. The "
+                  "deduced template arguments, or `\"unlimited\"`. The "
                   "template arguments that do not fit become `…`, e.g. "
                   "`tuple<int, string, …>`; a type whose outermost name "
                   "does not fit is not shown.")
-    std::uint32_t types = 32;
+    Limit types = 32u;
 
     KANNOTATE(&default_arguments,
               description =
                   "Maximum length in characters of the omitted default "
-                  "arguments; `0` means no limit. One too long becomes "
+                  "arguments, or `\"unlimited\"`. One too long becomes "
                   "`…`, and the list is cut with `…` where it no longer "
                   "fits.")
-    std::uint32_t default_arguments = 32;
+    Limit default_arguments = 32u;
 
     KANNOTATE(&block_end,
               description =
                   "Maximum length in characters of a block end or "
-                  "namespace end label, cut with `…` past it; `0` means "
-                  "no limit.")
-    std::uint32_t block_end = 60;
+                  "namespace end label, cut with `…` past it, or "
+                  "`\"unlimited\"`.")
+    Limit block_end = 60u;
 
     KANNOTATE(&endif,
               description =
                   "Maximum length in characters of an `#endif` condition, "
-                  "cut with `…` past it; `0` means no limit.")
-    std::uint32_t endif = 60;
+                  "cut with `…` past it, or `\"unlimited\"`.")
+    Limit endif = 60u;
 };
 
 /// Corresponds to the `[inlay_hints]` section in clice.toml. Every switch

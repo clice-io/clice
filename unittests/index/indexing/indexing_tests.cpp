@@ -2539,8 +2539,8 @@ void refill(T t) { mark(t); }
 
 ZEST_CASE(LibraryBodiesLeftOut) {
     // A library header's index holds what it declares, and what its
-    // functions name inside only when asked; the user's header is indexed
-    // whole either way.
+    // functions name inside only when a rule asks; the user's header is
+    // indexed whole unless a rule says otherwise.
     constexpr llvm::StringLiteral functions = R"(
         int helper();
         inline int twice() { return helper() + helper(); }
@@ -2569,8 +2569,15 @@ ZEST_CASE(LibraryBodiesLeftOut) {
     ZEXPECT(helpers_in("own.h") == 4);
     ZEXPECT(helpers_in("lib") == 1);
 
-    decode_index(index::build_tu_index(*unit, {.library_bodies = true}));
+    prepare();
+    params.function_bodies.rules = {
+        {.patterns = {"**/lib"},   .index = true },
+        {.patterns = {"**/own.h"}, .index = false},
+    };
+    ZASSERT(try_compile());
+    decode_index(index::build_tu_index(*unit));
     ZEXPECT(helpers_in("lib") == 4);
+    ZEXPECT(helpers_in("own.h") == 1);
 }
 
 };  // ZEST_SUITE(Indexer)
@@ -2939,6 +2946,9 @@ ZEST_SUITE(InstantiationIndex, Tester) {
 
 index::TUIndex view;
 
+/// What the rules say of the function bodies of the files build() reads.
+FunctionBodyRules function_bodies;
+
 std::string name_of(index::SymbolHash hash) {
     auto identity = view.find_symbol(hash);
     return identity ? identity->name.str() : "?";
@@ -2949,7 +2959,9 @@ void build(llvm::StringRef code,
            CompilationKind compilation = CompilationKind::Whole) {
     kind = compilation;
     add_focus("main.cpp", code);
-    ZASSERT(compile());
+    prepare();
+    params.function_bodies = function_bodies;
+    ZASSERT(try_compile());
     view = index::TUIndex::from_buffer(
         llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit, options))));
     ZASSERT(view.loaded());
@@ -3097,10 +3109,10 @@ ZEST_CASE(HomeIsTheDefinition) {
     ZEXPECT(view.instantiation_shard(*definition).keys().size() == 1u);
 }
 
-ZEST_CASE(StandardLibraryUnwalked) {
+ZEST_CASE(LibraryInstantiationsUnwalked) {
     add_file("algo", R"(
         #pragma GCC system_header
-        namespace std {
+        namespace lib {
         template <typename T>
         void call(T t) { t.go(); }
         }
@@ -3111,7 +3123,7 @@ ZEST_CASE(StandardLibraryUnwalked) {
         #include "algo"
         struct A { void go(); };
         void use() {
-            std::call(A{});
+            lib::call(A{});
             __library_go(A{});
             LIBRARY_GO(A{});
         }
@@ -3124,7 +3136,11 @@ ZEST_CASE(StandardLibraryUnwalked) {
     ZEXPECT(view.instantiation_shard(*library).keys().empty());
     ZEXPECT(view.instantiation_shard(*library).resolutions().size() == 1u);
 
-    build(code, {.standard_library_instantiations = true});
+    // A rule indexing the library's bodies walks them.
+    function_bodies.rules = {
+        {.patterns = {"**/algo"}, .index = true}
+    };
+    build(code);
     library = section_of("algo");
     ZASSERT(library);
     ZEXPECT(view.instantiation_shard(*library).keys().size() == 1u);

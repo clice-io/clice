@@ -142,9 +142,12 @@ std::unique_ptr<clang::CompilerInvocation>
     front_opts.PrintSupportedCPUs = false;
     front_opts.PrintEnabledExtensions = false;
     front_opts.PrintSupportedExtensions = false;
-    front_opts.SkipFunctionBodies = params.skip_bodies ||
-                                    params.kind == CompilationKind::Completion ||
-                                    params.instantiating.has_value();
+    front_opts.SkipFunctionBodies =
+        params.skip_bodies || params.kind == CompilationKind::Completion ||
+        params.instantiating.has_value() ||
+        (params.kind != CompilationKind::ModuleInterface &&
+         ranges::any_of(params.function_bodies.rules,
+                        [](const FunctionBodyRules::Rule& rule) { return rule.skip == true; }));
     // A precompiled header or module embedding its sources overrides them in
     // every compile reading it, where another holding the same files then
     // refuses to load. clice reads the files on disk and checks them for
@@ -440,16 +443,21 @@ public:
         return clang::MultiplexConsumer::HandleTopLevelDecl(group) && !instantiation_found;
     }
 
-    /// Asked under CompilationParams::skip_bodies and instantiating, and by
-    /// every completion's parse, which skips each body but the one holding
-    /// the point and a forwarding function's, whose body tells signature
-    /// help the constructor a call reaches.
+    /// Asked under CompilationParams::skip_bodies and instantiating, a rule
+    /// skipping bodies, and by every completion's parse, which skips each
+    /// body but the one holding the point and a forwarding function's,
+    /// whose body tells signature help the constructor a call reaches.
     bool shouldSkipFunctionBody(clang::Decl* decl) final {
         if(unit.kind() == CompilationKind::Completion) {
             return !likely_forwarding(decl) &&
                    clang::MultiplexConsumer::shouldSkipFunctionBody(decl);
         }
         auto file = unit.produced_at(decl->getLocation()).file;
+        if(file != unit.focus_file().file()) {
+            if(auto skips = unit.skips_bodies(file)) {
+                return *skips && !likely_forwarding(decl);
+            }
+        }
         if(auto& instantiating = unit.params.instantiating;
            instantiating && file == unit.focus_file().file()) {
             if(instantiation_found || !instantiating->names) {
@@ -480,7 +488,8 @@ public:
             }
             return false;
         }
-        return unit.in_preamble(file) && !likely_forwarding(decl);
+        return (unit.params.skip_bodies || unit.params.instantiating) && unit.in_preamble(file) &&
+               !likely_forwarding(decl);
     }
 
     void HandleCXXImplicitFunctionInstantiation(clang::FunctionDecl* decl) final {

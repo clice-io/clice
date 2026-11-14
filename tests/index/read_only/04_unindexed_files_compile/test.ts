@@ -7,7 +7,7 @@ import { test } from "@clice/tools/testing";
 // and nothing compiles it.
 test(async (t) => {
     t.disk.database({ "main.cpp": [], "scratch.cpp": [] });
-    const s = await t.start({ config: { project: { readonly: "auto" } } });
+    const s = await t.start({ lastRule: { readonly: "auto" } });
     s.open("orphan.cpp", { pull: false });
     await t.show("orphan", s.documentSymbols("orphan.cpp"));
     await t.show("orphan pushed", s.pushes("orphan.cpp"));

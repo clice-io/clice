@@ -9,10 +9,10 @@ import { test } from "@clice/tools/testing";
 
 const DATABASE = "build/compile_commands.json";
 const WRITER = "build/CMakeFiles/app.dir/cmake_pch.hxx.cxx";
-const config = { project: { enable_indexing: false } };
+const UNINDEXED = { lastRule: { background_index: false } };
 
 test("header context", async (t) => {
-    const s = await t.start({ config });
+    const s = await t.start(UNINDEXED);
     const chained = s.diagnostics("widget.h");
     await t.show("widget.h", chained);
     const { files } = await s.counts();
@@ -32,7 +32,7 @@ test("header context", async (t) => {
         DATABASE,
         t.disk.read(DATABASE).replaceAll(/-Xclang -include-pch -Xclang \S+ /g, ""),
     );
-    const plain = await t.start({ config });
+    const plain = await t.start(UNINDEXED);
     expect(await plain.diagnostics("widget.h")).toEqual(await chained);
     for (const [name, answer] of Object.entries(answered)) {
         const m = t.marker(name);

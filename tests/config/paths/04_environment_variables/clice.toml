@@ -1,0 +1,2 @@
+[[rules]]
+append = ["-DVALUE=${env:CLICE_CASE_VALUE}"]

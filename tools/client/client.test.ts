@@ -9,17 +9,12 @@ const ws = new Workspace(path.join(path.sep, "ws"));
 
 test("defaults overlay the caller's options", () => {
     const options = initializationOptionsFor(ws, {
-        initializationOptions: { project: { stateful_worker_count: 3 }, tracker: {} },
+        initializationOptions: { workers: { foreground: 3 } },
     });
     expect(options).toEqual({
-        project: {
-            cache_dir: ws.path(".clice"),
-            stateful_worker_count: 3,
-            stateless_worker_count: 1,
-            idle_timeout_ms: 0,
-            test_hooks: true,
-        },
-        tracker: { workspace_poll_seconds: 0 },
+        cache_dir: ws.path(".clice"),
+        workers: { foreground: 3, background: 1, background_delay_ms: 0 },
+        poll_seconds: 0,
     });
 });
 
@@ -32,12 +27,11 @@ test("without test defaults only the cache is pinned", () => {
     });
     expect(options).toEqual({
         rules: [{ compile_commands: ["/cdb"] }],
-        project: { cache_dir: ws.path(".clice") },
-        tracker: {},
+        cache_dir: ws.path(".clice"),
     });
 });
 
 test("a cache of the caller's own", () => {
     const options = initializationOptionsFor(ws, { cacheDir: "/cache", testDefaults: false });
-    expect(options).toEqual({ project: { cache_dir: "/cache" }, tracker: {} });
+    expect(options).toEqual({ cache_dir: "/cache" });
 });

@@ -18,7 +18,7 @@ test("saved", async (t) => {
 // before any tick: the next request on main.cpp finds what the cycle's
 // failures rest on changed.
 test("unseen", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("before", s.errors("main.cpp"));
     t.disk.edit("cycle_b.cppm", { replace: "import CycA;\n", with: "" });
     expect(await s.errors("main.cpp")).toEqual([]);

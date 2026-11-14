@@ -194,9 +194,15 @@ std::string riscv_isa_for_clang(llvm::StringRef isa, bool quiet) {
 /// Darwin): GCC lists its framework directories as plain ones, below
 /// whatever sysroot it searches.
 std::vector<std::string> framework_dirs(llvm::StringRef target) {
-    auto job =
-        query_driver({"clang", "--target=" + target.str(), "-isysroot", "/", "-x", "c", "query.c"},
-                     "");
+    auto job = query_driver({"clang",
+                             no_clang_config.str(),
+                             "--target=" + target.str(),
+                             "-isysroot",
+                             "/",
+                             "-x",
+                             "c",
+                             "query.c"},
+                            "");
     std::vector<std::string> dirs;
     if(!job) {
         return dirs;
@@ -407,6 +413,7 @@ std::expected<Job, std::string> query_as_gcc(const GCCStyleOutput& output,
                                              llvm::ArrayRef<std::string> args,
                                              llvm::StringRef cwd) {
     std::vector<std::string> clang_args = {args[0],
+                                           no_clang_config.str(),
                                            "--target=" + output.target,
                                            "-nostdinc",
                                            "-resource-dir",

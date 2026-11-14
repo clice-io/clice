@@ -479,6 +479,58 @@ bool CompilationUnit::in_preamble(clang::FileID fid) {
     return result;
 }
 
+auto CompilationUnit::body_rule(clang::FileID fid) -> const BodyRule& {
+    auto [it, inserted] = body_rules.try_emplace(fid);
+    // A buffer clang makes up (<built-in>, <command line>) holds no body a
+    // rule names.
+    if(!inserted || fid.isInvalid() || !SM().getFileEntryRefForID(fid)) {
+        return it->second;
+    }
+    auto& rules = params.function_bodies.rules;
+    if(!body_globs) {
+        // The master compiled every pattern once: one that does not compile
+        // here matches nothing, as there.
+        auto& globs = body_globs.emplace();
+        for(auto& rule: rules) {
+            auto& compiled = globs.emplace_back();
+            for(auto& pattern: rule.patterns) {
+                if(auto glob = kotatsu::GlobPattern::create(pattern)) {
+                    compiled.push_back(std::move(*glob));
+                }
+            }
+        }
+    }
+    auto path = file_path(fid);
+    BodyRule found;
+    for(auto [rule, globs]: views::zip(rules, *body_globs)) {
+        if(!rule.patterns.empty() && ranges::none_of(globs, [&](const kotatsu::GlobPattern& glob) {
+               return glob.match(path);
+           })) {
+            continue;
+        }
+        found.skip = found.skip ? found.skip : rule.skip;
+        found.index = found.index ? found.index : rule.index;
+    }
+    // The lookups above may have grown the map.
+    return body_rules[fid] = found;
+}
+
+std::optional<bool> CompilationUnit::skips_bodies(clang::FileID fid) {
+    // A module's interface keeps every body its importers may instantiate.
+    if(kind() == CompilationKind::ModuleInterface) {
+        return std::nullopt;
+    }
+    return body_rule(fid).skip;
+}
+
+bool CompilationUnit::indexes_bodies(clang::SourceLocation location) {
+    auto& rule = body_rule(file_id(location));
+    if(rule.skip.value_or(false)) {
+        return false;
+    }
+    return rule.index.value_or(!in_library(location));
+}
+
 bool CompilationUnit::encloses_focus_file(const clang::Decl* decl) {
     auto& SM = this->SM();
     auto start = SM.getLocForStartOfFile(SM.getMainFileID());
@@ -677,6 +729,12 @@ std::vector<ReportedInput> CompilationUnit::deps() {
     // Hash the buffer the compiler read for this fid — the consumed bytes.
     // The same path can appear under several fids (repeated includes); any
     // of their buffers holds the same content, so the first one wins.
+    // LIMITATION: clang gives the hardlinked spellings of one file one
+    // FileEntry, so a unit reading two (Boost's `b2 headers`, a Nix store
+    // after optimise) reports the first alone: a save replacing the other
+    // leaves the unit current, and the index files the other's entries
+    // under the first. Naming the inputs from the directives' spellings
+    // would keep both.
     auto add_fid = [&](clang::FileID fid) {
         auto path = file_path(fid);
         if(path.empty()) {

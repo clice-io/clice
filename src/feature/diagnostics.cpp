@@ -621,13 +621,13 @@ FileDiagnostic unsaved_inputs_note(llvm::ArrayRef<std::string> files) {
                     one ? "it" : "them"));
 }
 
-protocol::Diagnostic to_protocol(
-    const FileDiagnostic& diagnostic,
-    bool related_information,
-    PositionEncoding encoding,
-    llvm::StringRef path,
-    const PositionMap& positions,
-    llvm::function_ref<std::optional<PositionMap>(llvm::StringRef path)> note_positions) {
+protocol::Diagnostic
+    to_protocol(const FileDiagnostic& diagnostic,
+                bool related_information,
+                PositionEncoding encoding,
+                llvm::StringRef path,
+                const PositionMap& positions,
+                llvm::function_ref<std::optional<NoteFile>(llvm::StringRef path)> note_file) {
     protocol::Diagnostic result{.range = *positions.range(diagnostic.range, encoding),
                                 .message = {}};
     switch(diagnostic.level) {
@@ -669,12 +669,16 @@ protocol::Diagnostic to_protocol(
     message += diagnostic.message;
     std::vector<protocol::DiagnosticRelatedInformation> related;
     for(const auto& note: diagnostic.notes) {
-        auto file = note.path.empty() ? path : llvm::StringRef(note.path);
-        auto map = note.path.empty() ? std::optional(positions) : note_positions(note.path);
-        if(!map || note.range.end > map->size()) {
+        auto other = note.path.empty() ? std::nullopt : note_file(note.path);
+        if(!note.path.empty() && !other) {
             continue;
         }
-        auto range = *map->range(note.range, encoding);
+        auto file = other ? llvm::StringRef(other->shown) : path;
+        auto& map = other ? other->positions : positions;
+        if(note.range.end > map.size()) {
+            continue;
+        }
+        auto range = *map.range(note.range, encoding);
         if(related_information) {
             related.push_back({
                 .location = {.uri = to_uri(file), .range = range},

@@ -147,13 +147,11 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     });
 
     // The command's whole product is the persisted index: without a database
-    // (cache failed to open, another process holds the index writer lock,
+    // (cache failed to open, another process keeps the index writer lock,
     // or an unreadable header disabled persistence) the run would
     // only warm this process's memory and a rerun would start from
     // nothing — fail instead of pretending.
-    if(!project.database) {
-        LOG_ERROR("Cannot persist the index at {}: the warning above says why; fix that and rerun",
-                  std::string_view(project.settings.project.cache_dir));
+    if(!co_await writes_index(project, opened)) {
         result.exit_code = 1;
         co_await shutdown(run);
         co_return;
@@ -257,7 +255,7 @@ int run_indexing(const ProjectOptions& where, std::uint32_t workers, bool json) 
         index_project({.root = std::move(root), .loaded = std::move(loaded), .workers = workers},
                       report_progress);
     if(!indexed) {
-        LOG_ERROR("{}", indexed.error());
+        LOG_ERROR("{}", indexed.error().message);
         return 1;
     }
     if(auto* server = std::get_if<ServerIndexed>(&*indexed)) {

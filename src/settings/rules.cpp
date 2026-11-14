@@ -114,22 +114,23 @@ Edits Rules::edits(llvm::ArrayRef<CanonicalRef> paths) const {
         }
     }
     Edits result;
+    std::optional<bool> query_toolchain;
+    Spelling directory(root);
     for(auto* rule: active) {
         if(!ranges::contains(matched, rule)) {
             continue;
         }
-        result.query_toolchain = result.query_toolchain && rule->query_toolchain;
+        query_toolchain = query_toolchain ? query_toolchain : rule->query_toolchain;
         if(!rule->remove.empty()) {
-            result.edits.push_back({.kind = CommandEdit::Kind::Remove,
-                                    .flags = rule->remove,
-                                    .directory = rule->directory});
+            result.edits.push_back(
+                {.kind = CommandEdit::Kind::Remove, .flags = rule->remove, .directory = directory});
         }
         if(!rule->append.empty()) {
-            result.edits.push_back({.kind = CommandEdit::Kind::Append,
-                                    .flags = rule->append,
-                                    .directory = rule->directory});
+            result.edits.push_back(
+                {.kind = CommandEdit::Kind::Append, .flags = rule->append, .directory = directory});
         }
     }
+    result.query_toolchain = query_toolchain.value_or(true);
     return result;
 }
 
@@ -142,15 +143,21 @@ const CompiledRule* Rules::default_rule(CanonicalRef path) const {
     return nullptr;
 }
 
-bool Rules::indexable(CanonicalRef path) const {
-    return ranges::all_of(matching(path), [](const CompiledRule* rule) { return rule->index; });
+template <typename T>
+std::optional<T> Rules::first(CanonicalRef path, std::optional<T> CompiledRule::* field) const {
+    auto* rule = deciding(path, field);
+    return rule ? rule->*field : std::nullopt;
 }
 
-bool Rules::inside(CanonicalRef path, bool CompiledRule::* field) const {
+bool Rules::indexable(CanonicalRef path) const {
+    return first(path, &CompiledRule::background_index).value_or(true);
+}
+
+bool Rules::inside(CanonicalRef path, std::optional<bool> CompiledRule::* field) const {
     if(!root.empty() && !path::is_within(path, root)) {
         return false;
     }
-    return ranges::all_of(matching(path), [&](const CompiledRule* rule) { return rule->*field; });
+    return first(path, field).value_or(true);
 }
 
 bool Rules::lintable(CanonicalRef path) const {
@@ -159,6 +166,49 @@ bool Rules::lintable(CanonicalRef path) const {
 
 bool Rules::formattable(CanonicalRef path) const {
     return inside(path, &CompiledRule::format);
+}
+
+ReadonlyMode Rules::readonly(CanonicalRef path) const {
+    return first(path, &CompiledRule::readonly).value_or(ReadonlyMode::Off);
+}
+
+std::optional<bool> Rules::self_contained(CanonicalRef path) const {
+    return first(path, &CompiledRule::self_contained);
+}
+
+bool Rules::other_contexts(CanonicalRef path) const {
+    return first(path, &CompiledRule::other_contexts).value_or(true);
+}
+
+FunctionBodyRules Rules::function_body_rules() const {
+    FunctionBodyRules bodies;
+    for(auto* rule: active) {
+        if((!rule->skip_function_body && !rule->index_function_body) || rule->unmatchable) {
+            continue;
+        }
+        auto& added = bodies.rules.emplace_back();
+        for(auto& pattern: rule->patterns) {
+            added.patterns.push_back(pattern.text);
+        }
+        added.skip = rule->skip_function_body;
+        added.index = rule->index_function_body;
+    }
+    return bodies;
+}
+
+bool Rules::parses_every_body() const {
+    for(auto* rule: active) {
+        if(!rule->skip_function_body || rule->unmatchable) {
+            continue;
+        }
+        if(*rule->skip_function_body) {
+            return false;
+        }
+        if(rule->patterns.empty()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 llvm::SmallVector<const CompiledRule*> Rules::covering() const {
@@ -205,7 +255,7 @@ SourceWalk Rules::source_walk() const {
             .begin(),
         walk.roots.end());
     walk.project_root = root;
-    walk.cache_dir = settings->project.cache_identity;
+    walk.cache_dir = settings->cache_identity;
     return walk;
 }
 

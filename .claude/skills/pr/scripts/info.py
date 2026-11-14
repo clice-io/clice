@@ -39,10 +39,16 @@ def main():
 
     pr = args.pr or current_pr()
     view = gh("pr", "view", str(pr), "--json", VIEW_FIELDS)
-    # Exit code 8 means checks are pending; the JSON is printed either way.
-    checks = gh(
-        "pr", "checks", str(pr), "--json", "name,bucket,link", status_codes=(8,)
-    )
+    # Exit code 8 means checks are pending; the JSON is printed either way. A PR
+    # with no checks yet is reported as a failure with no JSON at all.
+    try:
+        checks = gh(
+            "pr", "checks", str(pr), "--json", "name,bucket,link", status_codes=(8,)
+        )
+    except SystemExit as failure:
+        if "no checks reported" not in str(failure.code):
+            raise
+        checks = []
     owner, name = repo()
     _, threads = fetch_threads(owner, name, pr)
     reviews = fetch_reviews(owner, name, pr)

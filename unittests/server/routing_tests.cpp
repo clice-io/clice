@@ -14,6 +14,7 @@ import :unittests.server.served_project_fixture;
 import :unittests.utils.cdb_helper;
 import :unittests.utils.merge_unit;
 import :unittests.utils.platform;
+import :unittests.utils.project_fixture;
 import :unittests.utils.tester;
 import :unittests.utils;
 
@@ -50,7 +51,9 @@ void index_focus(llvm::StringRef text) {
 /// Open main.cpp with the text compiled, compiled or not: under readonly
 /// "auto" a document opens not compiled.
 std::shared_ptr<Session> open(bool compiled) {
-    project.settings.project.readonly = compiled ? ReadonlyMode::Off : ReadonlyMode::Auto;
+    project.settings.rules.push_back(
+        Rule{.readonly = compiled ? ReadonlyMode::Off : ReadonlyMode::Auto});
+    finish_settings(project);
     return fx.open(focus, sources.all_files.lookup("main.cpp").content);
 }
 
@@ -104,15 +107,27 @@ ZEST_CASE(ContextNeedsOwnCompile) {
     auto file = session->path_id;
     // The shard merges every context: a document not compiled has no
     // other answer.
-    fx.server.own_context_only.insert(file);
+    fx.server.other_contexts_choices[file] = false;
     ZEXPECT(route(session) == Route::Index);
 
     fx.served->start_compiling(file);
     ZEXPECT(route(session) == Route::AST);
-    fx.server.own_context_only.erase(file);
+    fx.server.other_contexts_choices.erase(file);
     ZEXPECT(route(session, {.needs_ast = true}) == Route::AST);
     fx.server.choices[file] = {.project = fx.served.get()};
     ZEXPECT(route(session) == Route::AST);
+}
+
+ZEST_CASE(RulesHideOtherContexts) {
+    // A file's rules decide whether it shows its other contexts until the
+    // user chooses for it.
+    compile_focus("int x;\n");
+    project.settings.rules.push_back(Rule{.other_contexts = false});
+    auto session = open(true);
+    auto file = session->path_id;
+    ZEXPECT(!fx.server.shows_other_contexts(file));
+    fx.server.other_contexts_choices[file] = true;
+    ZEXPECT(fx.server.shows_other_contexts(file));
 }
 
 ZEST_CASE(CurrentASTAnswers) {

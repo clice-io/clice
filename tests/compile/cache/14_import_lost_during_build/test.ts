@@ -6,7 +6,7 @@ import { test } from "@clice/tools/testing";
 // M's build fails on the missing file, which says nothing of M: the import
 // says so, and the next compile importing M builds A and M again.
 test(async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     const build = await s.park("buildPcm", "m.cppm", { at: "worker" });
     const lost = s.errors("main.cpp");
     await build.reached();

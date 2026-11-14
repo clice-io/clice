@@ -176,8 +176,9 @@ std::string input_path(clang::FileManager& files, clang::FileEntryRef entry);
 /// Every place a lookup of `name` from `includer` that found nothing
 /// looked, absolute as clang looked (`..` resolves past a symlinked
 /// directory): the includer's directory, for a quoted name, then each
-/// search directory the lookup walks. A file created at any of them changes
-/// what the preprocessor sees.
+/// search directory the lookup walks, and each one clang left out of the
+/// search for not existing. A file created at any of them changes what the
+/// preprocessor sees.
 void lookup_places(clang::FileManager& files,
                    clang::HeaderSearch& search,
                    clang::OptionalFileEntryRef includer,

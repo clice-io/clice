@@ -585,13 +585,7 @@ void WorkerScheduler::scale(SchedulerTime now) {
     if(busy() || now - last_busy < idle_scale_down) {
         return;
     }
-    auto serving =
-        ranges::count_if(slots, [](const auto& entry) { return !entry.second.scaling_down; });
-    if(static_cast<std::size_t>(serving) > options.min_workers) {
-        auto* heaviest = heaviest_idle();
-        heaviest->scaling_down = true;
-        last_busy = now;
-        actions.push_back(scheduler::ScaleDown{.slot = heaviest->slot});
+    if(scale_down_idle()) {
         return;
     }
     // At the floor, a fresh process joins one past replace_above; the next

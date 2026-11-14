@@ -16,7 +16,7 @@ int main() { return twice(2); }
 
 test(async (t) => {
     t.disk.write("main.cpp", generate.padded(MAIN, 9 * 1024 * 1024));
-    const s = await t.start({ config: { project: { readonly: "auto" } } });
+    const s = await t.start({ lastRule: { readonly: "auto" } });
     s.open("main.cpp", { pull: false });
     await s.sync();
     await t.show("outline", s.documentSymbols("main.cpp"));

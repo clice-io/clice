@@ -6,13 +6,10 @@ const GENERATED = "#pragma once\n\ninline int generated() {\n    return 1;\n}\n"
 test("generated search directory", async (t) => {
     const s = await t.start();
     await t.show("missing", s.errors("main.cpp"));
-    // The generator creates the search directory with the header.
+    // The generator creates the search directory with the header: the
+    // place the failed lookup looked in was missing, and the header there is
+    // found without a save.
     t.disk.write("gen/generated.h", GENERATED);
     await s.sync({ poll: true });
-    await t.show("generated", s.errors("main.cpp"));
-    // A save retries a preamble that had errors, and the rebuilt PCH
-    // replaces the failed one in the cache.
-    s.save("main.cpp");
     expect(await s.errors("main.cpp")).toEqual([]);
-    expect(t.disk.list(".clice/cache/*/pch/*.pch")).toHaveLength(1);
 });

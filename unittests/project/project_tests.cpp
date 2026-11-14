@@ -124,6 +124,27 @@ ZEST_CASE(WriterThenReader) {
     ZEXPECT(!reader.writer_lock.has_value());
 }
 
+ZEST_CASE(SecondWriterWaits) {
+    // A writer finding the lock held leaves its index closed, taking no
+    // build's entries, until it opens it: read-only when the lock never
+    // came free.
+    open(project, {.cache = Project::OpenOptions::Cache::Write});
+    ZASSERT(project.writer_lock.has_value());
+
+    FileTable second_files;
+    Project second{second_files};
+    auto opened = open(second, {.cache = Project::OpenOptions::Cache::Write});
+    ZEXPECT(opened.writer_elsewhere);
+    ZEXPECT(second.index_waits);
+    ZEXPECT(second.database == nullptr);
+
+    second.open_index(std::nullopt);
+    ZEXPECT(!second.index_waits);
+    ZASSERT(second.database != nullptr);
+    ZEXPECT(second.database->read_only());
+    ZEXPECT(!second.writer_lock.has_value());
+}
+
 };  // ZEST_SUITE(ProjectOpen)
 
 }  // namespace

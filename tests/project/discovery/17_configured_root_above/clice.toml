@@ -1,2 +1,2 @@
-[project]
-enable_indexing = false
+[[rules]]
+background_index = false

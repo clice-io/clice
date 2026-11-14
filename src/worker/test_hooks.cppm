@@ -68,7 +68,7 @@ constexpr inline std::array<llvm::StringLiteral, 3> loop_event_names = {
 std::optional<LoopEvent> parse_loop_event(llvm::StringRef name);
 
 /// The master's test hooks, fed by the worker pool only while
-/// project.test_hooks is on (WorkerPool::hooks): how many builds of each
+/// CLICE_TEST_HOOKS=1 (WorkerPool::hooks): how many builds of each
 /// kind a worker ran per file; holds that park a build's reply between its
 /// arrival and its delivery; gates that park a request's work in its worker
 /// where it starts; and watches announcing what the background loops did,

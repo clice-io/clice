@@ -249,7 +249,8 @@ RequestResult<worker::CompileParams>
                           .project_root = params.project_root,
                           .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
                 .tidy = params.tidy,
-                .skip_bodies = params.skip_bodies,
+                .skip_bodies = true,
+                .function_bodies = params.indexing.function_bodies,
                 .preamble_inactive_regions = params.preamble_inactive_regions,
                 .stop = stop,
             };
@@ -301,9 +302,7 @@ RequestResult<worker::CompileParams>
                     send_index(index::build_tu_index(
                                    *unit,
                                    {.known_variants = params.indexing.known_variants,
-                                    .known_instantiations = params.indexing.known_instantiations,
-                                    .standard_library_instantiations =
-                                        params.indexing.standard_library_instantiations}),
+                                    .known_instantiations = params.indexing.known_instantiations}),
                                params.indexing.output_path,
                                result);
             }

@@ -60,7 +60,8 @@ const clang::NamedDecl* Builder::in_pattern(const clang::NamedDecl* decl) {
     return found->second;
 }
 
-clang::FileID Builder::home_of(const clang::Decl* decl) {
+/// The declaration whose place is the home of `decl` (Builder::home_of).
+static const clang::Decl* pattern_of(const clang::Decl* decl) {
     const clang::Decl* pattern = nullptr;
     if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl)) {
         if(const auto* found = function->getTemplateInstantiationPattern()) {
@@ -75,7 +76,11 @@ clang::FileID Builder::home_of(const clang::Decl* decl) {
     } else if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
         pattern = record->getTemplateInstantiationPattern();
     }
-    return unit.seen_at((pattern ? pattern : decl)->getLocation()).file;
+    return pattern ? pattern : decl;
+}
+
+clang::FileID Builder::home_of(const clang::Decl* decl) {
+    return unit.seen_at(pattern_of(decl)->getLocation()).file;
 }
 
 bool Builder::resolves_in(clang::FileID fid) {
@@ -85,12 +90,12 @@ bool Builder::resolves_in(clang::FileID fid) {
 std::vector<const clang::Decl*> Builder::walked_instantiations() {
     std::vector<const clang::Decl*> walked;
     for(const auto* decl: unit.instantiations()) {
-        if(llvm::isa<clang::CXXRecordDecl>(decl) ||
-           (!standard_library && decls::in_standard_library(decl))) {
+        if(llvm::isa<clang::CXXRecordDecl>(decl)) {
             continue;
         }
+        // An instantiation runs its template's body, where the template is.
         auto home = home_of(decl);
-        if(!resolves_in(home)) {
+        if(!resolves_in(home) || !unit.indexes_bodies(pattern_of(decl)->getLocation())) {
             continue;
         }
         auto key = unit.get<EntityTable>().entity(llvm::cast<clang::NamedDecl>(decl));
@@ -260,14 +265,13 @@ void Builder::close_instantiation(const clang::NamedDecl* decl,
 void Builder::project_bases(const clang::CXXRecordDecl* record) {
     const auto* pattern = record->getTemplateInstantiationPattern();
     if(!pattern || !record->hasDefinition() ||
-       (!standard_library && decls::in_standard_library(record)) ||
        ranges::none_of(pattern->bases(), [](const clang::CXXBaseSpecifier& base) {
            return base.getType()->isDependentType();
        })) {
         return;
     }
     auto home = home_of(record);
-    if(!resolves_in(home)) {
+    if(!resolves_in(home) || !unit.indexes_bodies(pattern->getLocation())) {
         return;
     }
     const auto& known = written_in(home);
@@ -300,10 +304,10 @@ void Builder::project_bases(const clang::CXXRecordDecl* record) {
 void Builder::project_expansions() {
     auto& entities = unit.get<EntityTable>();
 
-    // The standard library's own macros: a system header's, by a name
-    // reserved for the implementation (`__glibcxx_assert`).
+    // A library's own macros: those of a file whose bodies the index leaves
+    // out, by a name reserved for the implementation (`__glibcxx_assert`).
     auto library_macro = [&](clang::SourceLocation invocation, clang::SourceLocation body) {
-        if(!unit.in_library(body)) {
+        if(unit.indexes_bodies(body)) {
             return false;
         }
         auto name = unit.token_spelling(invocation);
@@ -322,8 +326,7 @@ void Builder::project_expansions() {
             location = unit.expansion_level(location).spelling;
         }
         auto level = unit.expansion_level(expansion);
-        if(level.argument || unit.concatenated(location) ||
-           (!standard_library && library_macro(level.start, location))) {
+        if(level.argument || unit.concatenated(location) || library_macro(level.start, location)) {
             return;
         }
         auto [fid, offset] = unit.written_at(location);

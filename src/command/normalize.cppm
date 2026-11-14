@@ -56,6 +56,11 @@ struct Normalizer {
     /// or not; null outside a database load.
     std::vector<LoadInput>* inputs = nullptr;
 
+    /// Where the response files the commands name and nothing can read are
+    /// recorded, which the compiler would stop on; null outside a database
+    /// load.
+    std::vector<std::string>* unreadable = nullptr;
+
     /// `file` is the entry's normalized path used to pick the input slot
     /// among the command's inputs; invalid synthesizes the slot at the end.
     /// Nullopt when `command_line` is no compile command: empty, naming an

@@ -43,7 +43,7 @@ tests/index/batch/01_build_the_index
 
 **Keep units out of indexing**
 
-A rule with `index = false` keeps its units out; they still compile when opened
+A rule with `background_index = false` keeps its units out; they still compile when opened
 
 ```case
 tests/index/batch/02_keep_units_out

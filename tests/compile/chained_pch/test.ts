@@ -85,11 +85,11 @@ for (const indexing of [false, true]) {
         // The target's PCH holds the function bodies of its headers. Indexed,
         // the editor parses those of its own preamble's too, as a parse
         // loading no PCH then parses the whole header set.
-        const config = { project: { enable_indexing: indexing, skip_header_bodies: !indexing } };
+        const lastRule = indexing ? { skip_function_body: false } : { background_index: false };
         // Indexed before main.cpp opens: what the index run adds to its
         // diagnostics is there when it opens, not raced by the open.
         const start = async (): Promise<Serve> => {
-            const s = await t.start({ config });
+            const s = await t.start({ lastRule });
             if (indexing) {
                 await s.indexed();
             }

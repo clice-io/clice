@@ -56,9 +56,11 @@ async::task<UnitResult>
     // one truth.
     tidy::CommandExtraArgs extras;
     if(params.tidy) {
-        extras = tidy::command_extra_args(params.tidy->extra_args, params.tidy->extra_args_before);
+        extras = tidy::command_extra_args(*params.tidy);
     }
-    CommandRequest extra{.extra_prepend = extras.prepend, .extra_append = extras.append};
+    CommandRequest extra{
+        .extra = {.prepend = extras.prepend, .append = extras.append, .remove = extras.remove}
+    };
     auto resolved = project.resolve_command(path_id, extra);
     params.directory = resolved.directory;
     params.arguments = resolved.arguments;
@@ -364,8 +366,7 @@ IndexTransfer Project::request_index(Fid unit, worker::IndexRequest& request) {
         request.known_variants = index.known_variants(unit, include_closure);
         request.known_instantiations = index.known_instantiations(unit, std::move(include_closure));
     }
-    request.standard_library_instantiations = settings.project.standard_library_instantiations;
-    request.library_bodies = settings.project.index_library_bodies;
+    request.function_bodies = rules.function_body_rules();
     IndexTransfer transfer;
     if(store) {
         transfer.file = store->begin_transfer();

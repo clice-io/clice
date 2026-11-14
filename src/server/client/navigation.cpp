@@ -161,7 +161,7 @@ void LSPClient::register_navigation() {
                 params.position,
                 "[]",
                 [&](const Cursor& cursor) -> NavigationReply {
-                    auto limit = project.project.settings.references.limit;
+                    auto limit = at_most(project.project.settings.references.limit);
                     return to_raw(feature::to_locations(
                         feature::references(project.query_all(),
                                             cursor,

@@ -110,7 +110,7 @@ struct StatsResult {
     WorkerPids workers;
 };
 
-/// clice/internal/sync — TEST-ONLY, present while project.test_hooks is on.
+/// clice/internal/sync — TEST-ONLY, present while CLICE_TEST_HOOKS=1.
 /// Answers once the server has no work left: no other request of the
 /// editor unanswered, no compile, PCH or PCM build and no index pass in
 /// flight or queued, a pass's save included, and no removed folder still
@@ -138,7 +138,7 @@ struct SyncResult {
     std::vector<std::string> pending;
 };
 
-/// clice/internal/hold — TEST-ONLY, present while project.test_hooks is on.
+/// clice/internal/hold — TEST-ONLY, present while CLICE_TEST_HOOKS=1.
 /// Parks the next reply of a build of `kind` ("compile", "pch", "pcm" or
 /// "index") for the file between its arrival and its delivery: to the
 /// server the build is still in flight. clice/internal/held announces the
@@ -152,7 +152,7 @@ struct HoldResult {
     std::uint64_t id = 0;
 };
 
-/// clice/internal/gate — TEST-ONLY, present while project.test_hooks is on.
+/// clice/internal/gate — TEST-ONLY, present while CLICE_TEST_HOOKS=1.
 /// Parks the work of the next request named `request` for the file in its
 /// worker, where the work starts: the worker is busy with it (see
 /// TestHooks::gate). `request` is the worker request's name as its crash
@@ -165,7 +165,7 @@ struct GateParams {
     std::string uri;
 };
 
-/// clice/internal/watch — TEST-ONLY, present while project.test_hooks is on.
+/// clice/internal/watch — TEST-ONLY, present while CLICE_TEST_HOOKS=1.
 /// Watches for the next `event` of the server's background loops after it
 /// is placed: "databaseChange", the database loop applied a changed
 /// compilation database; "diskChange", the disk loop's looks found files

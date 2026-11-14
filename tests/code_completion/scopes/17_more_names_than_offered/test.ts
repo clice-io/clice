@@ -7,7 +7,8 @@ import { test } from "@clice/tools/testing";
 // item limit nor the index takes part here.
 test("more names than a compile reads", async (t) => {
     const s = await t.start({
-        config: { code_completion: { limit: 0 }, project: { enable_indexing: false } },
+        config: { code_completion: { limit: "unlimited" } },
+        lastRule: { background_index: false },
     });
     for (const name of ["cpp", "c"]) {
         const marker = t.marker(name);

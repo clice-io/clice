@@ -10,7 +10,7 @@ test("out of both", async (t) => {
 });
 
 test("out of lint alone", async (t) => {
-    t.disk.edit("clice.toml", { remove: "index = false\n" });
+    t.disk.edit("clice.toml", { remove: "background_index = false\n" });
     await t.cli("lint --index --jobs 2");
     await t.cli("index --jobs 2");
 });

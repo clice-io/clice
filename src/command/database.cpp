@@ -248,7 +248,11 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // entries before the cut still swap in) — the CDB poll's two-tick
     // debounce is what keeps half-written files from being read.
     std::vector<CompilationEntry> new_entries;
-    Normalizer normalizer{.commands = command_table, .files = file_table, .inputs = &source.inputs};
+    std::vector<std::string> unreadable;
+    Normalizer normalizer{.commands = command_table,
+                          .files = file_table,
+                          .inputs = &source.inputs,
+                          .unreadable = &unreadable};
 
     // A database written inside Cygwin or MSYS2 (CMake run from their shell)
     // spells its paths POSIX-style: the mount table of the runtime on PATH,
@@ -467,6 +471,16 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     ranges::sort(responses, {}, &LoadInput::file);
     auto duplicates = ranges::unique(responses, {}, &LoadInput::file);
     source.inputs.erase(duplicates.begin(), duplicates.end());
+    if(!unreadable.empty()) {
+        ranges::sort(unreadable);
+        unreadable.erase(ranges::unique(unreadable).begin(), unreadable.end());
+        LOG_GUIDANCE(
+            "The compilation database {} names response files that cannot be read, and the "
+            "commands naming them compile without their options: {}. A build may delete them "
+            "once it has run; build again to bring them back",
+            path,
+            llvm::join(unreadable, ", "));
+    }
     sort_entries();
     return count;
 }

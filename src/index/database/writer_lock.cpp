@@ -28,23 +28,17 @@ std::string holder_name(std::optional<std::uint32_t> pid) {
 
 }  // namespace
 
-std::optional<WriterLock> WriterLock::acquire(llvm::StringRef cache_dir) {
+std::expected<WriterLock, WriterLock::Refused> WriterLock::acquire(llvm::StringRef cache_dir) {
     auto lock_path = path::join(cache_dir, lock_name);
     auto opened = fs::File::open(lock_path, {.read = true, .write = true, .create = true});
     if(!opened) {
         LOG_WARN("Failed to open the index writer lock {}: {}",
                  lock_path,
                  opened.error().message());
-        return std::nullopt;
+        return std::unexpected(Refused::Unopenable);
     }
     if(auto taken = opened->try_lock(); !taken || !*taken) {
-        auto holder = holder_name(recorded_pid(lock_path));
-        LOG_WARN(
-            "Another clice process{} is writing the index cache at {}; "
-            "index persistence is disabled for this process",
-            holder.empty() ? "" : std::format(" ({})", holder),
-            cache_dir);
-        return std::nullopt;
+        return std::unexpected(Refused::Held);
     }
     // A server that died holding the lock left its record behind; the
     // holder is now this process, which publishes its own if it serves.
@@ -54,6 +48,10 @@ std::optional<WriterLock> WriterLock::acquire(llvm::StringRef cache_dir) {
     opened->resize(0);
     opened->write(std::format("{}\n", sys::pid()));
     return WriterLock(std::move(*opened));
+}
+
+std::string WriterLock::holder(llvm::StringRef cache_dir) {
+    return holder_name(recorded_pid(path::join(cache_dir, lock_name)));
 }
 
 void WriterLock::release() {

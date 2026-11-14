@@ -4,7 +4,7 @@ import { test } from "@clice/tools/testing";
 // main.cpp's preamble imports A, which re-exports B; only B's command
 // changes, so neither A's source nor its command does.
 test(async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("main.cpp")).toEqual([]);
     const use = t.at("main.cpp", "return |value;");
     await t.show("before", s.hover(use));

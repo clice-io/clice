@@ -333,6 +333,12 @@ Item item_of(const index::IndexQuery& query,
 /// between a project compiling the file from inside its root and one
 /// compiling it from outside (index::IndexQuery::Asked).
 bool same_entity(const index::IndexQuery::Located& lhs, const index::IndexQuery::Located& rhs) {
+    // LIMITATION: a file-local entity (static, macro, anonymous namespace)
+    // hashes its file as the project spells it, so two folders of one
+    // layout — two checkouts of a repository in one window — give theirs
+    // one id, and a hierarchy through a header outside both mixes their
+    // callers and subtypes. Requiring the declaring files to agree as well
+    // would tell them apart.
     return lhs.symbol.hash == rhs.symbol.hash ||
            (lhs.symbol.name == rhs.symbol.name && lhs.site.file == rhs.site.file &&
             lhs.site.range == rhs.site.range);

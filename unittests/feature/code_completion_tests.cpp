@@ -4,6 +4,7 @@ import :command.search_config;
 import :command.table;
 import :feature.code_completion.cursor;
 import :feature.code_completion;
+import :support.json;
 import :syntax.lexer;
 import :syntax.position;
 import :unittests.utils;
@@ -33,7 +34,7 @@ ZEST_CASE(InternalBuiltinsLast) {
                                             "",
                                             config,
                                             scope,
-                                            0);
+                                            at_most(NoLimit::Unlimited));
     ranges::sort(list.items, {}, [](const protocol::CompletionItem& item) {
         return std::tie(static_cast<const std::optional<std::string>&>(item.sort_text), item.label);
     });

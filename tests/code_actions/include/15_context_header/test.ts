@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // the server synthesizes. The directive goes inside the header, after its
 // #pragma once, and the header then compiles in that context.
 test(async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: true } } });
+    const s = await t.start();
     await s.diagnostics("main.cpp");
     await s.indexed();
     await s.diagnostics("utils.h");

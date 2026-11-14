@@ -425,12 +425,11 @@ ZEST_CASE(ScalingDownTakesNothing) {
     Core core(3);
     core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB);
-    ZASSERT(core.all<scheduler::ScaleDown>().size() == 1u);
-    for(RequestId id = 1; id <= 3; id += 1) {
-        core.submit(id, Priority::Low);
-    }
-    ZEXPECT(core.slot_of(2).has_value());
-    ZEXPECT(!core.slot_of(3));
+    ZASSERT(core.all<scheduler::ScaleDown>().size() == 2u);
+    core.submit(1, Priority::Low);
+    core.submit(2, Priority::Low);
+    ZEXPECT(core.slot_of(1) == std::optional<std::size_t>(0));
+    ZEXPECT(!core.slot_of(2));
 }
 
 ZEST_CASE(AskedCancelCounts) {
@@ -649,17 +648,16 @@ ZEST_CASE(QueuedCancelDrops) {
 }
 
 ZEST_CASE(IdlePoolScalesDown) {
+    // Every idle worker above min_workers, one, goes at once.
     Core core(3);
     core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB);
     auto scale_downs = core.all<scheduler::ScaleDown>();
-    ZASSERT(scale_downs.size() == 1u);
+    ZASSERT(scale_downs.size() == 2u);
     ZEXPECT(scale_downs[0].slot == 2u);
+    ZEXPECT(scale_downs[1].slot == 1u);
     core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB);
-    core.advance(WorkerScheduler::idle_scale_down);
-    core.sample(16 * GiB);
-    // Down to min_workers, one.
     ZEXPECT(core.all<scheduler::ScaleDown>().size() == 2u);
 }
 
@@ -719,17 +717,19 @@ ZEST_CASE(UnusedWorkerKept) {
 }
 
 ZEST_CASE(ScaleDownTakesHeaviest) {
+    // The heaviest go first, and the lightest stays as the floor.
     Core core(3);
     core.advance(WorkerScheduler::idle_scale_down);
     core.sample(16 * GiB,
                 {
                     {.slot = 0, .memory = MiB    },
                     {.slot = 1, .memory = 9 * MiB},
-                    {.slot = 2, .memory = MiB    }
+                    {.slot = 2, .memory = 2 * MiB}
     });
     auto scale_downs = core.all<scheduler::ScaleDown>();
-    ZASSERT(scale_downs.size() == 1u);
+    ZASSERT(scale_downs.size() == 2u);
     ZEXPECT(scale_downs[0].slot == 1u);
+    ZEXPECT(scale_downs[1].slot == 2u);
 }
 
 ZEST_CASE(ShortMemoryTakesHeavy) {

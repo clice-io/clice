@@ -7,7 +7,10 @@ import { test } from "@clice/tools/testing";
 // navigation, with no compile and no refresh: nothing it read changed. The
 // rest compiles it once more.
 
-const KEEP_ONE = { project: { enable_indexing: false, max_resident_documents: 1 } };
+const KEEP_ONE = {
+    lastRule: { background_index: false },
+    env: { CLICE_TEST_MAX_ASTS: "1" },
+};
 const REFRESH = "workspace/semanticTokens/refresh";
 const REFRESHES = { workspace: { semanticTokens: { refreshSupport: true } } };
 
@@ -17,7 +20,7 @@ async function compiles(s: Serve, file: string): Promise<number> {
 }
 
 test("its answers come back", async (t) => {
-    const s = await t.start({ config: KEEP_ONE, capabilities: REFRESHES });
+    const s = await t.start({ ...KEEP_ONE, capabilities: REFRESHES });
     const first = t.at("a.cpp", "int NAME = add(1, 2);");
     const asked = () =>
         Promise.all([
@@ -52,7 +55,7 @@ test("its answers come back", async (t) => {
 });
 
 test("the rest compiles it once", async (t) => {
-    const s = await t.start({ config: KEEP_ONE });
+    const s = await t.start(KEEP_ONE);
     await s.diagnostics("a.cpp");
     await s.inlayHints(t.at("a.cpp", "int NAME = add(1, 2);"));
     await s.diagnostics("b.cpp");
@@ -62,7 +65,7 @@ test("the rest compiles it once", async (t) => {
 });
 
 test("an edit drops them", async (t) => {
-    const s = await t.start({ config: KEEP_ONE });
+    const s = await t.start(KEEP_ONE);
     await s.diagnostics("a.cpp");
     await s.documentSymbols("a.cpp");
     await s.diagnostics("b.cpp");
@@ -74,7 +77,7 @@ test("an edit drops them", async (t) => {
 test("any request is a use", async (t) => {
     // Two kept. The index answers a.cpp's definition, and keeps a.cpp over
     // b.cpp when c.cpp compiles.
-    const s = await t.start({ config: { project: { max_resident_documents: 2 } } });
+    const s = await t.start({ env: { CLICE_TEST_MAX_ASTS: "2" } });
     await s.diagnostics("a.cpp");
     await s.diagnostics("b.cpp");
     await s.definition(t.at("a.cpp", "int NAME = |add(1, 2);"));
@@ -88,7 +91,8 @@ test("any request is a use", async (t) => {
 test("a header changed while it was out shows", async (t) => {
     // Nothing looks at the disk but the requests: no polling, no index.
     const s = await t.start({
-        config: { ...KEEP_ONE, tracker: { workspace_poll_seconds: 0 } },
+        ...KEEP_ONE,
+        config: { poll_seconds: 0 },
     });
     await s.diagnostics("a.cpp");
     await s.documentSymbols("a.cpp");
@@ -101,7 +105,7 @@ test("a header changed while it was out shows", async (t) => {
 
 test("its recompile publishes nothing new", async (t) => {
     const s = await t.start({
-        config: KEEP_ONE,
+        ...KEEP_ONE,
         capabilities: {
             ...REFRESHES,
             textDocument: { publishDiagnostics: { relatedInformation: true } },
@@ -123,7 +127,7 @@ test("a crashed query keeps nothing", async (t) => {
     // The crash answers empty, and the worker that died held the AST: after
     // the save that lets the hints retry, a worker is asked again.
     const s = await t.start({
-        config: KEEP_ONE,
+        ...KEEP_ONE,
         crash: { request: "inlayHint", file: "a.cpp" },
     });
     const first = t.at("a.cpp", "int NAME = add(1, 2);");
@@ -135,7 +139,7 @@ test("a crashed query keeps nothing", async (t) => {
 });
 
 test("a pull's compile stays through another document's", async (t) => {
-    const s = await t.start({ config: KEEP_ONE });
+    const s = await t.start(KEEP_ONE);
     const park = await s.park("compile", "a.cpp", { at: "worker" });
     const pulled = s.diagnostics("a.cpp");
     await park.reached();

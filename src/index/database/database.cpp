@@ -272,6 +272,23 @@ void make_sparse(llvm::StringRef path) {
     }
 }
 
+/// Why the disk under the database at `path` has no room for the lock
+/// file LMDB creates beside it; none when it has. LMDB sizes that file with
+/// ftruncate and maps it, so on a full disk its first write is a SIGBUS,
+/// not an error: as much is written for real first, then removed.
+std::error_code check_room_for_lock(llvm::StringRef path) {
+    auto probe = path.str() + "-probe";
+    auto file = fs::File::open(probe, {.write = true, .create = true, .truncate = true});
+    if(!file) {
+        return file.error();
+    }
+    // Over the lock file of 1024 readers (configure), 64 bytes each.
+    auto error = file->write(std::string(256 * 1024, '\0'));
+    file->close();
+    fs::remove(probe);
+    return error;
+}
+
 class LmdbDatabase final : public BlobDatabase {
 public:
     LmdbDatabase(MDB_env* env,
@@ -778,6 +795,14 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
         }
     } else {
         fs::File::open(path + "-open", {.write = true, .create = true});
+        if(!fs::exists(path + "-lock")) {
+            if(auto error = check_room_for_lock(path)) {
+                LOG_GUIDANCE("No room for the index database at {}: {}; the index is not saved",
+                             path,
+                             error.message());
+                return nullptr;
+            }
+        }
     }
 
     // One recovery retry: confirmed corruption (or a meta mismatch) is
@@ -836,12 +861,18 @@ std::unique_ptr<LmdbDatabase> open_lmdb_env(llvm::StringRef directory,
                 repaired = true;
                 return true;
             }
-            LOG_WARN(
-                "Cannot open the index database at {} ({} failed: {}); "
-                "index persistence is disabled for this session",
-                path,
-                stage,
-                mdb_strerror(rc));
+            if(read_only) {
+                LOG_WARN("Cannot open the index database at {} ({} failed: {})",
+                         path,
+                         stage,
+                         mdb_strerror(rc));
+            } else {
+                LOG_GUIDANCE(
+                    "Cannot open the index database at {} ({} failed: {}); the index is not saved",
+                    path,
+                    stage,
+                    mdb_strerror(rc));
+            }
             discard_created();
             return false;
         };
@@ -1052,10 +1083,15 @@ std::unique_ptr<BlobDatabase> open_database(CacheStore& store,
     switch(filesystem_locality(store.base_dir())) {
         case FsLocality::Local: break;
         case FsLocality::Remote: {
-            LOG_WARN(
-                "{} is on a remote filesystem, which the index database does not "
-                "support; index persistence is disabled for this session",
-                store.base_dir());
+            if(read_only || store.read_only()) {
+                LOG_WARN("{} is on a remote filesystem, where no index is kept", store.root_dir());
+            } else {
+                LOG_GUIDANCE(
+                    "The cache directory {} is on a remote filesystem, which the index database "
+                    "does not support, so the index is not saved; set `cache_dir` in clice.toml "
+                    "to a directory on a local disk",
+                    store.root_dir());
+            }
             return nullptr;
         }
         case FsLocality::Unknown: {

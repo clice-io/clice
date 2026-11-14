@@ -1,5 +1,5 @@
-[[project]]
-enable_indexing = false
+[[workers]]
+foreground = 1
 
-[[project]]
-enable_indexing = true
+[[workers]]
+foreground = 2

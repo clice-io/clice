@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // saved, and main.cpp asks before any tick.
 
 test("B fixed", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("before", s.errors("main.cpp"));
     t.disk.edit("b.cppm", { replace: "return broken_in_b;", with: "return 1;" });
     expect(await s.errors("main.cpp")).toEqual([]);
@@ -14,7 +14,7 @@ test("B fixed", async (t) => {
 // A drops its import of B: A builds again, though B still fails.
 
 test("import dropped, main.cpp edited", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("before", s.errors("main.cpp"));
     t.disk.edit("a.cppm", { replace: "import B;\n", with: "" });
     t.disk.edit("a.cppm", { replace: "return b();", with: "return 1;" });
@@ -25,7 +25,7 @@ test("import dropped, main.cpp edited", async (t) => {
 // Nothing is edited either: the next request on main.cpp finds what A's
 // failure rests on changed and compiles main.cpp again.
 test("import dropped, unseen", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("before", s.errors("main.cpp"));
     t.disk.edit("a.cppm", { replace: "import B;\n", with: "" });
     t.disk.edit("a.cppm", { replace: "return b();", with: "return 1;" });

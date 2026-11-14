@@ -2,11 +2,12 @@ module clice;
 
 import :feature.code_completion.cursor;
 import :feature.code_completion;
-import :index.query;
 import :index.query.locate;
+import :index.query;
 import :index.symbol;
 import :semantic.symbol;
 import :semantic.token_class;
+import :support.json;
 import :syntax.dependency_graph;
 import :syntax.source_text;
 import :vfs.dir_cache;
@@ -135,7 +136,7 @@ auto code_complete(const CompletionInputs& inputs)
                                       std::string(files.resolve(inputs.file)),
                                       inputs.search(),
                                       scope,
-                                      inputs.options.limit);
+                                      at_most(inputs.options.limit));
         }
         case CompletionName::Kind::Import:
         case CompletionName::Kind::ModuleDeclaration: return module_completion(completing, inputs);

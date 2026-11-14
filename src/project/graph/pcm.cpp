@@ -357,7 +357,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
     bp.file = file_path;
 
     if(!project.store) {
-        auto& cache_dir = project.settings.project.cache_dir;
+        auto& cache_dir = project.settings.cache_dir;
         auto cause = cache_dir.empty()
                          ? std::string("no cache directory to store its module file in")
                          : std::format("the cache directory {} cannot be used", cache_dir);

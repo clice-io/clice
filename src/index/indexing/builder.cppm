@@ -326,13 +326,6 @@ private:
     /// (TUIndexOptions::known_instantiations).
     llvm::ArrayRef<std::uint64_t> known_instantiations;
 
-    /// Whether the standard library's own instantiations and expansions are
-    /// walked (TUIndexOptions::standard_library_instantiations).
-    bool standard_library;
-
-    /// See TUIndexOptions::library_bodies.
-    bool library_bodies;
-
     llvm::DenseMap<clang::FileID, Resolved> resolved;
 
     /// Per file, its written relations as records would say them

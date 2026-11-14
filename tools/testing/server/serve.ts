@@ -8,7 +8,9 @@
 /// or polls. Every action is recorded as a step; a failing test prints the
 /// steps, what the server still had to do, and the log lines that matter.
 
+import * as fs from "node:fs";
 import * as path from "node:path";
+import { parse } from "smol-toml";
 import * as proto from "vscode-languageserver-protocol";
 import { URI } from "vscode-uri";
 import { CliceClient, type InitializeOptions } from "../../client/client.ts";
@@ -111,11 +113,40 @@ export interface WorkerFault {
     input?: true;
 }
 
+/// `config` with `last`, a rule for every file, after the rules `config`
+/// passes, else after those of the settings file in `root`: the
+/// configuration's rules replace the file's, and both anchor at the project
+/// root.
+export function withLastRule(
+    config: Record<string, unknown>,
+    root: string,
+    last: Record<string, unknown>,
+): Record<string, unknown> {
+    let rules = config["rules"] as unknown[] | undefined;
+    for (const name of ["clice.toml", path.join(".clice", "config.toml")]) {
+        const file = path.join(root, name);
+        if (rules !== undefined || !fs.existsSync(file)) {
+            continue;
+        }
+        // A file that does not parse breaks the project however it is served.
+        try {
+            rules = (parse(fs.readFileSync(file, "utf8"))["rules"] ?? []) as unknown[];
+        } catch {
+            rules = [];
+        }
+    }
+    return { ...config, rules: [...(rules ?? []), last] };
+}
+
 /// How the test's servers start: `t.start(options)`, and every restart of
 /// that server again.
 export interface ServerOptions {
     /// initializationOptions over the test defaults, shaped as clice.toml.
     config?: Record<string, unknown>;
+    /// Fields of a last rule for every file (withLastRule): a setting of every
+    /// file, `{ background_index: false }` to index nothing in the
+    /// background.
+    lastRule?: Record<string, unknown>;
     /// The client's capabilities; the most conservative client by default.
     capabilities?: proto.ClientCapabilities;
     /// The client offers this encoding before UTF-16, and the server must
@@ -1116,8 +1147,12 @@ export class Serve extends Client {
         return this.steps.run("initialize", async () => {
             const client = this.live();
             this.recordToml("clice.toml");
-            const { config, capabilities, positionEncoding, foldersBeforeInitialized } =
-                this.options;
+            const { capabilities, positionEncoding, foldersBeforeInitialized } = this.options;
+            const { lastRule } = this.options;
+            const config =
+                lastRule === undefined
+                    ? this.options.config
+                    : withLastRule(this.options.config ?? {}, this.workspace.root, lastRule);
             const folders = this.folders;
             if (config !== undefined) {
                 recordConfig(config);

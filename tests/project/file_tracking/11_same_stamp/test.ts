@@ -7,7 +7,7 @@ test("same stamp cdb rewrite applied", async (t) => {
     t.disk.database();
     const stamp = new Date(Date.now() + 3_600_000);
     t.disk.touch("compile_commands.json", stamp);
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("old", s.errors("main.cpp"));
     expect(await s.poll("cdb", { force: false })).toBe(0);
 

@@ -13,6 +13,7 @@ import :semantic.display;
 import :semantic.identity;
 import :semantic.template_resolver;
 import :support.fuzzy_matcher;
+import :support.json;
 import :support.markup;
 import :syntax.lexer;
 
@@ -2088,7 +2089,7 @@ public:
                 item.bundle = item.label;
             }
 
-            if(options.limit == 0) {
+            if(std::holds_alternative<NoLimit>(options.limit)) {
                 render_declaration(candidate, std::move(item));
                 return;
             }
@@ -2604,7 +2605,7 @@ public:
                                     entry.getKey());
             }
             llvm::StringSet<> kept;
-            auto keep = std::min<std::size_t>(ranked.size(), options.limit);
+            auto keep = std::min<std::size_t>(ranked.size(), at_most(options.limit));
             more_names = more_names || keep < ranked.size();
             ranges::partial_sort(ranked, ranked.begin() + keep);
             for(auto& [order, label]: views::take(ranked, keep)) {
@@ -2762,8 +2763,8 @@ auto code_complete(CompilationParams params,
     assert(ranges::size(items) == ranges::size(documented));
     // An item's documentation costs most: those the list leaves out get
     // none. Where an item waits for its #include, the server cuts the list.
-    auto limit = includes ? 0U : options.limit;
-    bool cut = limit != 0 && items.size() > limit;
+    auto limit = includes ? at_most(NoLimit::Unlimited) : at_most(options.limit);
+    bool cut = items.size() > limit;
     if(cut) {
         std::vector<std::size_t> order(items.size());
         std::iota(order.begin(), order.end(), 0);

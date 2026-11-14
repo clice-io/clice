@@ -308,10 +308,10 @@ public:
         }
         auto outer_body = skipped_body;
         if(auto* function = llvm::dyn_cast<clang::FunctionDecl>(X);
-           function && !options.library_bodies && !visiting_root &&
+           function && !options.every_body && !visiting_root &&
            function->doesThisDeclarationHaveABody()) {
             auto location = function->getLocation();
-            if(unit.in_library(location) && !unit.focus_file().contains(unit.file_id(location))) {
+            if(!unit.indexes_bodies(location) && !unit.focus_file().contains(unit.file_id(location))) {
                 skipped_body = function->getBody();
             }
         }
@@ -1017,7 +1017,7 @@ private:
     llvm::DenseSet<const clang::Decl*> root_set;
 
     /// The body of the function being traversed whose body and constructor
-    /// initializers are left out (SemanticsOptions::library_bodies).
+    /// initializers are left out (SemanticsOptions::every_body).
     const clang::Stmt* skipped_body = nullptr;
 
     /// The source ranges of the binary operators popped so far.

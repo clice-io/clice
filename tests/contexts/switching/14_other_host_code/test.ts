@@ -33,3 +33,20 @@ test("own context alone", async (t) => {
         hover: s.hover(t.marker("slow")),
     });
 });
+
+// A rule setting `other_contexts = false` makes the own context the
+// default; the editor's choice still shows the others for the session.
+test("own context by rule", async (t) => {
+    const s = await t.start({ lastRule: { other_contexts: false } });
+    await s.indexed();
+    s.open("shared.h", { pull: false });
+    await t.show("by rule", {
+        context: s.currentContext("shared.h"),
+        hover: s.hover(t.marker("slow")),
+    });
+    expect((await s.showOtherContexts("shared.h", true)).success).toBe(true);
+    await t.show("shown again", {
+        context: s.currentContext("shared.h"),
+        hover: s.hover(t.marker("slow")),
+    });
+});

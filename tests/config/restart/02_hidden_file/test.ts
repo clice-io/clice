@@ -13,7 +13,7 @@ test("in use", async (t) => {
 // Beside a clice.toml it configures nothing, and a change to it nothing
 // either.
 test("beside clice.toml", async (t) => {
-    t.disk.write("clice.toml", "[project]\nenable_indexing = false\n");
+    t.disk.write("clice.toml", "[[rules]]\nbackground_index = false\n");
     const s = await t.start();
     await s.sync();
     t.disk.write(".clice/config.toml", '[[rules]]\nappend = ["-DEDITED"]\n');

@@ -6,7 +6,7 @@ import { test } from "@clice/tools/testing";
 // directives keeps the compile's PCH and sees what they define, while the
 // edit rebuilds it once for the compile.
 test("completion reuses the pch", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     const builds = async () => (await s.counts()).files["config.h"]?.pch ?? 0;
     expect(await s.errors("config.h")).toEqual([]);
     await s.sync();

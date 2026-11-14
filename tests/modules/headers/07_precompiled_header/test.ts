@@ -40,12 +40,12 @@ test("the units lint beside an index that cannot be read", async (t) => {
 test("a rule leaving the pch's builder out of the index", async (t) => {
     // The module units still read the PCH: without it they are no module
     // units at all.
-    t.disk.write("clice.toml", '[[rules]]\npatterns = ["build/**"]\nindex = false\n');
+    t.disk.write("clice.toml", '[[rules]]\npatterns = ["build/**"]\nbackground_index = false\n');
     await t.cli("lint");
 });
 
 test("a header of the pch changes", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("src/main.cpp")).toEqual([]);
     t.disk.edit("include/counter.h", {
         before: "    int next()",
@@ -64,7 +64,7 @@ test("the pch leaves the store", async (t) => {
     // As another process sharing the cache removes it. app.cpp, of a target
     // without precompiled headers, reads it only through the PCMs naming it:
     // they are built again over the PCH built again.
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("src/app.cpp")).toEqual([]);
     for (const pch of t.disk.list(".clice/cache/*/pch/*.pch")) {
         t.disk.rm(pch);
@@ -76,10 +76,10 @@ test("the pch leaves the store", async (t) => {
 test("the pch leaves the store after a restart", async (t) => {
     // The same, with the PCMs the first server built read back from its
     // records.
-    const first = await t.start({ config: { project: { enable_indexing: false } } });
+    const first = await t.start({ lastRule: { background_index: false } });
     expect(await first.errors("src/app.cpp")).toEqual([]);
     await first.stop();
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("src/app.cpp")).toEqual([]);
     for (const pch of t.disk.list(".clice/cache/*/pch/*.pch")) {
         t.disk.rm(pch);

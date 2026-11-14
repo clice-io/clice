@@ -23,6 +23,6 @@ test("a wrong type", { errors: ["--config-overlay: invalid type"] }, async (t) =
         "semantic-tokens",
         "main.cpp",
         "--config-overlay",
-        '{"project": {"enable_indexing": "yes"}}',
+        '{"poll_seconds": "yes"}',
     ]);
 });

@@ -7,7 +7,7 @@ import { test } from "@clice/tools/testing";
 // unused, but for the one a NOLINT comment silences, as clang-tidy does in
 // the editor.
 test("editor", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("main.cpp", s.diagnostics("main.cpp"));
 });
 

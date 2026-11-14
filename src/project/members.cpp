@@ -34,10 +34,10 @@ std::vector<Fid> provisional_files(const Project& project) {
     return files;
 }
 
-/// The interned default command of `rule`; nullopt when it is not a compile
-/// command.
+/// The interned default command of `rule`, which runs from the project
+/// root; nullopt when it is not a compile command.
 std::optional<CommandID> command_of(Project& project, const CompiledRule& rule) {
-    return project.written_commands.intern(rule.directory, rule.default_command);
+    return project.written_commands.intern(Spelling(project.root), rule.default_command);
 }
 
 /// Whether the default command of `rule`, the first rule matching `path`
@@ -207,13 +207,9 @@ Edits Project::rule_edits(Fid file, const Candidate& candidate) const {
     return rules.edits(paths);
 }
 
-CommandRef Project::apply_rules(Fid file,
-                                const Candidate& candidate,
-                                llvm::ArrayRef<std::string> extra_prepend,
-                                llvm::ArrayRef<std::string> extra_append) {
+CommandRef Project::apply_rules(Fid file, const Candidate& candidate, ExtraArgs extra) {
     auto applied =
-        edited_commands.apply(candidate.base,
-                              rule_edits(file, candidate).options(extra_prepend, extra_append));
+        edited_commands.apply(candidate.base, rule_edits(file, candidate).options(extra));
     // A header borrowing a command compiles as that command's unit does — a
     // `.h` as C++, not as a header job — and so does a file in its host; a
     // source in its own language, which borrowing only ever matches or
@@ -277,8 +273,8 @@ bool Project::record_provisional(Fid file) {
     // own.
     auto path = file_table.resolve(file);
     if(root.empty() || !is_source_path(path) || declared(file) ||
-       !project_file(root, settings.project.cache_identity, path) ||
-       !nested_project(root, path).empty() || !provisional.record(file)) {
+       !project_file(root, settings.cache_identity, path) || !nested_project(root, path).empty() ||
+       !provisional.record(file)) {
         return false;
     }
     LOG_INFO("Recorded {} as a provisional member", path);
@@ -380,6 +376,11 @@ std::vector<CanonicalPath> walk_sources(const SourceWalk& walk) {
                    has_configuration_file(Spelling::absolute(entry->path))) {
                     entries.skip();
                 }
+                continue;
+            }
+            // macOS writes an AppleDouble `._` file beside each file on a
+            // volume that keeps no extended attributes; none is a source.
+            if(entry->name().starts_with("._")) {
                 continue;
             }
             // Only an entry that is itself a symlink names a file elsewhere.

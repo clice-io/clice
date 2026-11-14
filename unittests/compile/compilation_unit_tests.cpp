@@ -426,6 +426,49 @@ int library;
     ZEXPECT(unit->in_library(declared("library")->getLocation()));
 }
 
+ZEST_CASE(BodyRulesFirstDecides) {
+    // Of the rules matching a file, the first to say decides each of skip
+    // and index; a file no rule names keeps the compile's choice, its bodies
+    // indexed unless it is a system header's.
+    add_file("sys/lib.h", "int library;\n");
+    add_file("third/dep.h", "int dep;\n");
+    add_file("own.h", "int own_header;\n");
+    add_focus("main.cpp", R"cpp(#include <lib.h>
+#include "third/dep.h"
+#include "own.h"
+int own;
+)cpp");
+    prepare();
+    params.input.arguments.insert(params.input.arguments.end() - 1,
+                                  {"-isystem", TestVFS::path("sys")});
+    params.function_bodies.rules = {
+        {.patterns = {"**/third/**"}, .skip = true},
+        {.patterns = {"**/third/**", "**/lib.h"}, .skip = false, .index = true},
+    };
+    ZASSERT(try_compile());
+
+    ZEXPECT(unit->skips_bodies(file("third/dep.h")) == true);
+    // A file whose bodies are skipped has none to index.
+    ZEXPECT(!unit->indexes_bodies(declared("dep")->getLocation()));
+
+    ZEXPECT(unit->skips_bodies(file("sys/lib.h")) == false);
+    ZEXPECT(unit->indexes_bodies(declared("library")->getLocation()));
+
+    ZEXPECT(!unit->skips_bodies(file("own.h")).has_value());
+    ZEXPECT(unit->indexes_bodies(declared("own_header")->getLocation()));
+}
+
+ZEST_CASE(LibraryBodiesUnindexed) {
+    add_file("sys/lib.h", "int library;\n");
+    add_focus("main.cpp", "#include <lib.h>\nint own;\n");
+    prepare();
+    params.input.arguments.insert(params.input.arguments.end() - 1,
+                                  {"-isystem", TestVFS::path("sys")});
+    ZASSERT(try_compile());
+    ZEXPECT(!unit->indexes_bodies(declared("library")->getLocation()));
+    ZEXPECT(unit->indexes_bodies(declared("own")->getLocation()));
+}
+
 ZEST_CASE(BuiltinFiles) {
     add_files("main.cpp", R"cpp(
 #[a.h]

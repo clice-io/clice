@@ -21,5 +21,4 @@ errors = [
 ]
 
 ["checked data appears"."data.bin"]
-wrong = "a file created where `__has_embed` looked for it is never noticed: the branch it guards stays as compiled"
 errors = []

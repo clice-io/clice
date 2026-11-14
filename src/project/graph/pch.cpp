@@ -9,7 +9,9 @@ import :project.graph.precompiled;
 import :project.graph.task_graph;
 import :project.graph.unit;
 import :project.project;
+import :settings.rules;
 import :settings.settings;
+import :support.json;
 import :support.logging;
 import :support.text;
 import :syntax.preamble;
@@ -22,6 +24,13 @@ import :worker.protocol;
 namespace clice {
 
 namespace {
+
+/// What of the rules a PCH's content depends on: the function bodies its
+/// build skips. A change of them takes a restart, which reads the PCHs on
+/// disk again.
+std::string body_rules_key(const Rules& rules) {
+    return json::to_string(rules.function_body_rules()).value_or("");
+}
 
 /// Discard the pairs the key's entry names, and forget the entry unless it
 /// holds what failed of the key: an entry whose pairs the store's LRU
@@ -133,7 +142,6 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     }
 
     if(!project.store) {
-        LOG_WARN("No PCH for {}: the cache directory cannot be used", request.params.file);
         co_return Result::Failed;
     }
     if(refused(project, pch_key, request.params.file)) {
@@ -149,6 +157,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     auto& bp = request.params;
     bp.project_root = project.root.str();
     bp.output_path = pending.tmp_path;
+    bp.indexing.function_bodies = project.rules.function_body_rules();
     std::optional<CacheStore::PendingEntry> pending_idx;
     IndexTransfer transfer;
     if(!bp.whole_file) {
@@ -324,6 +333,7 @@ PCHRequest Project::declared_pch_request(const CommandRef& unit) {
         auto& params = request.params;
         request.pch_key = cache_key({clang::getClangFullVersion(),
                                      pch_build_rule(false, false),
+                                     body_rules_key(rules),
                                      database_key.str(),
                                      params.directory,
                                      params.file,
@@ -442,10 +452,10 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     auto own_path = preamble_uses_macros(text, bound) || preamble_declares(text, bound)
                         ? llvm::StringRef(path)
                         : llvm::StringRef();
-    bool skip_bodies = settings.project.skip_header_bodies;
     bool modular = imports.modular();
     auto pch_key = cache_key({clang::getClangFullVersion(),
-                              pch_build_rule(skip_bodies, modular),
+                              pch_build_rule(true, modular),
+                              body_rules_key(rules),
                               database_key.str(),
                               resolution.directory,
                               path::parent(path),
@@ -467,7 +477,6 @@ PreamblePCH Project::preamble_pch(Fid path_id,
                         .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
                         .content = std::string(text),
                         .preamble_bound = bound,
-                        .skip_bodies = skip_bodies,
                         .modular = modular,
                     }, .base = base.str(),
                        },
@@ -501,7 +510,7 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
                                                         const Imports& imports,
                                                         BuildOptions options) {
     BuiltPCH built;
-    if(settings.project.readonly == ReadonlyMode::On) {
+    if(rules.readonly(file_table.resolve(file)) == ReadonlyMode::On) {
         co_return built;
     }
     // Through depend, the attempt's edge to the PCH makes a staleness

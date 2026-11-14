@@ -99,49 +99,6 @@ static async::task<> serve(MasterServer& server,
     co_await signals.join();
 }
 
-async::task<> accept_peers(async::tcp::acceptor acceptor,
-                           llvm::StringRef what,
-                           llvm::unique_function<std::shared_ptr<void>(ipc::JSONPeer&)> accepted) {
-    struct Connection {
-        std::unique_ptr<ipc::JSONPeer> peer;
-
-        /// What serves the peer, destroyed before it.
-        std::shared_ptr<void> served;
-    };
-
-    using Connections = std::list<Connection>;
-    auto run = [](ipc::JSONPeer* peer,
-                  llvm::StringRef what,
-                  Connections& connections,
-                  Connections::iterator pos) -> async::task<> {
-        co_await peer->run();
-        LOG_INFO("{} disconnected", what);
-        connections.erase(pos);
-    };
-    auto& loop = async::event_loop::current();
-    Connections connections;
-    // The loop is a child of the group: a cancel reaches it through the
-    // group, which waits for every connection's run to end before the peers
-    // go.
-    co_await async::with_task_group([&](async::task_group<>& group) -> async::task<> {
-        while(true) {
-            auto connection = co_await acceptor.accept();
-            if(!connection.has_value()) {
-                break;
-            }
-            LOG_INFO("{} connected", what);
-            auto transport = std::make_unique<ipc::StreamTransport>(std::move(*connection));
-            auto peer = std::make_unique<ipc::JSONPeer>(loop, std::move(transport));
-            auto* raw = peer.get();
-            auto served = accepted(*raw);
-            auto pos = connections.emplace(
-                connections.end(),
-                Connection{.peer = std::move(peer), .served = std::move(served)});
-            group.spawn(run(raw, what, connections, pos));
-        }
-    });
-}
-
 int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
     logging::stderr_logger("master", logging::StderrReader::Editor);
 
@@ -196,33 +153,32 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
         return server.exit_before_shutdown ? 1 : 0;
     }
 
-    // Socket mode: the first connection gets the client, later ones only a
-    // peer, and the server takes none after it goes.
+    // Socket mode: a connection while no client is connected gets the
+    // client, one beside it only a peer.
     auto acceptor = async::tcp::listen(opts.host, opts.port, {}, loop);
     if(!acceptor) {
         LOG_ERROR("failed to listen on {}:{}", opts.host, opts.port);
         return 1;
     }
     LOG_INFO("Listening on {}:{} ...", opts.host, opts.port);
-    loop.schedule(
-        [](MasterServer& server, async::tcp::acceptor acceptor, std::string root) -> async::task<> {
-            // See the pipe-mode comment: pre-initialization must run
-            // inside the loop.
-            if(!root.empty()) {
-                server.change_folders({}, {Spelling(root, Spelling::cwd())});
-                server.initialize();
-            }
-            bool taken = false;
-            co_await serve(
-                server,
-                accept_peers(std::move(acceptor), "Client", [&server, &taken](ipc::JSONPeer& peer) {
-                    std::shared_ptr<void> client;
-                    if(!std::exchange(taken, true)) {
-                        client = std::make_shared<LSPClient>(server, peer);
-                    }
-                    return client;
-                }));
-        }(server, std::move(*acceptor), opts.workspace));
+    loop.schedule([](MasterServer& server,
+                     async::tcp::acceptor acceptor,
+                     std::string root) -> async::task<> {
+        // See the pipe-mode comment: pre-initialization must run
+        // inside the loop.
+        if(!root.empty()) {
+            server.change_folders({}, {Spelling(root, Spelling::cwd())});
+            server.initialize();
+        }
+        co_await serve(server,
+                       accept_peers(std::move(acceptor), "Client", [&server](ipc::JSONPeer& peer) {
+                           std::shared_ptr<void> client;
+                           if(!server.client) {
+                               client = std::make_shared<LSPClient>(server, peer);
+                           }
+                           return client;
+                       }));
+    }(server, std::move(*acceptor), opts.workspace));
     loop.run();
     return server.exit_before_shutdown ? 1 : 0;
 }

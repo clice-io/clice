@@ -8,7 +8,7 @@ import { test } from "@clice/tools/testing";
 // typedef's type stays apart from the one sink takes
 // (llvm/llvm-project#56490).
 test(async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("lib.cppm")).toEqual([]);
     expect(await s.errors("main.cppm")).toEqual([]);
     expect(await s.errors("user.cpp")).toEqual([]);

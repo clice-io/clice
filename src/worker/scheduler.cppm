@@ -287,9 +287,10 @@ public:
     /// stuck inside one declaration: its process is killed.
     constexpr static chrono::seconds cancel_grace{10};
 
-    /// No stateless request for this long scales one idle process down, to
-    /// no fewer than min_workers; at min_workers, it starts a fresh process
-    /// beside one that ran requests and holds more than replace_above.
+    /// No stateless request for this long scales every idle process down,
+    /// the heaviest first, to no fewer than min_workers; at min_workers, it
+    /// starts a fresh process beside one that ran requests and holds more
+    /// than replace_above.
     constexpr static chrono::seconds idle_scale_down{30};
 
     /// What an idle stateless process may hold of its own before a fresh

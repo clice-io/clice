@@ -169,6 +169,11 @@ struct Project {
     /// a reopened database never races another writer for the directory.
     std::optional<index::WriterLock> writer_lock;
 
+    /// open() found the writer lock held elsewhere and left the index to
+    /// open_index: until then the index takes no build's entries, which
+    /// opening it would overwrite.
+    bool index_waits = false;
+
     /// Index blob persistence, opened together with the cache store.
     /// Declared right after `store` (both backends borrow it) and before
     /// every index structure that borrows database bytes (`shards`), so
@@ -375,6 +380,12 @@ struct Project {
         /// Why the index could not be read, for a run reading it: it opens
         /// with none then. Empty when it was read.
         std::string unreadable;
+
+        /// Another process holds the writer lock a run opening the index as
+        /// its writer asked for: the index is left closed (index_waits) for
+        /// the run to wait for the lock (wait_for_writer) and open it then
+        /// (open_index).
+        bool writer_elsewhere = false;
     };
 
     /// Open the project over its final settings (load_settings), once,
@@ -388,6 +399,21 @@ struct Project {
     /// outdated (ProjectIndex::stale_units). A run reading the index without
     /// the build binds its tables alone, fetched on first use.
     Opened open(const OpenOptions& options);
+
+    /// The writer lock open() found held elsewhere, once its holder lets it
+    /// go — a server restarting saves on the way out — within a bounded
+    /// wait (`CLICE_TEST_WRITER_WAIT_MS` for the tests); nullopt when it
+    /// still holds it then.
+    async::task<std::optional<index::WriterLock>> wait_for_writer();
+
+    /// The index open() left closed (Opened::writer_elsewhere): as its
+    /// writer under `lock`, else read-only, the database another process
+    /// writes answering while nothing this run indexes is saved. What the
+    /// index remembers of the build joins first — the databases of earlier
+    /// sessions, the provisional members — then the saved state loads as
+    /// open() loads it; returns what the joined members changed, for the
+    /// owner to follow.
+    CDBDiff open_index(std::optional<index::WriterLock> lock);
 
     /// The rules of `configuration` over the settings, and the databases
     /// they resolve to: what a project waiting to open already answers by.
@@ -442,10 +468,7 @@ struct Project {
     /// `candidate` as `file` compiles under it: edited by rule_edits and a
     /// run's extras; in the language of the file it is from for a header, or
     /// for a file compiling in its host, else in its own.
-    CommandRef apply_rules(Fid file,
-                           const Candidate& candidate,
-                           llvm::ArrayRef<std::string> extra_prepend = {},
-                           llvm::ArrayRef<std::string> extra_append = {});
+    CommandRef apply_rules(Fid file, const Candidate& candidate, ExtraArgs extra = {});
 
     /// Every translation unit of the project: files with entries, plus the
     /// source files on disk that a default-command rule matches — enumerated
@@ -760,11 +783,13 @@ struct Project {
 
     // command/self_contained.cpp
 
-    /// The self-containment check's result for `key`; nullopt when no check
-    /// stands for it. `open`: the header is a document the user edits, whose
-    /// text moves with every keystroke: a result holds while its disk content
-    /// stays as it was when the check ran, as typing never runs the check
-    /// again; otherwise while the disk holds the text the check compiled.
+    /// Whether the header compiles alone: as the rules say
+    /// (Rules::self_contained), else the self-containment check's result
+    /// for `key`; nullopt when no check stands for it. `open`: the header is
+    /// a document the user edits, whose text moves with every keystroke: a
+    /// result holds while its disk content stays as it was when the check
+    /// ran, as typing never runs the check again; otherwise while the disk
+    /// holds the text the check compiled.
     std::optional<bool> self_contained(const SelfContainmentKey& key, bool open);
 
     /// Remember what the self-containment check of `key` found: whether the

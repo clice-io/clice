@@ -9,7 +9,7 @@ const BIG = `${generate.functions(200)}int use() { return function_000(); }\n`;
 
 test("open file index via file", async (t) => {
     t.disk.write("big.cpp", BIG);
-    const s = await t.start({ env: LIMIT, config: { project: { enable_indexing: false } } });
+    const s = await t.start({ env: LIMIT, lastRule: { background_index: false } });
     await t.show("diagnostics", s.diagnostics("big.cpp"));
     await t.show("references", s.references(t.at("big.cpp", "int |function_000()")));
     await s.sync();

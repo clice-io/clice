@@ -8,11 +8,13 @@ clice reads configuration from `clice.toml` in the project root, or from `.clice
 
 Configuration is read once, when the server starts; there is no hot reload. When a project's configuration file is saved, created or deleted, the server asks the editor to restart it: VS Code (unless it connects to a server over a socket) and Neovim 0.12 or later restart it on their own; other editors show a diagnostic on the file saying the change applies once clice restarts.
 
-A configuration clice cannot honor is an error: a file that does not parse, a value of the wrong type, a value outside an option's choices, a worker count of zero, a pattern that does not compile, a `default_configuration` no rule's tag names. The server shows each problem as an error diagnostic on the file and serves nothing of that project until the fixed file is saved; a command-line run names each problem with its place and exits with code 2. A key clice does not know is a warning on the file, and the rest applies. Settings from `initializationOptions` with an error are left out whole, with the error naming them.
+A configuration clice cannot honor is an error: a file that does not parse, a value of the wrong type, a value outside an option's choices, a worker count of zero, a pattern that does not compile or holds a backslash, a variable that is not set, a `default_configuration` no rule's tag names, a key of the layout before clice 1.0 (the error names where it went). The server shows each problem as an error diagnostic on the file and serves nothing of that project until the fixed file is saved; a command-line run names each problem with its place and exits with code 2. A key clice does not know is a warning on the file, and the rest applies. Settings from `initializationOptions` with an error are left out whole, with the error naming them.
 
 A JSON schema of the whole configuration is published at [`clice-config.schema.json`](/clice-config.schema.json); editors that validate TOML or JSON against a schema can point at it. The VS Code extension associates it with both files for [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml), which then completes and checks them; elsewhere a first line `#:schema https://docs.clice.io/clice-config.schema.json` points taplo, the TOML language server of Zed and Neovim setups alike, at it.
 
-Relative paths and patterns in the file resolve against the directory of the configuration file itself; values passed through `initializationOptions` resolve against the project root.
+Relative paths and patterns resolve against the project root, whether they are written in `clice.toml`, in `.clice/config.toml` or in `initializationOptions`.
+
+Settings come in two kinds. What applies to the whole server — its cache and log directories, how often it looks at the disk, how many workers it runs — is a top-level key or sits in `[workers]`. What can differ from one file to another — whether the background index compiles it, whether its function bodies are parsed and indexed, how it is served, linted and formatted — is a field of `[[rules]]`: to set it for every file, write it on a last rule without `patterns`. The feature sections (`[hover]`, `[inlay_hints]`, …) hold the preferences of each feature.
 
 ## Editor Settings
 
@@ -60,7 +62,7 @@ tests/config/loading/04_edited_file
 
 ## Several Folders
 
-Each workspace folder the editor opens is a project of its own, with its own `clice.toml`, compilation databases and cache directory, as long as it holds a `clice.toml` or a `compile_commands.json` (in the folder itself or one of its immediate subdirectories without a `clice.toml` of their own, where discovery looks). A folder with neither that sits inside another open folder is part of that folder's project instead. Inside a folder, a directory holding its own `clice.toml` or `.clice/config.toml` is a project of its own: the folder's project loads no database in it and takes none of its files as default sources or provisional members, though a database of the folder's own that lists them still compiles them there. A directory holding only a database serves, as a project of its own, the files the folder's project does not build. A file opened outside every folder belongs to the nearest directory above it holding a `clice.toml` or a `compile_commands.json` (directly or in its `build/` directory), which is then served as if it were open, unless a served project loads that database already. A file is compiled by the project whose database lists it; a header without an entry of its own borrows a host from a project whose sources include it, preferring the project whose folder holds it. Workspace symbol search spans every project, and navigation — references, definitions and declarations, call and type hierarchies, implementations — reaches into the projects that declare the symbol in the same file. A file open in the editor answers only through the project serving it, so its unsaved edits are what every query sees.
+Each workspace folder the editor opens is a project of its own, with its own `clice.toml`, compilation databases and cache directory, as long as it holds a `clice.toml` or a `compile_commands.json` (in the folder itself or one of its immediate subdirectories without a `clice.toml` of their own, where discovery looks). A folder with neither that sits inside another open folder is part of that folder's project instead. Inside a folder, a directory holding its own `clice.toml` or `.clice/config.toml` is a project of its own: the folder's project loads no database in it and takes none of its files as default sources or provisional members, though a database of the folder's own that lists them still compiles them there. A directory holding only a database serves, as a project of its own, the files the folder's project does not build. A file opened outside every folder belongs to the nearest directory above it holding a `clice.toml` or a `compile_commands.json` (directly or in its `build/` directory), which is then served as if it were open, unless a served project loads that database already; a file with no such directory above it that no project compiles is served apart, under the default command, taking nothing from the folders' projects. A file is compiled by the project whose database lists it; a header without an entry of its own borrows a host from a project whose sources include it, preferring the project whose folder holds it. Workspace symbol search spans every project, and navigation — references, definitions and declarations, call and type hierarchies, implementations — reaches into the projects that declare the symbol in the same file. A file open in the editor answers only through the project serving it, so its unsaved edits are what every query sees.
 
 `initializationOptions` apply to every project, and a cache directory serves one project: a directory outside the project records the project that first used it, and another project, in this server or a later `clice index` run alike, falls back to the one its `clice.toml` names, then to `.clice` in its folder, and runs without a cache when those are taken too. An absolute `cache_dir` in `initializationOptions` therefore goes to the first folder only. The worker counts are the largest any folder asks for at startup. Listing or switching configurations acts on the project of the file the request names — in VS Code, the active editor's — else on the first folder.
 
@@ -72,15 +74,22 @@ The logs keep `info` and above whatever the log level; `CLICE_LOG_LEVEL` in the 
 
 ## Variable Substitution
 
-The following variable is supported in string values:
+The following variables are supported in `cache_dir`, `logging_dir`, and a rule's `patterns`, `compile_commands`, `default_command`, `append` and `remove`:
 
-| Variable       | Description                  |
-| -------------- | ---------------------------- |
-| `${workspace}` | The project's root directory |
+| Variable       | Description                                                                                                                                         |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `${workspace}` | The project's root directory                                                                                                                        |
+| `${env:NAME}`  | The environment variable `NAME` of the server; one that is not set is an error. An editor passes its own environment, VS Code `clice.serverEnv` too |
+
+In a pattern a variable's value matches literally, never as glob syntax; in a `default_command` written as one string, a value with spaces stays one argument.
 
 ## Top Level
 
 Top-level options, written before any section.
+
+clice looks at files on disk in the background to notice changes made outside the editor (a `git checkout`, a regenerated `compile_commands.json`, an agent or a code generator writing files), so the server picks them up without a restart. A workspace file is also looked at before every request that depends on it; headers the toolchain installed are looked at every few minutes, whenever their environment is updated, and at every save. Setting `poll_seconds` to `0` turns the background polling off.
+
+The index lives in the cache directory, so it must be on a local disk: on a network filesystem (NFS, SMB, a Windows drive under WSL) clice keeps the index in memory only and says so; point `cache_dir` at a local directory. On macOS, Time Machine and iCloud back up and sync a cache directory inside the project; a `cache_dir` under `~/Library/Caches` keeps them away.
 
 <!-- BEGIN GENERATED CONFIG: root -->
 
@@ -94,19 +103,13 @@ The build configuration to fall back on when neither `--configuration` nor a per
 
 </div>
 
-<!-- END GENERATED CONFIG -->
-
-## `[project]`
-
-<!-- BEGIN GENERATED CONFIG: project -->
-
 <div class="config-option">
 
 | Option      | Type     | Default |
 | ----------- | -------- | ------- |
 | `cache_dir` | `string` | `""`    |
 
-Directory for the unified on-disk cache (PCHs, PCMs and the index). Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. The resolved path is printed at startup.
+Directory for the unified on-disk cache (PCHs, PCMs and the index), relative to the project root. Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. It must be on a local disk: on a network file system (NFS, SMB, a Windows drive under WSL) the index is not saved. The resolved path is printed at startup.
 
 </div>
 
@@ -116,145 +119,65 @@ Directory for the unified on-disk cache (PCHs, PCMs and the index). Empty defaul
 | ------------- | -------- | ------- |
 | `logging_dir` | `string` | `""`    |
 
-Directory for log files; empty derives `${cache_dir}/logs`. Each server, `clice index` and `clice lint` run logs into a subdirectory of its own; the 20 latest are kept.
+Directory for log files, relative to the project root; empty derives `${cache_dir}/logs`. Each server, `clice index` and `clice lint` run logs into a subdirectory of its own; the 20 latest are kept.
 
 </div>
 
 <div class="config-option">
 
-| Option            | Type   | Default |
-| ----------------- | ------ | ------- |
-| `enable_indexing` | `bool` | `true`  |
+| Option         | Type     | Default |
+| -------------- | -------- | ------- |
+| `poll_seconds` | `uint32` | `30`    |
 
-Build the background index that serves cross-TU features (find references, workspace symbols, ...).
-
-</div>
-
-<div class="config-option">
-
-| Option                            | Type   | Default |
-| --------------------------------- | ------ | ------- |
-| `standard_library_instantiations` | `bool` | `false` |
-
-Index what the standard library's own template instantiations and macros resolve inside the library — the comparator `std::sort` calls, the destructor `std::vector` runs — so references and the call hierarchy reach those places. Off by default: they are library internals, and walking them costs indexing time and space. Applies to the units indexed after a change.
-
-</div>
-
-<div class="config-option">
-
-| Option                 | Type   | Default |
-| ---------------------- | ------ | ------- |
-| `index_library_bodies` | `bool` | `false` |
-
-Index the bodies of the functions system headers define — the names `std::vector::push_back` uses inside — so references and the call hierarchy reach a library's internals. Off by default: only a reader of the library's own code asks about them, a header opened in the editor is indexed whole all the same, and walking them in every unit costs indexing time and space. Applies to the units indexed after a change.
-
-</div>
-
-<div class="config-option">
-
-| Option               | Type   | Default |
-| -------------------- | ------ | ------- |
-| `skip_header_bodies` | `bool` | `true`  |
-
-Skip the bodies of the functions in the headers an open file includes at its top, as clangd does, but those of templates forwarding their arguments (`make_unique`) and of `constexpr` and `auto` functions, which clang always parses, and those of a precompiled header the build declares, which the file loads as the build compiled it. The file opens and rebuilds after an edit several times faster and holds less memory; the price is the errors and warnings inside those bodies, a header template's instantiated from the file among them, and whether a declaration is unused, which show only when the background index has compiled the file as it is saved. The background index and every command but `clice inspect` still compile the bodies.
-
-</div>
-
-<div class="config-option">
-
-| Option     | Type     | Default |
-| ---------- | -------- | ------- |
-| `readonly` | `string` | `"off"` |
-
-Read-only serving for open files: "off" targets a full AST for every open file — builds are pulled by the first request that needs them, with the index answering in the meantime; "on" builds no preamble PCH — reads serve from the index alone (a cold file jumps the indexing queue), while completion and signature help still compile on demand without a preamble; "auto" starts every file as "on", switches it to "off" at the first edit intent (edit, completion, signature help, context switch), and falls back to "off" for a file the index cannot serve. Feature routing always answers from the best source currently available.
-
-</div>
-
-<div class="config-option">
-
-| Option            | Type     | Default |
-| ----------------- | -------- | ------- |
-| `idle_timeout_ms` | `uint32` | `3000`  |
-
-Idle delay in milliseconds before background indexing starts.
-
-</div>
-
-<div class="config-option">
-
-| Option       | Type   | Default |
-| ------------ | ------ | ------- |
-| `test_hooks` | `bool` | `false` |
-
-Enable the clice/internal test hooks used by the test harness.
-
-</div>
-
-<div class="config-option">
-
-| Option                  | Type     | Default |
-| ----------------------- | -------- | ------- |
-| `stateful_worker_count` | `uint32` | `2`     |
-
-Number of stateful workers — they hold ASTs in memory and serve queries (hover, semantic tokens, ...); at least 1.
-
-</div>
-
-<div class="config-option">
-
-| Option                   | Type     | Default |
-| ------------------------ | -------- | ------- |
-| `max_resident_documents` | `uint32` | `0`     |
-
-How many open documents keep their AST in the stateful workers. Past it, the document asked about least recently gives its AST up: it answers what its last compile's answers cover, and compiles again for the rest. `0` means one per GB of memory, at least 8 and at most 32, which is also the default.
-
-</div>
-
-<div class="config-option">
-
-| Option                   | Type     | Default |
-| ------------------------ | -------- | ------- |
-| `stateless_worker_count` | `uint32` | —       |
-
-Number of stateless workers started — they handle ephemeral tasks (PCH/PCM builds, completion, signature help, background indexing) — and the most that background indexing keeps busy at once; defaults to half the machine's physical cores, at least 2. At least 1.
-
-</div>
-
-<div class="config-option">
-
-| Option                       | Type     | Default |
-| ---------------------------- | -------- | ------- |
-| `min_stateless_worker_count` | `uint32` | `1`     |
-
-Lower bound for dynamic stateless-worker scaling; at least 1.
-
-</div>
-
-<div class="config-option">
-
-| Option                       | Type     | Default |
-| ---------------------------- | -------- | ------- |
-| `max_stateless_worker_count` | `uint32` | —       |
-
-Upper bound for dynamic stateless-worker scaling, which only interactive work that finds every worker busy reaches; `0` means the machine's physical cores, which is also the default.
+Longest interval in seconds between two background looks at a project file: the interval doubles at every look that finds the file unchanged, up to this. 0 disables background polling, compilation databases included.
 
 </div>
 
 <!-- END GENERATED CONFIG -->
 
-## `[tracker]`
+## `[workers]`
 
-clice looks at files on disk in the background to notice changes made outside the editor (a `git checkout`, a regenerated `compile_commands.json`, an agent or a code generator writing files), so the server picks them up without a restart. A workspace file is also looked at before every request that depends on it; headers the toolchain installed are looked at every few minutes, whenever their environment is updated, and at every save. Setting `workspace_poll_seconds` to `0` turns the background polling off.
+clice compiles in worker processes. The foreground workers keep the open files compiled and answer the requests about them; the others compile on demand — the background index, completion, signature help, precompiled headers and modules — and start as work needs them: one waits at all times, the background index starts as many as it can use when its work queues, and those idle for 30 seconds stop. How many open files keep their compiled state follows the machine's memory. A worker the system kills for lack of memory is replaced; a systemd unit running clice needs `OOMPolicy=continue`, as the default stops the whole unit, the server included, when one of its processes is killed.
 
-<!-- BEGIN GENERATED CONFIG: tracker -->
+<!-- BEGIN GENERATED CONFIG: workers -->
 
 <div class="config-option">
 
-| Option                   | Type     | Default |
-| ------------------------ | -------- | ------- |
-| `workspace_poll_seconds` | `uint32` | `30`    |
+| Option       | Type     | Default |
+| ------------ | -------- | ------- |
+| `foreground` | `uint32` | `2`     |
 
-Longest interval in seconds between two background looks at a workspace file: the interval doubles at every look that finds the file unchanged, up to this. 0 disables background polling, compilation databases included.
+Number of foreground workers: they keep the open files compiled and answer the requests about them (hover, semantic tokens, ...); at least 1.
+
+</div>
+
+<div class="config-option">
+
+| Option       | Type                 | Default  |
+| ------------ | -------------------- | -------- |
+| `background` | `"auto"` or `uint32` | `"auto"` |
+
+The most compiles the background index runs at once: "auto", half the machine's physical cores and at least 2, or a number, at least 1. Raising it speeds a first index up on a big machine.
+
+</div>
+
+<div class="config-option">
+
+| Option | Type                 | Default  |
+| ------ | -------------------- | -------- |
+| `max`  | `"auto"` or `uint32` | `"auto"` |
+
+The most compile workers at once, the background index's, completion's, signature help's and the precompiled headers' and modules' together: "auto", the machine's physical cores, or a number, at least 1. They start as work needs them and stop after 30 seconds idle.
+
+</div>
+
+<div class="config-option">
+
+| Option                | Type     | Default |
+| --------------------- | -------- | ------- |
+| `background_delay_ms` | `uint32` | `3000`  |
+
+How long the background index waits after the last edit or request before it starts, in milliseconds.
 
 </div>
 
@@ -540,41 +463,41 @@ The height in lines, both ends included, from which a block, namespace or condit
 
 <div class="config-option">
 
-| Option             | Type     | Default |
-| ------------------ | -------- | ------- |
-| `max_length.types` | `uint32` | `32`    |
+| Option             | Type                      | Default |
+| ------------------ | ------------------------- | ------- |
+| `max_length.types` | `"unlimited"` or `uint32` | `32`    |
 
-Maximum length in characters of a deduced type or of deduced template arguments; `0` means no limit. The template arguments that do not fit become `…`, e.g. `tuple<int, string, …>`; a type whose outermost name does not fit is not shown.
-
-</div>
-
-<div class="config-option">
-
-| Option                         | Type     | Default |
-| ------------------------------ | -------- | ------- |
-| `max_length.default_arguments` | `uint32` | `32`    |
-
-Maximum length in characters of the omitted default arguments; `0` means no limit. One too long becomes `…`, and the list is cut with `…` where it no longer fits.
+Maximum length in characters of a deduced type or of deduced template arguments, or `"unlimited"`. The template arguments that do not fit become `…`, e.g. `tuple<int, string, …>`; a type whose outermost name does not fit is not shown.
 
 </div>
 
 <div class="config-option">
 
-| Option                 | Type     | Default |
-| ---------------------- | -------- | ------- |
-| `max_length.block_end` | `uint32` | `60`    |
+| Option                         | Type                      | Default |
+| ------------------------------ | ------------------------- | ------- |
+| `max_length.default_arguments` | `"unlimited"` or `uint32` | `32`    |
 
-Maximum length in characters of a block end or namespace end label, cut with `…` past it; `0` means no limit.
+Maximum length in characters of the omitted default arguments, or `"unlimited"`. One too long becomes `…`, and the list is cut with `…` where it no longer fits.
 
 </div>
 
 <div class="config-option">
 
-| Option             | Type     | Default |
-| ------------------ | -------- | ------- |
-| `max_length.endif` | `uint32` | `60`    |
+| Option                 | Type                      | Default |
+| ---------------------- | ------------------------- | ------- |
+| `max_length.block_end` | `"unlimited"` or `uint32` | `60`    |
 
-Maximum length in characters of an `#endif` condition, cut with `…` past it; `0` means no limit.
+Maximum length in characters of a block end or namespace end label, cut with `…` past it, or `"unlimited"`.
+
+</div>
+
+<div class="config-option">
+
+| Option             | Type                      | Default |
+| ------------------ | ------------------------- | ------- |
+| `max_length.endif` | `"unlimited"` or `uint32` | `60`    |
+
+Maximum length in characters of an `#endif` condition, cut with `…` past it, or `"unlimited"`.
 
 </div>
 
@@ -696,11 +619,11 @@ With `all_scopes`, also offer names exported by modules the file does not import
 
 <div class="config-option">
 
-| Option  | Type     | Default |
-| ------- | -------- | ------- |
-| `limit` | `uint32` | `100`   |
+| Option  | Type                      | Default |
+| ------- | ------------------------- | ------- |
+| `limit` | `"unlimited"` or `uint32` | `100`   |
 
-Maximum number of completion items, the best ranked; `0` means no limit. A list cut short is marked incomplete, so the editor asks again as you type.
+Maximum number of completion items, the best ranked, or `"unlimited"`. A list cut short is marked incomplete, so the editor asks again as you type.
 
 </div>
 
@@ -732,11 +655,11 @@ The `[references]` section controls what find references answers.
 
 <div class="config-option">
 
-| Option  | Type     | Default |
-| ------- | -------- | ------- |
-| `limit` | `uint32` | `2000`  |
+| Option  | Type                      | Default |
+| ------- | ------------------------- | ------- |
+| `limit` | `"unlimited"` or `uint32` | `2000`  |
 
-Maximum number of locations a references request answers with; `0` means no limit. A reply cut short keeps the locations in the file it is asked from before any other. `clice query references` lists every one.
+Maximum number of locations a references request answers with, or `"unlimited"`. A reply cut short keeps the locations in the file it is asked from before any other. `clice query references` lists every one.
 
 </div>
 
@@ -744,7 +667,7 @@ Maximum number of locations a references request answers with; `0` means no limi
 
 ## `[[rules]]`
 
-A rule names files by pattern and says where they take their compile commands from and how those commands are edited. Every rule matching a file applies, in declaration order: an earlier rule's databases rank first among the file's candidates, the first matching rule with a `default_command` supplies the command of a file without an entry, `append` and `remove` accumulate with a later `remove` cancelling an earlier `append`, and `index = false` on any matching rule keeps the file out of the index. A rule carrying a `configuration` tag applies only while that configuration is active; the distinct tags form the configuration menu.
+A rule names files by pattern and says where they take their compile commands from, how those commands are edited, and how the files are indexed, served, linted and formatted. Every rule matching a file applies, in declaration order: an earlier rule's databases rank first among the file's candidates, `append` and `remove` accumulate with a later `remove` cancelling an earlier `append`, and every other field — `default_command`, `background_index`, `readonly`, `lint`, … — is decided by the first matching rule that sets it, the default deciding when none does. A rule for some files therefore goes before a rule for all of them: a rule without `patterns` that is not last and sets a field a later rule sets too is a warning, as that later value never applies. A rule carrying a `configuration` tag applies only while that configuration is active; the distinct tags form the configuration menu. `clice command <file>` shows the value of each of these fields for a file, and the rule deciding it.
 
 <!-- BEGIN GENERATED CONFIG: rules -->
 
@@ -754,7 +677,7 @@ A rule names files by pattern and says where they take their compile commands fr
 | ---------- | ----------------- | ------- |
 | `patterns` | `array of string` | `[]`    |
 
-Glob patterns selecting the files this rule applies to. A relative pattern is anchored at this configuration file's directory (`..` segments allowed), or at the project root for a rule passed through initializationOptions; an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range. Omitted means every file.
+Glob patterns selecting the files this rule applies to. A relative pattern is anchored at the project root (`..` segments allowed); an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range, `[*]` a literal `*`. Separators are `/` on every platform. Omitted means every file: such a rule belongs last, where it decides what no rule above it does.
 
 </div>
 
@@ -774,7 +697,7 @@ Build configuration tag. A tagged rule applies only while that configuration is 
 | ------------------ | ----------------- | ------- |
 | `compile_commands` | `array of string` | `[]`    |
 
-Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to this configuration file (to the project root for a rule passed through initializationOptions). All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the project's databases. When no rule declares a source, every compile_commands.json in the project root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened; a directory below the root with a clice.toml or .clice/config.toml of its own is another project, and none in it loads.
+Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to the project root. All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the project's databases. When no rule declares a source, every compile_commands.json in the project root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened; a directory below the root with a clice.toml or .clice/config.toml of its own is another project, and none in it loads.
 
 </div>
 
@@ -794,7 +717,7 @@ Whether builds are told apart by the real paths this rule's `compile_commands` r
 | ----------------- | ----------------------------- | ------- |
 | `default_command` | `string` or `array of string` | `""`    |
 
-The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the directory of the configuration file it was read from (the project root for a rule passed through initializationOptions), and the matching source files on disk join the background index (unless the rule turns `index` off) — enumerated at startup and again on every workspace poll, so a file created later compiles when opened and joins the index within a poll period. A file clang has no language for (an Arduino `.ino`, an extensionless tool) is a source only when the command forces a language (`-x c++`) and a pattern names its suffix (`*.ino`) or the file itself. Omitted means none.
+The compile command for matching files without a database entry, without the source file: a string tokenized like a shell command line, or an argv array. It runs from the project root, and the matching source files on disk join the background index (unless `background_index` is `false`) — enumerated at startup and again on every poll, so a file created later compiles when opened and joins the index within a poll period. A file clang has no language for (an Arduino `.ino`, an extensionless tool) is a source only when the command forces a language (`-x c++`) and a pattern names its suffix (`*.ino`) or the file itself. Omitted means none.
 
 </div>
 
@@ -804,7 +727,7 @@ The compile command for matching files without a database entry, without the sou
 | -------- | ----------------- | ------- |
 | `append` | `array of string` | `[]`    |
 
-Compilation flags appended for matching files, e.g. `["-std=c++20", "-DNDEBUG"]`.
+Compilation flags appended for matching files, e.g. `["-std=c++20", "-DNDEBUG"]`. The flags of every matching rule apply, in declaration order.
 
 </div>
 
@@ -814,7 +737,7 @@ Compilation flags appended for matching files, e.g. `["-std=c++20", "-DNDEBUG"]`
 | -------- | ----------------- | ------- |
 | `remove` | `array of string` | `[]`    |
 
-Compilation flags removed for matching files, e.g. `["-Wall"]`. A flag with a value removes that value (`-DDEBUG`), the next element being a separate value as on a command line; one with `*` for its value (`-I*`, `["-include", "*"]`), or without one at the end of the list (`["-include"]`), removes every value; a `*` right after a flag's name removes every flag of its kind spelled with that prefix (`-W*` takes `-Wall` and `-Wextra` too).
+Compilation flags removed for matching files, e.g. `["-Wall"]`, before the rule's own `append`. A flag with a value removes that value (`-DDEBUG`), the next element being a separate value as on a command line; one with `*` for its value (`-I*`, `["-include", "*"]`), or without one at the end of the list (`["-include"]`), removes every value; a `*` right after a flag's name removes every flag of its kind spelled with that prefix (`-W*` takes `-Wall` and `-Wextra` too).
 
 </div>
 
@@ -822,19 +745,69 @@ Compilation flags removed for matching files, e.g. `["-Wall"]`. A flag with a va
 
 | Option            | Type   | Default |
 | ----------------- | ------ | ------- |
-| `query_toolchain` | `bool` | `true`  |
+| `query_toolchain` | `bool` | unset   |
 
-Whether clice runs the compiler of matching files' commands to ask how it compiles them: its target, standard library and system headers, predefined macros and default language standard. `false` runs no compiler: clice's own clang reads the command as written, with clang's defaults for the compiler's name. Any matching rule saying `false` wins.
+Whether clice runs the compiler of matching files' commands to ask how it compiles them: its target, standard library and system headers, predefined macros and default language standard. `false` runs no compiler: clice's own clang reads the command as written, with clang's defaults for the compiler's name. Unset means `true`.
 
 </div>
 
 <div class="config-option">
 
-| Option  | Type   | Default |
-| ------- | ------ | ------- |
-| `index` | `bool` | `true`  |
+| Option             | Type   | Default |
+| ------------------ | ------ | ------- |
+| `background_index` | `bool` | unset   |
 
-Whether matching translation units join the background index. `false` keeps them out; they still compile when opened and still host the headers they include. A module unit, or the unit writing a precompiled header, is indexed all the same by the build of its module or header, for the files reading it. Any matching rule saying `false` wins.
+Whether the background index compiles matching files as translation units of their own. `false` keeps them out, and drops what an earlier index recorded of them: they still compile when opened, and a header among them is still indexed through the units including it. A module unit, or the unit writing a precompiled header, is indexed all the same by the build of its module or header, for the files reading it. A rule without patterns saying `false` keeps the background index from compiling anything. Unset means `true`.
+
+</div>
+
+<div class="config-option">
+
+| Option               | Type   | Default |
+| -------------------- | ------ | ------- |
+| `skip_function_body` | `bool` | unset   |
+
+Whether the compiles that include matching files skip their function bodies. Unset, the editor's compile of an open file skips the bodies of the headers it includes at its top — several times faster to open and rebuild, the errors inside those bodies shown once the background index has compiled the file as saved — and every other compile reads them. `true`: every compile but a matching file's own skips its bodies, templates' included, the background index's too, and none of them is indexed — the fastest index of code you only call, such as third-party libraries, whose templates' errors your code causes are then never shown. The bodies of templates forwarding their arguments (`make_unique`) and of `constexpr` and `auto` functions are read all the same. `false`: no compile skips them, and their errors show at once.
+
+</div>
+
+<div class="config-option">
+
+| Option                | Type   | Default |
+| --------------------- | ------ | ------- |
+| `index_function_body` | `bool` | unset   |
+
+Whether the index records what the function bodies of matching files use, and what their templates' instantiations resolve, so that references and the call hierarchy reach inside them. Unset means `false` for system headers — a library's own internals, which only a reader of its code asks about — and `true` for every other file. A file opened in the editor is indexed whole all the same. Applies to the units indexed after a change.
+
+</div>
+
+<div class="config-option">
+
+| Option     | Type     | Default |
+| ---------- | -------- | ------- |
+| `readonly` | `string` | unset   |
+
+How matching files are served when open: "off" compiles them — builds are pulled by the first request that needs them, with the index answering in the meantime; "on" builds no preamble PCH — reads serve from the index alone (a cold file jumps the indexing queue), while completion and signature help still compile on demand without a preamble; "auto" starts a file as "on", switches it to "off" at the first edit intent (edit, completion, signature help, context switch), and falls back to "off" for a file the index cannot serve. Unset means "off".
+
+</div>
+
+<div class="config-option">
+
+| Option           | Type   | Default |
+| ---------------- | ------ | ------- |
+| `self_contained` | `bool` | unset   |
+
+Whether matching headers compile on their own. `true`: a header compiles alone, without an includer's context; `false`: always in the context of a file including it. Unset, clice compiles a header alone once to find out.
+
+</div>
+
+<div class="config-option">
+
+| Option           | Type   | Default |
+| ---------------- | ------ | ------- |
+| `other_contexts` | `bool` | unset   |
+
+Whether an open matching file shows, in the code its own context skips, what its other contexts compile there — the semantic colors, outline, folds, links and hover the index holds for them — while it is as the index read it. `false` shows its own context alone. The editor's choice for a file (Show or Hide other contexts) overrides it until the server stops. Unset means `true`.
 
 </div>
 
@@ -842,9 +815,9 @@ Whether matching translation units join the background index. `false` keeps them
 
 | Option | Type   | Default |
 | ------ | ------ | ------- |
-| `lint` | `bool` | `true`  |
+| `lint` | `bool` | unset   |
 
-Whether `clice lint` checks matching files. `false` keeps them out: their findings are dropped and a translation unit they head is not parsed, unless `--index` needs it for the index. Files outside the project are never checked. Any matching rule saying `false` wins.
+Whether `clice lint` checks matching files and the editor runs clang-tidy on them. `false` keeps them out: their findings are dropped and a translation unit they head is not parsed, unless `--index` needs it for the index. Files outside the project are never checked. Unset means `true`.
 
 </div>
 
@@ -852,9 +825,9 @@ Whether `clice lint` checks matching files. `false` keeps them out: their findin
 
 | Option   | Type   | Default |
 | -------- | ------ | ------- |
-| `format` | `bool` | `true`  |
+| `format` | `bool` | unset   |
 
-Whether `clice format` formats matching files. `false` keeps them out. Files outside the project are never formatted. Any matching rule saying `false` wins.
+Whether `clice format` formats matching files. `false` keeps them out. Files outside the project are never formatted. Unset means `true`.
 
 </div>
 
@@ -864,12 +837,29 @@ Whether `clice format` formats matching files. `false` keeps them out. Files out
 
 ```toml
 [[rules]]
-compile_commands = ["build"]
-append = ["-std=c++23"]
-
-[[rules]]
 patterns = ["test/**"]
 append = ["-DTEST_MODE"]
+
+[[rules]]
+compile_commands = ["build"]
+append = ["-std=c++23"]
+```
+
+Third-party code: its function bodies are left out of every compile but its own, it is neither linted nor formatted, and the tests are not indexed on their own:
+
+```toml
+[[rules]]
+patterns = ["third_party/**"]
+skip_function_body = true
+lint = false
+format = false
+
+[[rules]]
+patterns = ["tests/**"]
+background_index = false
+
+[[rules]]
+compile_commands = ["build"]
 ```
 
 Two build directories as switchable configurations, and a project without a compilation database:

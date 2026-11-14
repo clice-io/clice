@@ -6,7 +6,6 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parse } from "smol-toml";
 import { CASES_DIR, materialize, readProject, writeDatabases } from "../cases/project.ts";
 import { readScenario } from "./scenario.ts";
 
@@ -41,12 +40,11 @@ export function loadFixtures(root = FIXTURES_DIR): Fixture[] {
     return fixtures.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-const TEST_HOOKS = "[project]\ntest_hooks = true\n";
-
 /// Copy every fixture to `target`/<name>, replacing what `target` held, as
 /// a case's copy is made — its databases written —, with scenario.json
-/// beside the inputs and the test hooks on in its clice.toml: the harnesses
-/// wait on clice/internal/sync. Returns the copies.
+/// beside the inputs. The editors run their servers with the test hooks on
+/// (CLICE_TEST_HOOKS, pixi.toml): the harnesses wait on
+/// clice/internal/sync. Returns the copies.
 export function prepareFixtures(target: string, root = FIXTURES_DIR): string[] {
     const fixtures = loadFixtures(root);
     fs.rmSync(target, { recursive: true, force: true });
@@ -55,18 +53,6 @@ export function prepareFixtures(target: string, root = FIXTURES_DIR): string[] {
         fs.mkdirSync(copy, { recursive: true });
         const workspace = fs.realpathSync.native(copy);
         writeDatabases(readProject(fixture.dir), materialize(fixture.dir, workspace), workspace);
-        const config = path.join(workspace, "clice.toml");
-        if (fs.existsSync(config)) {
-            const own = fs.readFileSync(config, "utf8");
-            if (Object.hasOwn(parse(own), "project")) {
-                throw new Error(
-                    `${path.join(fixture.dir, "clice.toml")}: [project] is the copy's, which turns the test hooks on`,
-                );
-            }
-            fs.writeFileSync(config, `${own}\n${TEST_HOOKS}`);
-        } else {
-            fs.writeFileSync(config, TEST_HOOKS);
-        }
         return workspace;
     });
 }

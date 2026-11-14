@@ -82,7 +82,7 @@ test("delete while open reported", async (t) => {
 
 test("background ticks see a rewrite", async (t) => {
     aged(t);
-    const s = await t.start({ config: { tracker: { workspace_poll_seconds: 1 } } });
+    const s = await t.start({ config: { poll_seconds: 1 } });
     await s.indexed();
     await targets(t, s, "v1");
     // No poll and no save, and the index answers without a look at the

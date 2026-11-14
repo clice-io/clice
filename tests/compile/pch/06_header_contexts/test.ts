@@ -2,7 +2,7 @@ import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
 test("prefixes are precompiled", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("main.cpp")).toEqual([]);
     // Each header compiles after what main.cpp has before it. utils.h
     // needs the definition there, which the PCH carries alone: compiled a

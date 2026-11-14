@@ -3,11 +3,12 @@ module clice;
 import :feature.code_completion.cursor;
 import :feature.code_completion;
 import :feature.documentation;
-import :index.query;
 import :index.query.site;
+import :index.query;
 import :semantic.identity;
 import :semantic.symbol;
 import :support.fuzzy_matcher;
+import :support.json;
 import :syntax.dependency_graph;
 import :syntax.scan;
 import :syntax.source_text;
@@ -148,7 +149,7 @@ auto module_completion(const CompletionName& completing, const CompletionInputs&
     -> protocol::CompletionList {
     auto text = inputs.source.text();
     auto positions = inputs.source.positions();
-    auto limit = inputs.options.limit;
+    auto limit = at_most(inputs.options.limit);
     auto& files = inputs.query.file_table();
     std::vector<OpenModule> open;
     for(auto& [file, buffer]: inputs.open_units()) {

@@ -55,6 +55,14 @@ struct TidyParams {
     /// interactive command is never rewritten.
     std::vector<std::string> extra_args;
     std::vector<std::string> extra_args_before;
+
+    /// Args a batch lint run takes out of its driver command
+    /// (RemovedArgs), as it adds the extra args.
+    std::vector<std::string> removed_args;
+
+    /// The user the checks name (TODO comments): the configuration's, else
+    /// this process's login name.
+    std::optional<std::string> user;
 };
 
 class ClangTidyChecker;
@@ -173,6 +181,24 @@ struct CompilationInput {
 
 class CompilationUnit;
 
+/// What the rules of clice.toml say about the function bodies of the files
+/// a compile reads (Rule::skip_function_body, index_function_body), in
+/// declaration order: of the rules matching a file, the first to say
+/// decides each.
+struct FunctionBodyRules {
+    struct Rule {
+        /// Glob patterns over canonical absolute paths, as compiled; none
+        /// matches every file.
+        std::vector<std::string> patterns;
+
+        std::optional<bool> skip;
+
+        std::optional<bool> index;
+    };
+
+    std::vector<Rule> rules;
+};
+
 /// One compile: what it reads, which kind it is, and what else runs over
 /// the parse.
 struct CompilationParams {
@@ -216,6 +242,11 @@ struct CompilationParams {
     /// neither is a declaration being unused, which such a body may use. A
     /// completion skips every body but the one holding the point regardless.
     bool skip_bodies = false;
+
+    /// Which files' function bodies every compile but their own skips, and
+    /// which the index leaves out (CompilationUnit::skips_bodies,
+    /// indexes_bodies).
+    FunctionBodyRules function_bodies;
 
     /// A compile looking only for how the focus file's templates are
     /// instantiated: with `names`, it skips the focus file's function bodies
@@ -520,6 +551,17 @@ public:
     /// preamble.
     bool in_preamble(clang::FileID fid);
 
+    /// Whether this compile skips the function bodies of `fid`, not its focus
+    /// file, as the rules say (CompilationParams::function_bodies); nullopt
+    /// when none says, the compile's own choice standing.
+    std::optional<bool> skips_bodies(clang::FileID fid);
+
+    /// Whether the index records what the function bodies at `location` use
+    /// and what the instantiations of the templates there resolve: as the
+    /// rules for its file say, else unless it is a library's (in_library).
+    /// A file whose bodies the rules skip has none recorded.
+    bool indexes_bodies(clang::SourceLocation location);
+
     /// Where the file was entered: its `#include`; for the file a module
     /// was built from, the import that loaded the module. Invalid for the
     /// focus file and the buffers clang makes up.
@@ -686,6 +728,17 @@ private:
     /// own.
     auto entry_path(clang::FileEntryRef entry) -> llvm::StringRef;
 
+    /// What the function body rules say of a file.
+    struct BodyRule {
+        std::optional<bool> skip;
+
+        std::optional<bool> index;
+    };
+
+    /// What the function body rules say of `fid`: of the rules matching
+    /// it, the first to say decides each.
+    auto body_rule(clang::FileID fid) -> const BodyRule&;
+
     /// Whether the compile borrows an includer context: its focus file is
     /// a header, compiled as its host sees it.
     bool borrows_context();
@@ -770,6 +823,12 @@ private:
 
     /// Memo of CompilationUnit::in_preamble.
     llvm::DenseMap<clang::FileID, bool> preamble_files;
+
+    /// Memo of CompilationUnit::body_rule.
+    llvm::DenseMap<clang::FileID, BodyRule> body_rules;
+
+    /// The function body rules' patterns, compiled on first use.
+    std::optional<std::vector<std::vector<kotatsu::GlobPattern>>> body_globs;
 
     /// Where the focus file's preamble ends (in_preamble), found on first
     /// use.

@@ -1,0 +1,21 @@
+["alpha first".stray]
+diagnostics = [
+    {
+        at = "#⟦error⟧ borrowed from alpha",
+        severity = "error",
+        message = "borrowed from alpha",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
+]
+
+["beta first".stray]
+diagnostics = [
+    {
+        at = "#⟦error⟧ borrowed from beta",
+        severity = "error",
+        message = "borrowed from beta",
+        source = "clang",
+        code = "err_pp_hash_error",
+    },
+]

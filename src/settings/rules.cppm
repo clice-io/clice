@@ -1,6 +1,7 @@
 module clice:settings.rules;
 
 import :command.edit;
+import :compile.compilation;
 import :index.database;
 import :settings.settings;
 import :support.prelude;
@@ -10,7 +11,7 @@ namespace clice {
 
 /// The rules-applied edits of a set of files: every matching active rule
 /// in declaration order, each once, its removes before its appends; the
-/// toolchain query off when any of them turns it off.
+/// toolchain query as the first of them to say decides.
 struct Edits {
     std::vector<CommandEdit> edits;
     bool query_toolchain = true;
@@ -19,12 +20,8 @@ struct Edits {
         return edits.empty() && query_toolchain;
     }
 
-    CommandEdits options(llvm::ArrayRef<std::string> extra_prepend = {},
-                         llvm::ArrayRef<std::string> extra_append = {}) const {
-        return {.edits = edits,
-                .extra_prepend = extra_prepend,
-                .extra_append = extra_append,
-                .query_toolchain = query_toolchain};
+    CommandEdits options(ExtraArgs extra = {}) const {
+        return {.edits = edits, .extra = extra, .query_toolchain = query_toolchain};
     }
 };
 
@@ -92,17 +89,50 @@ public:
     /// The first matching active rule declaring a default command.
     const CompiledRule* default_rule(CanonicalRef path) const;
 
-    /// Whether a file joins the background index: no matching active rule
-    /// says `index = false`.
+    /// Whether the background index compiles a file as a unit of its own:
+    /// `background_index` (Rule).
     bool indexable(CanonicalRef path) const;
 
-    /// Whether `clice lint` checks a file: it sits inside the project root and
-    /// no matching active rule says `lint = false`.
+    /// Whether `clice lint` checks a file and the editor runs clang-tidy on
+    /// it: it sits inside the project root and `lint` (Rule) does not keep
+    /// it out.
     bool lintable(CanonicalRef path) const;
 
     /// Whether `clice format` formats a file: it sits inside the project root
-    /// and no matching active rule says `format = false`.
+    /// and `format` (Rule) does not keep it out.
     bool formattable(CanonicalRef path) const;
+
+    /// How an open file is served: `readonly` (Rule).
+    ReadonlyMode readonly(CanonicalRef path) const;
+
+    /// Whether a header compiles on its own as the rules say; nullopt when
+    /// none says (Rule::self_contained).
+    std::optional<bool> self_contained(CanonicalRef path) const;
+
+    /// Whether an open file shows what its other contexts compile in the
+    /// code its own skips: `other_contexts` (Rule).
+    bool other_contexts(CanonicalRef path) const;
+
+    /// What the active rules say about function bodies, for the compiles
+    /// to decide by the files they read.
+    FunctionBodyRules function_body_rules() const;
+
+    /// Whether no compile skips a function body: the first rule saying
+    /// anything of `skip_function_body` for every file says false, and no
+    /// rule before it says true for some.
+    bool parses_every_body() const;
+
+    /// The first matching active rule setting `field`, which decides it for
+    /// `path`; null when none does, and the default decides.
+    template <typename T>
+    const CompiledRule* deciding(CanonicalRef path, std::optional<T> CompiledRule::* field) const {
+        for(auto* rule: active) {
+            if((rule->*field).has_value() && rule->matches(path)) {
+                return rule;
+            }
+        }
+        return nullptr;
+    }
 
     /// The active rules declaring a default command that can cover a file.
     llvm::SmallVector<const CompiledRule*> covering() const;
@@ -124,9 +154,14 @@ public:
     index::DatabaseKey database_key(llvm::StringRef resolved) const;
 
 private:
-    /// Whether a file sits inside the project root, when there is one, and every
-    /// matching active rule keeps `field` on: the lint and format sets.
-    bool inside(CanonicalRef path, bool CompiledRule::* field) const;
+    /// The value of `field` the first matching active rule setting it
+    /// gives; nullopt when none sets it.
+    template <typename T>
+    std::optional<T> first(CanonicalRef path, std::optional<T> CompiledRule::* field) const;
+
+    /// Whether a file sits inside the project root, when there is one, and
+    /// `field` does not keep it out: the lint and format sets.
+    bool inside(CanonicalRef path, std::optional<bool> CompiledRule::* field) const;
 
 private:
     const Settings* settings;

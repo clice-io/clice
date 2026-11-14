@@ -1,0 +1,5 @@
+# main.cpp defines `value` a second time on purpose.
+compiles = false
+
+[databases]
+real = ["real/main.cpp"]

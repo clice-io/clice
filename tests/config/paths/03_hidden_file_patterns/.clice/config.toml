@@ -1,0 +1,3 @@
+[[rules]]
+patterns = ["main.cpp"]
+append = ["-DFROM_HIDDEN"]

@@ -248,9 +248,13 @@ void ServedProject::inputs_changed(Session& session) {
     session.changed(Session::Clock::now());
 }
 
+ReadonlyMode ServedProject::readonly(Fid path_id) const {
+    return project.rules.readonly(project.file_table.resolve(path_id));
+}
+
 void ServedProject::start_compiling(Fid path_id) {
     auto& document = *find_document(path_id);
-    if(document.compiles || project.settings.project.readonly == ReadonlyMode::On) {
+    if(document.compiles || readonly(path_id) == ReadonlyMode::On) {
         return;
     }
     document.compiles = true;
@@ -607,9 +611,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
 async::task<std::optional<Result>> ServedProject::CompileAttempt::command(bool first) {
     params = {};
     params.indexing.known_instantiations = known_instantiations;
-    params.indexing.standard_library_instantiations =
-        project.settings.project.standard_library_instantiations;
-    params.skip_bodies = project.settings.project.skip_header_bodies;
+    params.indexing.function_bodies = project.rules.function_body_rules();
     params.path = file_path;
     params.version = session->version;
     params.text = session->text().str();
@@ -677,7 +679,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::modules() {
 
 async::task<std::optional<Result>> ServedProject::CompileAttempt::pch() {
     using feature::RequestKind::PCH;
-    if(project.settings.project.readonly != ReadonlyMode::On) {
+    if(served.readonly(path_id) != ReadonlyMode::On) {
         served.enter_phase(path_id, CompilePhase::Preamble);
     }
     auto waited = co_await project.build_pch(path_id,
@@ -964,8 +966,8 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     }
 
     LOG_PERF("request", "kind=compile file={} total_ms={:.2f}", file_path, timer.precise_ms());
-    auto unconfirmed = params.skip_bodies ? feature::take_unconfirmed(diagnostics)
-                                          : std::vector<feature::FileDiagnostic>();
+    auto unconfirmed = project.rules.parses_every_body() ? std::vector<feature::FileDiagnostic>()
+                                                         : feature::take_unconfirmed(diagnostics);
     next->output = CompileOutput{
         .version = session->version,
         .text = session->source,

@@ -273,9 +273,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
         co_await shutdown(run);
         co_return;
     }
-    if(with_index && !project.database) {
-        LOG_ERROR("Cannot persist the index at {}; see the log for the cause and rerun",
-                  std::string_view(project.settings.project.cache_dir));
+    if(with_index && !co_await writes_index(project, opened)) {
         result.exit_code = 2;
         co_await shutdown(run);
         co_return;

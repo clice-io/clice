@@ -5,11 +5,11 @@ import { test } from "@clice/tools/testing";
 // places every symbol as the compiled outline does, a module's too; the
 // details but a macro's parameters wait for the compile.
 test("outline", async (t) => {
-    const index = await t.start({ config: { project: { readonly: "on" } } });
+    const index = await t.start({ lastRule: { readonly: "on" } });
     index.open("main.cpp", { pull: false });
     index.open("demo.cppm", { pull: false });
     await index.sync();
-    const ast = await t.start({ config: { project: { readonly: "off" } } });
+    const ast = await t.start({ lastRule: { readonly: "off" } });
     ast.open("main.cpp");
     ast.open("demo.cppm");
     await ast.sync();
@@ -25,7 +25,8 @@ test("outline", async (t) => {
 // The options leave the same out of the outline the index serves.
 test("options", async (t) => {
     const s = await t.start({
-        config: { project: { readonly: "on" }, document_symbols: { locals: false, macros: false } },
+        config: { document_symbols: { locals: false, macros: false } },
+        lastRule: { readonly: "on" },
     });
     s.open("main.cpp", { pull: false });
     await s.sync();

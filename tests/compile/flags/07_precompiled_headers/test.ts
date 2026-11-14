@@ -16,11 +16,8 @@ const tool = "build/CMakeFiles/tool.dir/cmake_pch.hxx.cxx";
 
 answers(
     "navigation",
-    {
-        paths: { server: "definition reads what the server's builds indexed" },
-        // Only the PCHs' builds can answer: nothing else is indexed.
-        config: { project: { enable_indexing: false } },
-    },
+    // Only the PCHs' builds can answer: nothing else is indexed.
+    { paths: { server: "definition reads what the server's builds indexed" } },
     async (a) => {
         for (const m of a.markers()) {
             await a.show(m.name, a.definition(m));
@@ -82,7 +79,7 @@ test("a header of the pch changes", async (t) => {
 });
 
 test("a restart keeps the pch a preamble is built over", async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.diagnostics("src/area.cpp")).toEqual([]);
     await s.restart();
     expect(await s.diagnostics("src/area.cpp")).toEqual([]);

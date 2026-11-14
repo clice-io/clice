@@ -15,7 +15,7 @@ answers(
 
 // The tokens the index serves an importer before it compiles.
 test("index", async (t) => {
-    const s = await t.start({ config: { project: { readonly: "on" } } });
+    const s = await t.start({ lastRule: { readonly: "on" } });
     for (const file of IMPORTERS) {
         s.open(file, { pull: false });
     }

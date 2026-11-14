@@ -54,8 +54,7 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
             // holds its first command's: a context the user chose, or one
             // the user wants alone, waits for its own compile.
             if(admitted && admitted->kind == index::IndexSource::Kind::Shard && compiled &&
-               (active_choice(session.path_id) ||
-                server.own_context_only.contains(session.path_id))) {
+               (active_choice(session.path_id) || !server.shows_other_contexts(session.path_id))) {
                 admitted.reset();
             }
             if(admitted) {
@@ -76,7 +75,9 @@ async::task<Route> ServedProject::pick_route(const Ticket& ticket,
         }
         if(options.waits_for_index && !waited) {
             waited = true;
+            auto started = chrono::steady_clock::now();
             co_await project.background_index.await_attempt(session.path_id);
+            ticket.waited(RequestWaits::Kind::Index, started);
             continue;
         }
         co_return Route::Empty;
@@ -104,7 +105,9 @@ async::task<std::optional<GateStop>> ServedProject::await_compile(const Ticket& 
                                                                   EnsureOptions options) {
     // A failed compile yields null rather than a lookup against a buffer
     // with no finished index; an outdated one tells the client to re-pull.
+    auto started = chrono::steady_clock::now();
     bool compiled = co_await ensure_compiled(ticket.session, options);
+    ticket.waited(RequestWaits::Kind::Compile, started);
     if(!ticket.fresh()) {
         co_return GateStop{content_modified()};
     }
@@ -134,8 +137,7 @@ const static ServedDocument::MergedIndex* merged_index(const ServedProject& serv
     auto& compiled = document.latest;
     auto& session = *served.server.find_session(path_id);
     if(!compiled || !compiled->index || !compiled->index->loaded() ||
-       compiled->inactive_regions.empty() ||
-       served.server.own_context_only.contains(session.path_id)) {
+       compiled->inactive_regions.empty() || !served.server.shows_other_contexts(session.path_id)) {
         document.merged.reset();
         return nullptr;
     }

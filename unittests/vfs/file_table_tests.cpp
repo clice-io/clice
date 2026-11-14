@@ -290,10 +290,10 @@ ZEST_CASE(ReadModesServeBom) {
 ZEST_CASE(WriteKeepsBom) {
     TempDir tmp;
     auto path = tmp.path("bom.h");
-    ZASSERT(!vfs::write_text(path, "int y;\n", true));
+    ZASSERT(vfs::write_text(path, "int y;\n", true).has_value());
     ZASSERT(read_file(path).value_or("") == "\xEF\xBB\xBFint y;\n");
     ZASSERT(vfs::starts_with_bom(path));
-    ZASSERT(!vfs::write_text(path, "int z;\n", false));
+    ZASSERT(vfs::write_text(path, "int z;\n", false).has_value());
     ZASSERT(read_file(path).value_or("") == "int z;\n");
     ZASSERT(!vfs::starts_with_bom(path));
 }

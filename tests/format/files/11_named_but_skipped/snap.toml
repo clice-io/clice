@@ -1,0 +1,7 @@
+[test."$ clice format ../outside/far.cpp --workspace ws"]
+stdout = "No files to format under ${WS}/ws."
+exit = 0
+
+[test."$ clice format kept.cpp --workspace ws"]
+stdout = "No files to format under ${WS}/ws."
+exit = 0

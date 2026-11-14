@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // the import off in config.h on disk, nothing is saved, and main.cpp is
 // edited before any tick: A builds again, though B still fails.
 test(async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     await t.show("before", s.errors("main.cpp"));
     t.disk.edit("config.h", { replace: "USE_B 1", with: "USE_B 0" });
     s.edit("main.cpp", { replace: "return a();", with: "return a() + 0;" });

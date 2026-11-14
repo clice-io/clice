@@ -263,7 +263,7 @@ depends-on = ["install-tests"]
 [feature.editor.tasks.nvim-e2e]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cmd = """
-nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice .cache/editors/nvim && \
+CLICE_TEST_HOOKS=1 nvim -l editors/nvim/tests/e2e.lua build/{{ type }}/bin/bin/clice .cache/editors/nvim && \
 node tools/testing/editors/gate.ts .cache/editors/nvim
 """
 depends-on = [{ task = "editor-prepare", args = ["nvim"] }]
@@ -272,7 +272,7 @@ depends-on = [{ task = "editor-prepare", args = ["nvim"] }]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "editors/vscode"
 cmd = """
-CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test && \
+CLICE_TEST_HOOKS=1 CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice npm test && \
 node $PIXI_PROJECT_ROOT/tools/testing/editors/gate.ts $PIXI_PROJECT_ROOT/.cache/editors/vscode
 """
 depends-on = ["install-vscode", { task = "editor-prepare", args = ["vscode"] }]
@@ -281,7 +281,7 @@ depends-on = ["install-vscode", { task = "editor-prepare", args = ["vscode"] }]
 args = [{ arg = "type", default = "RelWithDebInfo" }]
 cwd = "editors/vscode"
 cmd = """
-CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm test && \
+CLICE_TEST_HOOKS=1 CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm test && \
 node $PIXI_PROJECT_ROOT/tools/testing/editors/gate.ts $PIXI_PROJECT_ROOT/.cache/editors/vscode
 """
 depends-on = ["install-vscode", { task = "editor-prepare", args = ["vscode"] }]
@@ -368,6 +368,17 @@ format = {
         "format-yaml"
     ]
 }
+
+# conda-forge's prettier is a batch file on Windows, which fd, unaware of
+# PATHEXT, runs only by its full name.
+[feature.format.target.win-64.tasks]
+format-web = "fd -H -e js -e mjs -e ts -e css -X prettier.bat --write"
+format-markdown = "fd -H -e md -X prettier.bat --write"
+format-json = "fd -H -e json -E package-lock.json -E clice-config.schema.json -X prettier.bat --write"
+format-yaml = """
+fd -H -e yaml -e yml -E '*.snap.yml' -X prettier.bat --write && \
+fd -H "^\\.clang-(format|tidy)$" -X prettier.bat --write --parser yaml
+"""
 
 # ============================================================================== #
 #                                     LINT                                       #

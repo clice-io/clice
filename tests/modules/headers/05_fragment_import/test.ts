@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // so m.cppm compiles without one; n.cppm's fragment only includes, and
 // keeps its PCH.
 test(async (t) => {
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("m.cppm")).toEqual([]);
     expect(await s.errors("n.cppm")).toEqual([]);
     await s.sync();

@@ -8,7 +8,7 @@ import { test } from "@clice/tools/testing";
 test(async (t) => {
     t.disk.database({ "m.cppm": [], "user.cpp": [] }, "out_debug");
     t.disk.database({ "m.cppm": ["-DNDEBUG"], "user.cpp": ["-DNDEBUG"] }, "out_release");
-    const s = await t.start({ config: { project: { enable_indexing: false } } });
+    const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("user.cpp")).toEqual([]);
     const use = t.at("user.cpp", "return |checked;");
     await t.show("debug", s.hover(use));

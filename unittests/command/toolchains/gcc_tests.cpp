@@ -331,6 +331,36 @@ LIBRARY_PATH={3}/)",
     ZEXPECT(dirs == expected);
 }
 
+ZEST_CASE(GCCSkipsClangConfig) {
+    /// The configuration files of a clang installed beside a GCC (conda
+    /// keeps its clang's `<triple>-clang++.cfg` next to its g++) configure
+    /// that clang alone: clang's driver reading the GCC's command takes none
+    /// of them, whether the GCC answers its query or not.
+    for(llvm::StringRef mode: {"clang++", "g++", "clang", "gcc"}) {
+        for(llvm::StringRef prefix: {"x86_64-unknown-linux-gnu-", "x86_64-linux-gnu-", ""}) {
+            tmp.touch(std::format("{}{}.cfg", prefix, mode), "-DFROM_CLANG_CFG\n");
+        }
+    }
+    tmp.touch("x86_64-unknown-linux-gnu.cfg", "-DFROM_CLANG_CFG\n");
+    auto configured = [](llvm::ArrayRef<const char*> argv) {
+        return ranges::any_of(argv,
+                              [](llvm::StringRef arg) { return arg.contains("FROM_CLANG_CFG"); });
+    };
+
+    auto driver = fake_gcc("x86_64-linux-gnu-g++",
+                           std::format(R"(Target: x86_64-linux-gnu
+ {1} -E -quiet -v query.cpp -dM
+#include <...> search starts here:
+ {0}
+End of search list.)",
+                                       tmp.path("usr/include"),
+                                       host_path("/usr/libexec/gcc/x86_64-linux-gnu/13/cc1plus")));
+    ZEXPECT(!configured(f.resolve(add("a.cpp", {driver.c_str(), "-c"}))));
+
+    auto unanswered = add("b.c", {tmp.c_path("x86_64-linux-gnu-gcc"), "-c"});
+    ZEXPECT(!configured(f.read_as_clang(unanswered)));
+}
+
 ZEST_CASE(GCCFrameworkDirs) {
     /// Homebrew's GCC lists the SDK's framework directory as a plain one:
     /// it is searched as clang's driver searches it for the target.

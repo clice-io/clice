@@ -139,13 +139,9 @@ struct IndexRequest {
     /// sorted (see index::TUIndexOptions).
     std::vector<std::uint64_t> known_instantiations;
 
-    /// Index the standard library's own instantiations and expansions (see
-    /// index::TUIndexOptions).
-    bool standard_library_instantiations = false;
-
-    /// Index the bodies of the functions library headers define (see
-    /// index::TUIndexOptions).
-    bool library_bodies = false;
+    /// What the rules say of function bodies: those the compile skips and
+    /// the index leaves out (CompilationParams::function_bodies).
+    FunctionBodyRules function_bodies;
 
     /// Where the worker writes an index too large for an IPC message: a
     /// transfer path of the master's store, empty when it has none.
@@ -182,9 +178,6 @@ struct CompileParams {
 
     /// Run clang-tidy over the parse with this frozen configuration.
     std::optional<tidy::TidyParams> tidy;
-
-    /// See CompilationParams::skip_bodies.
-    bool skip_bodies = false;
 };
 
 /// Status of a stateful compile. Anything but `Done` is a non-result: the
@@ -266,9 +259,6 @@ struct BuildPCHParams {
     /// Every built module's PCM (module name -> PCM path), where the
     /// preamble's imports load theirs from.
     std::unordered_map<std::string, std::string> pcms;
-
-    /// See CompilationParams::skip_bodies.
-    bool skip_bodies = false;
 
     /// See CompilationParams::modular.
     bool modular = false;

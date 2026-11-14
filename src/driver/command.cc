@@ -9,6 +9,8 @@ import :command.toolchains.own_options;
 import :driver.driver;
 import :driver.run;
 import :project.project;
+import :settings.rules;
+import :settings.settings;
 import :support.json;
 import :vfs.file_system;
 import :vfs.file_table;
@@ -56,7 +58,9 @@ struct Convert {
 };
 
 KANNOTATE_TYPE(struct Command,
-               description = "Show the commands a file compiles with, or convert compile commands");
+               description =
+                   "Show the commands a file compiles with and the settings the rules "
+                   "give it, or convert compile commands");
 struct Command {
     /// Left out for an operation, else `run` answers with the usage.
     KANNOTATE(&path,
@@ -138,10 +142,58 @@ struct EntryCommands {
     protocol::optional<vfs::HiddenFiles> hidden;
 };
 
+/// A setting the rules give a file, and the rule deciding it.
+struct FileSetting {
+    std::string name;
+    std::string value;
+
+    /// Where the deciding rule is written; absent when no rule sets it.
+    protocol::optional<std::string> rule;
+};
+
 struct FileCommands {
     std::string file;
     std::vector<EntryCommands> commands;
+    std::vector<FileSetting> settings;
 };
+
+/// The settings the rules give the file at `path`, in the order the rule
+/// fields are documented.
+std::vector<FileSetting> file_settings(const Rules& rules, CanonicalRef path) {
+    std::vector<FileSetting> settings;
+    auto add = [&](llvm::StringRef name, auto field, std::string value) {
+        auto* rule = rules.deciding(path, field);
+        settings.push_back({.name = name.str(),
+                            .value = std::move(value),
+                            .rule = rule ? std::optional(rule->origin) : std::nullopt});
+    };
+    auto boolean = [](bool value) {
+        return std::string(value ? "true" : "false");
+    };
+    auto tristate = [&](std::optional<bool> value) {
+        return value ? boolean(*value) : std::string("unset");
+    };
+    auto* skip = rules.deciding(path, &CompiledRule::skip_function_body);
+    auto* index = rules.deciding(path, &CompiledRule::index_function_body);
+    add("query_toolchain",
+        &CompiledRule::query_toolchain,
+        boolean(rules.edits({path}).query_toolchain));
+    add("background_index", &CompiledRule::background_index, boolean(rules.indexable(path)));
+    add("skip_function_body",
+        &CompiledRule::skip_function_body,
+        tristate(skip ? skip->skip_function_body : std::nullopt));
+    add("index_function_body",
+        &CompiledRule::index_function_body,
+        tristate(index ? index->index_function_body : std::nullopt));
+    add("readonly",
+        &CompiledRule::readonly,
+        llvm::StringRef(std::format("{}", rules.readonly(path))).lower());
+    add("self_contained", &CompiledRule::self_contained, tristate(rules.self_contained(path)));
+    add("other_contexts", &CompiledRule::other_contexts, boolean(rules.other_contexts(path)));
+    add("lint", &CompiledRule::lint, boolean(rules.lintable(path)));
+    add("format", &CompiledRule::format, boolean(rules.formattable(path)));
+    return settings;
+}
 
 /// A compile_commands.json as one read found it: its entries, each as
 /// written, and the hash of its bytes, which a load of the same bytes
@@ -244,6 +296,22 @@ void print_text(const FileCommands& commands) {
             }
         }
     }
+    if(!commands.commands.empty()) {
+        driver::println();
+    }
+    // The settings a rule decides; the JSON lists every one.
+    bool decided = false;
+    for(auto& setting: commands.settings) {
+        if(setting.rule) {
+            driver::println("{:<11}{} = {} ({})",
+                            decided ? "" : "settings:",
+                            setting.name,
+                            setting.value,
+                            *setting.rule);
+            decided = true;
+        }
+    }
+    driver::println("{}", decided ? "           the rest by default" : "settings:  the defaults");
 }
 
 int run(Command& opts) {
@@ -268,9 +336,19 @@ int run(Command& opts) {
     auto& project = opened->project;
     auto& files = project.file_table;
     auto file = files.intern(path);
+    FileCommands commands{.file = files.display(file),
+                          .settings = file_settings(project.rules, files.resolve(file))};
+    auto print = [&] {
+        if(opts.json) {
+            print_json(commands);
+        } else {
+            print_text(commands);
+        }
+    };
     auto entries = project.entries(file);
     if(entries.empty()) {
         LOG_ERROR("No compilation database lists {}", files.display(file));
+        print();
         return 1;
     }
     llvm::SmallVector<CommandRef> refs;
@@ -279,7 +357,6 @@ int run(Command& opts) {
             project.apply_rules(file, {.base = entry.command, .source = CommandSource::Database}));
     }
     project.toolchain.warm(refs);
-    FileCommands commands{.file = files.display(file)};
     assert(ranges::size(entries) == ranges::size(refs));
     for(auto [entry, ref]: views::zip(entries, refs)) {
         auto written = written_entry(project.cdb, entry);
@@ -301,11 +378,7 @@ int run(Command& opts) {
             commands.commands.back().hidden = std::move(rendered.hidden);
         }
     }
-    if(opts.json) {
-        print_json(commands);
-    } else {
-        print_text(commands);
-    }
+    print();
     return 0;
 }
 

@@ -4,11 +4,14 @@ import { test } from "@clice/tools/testing";
 // learns it without a crash of its own, and the fix, saved, brings the file
 // back.
 
-const QUIET = { diagnostics: { clang_tidy: false }, project: { enable_indexing: false } };
+const QUIET = {
+    config: { diagnostics: { clang_tidy: false } },
+    lastRule: { background_index: false },
+};
 
 test(async (t) => {
     const s = await t.start({
-        config: QUIET,
+        ...QUIET,
         crash: { request: "buildPch", file: "poison.cpp", pragma: true },
     });
     const add = (file: string) => t.at(file, "int |add");
