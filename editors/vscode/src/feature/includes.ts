@@ -63,6 +63,7 @@ export function registerIncludeCompletion(
             if (
                 event.contentChanges.length !== 1 ||
                 change.text.length !== 1 ||
+                change.text === "\n" ||
                 event.reason !== undefined ||
                 vscode.window.activeTextEditor?.document !== event.document ||
                 vscode.languages.match(served, event.document) === 0

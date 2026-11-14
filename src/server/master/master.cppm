@@ -265,8 +265,9 @@ public:
     /// expect everything to be current: the files every open document's
     /// compile depends on, installed headers included, are looked at too.
     /// For a client that only takes pushed diagnostics (`pushed`), which
-    /// asks for nothing that compiles after an edit, a compiled document
-    /// whose text its last compile did not see compiles, and pushes.
+    /// asks for nothing that compiles after an edit, the saved document
+    /// compiles unless its last compile is current — after an edit, or a
+    /// crash the save retries — and pushes.
     void save_document(Fid path_id, bool pushed);
 
     // contexts.cpp

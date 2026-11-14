@@ -32,6 +32,12 @@ hover = {}
 ["a save is the retry"."crashes after a save"]
 value = 2
 
+["a save retries without a request".crashes]
+value = 1
+
+["a save retries without a request"."crashes after a save"]
+value = 2
+
 ["a pull shows the note".pulled]
 diagnostics = [
     {

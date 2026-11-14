@@ -219,12 +219,9 @@ void MasterServer::save_document(Fid path_id, bool pushed) {
     // includers rescanned, so a host that includes it is in sight.
     owner_of(path_id).record_saved(path_id);
     auto* document = find_document(path_id);
-    if(pushed && document && document->owner && document->owner->compiles(*document->session)) {
-        auto compiled = document->owner->latest(path_id);
-        if(!compiled || !compiled->output ||
-           compiled->output->text->hash() != document->session->source->hash()) {
-            document->owner->request_compile(document->session);
-        }
+    if(pushed && document && document->owner && document->owner->compiles(*document->session) &&
+       !document->owner->current(path_id)) {
+        document->owner->request_compile(document->session);
     }
 }
 

@@ -23,6 +23,16 @@ test("a save is the retry", async (t) => {
     await t.show("crashes after a save", await s.crashes());
 });
 
+// A client that does not pull asks for nothing after a save: the save
+// compiles, and pushes.
+test("a save retries without a request", async (t) => {
+    const s = await t.start({ config: QUIET, crash: CRASH });
+    s.open("main.cpp");
+    await t.show("crashes", await s.crashes());
+    s.save("main.cpp");
+    await t.show("crashes after a save", await s.crashes());
+});
+
 test("a pull shows the note", async (t) => {
     const s = await t.start({
         config: QUIET,
