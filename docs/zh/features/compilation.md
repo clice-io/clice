@@ -1,6 +1,6 @@
 # 编译
 
-clice 使用编译数据库中对应的命令编译每个打开的文件，与构建时的做法相同。以下各节介绍这一过程在实际项目中涉及的事项：命令传入的编译选项、C 和 C++ 以外的语言、文件编码、磁盘上的文件变化，以及重启后仍然保留的缓存。
+clice 使用编译数据库中对应的命令编译每个打开的文件，与实际构建一致。以下各节介绍这一过程在真实项目中涉及的各个方面：编译命令传入的选项、C 和 C++ 以外的语言、文件编码、磁盘上的文件变更，以及重启后依然保留的缓存。
 
 <!-- The cards in the sections below are generated from the documented cases
      in tests/compile/. Do not edit the regions between the
@@ -9,7 +9,7 @@ clice 使用编译数据库中对应的命令编译每个打开的文件，与�
 
 ## 编译选项
 
-文件编译命令中会改变编译内容的选项（例如 `-include`），在编辑器中的作用与构建时相同。
+文件编译命令中会改变编译内容的选项（如 `-include`），在编辑器中的效果与构建时一致。
 
 <!-- BEGIN GENERATED ITEMS: compile/flags -->
 
@@ -17,9 +17,9 @@ clice 使用编译数据库中对应的命令编译每个打开的文件，与�
 
 **强制包含**
 
-命令通过 `-include` 强制包含的头文件，与文件自身包含的头文件作用相同
+命令通过 `-include` 强制包含的头文件与文件自身包含的头文件行为一致
 
-构建系统会通过强制包含头文件来提供配置宏、使用预编译头文件。这些头文件中的宏支持悬停和代码导航，修改头文件后，所有强制包含它们的文件都会反映相应更改。
+构建系统常通过强制包含头文件来引入配置宏和预编译头文件。其中的宏支持悬停和代码导航，修改头文件后，所有强制包含它的文件都会随之更新。
 
 ```case
 tests/compile/flags/01_forced_include
@@ -31,9 +31,9 @@ tests/compile/flags/01_forced_include
 
 **预编译头文件**
 
-启用预编译头文件的构建目标中，各翻译单元共享该目标的 PCH，由 clice 按构建中的命令构建
+启用预编译头文件的目标下各翻译单元共用同一份 PCH，由 clice 按构建命令生成
 
-对于这类目标，CMake 会让其每个翻译单元使用它由 `cmake_pch.hxx.cxx` 构建出的预编译头文件。磁盘上的这个文件可能出自其他编译器，因此 clice 会用同一条命令自行构建，只构建一次，保留全部函数体，打开的文件和索引都使用这一份：这次构建就是对 `cmake_pch.hxx.cxx` 的编译，同时也为它建立索引。修改该目标的某个头文件会重建这份 PCH，并反映到每个翻译单元中。
+对于这类目标，CMake 会让其中每个翻译单元使用它从 `cmake_pch.hxx.cxx` 构建出的预编译头文件。磁盘上的预编译文件可能出自其他编译器，因此 clice 会按同一条命令自行构建一份（只构建一次，保留全部函数体），供打开的文件和索引共同使用：这次构建本身就是对 `cmake_pch.hxx.cxx` 的编译，同时也会为它建立索引。编辑该目标的任一头文件都会重建这份 PCH，并更新到每个翻译单元。
 
 ```case
 tests/compile/flags/07_precompiled_headers
@@ -43,11 +43,11 @@ tests/compile/flags/07_precompiled_headers
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**模板体延迟解析**
+**延迟解析模板体**
 
-命令要求 clang 延迟解析模板体时，每次编译都会照此延迟
+命令要求 clang 延迟解析模板体时，每次编译都会延迟解析
 
-clice 在模板体写出的位置就解析它，让悬停、代码导航和诊断在每个模板内部都能工作；MSVC 目标也是如此，尽管 clang 在这类目标上、C++20 之前的标准下默认延迟解析模板体。因此，按照 MSVC 宽松的名字查找编写的代码（例如模板使用了在它之后才声明的名字）会报出符合标准的编译器同样会报的错误。命令中带有 `-fdelayed-template-parsing`（clang-cl 下为 `/Zc:twoPhase-`）时，无论该选项来自构建还是由规则追加，clice 都会像编译器一样编译这类代码。代价是：没有任何代码实例化的模板，其模板体始终不会解析，里面的内容既无法悬停，也无法查找，不过代码补全在其中仍然可用。
+clice 默认在模板体定义处直接解析它，即使在 MSVC 目标（clang 在 C++20 之前默认延迟解析）上也是如此，以便悬停、代码导航和诊断在每个模板内部都能正常工作。依赖 MSVC 宽松名字查找编写的代码（例如模板引用了在其后才声明的名称）此时会报出符合标准的编译器所报的错误。若编译命令传入了 `-fdelayed-template-parsing`（clang-cl 下为 `/Zc:twoPhase-`），无论来自构建本身还是由规则追加，clice 都会像原编译器一样编译这类代码。代价是：未被任何代码实例化的模板，其函数体始终不会解析，内部内容无法悬停或查找，但代码补全在其中依然可用。
 
 ```case
 tests/compile/flags/19_deferred_template_bodies
@@ -59,7 +59,7 @@ tests/compile/flags/19_deferred_template_bodies
 
 ## 其他语言
 
-clice 不处理构建过程中编译的其他语言文件（例如汇编源文件）：它只分析 C 族代码。
+构建过程中编译的其他语言文件（如汇编源文件）不会处理：clice 只分析 C 族代码。
 
 <!-- BEGIN GENERATED ITEMS: compile/languages -->
 
@@ -67,7 +67,7 @@ clice 不处理构建过程中编译的其他语言文件（例如汇编源文�
 
 **汇编源文件**
 
-构建过程中编译的汇编源文件，无论是否经过预处理，都留给汇编器处理：索引、Lint 和编辑器都会跳过它们
+构建中编译的汇编源文件无论是否经过预处理，均交由汇编器处理：索引、Lint 和编辑器都会跳过它们
 
 ```case
 tests/compile/languages/01_assembler
@@ -79,7 +79,7 @@ tests/compile/languages/01_assembler
 
 ## 文件编码
 
-文件都能正常使用，不受字节顺序标记（byte order mark）或换行符的影响。
+无论文件是否带有字节顺序标记（byte order mark），也无论使用何种换行符，功能表现都完全一致。
 
 <!-- BEGIN GENERATED ITEMS: compile/encoding -->
 
@@ -87,9 +87,9 @@ tests/compile/languages/01_assembler
 
 **字节顺序标记**
 
-以带字节顺序标记的 UTF-8 格式保存的文件，与其他文件一样可正常使用
+保存为带字节顺序标记的 UTF-8 文件可与其他文件一样正常使用
 
-首行的位置计算会跳过字节顺序标记，与编辑器中的显示一致；文件中嵌入的数据则保留原始字节。
+首行的位置计算会跳过该标记，与编辑器显示一致；文件内嵌入的数据则保留原始字节。
 
 ```case
 tests/compile/encoding/01_byte_order_mark
@@ -101,7 +101,7 @@ tests/compile/encoding/01_byte_order_mark
 
 **Windows 换行符**
 
-使用 CRLF 换行符的文件返回的响应位置与其他文件一致
+使用 CRLF 换行符的文件与其他文件一样在相同位置返回响应
 
 ```case
 tests/compile/encoding/02_line_endings
@@ -113,9 +113,9 @@ tests/compile/encoding/02_line_endings
 
 **其他编码**
 
-以 UTF-8 以外的编码保存的文件按 UTF-8 读取，clice 会点名提示一次
+以非 UTF-8 编码保存的文件按 UTF-8 读取，clice 会点名提示一次
 
-这类文件中超出 ASCII 的字节不是有效的 UTF-8：编辑器把每个这样的字节显示为替换字符。clice 加载项目时，会把它发现的非 UTF-8 文件列出一次；把这些文件另存为 UTF-8 即可解决。
+这类文件中超出 ASCII 范围的字节不是合法 UTF-8，编辑器会将每个这样的字节显示为替换字符。clice 加载项目时会把发现的非 UTF-8 文件列出一次；将它们另存为 UTF-8 即可修复。
 
 ```case
 tests/compile/encoding/03_legacy_bytes
@@ -125,9 +125,9 @@ tests/compile/encoding/03_legacy_bytes
 
 <!-- END GENERATED ITEMS -->
 
-## 磁盘上的文件变化
+## 磁盘上的文件变更
 
-其他工具改写头文件后，无需在编辑器中打开该头文件，更改就能反映到包含它的文件中。
+其他工具改写头文件后，无需在编辑器中打开该头文件，变更即可反映到包含它的文件中。
 
 <!-- BEGIN GENERATED ITEMS: compile/staleness -->
 
@@ -135,9 +135,9 @@ tests/compile/encoding/03_legacy_bytes
 
 **编辑器之外的更改**
 
-无论包含头文件的文件是否已保存，下次针对这些文件发起请求时，都会反映该头文件在磁盘上的更改
+磁盘上发生更改的头文件会在包含它的文件下次收到请求时生效，无论后者是否已保存
 
-检出操作、生成器和其他工具会在编辑器之外改写头文件。下次针对包含该头文件的文件发起请求时，clice 会使用头文件的新内容编译该文件，无论头文件位于包含链中的哪个位置；如果改写前后的字节相同，则不会产生额外开销。
+分支切换、代码生成器和其他工具常在编辑器之外改写头文件。下次针对包含该头文件的文件发起请求时，clice 会按新内容编译该文件，无论该头文件位于包含链的哪一层；若重写后的字节内容未变，则不产生任何开销。
 
 ```case
 tests/compile/staleness/01_header_edits
@@ -149,7 +149,7 @@ tests/compile/staleness/01_header_edits
 
 ## 缓存
 
-clice 会将头文件的编译结果保存在磁盘上，因此重启后可以直接复用缓存。
+clice 为头文件和模块编译出的产物会与索引一同保存在磁盘上，使服务器重启后直接热启动。
 
 <!-- BEGIN GENERATED ITEMS: compile/cache -->
 
@@ -157,7 +157,7 @@ clice 会将头文件的编译结果保存在磁盘上，因此重启后可以�
 
 **热重启**
 
-预编译头文件在重启后仍会保留，服务器停止运行期间所做的修改也会反映到使用这些头文件的文件中
+预编译头文件在重启后依然保留，服务器停止期间发生的修改仍会反映到使用这些头文件的文件中
 
 ```case
 tests/compile/cache/01_headers_restart

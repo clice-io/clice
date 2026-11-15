@@ -1,6 +1,6 @@
 # 悬停
 
-为光标所在的符号显示内容丰富的信息卡片。
+为光标所在的符号展示详尽的信息卡片。
 
 <!-- The cards in the sections below are generated from the documented cases
      in tests/hover/. Do not edit the regions between the
@@ -9,7 +9,7 @@
 
 ## 符号
 
-卡片显示符号的种类、声明所在的作用域及其声明。
+卡片标明符号的种类与声明所在的作用域，并展示其声明。
 
 <!-- BEGIN GENERATED ITEMS: hover/symbols -->
 
@@ -29,7 +29,7 @@ tests/hover/symbols/01_symbol_kinds
 
 **作用域**
 
-卡片指出符号声明所在的命名空间、类或函数
+卡片指明符号声明所在的命名空间、类或函数
 
 ```case
 tests/hover/symbols/02_scopes
@@ -41,7 +41,7 @@ tests/hover/symbols/02_scopes
 
 **访问权限**
 
-成员的访问权限为 `protected` 或 `private` 时，卡片标题会标明该访问权限
+成员的访问权限为 `protected` 或 `private` 时，卡片标题会标明这一点
 
 ```case
 tests/hover/symbols/03_access
@@ -53,7 +53,7 @@ tests/hover/symbols/03_access
 
 **定义**
 
-无论在符号的定义处还是使用处，卡片都会以源代码形式显示其声明
+无论在符号的定义处还是使用处，卡片都会以源码形式显示其声明
 
 ```case
 tests/hover/symbols/04_definitions
@@ -65,7 +65,7 @@ tests/hover/symbols/04_definitions
 
 **虚函数**
 
-成员函数的定义按源码显示 `virtual`、`override` 或 `final`；重写的成员函数无论是否写出这些关键字，都会标明它重写的是哪个函数
+成员函数的定义按源码写法显示 `virtual`、`override` 或 `final`；重写函数无论是否写出关键字，都会指明它重写的是哪个基类函数
 
 ```case
 tests/hover/symbols/05_virtual_modifiers
@@ -89,9 +89,9 @@ tests/hover/symbols/06_anonymous_namespaces
 
 **已弃用的符号**
 
-已弃用函数的卡片会标明该函数已弃用，并附上弃用时给出的消息
+已弃用函数的卡片会标明已弃用，并附上弃用说明
 
-`[[deprecated]]` 的消息通常会说明应改用什么。
+`[[deprecated]]` 的消息通常会说明应当改用什么。
 
 ```case
 tests/hover/symbols/13_deprecation
@@ -103,7 +103,7 @@ tests/hover/symbols/13_deprecation
 
 **头文件中的符号**
 
-对于所包含头文件中声明的符号，卡片会显示其文档和定义
+所包含头文件中声明的符号会显示其文档和定义
 
 ```case
 tests/hover/symbols/14_header_symbols
@@ -115,9 +115,9 @@ tests/hover/symbols/14_header_symbols
 
 **Objective-C 符号**
 
-悬停在 Objective-C 的类、协议、方法、属性或实例变量上时，卡片会显示其声明及其归属
+悬停在 Objective-C 的类、协议、方法、属性或实例变量上时，会显示其声明及所属作用域
 
-成员会注明声明它的类或分类（category），如 `Shape(Extras)`；`@implementation` 会显示它所实现的 `@interface`。悬停在选择器（selector）的任意一段上，都会显示它的方法。
+成员会标出声明它的类或分类（category），如 `Shape(Extras)`；`@implementation` 会显示它实现的 `@interface`。悬停在选择器的任意一段上都会显示对应的方法。
 
 ```case
 tests/hover/symbols/18_objective_c
@@ -129,7 +129,7 @@ tests/hover/symbols/18_objective_c
 
 ## 函数
 
-函数卡片显示其签名。
+函数的卡片显示其签名。
 
 <!-- BEGIN GENERATED ITEMS: hover/functions -->
 
@@ -137,7 +137,7 @@ tests/hover/symbols/18_objective_c
 
 **函数签名**
 
-函数卡片显示其签名，各个参数均带有名称与默认值
+函数的卡片显示其签名，每个形参都带有名称和默认值
 
 ```case
 tests/hover/functions/01_signatures
@@ -149,7 +149,7 @@ tests/hover/functions/01_signatures
 
 ## 变量
 
-变量卡片按源码显示变量的类型；若其值在编译时已知，也会显示该值。
+变量的卡片按源码写法显示其类型；若其值在编译期已知，还会显示该值。
 
 <!-- BEGIN GENERATED ITEMS: hover/variables -->
 
@@ -157,7 +157,7 @@ tests/hover/functions/01_signatures
 
 **声明符类型**
 
-变量卡片按源码显示其指针、引用和数组声明符
+变量的卡片按源码写法显示其指针、引用和数组声明符
 
 ```case
 tests/hover/variables/01_declarators
@@ -169,7 +169,7 @@ tests/hover/variables/01_declarators
 
 **常量值**
 
-变量或枚举项的值若在编译时已知，就会显示该值
+值在编译期已知的变量或枚举项会显示其值
 
 ```case
 tests/hover/variables/02_constant_values
@@ -181,7 +181,7 @@ tests/hover/variables/02_constant_values
 
 **较长的初始化器**
 
-定义中会省略较长的初始化器，值则只显示开头的几个元素
+较长的初始化器不写入定义，值一行只显示前几个元素
 
 ```case
 tests/hover/variables/04_long_initializers
@@ -193,7 +193,7 @@ tests/hover/variables/04_long_initializers
 
 **`__func__`**
 
-若所在函数不是模板，将光标悬停在 `__func__` 上会显示该函数的名称
+悬停在 `__func__` 上时，若所在函数不是模板，会显示该函数的名称
 
 ```case
 tests/hover/variables/06_predefined_identifiers
@@ -205,7 +205,7 @@ tests/hover/variables/06_predefined_identifiers
 
 ## 类型成员
 
-类会列出其成员，枚举会列出其枚举项。
+类会列出其数据成员和成员类型，枚举会列出其枚举项。
 
 <!-- BEGIN GENERATED ITEMS: hover/members -->
 
@@ -213,9 +213,9 @@ tests/hover/variables/06_predefined_identifiers
 
 **类型成员**
 
-类会列出其数据成员和成员类型，枚举会列出其枚举项及相应的值
+类会列出其数据成员和成员类型，枚举会列出其枚举项及对应的值
 
-`max_members` 限制列表中的成员数量，默认值为 20；设为 `0` 时仅显示声明。
+`max_members` 限制列出的成员数量，默认为 20；设为 `0` 时只显示声明本身。
 
 ```case
 tests/hover/members/01_type_members
@@ -227,7 +227,7 @@ tests/hover/members/01_type_members
 
 ## 类型别名
 
-以别名表示的类型会显示该别名所代表的类型。
+用别名写出的类型会显示该别名所代表的目标类型。
 
 <!-- BEGIN GENERATED ITEMS: hover/aliases -->
 
@@ -235,9 +235,9 @@ tests/hover/members/01_type_members
 
 **类型别名**
 
-以别名表示的类型会显示该别名所代表的类型，格式为“`Alias` is `int`”
+用别名写出的类型会标明它所代表的类型，形式如“`Alias` is `int`”
 
-设置 `show_aka = false` 后，卡片仅保留别名。
+设为 `show_aka = false` 时，卡片只保留别名本身。
 
 ```case
 tests/hover/aliases/01_aka
@@ -249,7 +249,7 @@ tests/hover/aliases/01_aka
 
 **结构体别名**
 
-别名会显示其所代表的结构体名称及该结构体的成员
+结构体的别名会标出它所代表的结构体并显示其成员
 
 ```case
 tests/hover/aliases/02_alias_targets
@@ -261,7 +261,7 @@ tests/hover/aliases/02_alias_targets
 
 **C 中匿名结构体的 typedef**
 
-在 C 中，仅通过 typedef 命名的结构体会以该 typedef 的名称显示，格式为 `typedef struct { ... } Point`
+在 C 中，仅靠 typedef 命名的结构体按该 typedef 的名称显示，形式如 `typedef struct { ... } Point`
 
 ```case
 tests/hover/aliases/03_c_anonymous_structs
@@ -273,7 +273,7 @@ tests/hover/aliases/03_c_anonymous_structs
 
 ## 推导类型
 
-`auto` 和 `decltype` 会显示其代表的类型。
+`auto` 和 `decltype` 会显示它们所代表的类型。
 
 <!-- BEGIN GENERATED ITEMS: hover/deduced_types -->
 
@@ -281,9 +281,9 @@ tests/hover/aliases/03_c_anonymous_structs
 
 **`auto`**
 
-将光标悬停在 `auto` 上会显示其代表的类型，在模板中则按模板本身的写法显示
+悬停在 `auto` 上会显示它所代表的类型；在模板中则按模板内部的写法显示
 
-只有实例化才能算出的类型，例如 `value + 1` 的类型，暂不推导。
+只有实例化才能算出的类型（如 `value + 1` 的类型）不会推导。
 
 ```case
 tests/hover/deduced_types/01_auto
@@ -295,7 +295,7 @@ tests/hover/deduced_types/01_auto
 
 **`decltype`**
 
-将光标悬停在 `decltype` 上会显示其得出的类型，包括为名称加上括号所引入的引用
+悬停在 `decltype` 上会显示它求出的类型，外加圆括号为名称引入的引用也包含在内
 
 ```case
 tests/hover/deduced_types/02_decltype
@@ -305,9 +305,9 @@ tests/hover/deduced_types/02_decltype
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**通过别名推导的 auto**
+**由别名推导的 auto**
 
-从别名推导出的 `auto` 会在其代表的类型旁保留别名的名称
+从别名推导出的 `auto` 会同时保留别名名称和它所代表的类型
 
 ```case
 tests/hover/deduced_types/03_alias_spelling
@@ -317,11 +317,11 @@ tests/hover/deduced_types/03_alias_spelling
 
 <!-- BEGIN CAPABILITY: supported clangd#493 clangd#1768 -->
 
-**泛型 Lambda 参数**
+**泛型 Lambda 形参**
 
-泛型 Lambda 的 `auto` 形参显示为调用该 Lambda 时所用的类型，形参的成员也有悬停卡片
+泛型 Lambda 的 `auto` 形参显示调用该 Lambda 时传入的类型，且形参的各个成员也都有悬停卡片
 
-在函数体内，形参显示为调用时的类型，`point.x` 即该类型的成员。以多种类型调用的 Lambda，其形参仍显示为 `auto`。
+在函数体内，该形参显示为调用处的实参类型，`point.x` 对应那个类型的成员。以多种类型调用的 Lambda 则将形参保留为 `auto`。
 
 ```case
 tests/hover/deduced_types/06_generic_lambdas
@@ -331,11 +331,11 @@ tests/hover/deduced_types/06_generic_lambdas
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**库中的别名**
+**库中的类型别名**
 
-变量的类型保留初始化器写出的别名，但不保留类型特征的结果，也不保留库留给自己使用的别名
+变量的类型会保留其初始化器写出的别名，类型特征的结果以及标准库内部私用的别名除外
 
-`values.size()` 显示为 `std::vector<int>::size_type`，后面跟着它所代表的类型；`front()` 返回的 `__alloc_traits` 成员别名显示为 `int&`，类型特征的结果 `invoke_result_t<…>` 则显示为它计算出的类型。别名所代表的类若是库留给自己使用的，就在别名后写出这个类：`std::vector<int>::iterator` 即 `__gnu_cxx::__normal_iterator<int*, std::vector<int>>`。这类类的结构化绑定从初始化器取得别名：`ids.insert(1)` 的 `position` 是 `std::set<int>::iterator`。
+`values.size()` 显示为 `std::vector<int>::size_type` 并在后面附上底层类型；来自 `__alloc_traits`、由 `front()` 返回的成员别名直接显示为 `int&`，类型特征的结果（如 `invoke_result_t<…>`）则显示为它算出的类型。包装了标准库内部私用类的别名会在后面标出那个类：`std::vector<int>::iterator` 对应 `__gnu_cxx::__normal_iterator<int*, std::vector<int>>`。绑定到这类类型的结构化绑定（structured bindings）会从初始化器继承别名：如 `position`（来自 `ids.insert(1)`）的类型显示为 `std::set<int>::iterator`。
 
 ```case
 tests/hover/deduced_types/14_library_aliases
@@ -347,15 +347,15 @@ tests/hover/deduced_types/14_library_aliases
 
 ## 模板
 
-模板形参会显示其种类和默认值，模板的使用处会显示实例化时采用的实参。
+模板参数会显示其种类和默认值，模板的使用处会显示实例化所用的实参。
 
 <!-- BEGIN GENERATED ITEMS: hover/templates -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**模板形参**
+**模板参数**
 
-模板形参会显示其种类（类型、模板或值）及默认值
+模板参数显示其种类（类型、模板或值）及默认值
 
 ```case
 tests/hover/templates/01_template_parameters
@@ -367,7 +367,7 @@ tests/hover/templates/01_template_parameters
 
 **模板实参**
 
-模板的使用处会显示该模板及实例化时采用的实参
+模板的使用处显示该模板及其实例化所用的实参
 
 ```case
 tests/hover/templates/02_instantiation_arguments
@@ -379,7 +379,7 @@ tests/hover/templates/02_instantiation_arguments
 
 **推导出的类模板实参**
 
-推导类模板实参的声明在类名处和变量处都会显示这些实参
+执行类模板实参推导（CTAD）的声明在类名处和变量处都会显示推导出的实参
 
 ```case
 tests/hover/templates/03_deduced_class_arguments
@@ -391,7 +391,7 @@ tests/hover/templates/03_deduced_class_arguments
 
 **Concept 约束**
 
-Concept 和受约束的形参会显示约束；`Addable auto` 占位符会显示它推导出的类型
+Concept 和受约束的形参会显示约束条件；`Addable auto` 占位符会显示它推导出的具体类型
 
 ```case
 tests/hover/templates/04_concept_constraints
@@ -401,11 +401,11 @@ tests/hover/templates/04_concept_constraints
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**通过依赖特化访问的成员**
+**依赖特化中的成员**
 
-经由类模板的依赖特化访问的成员，按代码写出的模板实参显示
+通过类模板依赖特化访问的成员，按代码写出的模板实参显示
 
-对于 `lib::vector<Point<T>>`，`push_back` 属于 `lib::vector<Point<T>>`，其 `value_type` 为 `Point<T>`，而不是模板自身的 `_Tp`；`map<int, T>` 查找到的 `pair<const int, T>` 中，`second` 为 `T`。
+在 `lib::vector<Point<T>>` 上，`push_back` 归属于 `lib::vector<Point<T>>`，其 `value_type` 为 `Point<T>`，而不是模板自身的 `_Tp`；而 `second`（属于 `pair<const int, T>`，由 `map<int, T>` 查找返回）的类型为 `T`。
 
 ```case
 tests/hover/templates/10_library_specialization_members
@@ -417,9 +417,9 @@ tests/hover/templates/10_library_specialization_members
 
 **实例化来源**
 
-实例化的使用处会显示它由哪个模板实例化而来，以及它绑定的实参
+实例化的使用处会显示实例化它的源模板及所绑定的实参
 
-从偏特化实例化而来时显示该偏特化本身，类模板的成员则先显示所属类的实参。由默认值给出的实参和空参数包不会显示；显式特化按代码中的写法显示。
+偏特化会显示该偏特化自身，类模板的成员会先显示所属类的模板实参。取自默认值的实参和空参数包（parameter pack）会省略；显式特化按源码中的写法原样显示。
 
 ```case
 tests/hover/templates/12_instantiation_patterns
@@ -431,7 +431,7 @@ tests/hover/templates/12_instantiation_patterns
 
 ## 布局
 
-无论在何处悬停，字段和类都会显示编译器为其确定的大小、对齐要求和填充。
+无论在何处悬停，字段和类都会按编译器计算出的结果，显示其大小、对齐要求和填充字节。
 
 <!-- BEGIN GENERATED ITEMS: hover/layout -->
 
@@ -439,9 +439,9 @@ tests/hover/templates/12_instantiation_patterns
 
 **字段布局**
 
-字段会显示其偏移量、大小、对齐要求以及后面的填充
+字段显示其偏移量、大小、对齐要求以及紧随其后的填充字节
 
-`layout` 默认开启；设为 `false` 时不显示这些信息，类的大小也不显示。
+`layout` 默认开启；设为 `false` 时隐藏这些信息，类的大小也会隐藏。
 
 ```case
 tests/hover/layout/01_field_layout
@@ -453,7 +453,7 @@ tests/hover/layout/01_field_layout
 
 **类型布局**
 
-类会显示其大小和对齐要求，以及其中有多少空间是填充
+类显示其大小、对齐要求，以及总大小中填充字节所占的字节数
 
 ```case
 tests/hover/layout/02_type_layout
@@ -465,7 +465,7 @@ tests/hover/layout/02_type_layout
 
 ## 调用实参
 
-调用处的实参会显示对应的形参和传递方式。
+调用处的实参会显示它所对应的形参以及传递方式。
 
 <!-- BEGIN GENERATED ITEMS: hover/arguments -->
 
@@ -473,7 +473,7 @@ tests/hover/layout/02_type_layout
 
 **调用实参**
 
-调用处的实参会显示对应的形参
+调用处的实参会显示它作为哪个形参传入
 
 ```case
 tests/hover/arguments/01_bound_parameters
@@ -485,7 +485,7 @@ tests/hover/arguments/01_bound_parameters
 
 **传递方式**
 
-实参的悬停卡片会注明它是按值、按引用还是按常量引用传递
+实参的卡片会标明它是按值、按引用还是按 const 引用传递
 
 ```case
 tests/hover/arguments/02_pass_modes
@@ -497,7 +497,7 @@ tests/hover/arguments/02_pass_modes
 
 **隐式转换**
 
-实参若在传给形参的过程中发生转换，会显示转换后的类型
+实参在传给形参时若发生隐式转换，会标出转换后的目标类型
 
 ```case
 tests/hover/arguments/03_conversions
@@ -507,9 +507,9 @@ tests/hover/arguments/03_conversions
 
 <!-- BEGIN CAPABILITY: supported clangd#1622 -->
 
-**记录类型（record）实参**
+**记录类型实参**
 
-若调用在编译期求值，传入的记录类型实参不会把该调用的值当作自身的值
+传给编译期求值调用的记录类型（record）实参，不会把整个调用的求值结果误当作自身的值
 
 ```case
 tests/hover/arguments/04_record_arguments
@@ -521,7 +521,7 @@ tests/hover/arguments/04_record_arguments
 
 ## 表达式
 
-数值会显示其类型和值，字符串会显示其类型、长度和大小，`this` 会显示它所指向的类型。
+数值显示其类型和值，字符串显示其类型、长度和占用大小，`this` 显示它所指向的类型。
 
 <!-- BEGIN GENERATED ITEMS: hover/expressions -->
 
@@ -529,9 +529,9 @@ tests/hover/arguments/04_record_arguments
 
 **字面量**
 
-数值会显示其类型和值，字符串会显示其类型、长度和大小
+数值显示其类型和值，字符串显示其类型、长度和占用大小
 
-长度不计末尾的空字符，大小则计入。
+长度不计结尾的空字符，占用大小则将其计入。
 
 ```case
 tests/hover/expressions/01_literals
@@ -555,15 +555,15 @@ tests/hover/expressions/02_this
 
 ## 宏
 
-宏会显示其 `#define`，宏的使用处会显示展开结果。
+宏会显示其 `#define` 定义，宏的使用处还会显示展开结果。
 
 <!-- BEGIN GENERATED ITEMS: hover/macros -->
 
 <!-- BEGIN CAPABILITY: supported clangd#2642 -->
 
-**在定义前使用**
+**先于定义使用**
 
-宏名在自身的 `#define` 之前使用时，会显示该定义及其所在的行
+宏名出现在自身的 `#define` 上方时，仍会显示该定义及所在行号
 
 ```case
 tests/hover/macros/01_use_before_definition
@@ -575,7 +575,7 @@ tests/hover/macros/01_use_before_definition
 
 **宏的各个出现位置**
 
-定义处、使用处、`#ifdef`、`defined` 和 `#undef` 处都会显示宏的 `#define`
+定义处、使用处、`#ifdef`、`defined` 和 `#undef` 处都会显示该宏的 `#define`
 
 ```case
 tests/hover/macros/02_definition_sites
@@ -599,7 +599,7 @@ tests/hover/macros/03_expansion_preview
 
 **命令行宏**
 
-通过 `-D` 定义的宏会显示与之等效的 `#define`
+用 `-D` 定义的宏会显示与之等价的 `#define`
 
 ```case
 tests/hover/macros/04_command_line
@@ -611,7 +611,7 @@ tests/hover/macros/04_command_line
 
 **实参中的宏**
 
-位于另一个宏的实参中的宏会显示其定义，以及它在该处的展开结果
+写在另一个宏实参内部的宏，会显示其定义及在该处的展开结果
 
 ```case
 tests/hover/macros/05_nested_arguments
@@ -621,9 +621,9 @@ tests/hover/macros/05_nested_arguments
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**展开值**
+**展开后的值**
 
-展开为表达式的宏，其使用处会显示该表达式的类型；表达式为常量时还会显示其值
+展开为表达式的宏在使用处会显示该表达式的类型；若为常量表达式，还会显示其值
 
 ```case
 tests/hover/macros/14_expansion_values
@@ -635,7 +635,7 @@ tests/hover/macros/14_expansion_values
 
 ## 包含指令
 
-`#include` 会显示解析后对应的文件。
+`#include` 会显示它解析到的实际文件路径。
 
 <!-- BEGIN GENERATED ITEMS: hover/directives -->
 
@@ -643,7 +643,7 @@ tests/hover/macros/14_expansion_values
 
 **包含指令**
 
-悬停在 `#include` 上会显示解析后对应的文件
+悬停在 `#include` 上会显示它解析到的实际文件路径
 
 ```case
 tests/hover/directives/01_include_paths
@@ -655,7 +655,7 @@ tests/hover/directives/01_include_paths
 
 ## 文档
 
-无论在符号的哪个位置悬停，卡片都会显示其声明上的文档注释。注释按 Doxygen 的方式读取——包括其中的命令，以及注释所用的 Markdown——代码补全、签名帮助和 `clice query` 也以同样的方式读取。
+无论在符号的何处悬停，声明上的文档注释都会显示在卡片中。注释按 Doxygen 的规则解析——包括其中的 Doxygen 命令和 Markdown 语法——代码补全、签名帮助和 `clice query` 也采用同样的解析规则。
 
 <!-- BEGIN GENERATED ITEMS: hover/documentation -->
 
@@ -663,9 +663,9 @@ tests/hover/directives/01_include_paths
 
 **文档注释**
 
-在声明处及每个使用处，悬停卡片都会显示该声明的 `///` 注释
+声明上的 `///` 注释在声明处和各个使用处的卡片中都会显示
 
-模板的使用处会显示所选模板特化的注释。
+模板的使用处显示所选中模板特化的文档注释。
 
 ```case
 tests/hover/documentation/01_doc_comments
@@ -675,9 +675,9 @@ tests/hover/documentation/01_doc_comments
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**取值函数（getter）和设值函数（setter）**
+**取值函数与设值函数**
 
-简单的取值函数或设值函数若没有自己的注释，会显示访问对应字段的描述
+未编写独立注释的简单取值函数（getter）或设值函数（setter），会自动生成访问对应字段的说明
 
 ```case
 tests/hover/documentation/02_accessors
@@ -689,7 +689,7 @@ tests/hover/documentation/02_accessors
 
 **@copydoc**
 
-`@copydoc` 命令显示它所引用的文档
+`@copydoc` 命令会显示它所指目标的文档
 
 ```case
 tests/hover/documentation/03_copydoc
@@ -701,7 +701,7 @@ tests/hover/documentation/03_copydoc
 
 **重写**
 
-重写函数没有自己的注释时，显示被重写函数的文档
+未编写独立注释的重写函数，会继承并显示被重写基类函数的文档
 
 ```case
 tests/hover/documentation/04_overrides
@@ -713,9 +713,9 @@ tests/hover/documentation/04_overrides
 
 **重载**
 
-没有自己注释的重载不显示文档，无论相邻的重载写了什么
+未编写独立注释的重载函数不会显示文档，无论相邻的重载写了什么
 
-不同的重载往往做不同的事，所以没有注释的重载不会借用前一个重载的注释。
+不同的重载往往承担不同的职责，因此没有注释的重载不会借用前一个重载的注释。
 
 ```case
 tests/hover/documentation/05_overloads
@@ -727,7 +727,7 @@ tests/hover/documentation/05_overloads
 
 **继承构造函数**
 
-`using Base::Base` 中的名称显示它继承的构造函数及其文档
+`using Base::Base` 中的名称会显示所继承的构造函数及其文档
 
 ```case
 tests/hover/documentation/06_inherited_constructors
@@ -737,9 +737,9 @@ tests/hover/documentation/06_inherited_constructors
 
 <!-- BEGIN CAPABILITY: supported clangd#974 -->
 
-**横幅注释**
+**分节横幅注释**
 
-与声明之间隔着空行的分节横幅注释不是该声明的文档
+与声明之间隔有空行的分节横幅注释不会当作该声明的文档
 
 ```case
 tests/hover/documentation/07_banner_comments
@@ -751,9 +751,9 @@ tests/hover/documentation/07_banner_comments
 
 **声明与定义**
 
-声明的 `///` 注释会在声明处和定义处显示
+声明处的 `///` 注释在声明处和定义处都会显示
 
-无论先在两处中的哪一处悬停，定义的普通 `//` 注释都不会取而代之。
+无论先在哪一处悬停，定义处的普通 `//` 注释都不会取代声明处的文档注释。
 
 ```case
 tests/hover/documentation/08_declaration_and_definition
@@ -765,7 +765,7 @@ tests/hover/documentation/08_declaration_and_definition
 
 **Markdown 表格**
 
-注释中的表格显示为表格
+注释中的表格会渲染为表格
 
 ```case
 tests/hover/documentation/09_markdown_tables
@@ -777,7 +777,7 @@ tests/hover/documentation/09_markdown_tables
 
 **缩进块**
 
-注释中的缩进块会保留缩进和前面的空行
+注释中的缩进代码块会保留原有缩进及其上方的空行
 
 ```case
 tests/hover/documentation/10_indented_blocks
@@ -789,9 +789,9 @@ tests/hover/documentation/10_indented_blocks
 
 **游离注释**
 
-与声明之间隔着空行的普通注释不是该声明的文档
+与声明之间隔有空行的普通注释不会当作该声明的文档
 
-`///` 或 `/** */` 注释即使隔着空行，也是下方声明的文档，与 Doxygen 的读法一致。
+`///` 或 `/** */` 注释即使与下方的声明隔着空行，仍按 Doxygen 的规则作为该声明的文档。
 
 ```case
 tests/hover/documentation/11_stray_comments
@@ -803,7 +803,7 @@ tests/hover/documentation/11_stray_comments
 
 **GTK-Doc 注释**
 
-GTK-Doc 的名称行不显示，每个 `@parameter:` 条目显示在对应参数的旁边
+去掉 GTK-Doc 的符号名首行，并将每条 `@parameter:` 说明归入对应的形参旁显示
 
 ```case
 tests/hover/documentation/12_gtk_doc
@@ -811,11 +811,11 @@ tests/hover/documentation/12_gtk_doc
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clangd#2669 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **公式**
 
-Doxygen 公式显示为代码，不带 `@f$` 标记
+Doxygen 公式以行内代码形式展示，并去掉两侧的 `@f$` 标记
 
 ```case
 tests/hover/documentation/13_latex_formulas
@@ -827,7 +827,7 @@ tests/hover/documentation/13_latex_formulas
 
 **Doxygen 命令**
 
-`@brief` 位于卡片开头，每个 `@param`、`@return` 和 `@retval` 显示在它所描述的内容旁边
+`@brief` 置于卡片正文的开头，每条 `@param`、`@return` 和 `@retval` 则显示在各自所描述的条目旁
 
 ```case
 tests/hover/documentation/18_doxygen_commands
@@ -837,9 +837,9 @@ tests/hover/documentation/18_doxygen_commands
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**参数文档**
+**形参文档**
 
-参数的卡片会显示所属函数的 `@param` 或所属模板的 `@tparam` 对它的说明
+形参的卡片会显示所属函数的 `@param` 或所属模板的 `@tparam` 为它编写的说明
 
 ```case
 tests/hover/documentation/20_parameter_docs
@@ -863,7 +863,7 @@ tests/hover/documentation/21_macro_docs
 
 **行尾注释**
 
-写在字段、枚举项或变量所在行末尾的 `///<` 注释是它的文档；其他写在那里的注释，在上方没有注释为它撰写时才是它的文档
+紧跟在字段、枚举项或变量同一行末尾的 `///<` 注释会作为它的文档；行尾的其他注释仅在上方没有文档注释时才作为它的文档
 
 ```case
 tests/hover/documentation/22_trailing_comments
@@ -875,7 +875,7 @@ tests/hover/documentation/22_trailing_comments
 
 **按原样显示的注释**
 
-plain 格式按原样显示注释，包括其中的命令和标记
+plain 格式按源码原样展示注释，保留其中的命令和标记
 
 ```case
 tests/hover/documentation/23_plain_format
@@ -899,15 +899,15 @@ tests/hover/documentation/25_system_headers
 
 ## 模块
 
-模块名称处会显示其接口单元中模块声明上方的注释以及该单元所在的文件，来自模块的声明处会显示该声明是否已导出，以及模块接口为其提供的文档。
+模块名会显示其接口单元中模块声明上方的注释及该接口单元所在的文件；来自模块的声明则会标明是否已导出，并显示模块接口为它编写的文档。
 
 <!-- BEGIN GENERATED ITEMS: hover/modules -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**模块名称**
+**模块名**
 
-在 `import` 和模块声明中，模块名称处都会显示其接口单元中模块声明上方的注释，以及该单元所在的文件
+模块名无论出现在 `import` 中还是模块声明中，都会显示其接口单元中模块声明上方的注释及该单元所在的文件
 
 ```case
 tests/hover/modules/01_module_names
@@ -919,7 +919,7 @@ tests/hover/modules/01_module_names
 
 **导出的声明**
 
-模块接口中的声明在被模块导出时会显示 `export`
+模块接口导出的声明会显示 `export`
 
 ```case
 tests/hover/modules/02_export_status
@@ -929,9 +929,9 @@ tests/hover/modules/02_export_status
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**带文档的导出**
+**带文档的导出符号**
 
-从模块导入的符号会显示模块接口中为其编写的文档
+从模块导入的符号会显示其模块接口中编写的文档
 
 ```case
 tests/hover/modules/04_documented_exports
@@ -951,7 +951,7 @@ tests/hover/modules/04_documented_exports
 
 **属性**
 
-在属性上悬停会显示 clang 对该属性的说明，GNU 写法和标准写法均适用
+悬停在属性上会显示 clang 对它的说明，GNU 语法和标准语法均适用
 
 ```case
 tests/hover/attributes/01_attributes
@@ -963,7 +963,7 @@ tests/hover/attributes/01_attributes
 
 ## 无内容可显示
 
-没有值得用卡片展示的内容时，就不会出现卡片。
+没有值得展示卡片的内容时，不弹出任何卡片。
 
 <!-- BEGIN GENERATED ITEMS: hover/no_card -->
 
@@ -971,7 +971,7 @@ tests/hover/attributes/01_attributes
 
 **无内容可显示**
 
-内置类型、`const` 或 `virtual` 这类关键字，以及空代码块内部，都不会显示卡片
+内置基本类型、`const` 或 `virtual` 等关键字，以及空函数体内部均不显示卡片
 
 ```case
 tests/hover/no_card/01_meaningless_tokens
@@ -981,9 +981,9 @@ tests/hover/no_card/01_meaningless_tokens
 
 <!-- END GENERATED ITEMS -->
 
-## 展示
+## 展示格式
 
-卡片使用 Markdown 格式；对于无法显示 Markdown 的编辑器，则使用纯文本。
+卡片采用 Markdown 格式；面对不支持 Markdown 的编辑器则退回纯文本。
 
 <!-- BEGIN GENERATED ITEMS: hover/presentation -->
 
@@ -991,9 +991,9 @@ tests/hover/no_card/01_meaningless_tokens
 
 **纯文本卡片**
 
-卡片使用 Markdown 格式；对于无法显示 Markdown 的编辑器，则使用纯文本
+卡片默认采用 Markdown 格式，面对不支持 Markdown 的编辑器则输出纯文本
 
-编辑器在启动时会告知自己能显示哪种格式，卡片随之采用相应的格式。
+编辑器在启动时声明自己支持哪种格式，卡片随之调整输出。
 
 ```case
 tests/hover/presentation/01_plain_text
@@ -1003,11 +1003,11 @@ tests/hover/presentation/01_plain_text
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**从左到右读的类型**
+**从左到右阅读的类型**
 
-C++ 由内向外书写的类型改为从左到右读：`*`、`&` 和 `[N]` 跟在它们所修饰的类型之后，函数读作 `(params) -> R`，成员指针读作 `C::-> T`
+C++ 由内向外书写的复杂类型改为从左到右排列：`*`、`&` 和 `[N]` 紧跟在所修饰的部分之后，函数写作 `(params) -> R`，成员指针写作 `C::-> T`
 
-函数中嵌套的函数、成员指针中嵌套的成员指针用一个希腊字母代称，并在下一行写出。
+函数类型中嵌套的函数类型，或成员指针中嵌套的成员指针，会用一个希腊字母代称，并在下一行展开写出。
 
 ```case
 tests/hover/presentation/03_inside_out_types
@@ -1017,11 +1017,11 @@ tests/hover/presentation/03_inside_out_types
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**长类型**
+**超长类型折行**
 
-一行放不下的类型会分成多行书写，每行最多 60 列
+单行放不下的长类型会拆成多行书写，每行不超过 60 列
 
-放不下的部分用一个希腊字母代称，并在下方单独一行写出，缩进多两列；出现两次的部分共用同一个字母。实参或形参列表仍然放不下时会换行，各行与开头的括号之后对齐。
+放不下的子类型用一个希腊字母代称，并在下方另起一行多缩进两列展开；重复出现的相同部分共用同一个字母。展开后仍放不下的实参或形参列表会继续折行，各行与左括号之后的位置对齐。
 
 ```case
 tests/hover/presentation/04_long_type_lines
@@ -1031,11 +1031,11 @@ tests/hover/presentation/04_long_type_lines
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**文件的样式**
+**遵循文件的代码风格**
 
-卡片中显示的代码，无论是声明还是宏的展开结果，都按文件向上查找到的 `.clang-format` 中的样式排版
+卡片中展示的代码——无论是声明还是宏的展开结果——均按文件上层目录中 `.clang-format` 配置的风格排版
 
-没有该文件时，则按 LLVM 样式排版，`*` 和 `&` 紧贴类型书写。
+未找到配置文件时，按 LLVM 风格排版，将 `*` 和 `&` 紧贴在类型一侧。
 
 ```case
 tests/hover/presentation/05_configured_style

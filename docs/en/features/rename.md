@@ -1,6 +1,6 @@
 # Rename
 
-Renaming a symbol (`textDocument/rename`, `F2` in VS Code) changes every place that names it across the workspace, from the project index. [`clice refactor rename`](../cli/refactor.md) runs the same engine from the command line; its page details what a rename follows and what it refuses.
+Renaming a symbol (`textDocument/rename`, `F2` in VS Code) changes every place that names it across the project, from the project index and the files open in the editor. [`clice refactor rename`](../cli/refactor.md) runs the same engine from the command line; its page details what a rename follows and what it refuses.
 
 <!-- The cards in the sections below are generated from the documented cases
      in tests/rename/. Do not edit the regions between the
@@ -17,7 +17,7 @@ A rename edits the declarations, the definition and every use of the symbol, and
 
 **Rename across files**
 
-Renaming a function edits its declaration, its definition and every call in the workspace; a spelling inside a macro is left alone and named in a message
+Renaming a function edits its declaration, its definition and every call in the project; a spelling inside a macro is left alone and named in a message
 
 ```case
 tests/rename/edits/01_across_files

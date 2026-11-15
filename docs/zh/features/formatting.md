@@ -2,7 +2,7 @@
 
 ## 格式化文档
 
-格式化文件（`textDocument/formatting`）会按该文件的 clang-format 样式调整排版，并在同一次操作中对 include 指令排序。
+格式化文件（`textDocument/formatting`）会按其 clang-format 风格重新排版，并在同一遍处理中为包含指令排序。
 
 <!-- BEGIN GENERATED ITEMS: format/document -->
 
@@ -10,7 +10,7 @@
 
 **格式化文档**
 
-格式化文件会按照其 `.clang-format` 指定的样式调整整个文件的排版
+格式化文件会按其 `.clang-format` 指定的风格编排整个文件
 
 ```case
 tests/format/document/01_format_document
@@ -20,9 +20,9 @@ tests/format/document/01_format_document
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**include 指令排序**
+**包含指令排序**
 
-格式化还会按样式要求对每组 include 指令排序
+格式化还会按风格要求为每组包含指令排序
 
 ```case
 tests/format/document/04_include_sorting
@@ -34,7 +34,7 @@ tests/format/document/04_include_sorting
 
 ## 格式化选区
 
-范围格式化（`textDocument/rangeFormatting`）只会重新格式化选区涉及的行。
+范围格式化（`textDocument/rangeFormatting`）只重新格式化选区涉及的行。
 
 <!-- BEGIN GENERATED ITEMS: format/range -->
 
@@ -42,7 +42,7 @@ tests/format/document/04_include_sorting
 
 **格式化选区**
 
-格式化选区只会重新格式化选区涉及的行
+格式化选区只重新格式化选区涉及的行
 
 ```case
 tests/format/range/01_format_range
@@ -52,17 +52,17 @@ tests/format/range/01_format_range
 
 <!-- END GENERATED ITEMS -->
 
-## 样式解析
+## 风格解析
 
-每个文件都使用 clang-format 沿目录层级向上查找到的最近的 `.clang-format` 文件中的样式。
+每个文件都采用 clang-format 沿目录向上找到的最近一份 `.clang-format` 中的风格。
 
 <!-- BEGIN GENERATED ITEMS: format/style -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**最近的样式文件**
+**最近的风格文件**
 
-每个文件都使用沿目录层级向上查找到的最近的 `.clang-format` 文件中的样式
+每个文件都采用上层目录中最近一份 `.clang-format` 的风格
 
 ```case
 tests/format/style/01_nearest_style
@@ -72,15 +72,8 @@ tests/format/style/01_nearest_style
 
 <!-- END GENERATED ITEMS -->
 
-- [x] 当所有父目录中均未找到 `.clang-format` 时回退到 LLVM 默认样式
+上层目录中没有 `.clang-format` 的文件采用 LLVM 风格。
 
-## 输入时与保存时钩子
+## 全项目格式化
 
-- [ ] 输入时格式化（`textDocument/onTypeFormatting`）
-- [ ] 保存时格式化集成
-
-## 项目级格式化
-
-除了用于格式化单个已打开文件的 LSP `textDocument/formatting` 请求，clice 还通过 CLI 提供项目级格式化：[`clice format`](../cli/format.md) 会格式化参与构建的所有文件，每次同时处理多个文件，使用 `--check` 则会报告将会修改的内容。
-
-- [ ] 增量格式化（仅格式化自上次运行以来修改的文件）
+除了格式化单个已打开文件的 LSP `textDocument/formatting` 请求外，clice 还在命令行提供全项目格式化：[`clice format`](../cli/format.md) 一次格式化构建中的多个文件，`--check` 则报告将会改动的内容。

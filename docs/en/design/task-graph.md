@@ -2,203 +2,70 @@
 
 ## Background
 
-C++20 introduced modules, changing the independent compilation model that C++ has used since its inception. In traditional C++, each source file compiles independently into an object file, sharing declarations between files via headers. Modules break this independence:
+C++20 modules end independent compilation: before `main.cpp` can compile `import math;`, the interface unit of `math` must be compiled into a PCM, and a chain of imports must be compiled bottom up. Build systems handle this graph by scanning everything and compiling in order. A language server cannot:
 
-```cpp
-// math.cppm — module interface unit
-export module math;
-export int add(int a, int b) { return a + b; }
+- **It must answer in milliseconds**: compile only the modules the open file needs, not the project's whole graph.
+- **Changes cascade**: saving a module interface makes every PCM above it stale, mid-build or not.
+- **Requests overlap**: several files need the same PCM, which must build once; a build nobody needs any more should stop.
+- **Code being typed can be wrong**: a cycle of imports must be an error, not a deadlock.
 
-// main.cpp — imports the module
-import math;
-int main() { return add(1, 2); }
-```
-
-Before compiling `main.cpp`, the module interface unit `math.cppm` must be compiled first, producing a precompiled module file (PCM). If a project has multi-level module dependencies — A imports B, B imports C — the compilation order must be C → B → A. This forms a directed acyclic graph (DAG), where nodes are module files and edges are `import` relationships.
-
-Build systems (CMake, Ninja, etc.) are naturally suited for this kind of DAG scheduling: scan all files, build a complete dependency graph, compile in topological order. But a language server faces different challenges:
-
-**Real-time requirements.** After a user opens a file that imports modules, they expect editing feedback within hundreds of milliseconds. Waiting for the entire module graph to compile is unacceptable. A language server needs a lazy, on-demand compilation strategy — compile only the modules the current file actually needs.
-
-**Cascading file changes.** When the user modifies a module interface file and saves, all PCMs of modules that directly or indirectly depend on it become stale. The language server must detect this, cancel in-progress compilations, mark affected modules as dirty, and recompile them when next needed.
-
-**Concurrency and cancellation.** Multiple files may simultaneously need the same module's PCM. The language server must avoid duplicate compilations and let later requests wait for earlier ones to finish. At the same time, when the user closes the file that triggered a compilation and no longer needs a module, the in-progress compilation should be cancellable to free resources.
-
-**Temporary cyclic dependencies.** Although C++ modules do not allow circular `import`s, users may temporarily introduce cycles during editing. The language server must detect and report errors rather than deadlocking.
-
-In clangd, C++20 module support has long been in an experimental stage, lacking dedicated design. [clangd/clangd#1293](https://github.com/clangd/clangd/issues/1293) is the clangd team's summary of the module support problem — concluding that "these are not just bugs that can be fixed, a design and new infrastructure is needed," and at the time "nobody has plans/availability to work on this soon." Years later, related issues continue to appear: [clangd/clangd#2569](https://github.com/clangd/clangd/issues/2569) lists critical missing features in modules (rename, find references, etc.); [clangd/clangd#2292](https://github.com/clangd/clangd/issues/2292) and [clangd/clangd#2497](https://github.com/clangd/clangd/issues/2497) report file-locking conflicts caused by clangd sharing PCM files with the build system — clangd holds the PCM open, preventing the build system from overwriting it.
-
-The common root cause of these problems is the lack of a compilation scheduling system designed for language server use cases. clice addresses this with a general **compile task graph**: every expensive build product — module PCMs, preamble PCHs, document ASTs, one unit's compile for its index or its lint — is a node in one graph, with lazy construction, on-demand compilation, real-time cooperative cancellation, and dependency cascading. Modules are the richest client of the graph, and this page uses them as the running example.
+clangd's module support has lacked a design of its own for years — its own summary concluded that "a design and new infrastructure is needed" ([clangd#1293](https://github.com/clangd/clangd/issues/1293)) — and sharing PCMs with the build system locks files against it ([clangd#2292](https://github.com/clangd/clangd/issues/2292)). clice builds every expensive product on one **compile task graph**: lazily built, compiled on demand, cancelled cooperatively, invalidated along its dependencies. Modules are its richest client and the running example here.
 
 ## Design
 
-### One Graph, Several Node Kinds
+### Nodes
 
-The task graph itself is deliberately thin: it knows about nodes, edges, interest, attempts, and invalidation — and nothing about what a node builds. What a node _means_ is defined by its **kind**:
+The graph knows nodes, edges, interest, attempts and invalidation, and nothing of what a node builds. A node's kind gives its meaning:
 
-- **PCM nodes**: one per module and command it is built under, edges are `import` relationships. This is where all module-specific policy lives.
-- **PCH nodes**: one per preamble content key — files whose preambles are identical share one node and one build.
-- **AST nodes**: one per open document, producing the published feature results. The node's generation is the document's freshness: its compile describes the buffer while the generation is the one the compile ran at.
-- **Unit nodes**: one per translation unit compiled on a stateless worker for its index or its lint, shared by background indexing and batch lint.
+- **PCM**: a module under a command it is built with; its edges are its imports, and the precompiled header its target reads.
+- **PCH**: a preamble's content under its command — files whose preambles and commands agree share one node and one build.
+- **AST**: an open document's compile, whose generation is the document's freshness.
+- **Unit**: a translation unit compiled for its index or its lint.
 
-The graph holds no table of what to run for a kind. **Whoever waits on a node carries how to build it**: a request joining a node, or a build waiting on a dependency, passes the node's work along, and a waiter that finds the node needing a build with none running starts one with its own work. Every waiter of a node passes equivalent work — the module's file and the entry it is built under for a PCM, the preamble's request for a PCH — so it does not matter whose runs. What a build needs travels with it and leaves with it: nothing is stashed in the project for a build that may never start, or kept after it ends.
-
-The rest of this section describes the graph's general contract; module-specific behavior is called out explicitly.
+**Whoever waits on a node carries how to build it.** A request, or a build waiting on a dependency, passes the node's work along; a waiter finding the node in need of a build with none running starts one with its work. Every waiter passes equivalent work, so it does not matter whose runs, and what a build needs lives exactly as long as someone waits for it — nothing is stashed for a build that may never start.
 
 ### Lazy Construction
 
-Unlike build systems that scan all files and build a complete DAG before compilation, the graph is lazily constructed — a node is created only when a compilation request first reaches it, and each of its builds re-resolves that node's dependencies. When the user opens a file, only the module chain actually needed by that file is scanned and compiled, not the entire project's module graph.
+A node is created when a request first reaches it, and each build resolves its dependencies anew, so opening a file scans and builds only the modules it reaches. An import no unit provides yet becomes a **placeholder** node, never built, only depended upon; when a provider appears, the placeholder is invalidated and its dependents rebuild against the real module.
 
-Two module entry points exist:
+### Interest
 
-- **Compile module**: Compile the specified module and all its transitive dependencies, producing a PCM file. Used for module interface units themselves.
-- **Compile dependencies**: Compile all module dependencies of the specified file, but not the file itself. Used for ordinary source files — they are not part of the module DAG but may use modules via `import`.
-
-An `import` whose provider cannot be resolved yet does not fail the graph: it becomes a **placeholder node** that is never built, only depended upon. When a provider appears later — the file is created, or a compilation database reload reveals it — the graph invalidates the placeholder, and through it every dependent, which then rebuild against the real module.
-
-### Interest Counting
-
-Interest counting is the graph's core scheduling mechanism, tracking "how many active requests currently care about a given node." It answers two questions: should compilation be started? Can compilation be cancelled?
-
-When a request needs a node, the node's interest is acquired; when the request finishes or is cancelled, it is released. Interest reaching zero means no active request currently cares about this product.
-
-Interest operates at two levels: request-level and dependency-level. Request-level interest means "this request is waiting for the product"; dependency-level interest means "this node's build is waiting for its direct dependencies to complete." The latter ensures a module is not prematurely cancelled when another module's build depends on it, even if the original request has been cancelled.
+Interest counts how many active requests care about a node: a request acquires it while it waits and releases it when it finishes or is cancelled. A background build that a foreground request joins becomes foreground, and so do the builds it waits on. A build waiting on its dependencies holds interest in them too, so a module another module needs keeps building after the request that started it went away. At zero, the build is cancelled — after a short delay, since a request superseded by an edit releases its interest just before its successor takes it again.
 
 ### Attempts
 
-Each build of a node is an attempt. Concurrent requests for the same node join the running attempt instead of starting their own; waiters learn of completion through the attempt's result and decide their next action. A result is one of:
+Each build is an attempt; concurrent requests join the running one. It ends **succeeded**, **failed** (an error, a cycle) or **stale** (overtaken by a change, or by nobody wanting it). Failure is not sticky: the node stays dirty, so the next request after the user fixes the code checks it again — while the failed build's inputs are unchanged it fails again without running, and once one changes or an importer is saved it builds again.
 
-- **Success**: product built, dirty flag cleared
-- **Failed**: compilation error (dependency failure, cycle detection, etc.), dirty flag retained
-- **Stale**: no result — the attempt was overtaken (an input changed during compilation, or interest dropped), or the graph is shutting down
+A clean node's product can still vanish or go stale behind the graph's back — an evicted PCH, an evicted AST, a file changed before any event says so — so the work also carries a **check**, asked when a waiter reaches a clean node: the product **holds**; the product is **gone** but what it was built from is not, and only this node builds again; or the **inputs changed**, and the node and its dependents are invalidated.
 
-A request says whether to wait out a stale attempt with a fresh one: a document's compile keeps going while its buffer is the one it asked about; a request that parses on its own (completion, signature help) waits out every overtaken build of its PCH and modules. Failure is not sticky — retaining the dirty flag means that after the user fixes an error, the next request naturally triggers a retry without requiring a server restart.
+### Cancellation and Generations
 
-### Checking a Clean Node
+Cancellation is advisory: a stop flag the build checks at declaration boundaries inside the compile, after which the attempt still reports a real result. A build is never torn down mid-flight, so the end of a build — write the artifact, then register it — can never be left half done.
 
-A node that built is clean, but its product can still go away or go stale behind the graph's back: the cache's LRU evicts a PCH, the worker pool evicts a document's AST, another process sharing the cache removes a PCM, a file a PCH read changes on disk before any event reports it. So the work also carries a **check**, which the graph asks at the moment a waiter reaches a clean node. It answers one of three things:
+Each node has a generation, raised by every invalidation that reaches it. A build records it when it starts and compares when it ends: a difference means something it read changed meanwhile, and its result is stale. The master is single-threaded, so this is all the race detection it needs.
 
-- **Holds**: the waiter has the product at once, nothing runs.
-- **Product gone**: the product left the disk, or a document's AST its worker, while what it was built from stayed. Only this node builds again; what its dependents built from it stands. A module's check looks at its own PCM, every PCM below it and the PCH it was built over: clang reads every module below an import.
-- **Inputs changed**: what it was built from changed. The node and its dependents are invalidated, as a file change invalidates them — but not the attempt whose wait found the change: it waits for the fresh product and has read nothing of the old one. A PCH's check is the revalidation of its pair: in the store, on disk, read from unchanged inputs, and, for a PCH chained onto another, over the very build of the base it names.
+### Edges and Cascades
 
-### Cooperative Cancellation
+A node's edges are what its sources declare and what its last successful attempt waited on. A module's import scan declares its imports before it builds, and they stay its edges through a failed build, or fixing an import could never reach the module that failed on it. When a module file is saved, the graph walks reverse edges: every node above is marked dirty, and the running attempts that read what changed are overtaken. Before waiting on a dependency, the graph follows the chain of builds in progress and fails at once if it leads back to the waiter: a cycle is an error.
 
-Cancellation is advisory, never destructive. Dropping interest to zero (or overtaking an attempt) raises a stop flag; the running build observes it at declaration-level checkpoints inside the compile and winds down early, and the attempt publishes a real result to its waiters. A running attempt is never torn down mid-flight — which means the commit sequence at the end of a build (write the artifact, then register its metadata) always runs to completion once started, so cancellation can never leave a half-registered product behind.
+### Resolving Imports
 
-### Dirty State and Generation Counter
+The startup scan gives a registry of module names and the files declaring them (see [Dependency Scanning](dependency-scanning.md)); when several units declare one name, an import resolves to the nearest, and the importer is warned of the others. A build's own import scan runs the preprocessor on the unit as its command compiles it, skipping units that can import nothing and reusing a scan while the command and the files are unchanged — an open file's while its directive lines are, so typing elsewhere scans nothing. It runs on the buffer being edited, so an `import` typed but not saved gets its PCM built before the parse needs it.
 
-Each node uses a dirty flag to indicate that a rebuild is needed. The generation counter is a monotonically increasing value, incremented by each invalidation that reaches the node unless its running attempt has not read the change, used to detect asynchronous races: the build records the current generation at start and compares upon completion — a mismatch means something it read changed during compilation, and the result is stale.
+A build system may compile one module several ways — once per set of importers' flags, once per build directory — and Clang reads a PCM only into a compile with matching language options. An import therefore reads the build its importer's compile matches: one under an entry of the importer's own database first, as the real build would, and the module's own command among those.
 
-### Dependencies
+### PCM Cache
 
-A node's edges are the ones its sources declare and the ones its last successful attempt waited on. A module's import scan declares its imports as its edges before it builds, and they stay its edges through a failed build — otherwise fixing or providing an import could never reach the module that failed on it; a plain source declares its imports on its own AST node. Every node a successful attempt waited on (its imports, the PCH it read) becomes an edge too, and an attempt's waits count for invalidation from the moment it starts waiting. Reverse edges are the basis for cascading notifications on file changes — starting from the modified module, following reverse edges finds all affected nodes.
-
-The module name to file mapping is maintained by DependencyGraph (see [Dependency Scanning](dependency-scanning.md)) — the startup fast scan discovers all module declarations and builds a module name → file path registry. A PCM node's builds use this registry to resolve `import` statements to concrete file paths. When several units declare one module name, an import resolves to the nearest of them — the fewest directories up from the importing file — and the importer shows a warning naming the others.
-
-A build system may compile one module unit several ways: CMake lists a module once for each set of its importers' language flags, and a project with several build directories lists it once per configuration. Clang reads a PCM only into a compile whose language options and target match those the PCM was built with — the standard, `-pthread`, `-fno-rtti` and the like, never the macros; the compile may add target features. So an import reads a build of the module the importer's compile matches: one under an entry of the database the importer's own command comes from before any other, as the real build would — an importer switched to its release entry, listed by the release build directory's database, reads the module's release build — and among either, the one under the module's own command first. Builds differing only in macros are equally readable, so within one database the import reads the module's own. The entries sharing a command share a build, a node of its own; when no entry matches, the import reads the build under the module's own command, and the compile reports clang's reason for refusing it rather than reading a build no entry describes. A module unit is indexed by its build under its own command alone.
-
-## Implementation
-
-### Compilation Flow
-
-The complete flow of a module compilation request:
-
-```
-Request enters, carrying the module's work
-  │
-  ├─ Acquire interest on the target module's node
-  │
-  ├─ Target clean? ──→ Ask its check: holds → return (PCM available)
-  │                                   product gone → mark dirty
-  │                                   inputs changed → invalidate it and its dependents
-  │
-  ├─ No attempt in progress? ──→ Start one with the request's work
-  │                               │
-  │                               ├─ Lazily resolve dependencies (scan import declarations)
-  │                               ├─ Declare them as the node's edges
-  │                               ├─ Wait for each dependency, carrying its work
-  │                               ├─ Dispatch to worker process (produce PCM)
-  │                               └─ Check generation counter ──→ Mismatch = Stale
-  │
-  ├─ Join the attempt and wait for its result
-  │
-  └─ Based on result: Success → return / Failed → error / Stale → retry or return
-```
-
-Lazy resolution uses the Clang preprocessor for precise scanning, which differs from the fast lexer-based scan used during startup [dependency scanning](dependency-scanning.md). The fast scan does not expand macros or evaluate conditionals, suitable for building a global overview of include relationships; precise scanning expands all preprocessor directives to obtain the file's actual module dependencies under its current compile command. Resolution runs at the start of every attempt, so a changed compile command or import list is always seen by the next one. Two things keep it cheap. A unit that can import nothing skips it: no macro can produce an import, so when neither the unit's own text nor any file it reaches through includes and `-include` holds module syntax, the answer is empty. And a scan is reused while the unit's compile command and the files on disk stay the same — an open file's while its directive lines do too, so typing anywhere but a directive line scans nothing, and a module that keeps failing is not scanned again for each importer that waits on it.
-
-> Module implementation units (those with `module X;` but no `export`) implicitly depend on their corresponding module interface unit. Precise scanning detects this and automatically adds the dependency.
-
-### Deferred Zero-Interest Cancellation
-
-When interest drops to zero, cancellation is not requested immediately; the check is deferred briefly — if interest is still zero at that point, cooperative cancellation proceeds.
-
-This handles the scenario where a compilation request is superseded. When the user edits during compilation, a new request replaces the old one: the old request releases its interest (momentarily zero), then the new request re-establishes it. Immediate cancellation would unnecessarily wind down shared dependency builds; the deferral allows such handoffs to complete smoothly.
-
-### Cascading Updates
-
-When a module file is saved (didSave), the graph performs a cascading update:
-
-1. Mark the saved file's node dirty, increment its generation counter, and overtake any attempt in flight
-2. Traverse all transitive dependents along reverse edges — both the nodes' edges and the waits of attempts still in flight; mark each affected node dirty, and overtake its running attempt (incrementing its generation) only if that attempt has read what the node the traversal reached it from published — its product or its failure — or that node was never built (an import nothing provides, whose absence the attempt read when it declared the edge); every path reaching the node counts: one still waiting for that product has read nothing of the old one, and gets the fresh one
-3. Each affected module's next attempt checks its last build again — its key and its inputs — and keeps it when both still hold; a consumer never reads a PCM whose module is dirty
-
-Forward edges are left untouched: the saved file's next attempt rescans its `import` declarations and replaces them, so an import removed by the edit stops cascading only after that rescan. Cascading updates do not modify interest — existing waiters retain theirs, and a waiter that wants a result drives a fresh attempt after a stale one.
-
-### Cycle Detection
-
-Before waiting for a dependency's compilation to complete, the graph checks for wait cycles: starting from the target node, it searches along the dependency chain, following only nodes currently being built, checking whether the chain leads back to the current waiter. If a cycle is detected, it returns failure immediately, avoiding deadlock.
-
-### Structured Concurrency
-
-All attempts run as tasks inside a task group owned by the graph, providing structured concurrency guarantees: shutdown stops intake, cancels cooperatively, and waits for frames to unwind, ensuring no dangling build tasks remain. Completed attempt frames are reclaimed eagerly as they finish.
-
-### Ordering Contracts
-
-The graph's users rely on a few orderings that no type enforces; the code names each where it relies on it, as `contract N`.
-
-1. **An attempt observes the real reply.** A cancelled request's sender still awaits its worker's answer: the cancellation travels to the worker, which stops early, while the frame keeps waiting. What the request did, a crash included, is known and accounted for.
-2. **Shutdown order.** A project stops feeding work — its compiles and its background index quiesce — before its last save, and both before its pool and its store stop: a stopped pool fails every dispatch at once, and the background index would walk its whole queue through it. An interrupted batch run resumes from what that save kept.
-3. **A crash is recorded whatever became of the request.** An outdated attempt's crash still records the death and the failure of the document or the build that crashed: skipping it would let a file that crashes its worker escape its stop by being edited between the dispatch and the crash. An outdated attempt's success clears no record.
-4. **Edge publication.** An edge takes effect for invalidation and interest the moment the attempt records it; only a current successful attempt replaces the node's edges, an overtaken or failed attempt's are discarded, and the replacement leaves no moment where neither set is visible.
-5. **Results apply before waiters wake.** An index attempt's outcome — the file indexed, failed or refused — is applied by its owner before the attempt's waiters wake: an open document waiting on the index decides how to answer from what its owner made of the result.
-6. **A compile's products are visible before its result.** A document compile installs what it produced — its index, what it read, its diagnostics, the AST it serves — with no suspension before its result becomes visible: a joiner never sees a success before the document's latest compile describes the text it compiled. An attempt invalidated meanwhile installs its products the same way, as stale ones, and reports itself stale.
-
-### PCM Caching
-
-Each module keeps one record of its last build under each command it is built under, failed or not: its key, what it read, and what came of it. The key names the build by configuration, not by content: the module name plus a hash of the compiler version, working directory, source path, frontend-relevant flags and the keys of the modules it imports — so a command change anywhere below a module changes its key too. Content changes are caught by the dependency snapshots described next, not by the key. Each build stores its PCM under the key and a nonce, in a dedicated cache directory: a rebuild never overwrites a PCM a compile may still be reading, and a record names exactly the file it describes. This is fully isolated from build system artifacts, avoiding file-locking conflicts.
-
-Builds are validated through their dependency snapshots: each dependency's identity and observed content version are checked against the shared file table (stat fast path, content hash confirmation — see [Incremental Compilation](incremental-parse.md)). A module's snapshot holds the inputs of the modules it imports as well, and a failed build's holds what it read and looked for. A build whose key and inputs still hold is kept — a failed one too, since it would fail again; recompilation only occurs when one of them has actually changed, avoiding unnecessary rebuilds caused by "touch without modification." The records of successful builds are persisted alongside the index and restored on server restart — failed ones are not, so a restart tries them once more — and Clang's own PCM validation remains as the final backstop.
-
-The same records answer which modules a changed file reaches: every module whose last build read it, failed builds included, is checked again along with the units importing it — a header in a global module fragment, which no `import` edge names, included.
-
-### Integration with the Compilation Pipeline
-
-Before a document AST or interactive build is dispatched, its dependency preparation acquires the needed PCM nodes — this is the first step of compilation preparation, executed before PCH construction. The import scan runs on the request's actual buffer text (including any synthesized suffix for header contexts), so an `import m;` the user has typed but not yet saved still gets its PCM built before the parse needs it. Clang reads every module below an import, and a module that finished building has built every module below it: the module check covers the whole closure, so a PCM the cache evicted is built again by the next compile that needs it. A wait on one import can outlast another one's PCM, evicted meanwhile under the cache budget: a compile waits on its imports again until all of them are present at once, three times at most — past that a module build fails without recording the failure, and a parse fails visibly on the missing file. The compile is given exactly the PCMs of the modules it reaches, each the one its import resolved to; a module that did not build is left out, and the compile reports the import as it does any error.
+Each module keeps a record of its last build under each command: its key, what it read, and how it ended. The key names the build by configuration — the module, the compiler, the flags, the keys of the modules it imports — so a command change anywhere below a module changes its key; content changes are caught by checking what the build read with the shared file check (see [Incremental Compilation](incremental-parse.md)). Every build writes a new file in clice's own cache directory, so a rebuild never overwrites a PCM a compile is reading, and no file is shared with the build system. The records of successful builds are saved with the index, so a restart starts warm.
 
 ## FAQ
 
-- **Why interest counting instead of a task queue?** A task queue cannot express "no one needs this compilation anymore." When the user closes the file that triggered a compilation, continuing wastes resources. Interest counting precisely tracks demand, making cancellation decisions grounded — not based on timeouts or heuristics, but on whether any request is still waiting for the result.
-
-- **Why defer zero-interest cancellation instead of cancelling immediately?** In an event loop model, multiple steps of an operation complete within the same tick. When a compilation request is superseded, the old interest is released and the new one established shortly after, with a momentary zero in between. Immediate cancellation would unnecessarily wind down shared dependencies — deferring the check ensures interest handoffs don't trigger cancellation.
-
-- **Why cooperative cancellation instead of destroying the build task?** Destroying a coroutine frame mid-build makes every await point a potential exit, and the commit sequence at the end of a build (write artifact, register metadata) must never be split in half. Advisory stop flags let the build exit at well-defined checkpoints and always publish a real result, at the cost of slightly delayed cancellation.
-
-- **Why does the waiter carry the work instead of the graph knowing it?** A build needs inputs only its requester has — the buffer text a preamble comes from, the extra arguments of a lint run. Kept in the project for "whichever build starts next", they need rules for when to keep them, when to drop them and which request they belong to, and they outlive the requests that left them. Carried by the waiter, they live exactly as long as someone waits or an attempt runs.
-
-- **Why a generation counter instead of locks?** The master process is a single-threaded event loop with no data races. The "races" to detect come from asynchronous timing — "was the file updated during compilation?" The generation counter answers this with minimal overhead, without introducing locks.
-
-- **Why lazy dependency resolution?** Dependency resolution requires running the Clang preprocessor (precise scanning) on each module file, which is not cheap. If all module dependencies were resolved at startup, it would add to startup time. Lazy resolution ensures only modules actually needed for compilation are scanned — opening a file doesn't trigger scanning the entire module graph.
-
-- **Why are failures not sticky?** Users are actively editing code — syntax errors are the norm. If failures were marked as persistent, users couldn't get correct results after fixing errors without restarting the server. Retaining the dirty flag lets the next request naturally check again; the module's next attempt answers that check from the failed build's record while its key and inputs hold, and builds again once one of them changes or an importer is saved.
-
-- **Why store PCMs in a separate cache directory?** clangd shares PCM files with the build system, which causes file-locking conflicts — the language server holds the PCM open, preventing the build system from overwriting it (see [clangd/clangd#2292](https://github.com/clangd/clangd/issues/2292)). clice keeps its PCMs in its own cache directory, avoiding this problem. The trade-off is additional disk space usage and extra time for first-time compilation.
+- **Why interest instead of a task queue?** A queue cannot say that nobody needs a build any more. Interest makes cancellation follow demand, not timeouts.
+- **Why cooperative cancellation?** Destroying a build mid-flight makes every suspension point an exit, and the end of a build must never be split. A stop flag lets it leave at known points and always report a result.
+- **Why does the waiter carry the work?** A build needs inputs only its requester has — a buffer's text, a lint run's arguments. Kept in the project for whichever build starts next, they would need rules for when to keep and drop them, and outlive their requests.
+- **Why a separate PCM directory?** Sharing the build system's PCMs locks files against it. The cost is disk space and a first build of each module.
 
 ## Known Limitations
 
-- **Dependency resolution determinism.** A time window exists between resolving dependencies and the actual compilation. If a file is modified during this window, the resolved dependencies may not match the actual dependencies at compilation time. The generation counter detects this and triggers retries, but at the cost of extra compilation overhead.
-
-- **Brand-new module providers.** An `import` whose provider module has never been saved to disk cannot be built — there is no file to compile. Once the provider is saved it is discovered through the placeholder-node mechanism; an import chain that was previously unresolvable heals when its dependents are next edited or reopened, not spontaneously.
-
-- **Graph state is in-memory.** Node and edge state does not survive a server restart; the graph is rebuilt lazily from the persisted caches and the dependency registry on the next run.
+- **A module never saved to disk cannot be built**: there is no file to compile. Once it is saved, its placeholder is invalidated and the importers rebuild against it.
+- **The graph lives in memory.** A restart rebuilds it lazily from the persisted records and the module registry.

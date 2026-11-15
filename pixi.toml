@@ -2,7 +2,7 @@
 
 [workspace]
 name = "clice"
-version = "0.1.0"
+version = "1.0.0"
 description = "A next-generation C++ language server for modern C++"
 authors = [
     "ykiko <ykiko@clice.io>",

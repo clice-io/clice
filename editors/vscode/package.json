@@ -7,7 +7,7 @@
     "type": "git",
     "url": "https://github.com/clice-io/clice"
   },
-  "version": "0.1.0",
+  "version": "1.0.0",
   "publisher": "clice-io",
   "icon": "clice.png",
   "engines": {

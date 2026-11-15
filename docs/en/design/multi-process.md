@@ -2,182 +2,68 @@
 
 ## Background
 
-A C++ language server faces a unique engineering challenge: it relies on Clang to parse code, and Clang has many insufficiently tested code paths when handling incomplete or invalid code. Code in the editor is almost always incomplete — missing semicolons, unmatched parentheses, interrupted template instantiations — all scenarios that Clang was not designed to handle robustly. This leads to two serious problems:
+A C++ language server runs Clang on code that is almost always incomplete, which Clang was never built to handle robustly, and keeps it running for days, where Clang assumes a short-lived process. Three problems follow:
 
-**Memory leaks and bloat**: Clang is designed under the assumption that compilation is a short-lived, one-shot operation. The compiler process allocates memory, finishes compilation, and exits; the operating system reclaims everything. But a language server is a long-running process — each user edit triggers recompilation, and Clang's internally accumulated memory cannot be effectively reclaimed. In the clangd community, users frequently report that the server's memory usage reaches 10GB+ after running for several hours, eventually being killed by the system's OOM killer. Typical scenarios include: template-plus-macro combinations causing background indexing to exhaust 16GB of memory; legal code (such as a large array declaration `arr[50][6000000]`) causing OOM due to constant initialization checks.
-
-**Crashes**: Incomplete code triggers various assertion failures and null pointer dereferences inside Clang. In clangd's issue tracker, numerous reports involve template instantiation crashes, enum declaration segfaults, corrupted namespaces in catch clauses, and similar scenarios. Because clangd uses a single-process architecture, any single crash terminates the entire language server, causing the user to lose all editing state — even if the crash is only related to one file.
-
-**Priority inversion**: In a single-process / single-thread architecture, background indexing and foreground interactive requests (hover, completion, etc.) compete for the same thread. When background indexing is processing a large file, a user's hover request may have to wait several seconds for a response. Even with a thread pool, priority control between threads is difficult — the OS thread scheduler does not understand semantics like "the user is waiting for a hover result."
+- **Memory.** Clang's memory accumulates across recompiles and is not reclaimed. clangd users report 10 GB and more after a few hours, until the OOM killer ends the server.
+- **Crashes.** Half-typed code trips Clang's assertions and null dereferences. In a single process, one crash ends the server and every open file with it.
+- **Priority inversion.** Background indexing and the user's requests compete for the same threads, and no thread scheduler knows that the user is waiting for a hover.
 
 ## Design
 
-### Core Idea
-
-clice solves the above problems through a multi-process architecture: each compilation task runs in an independent worker process, and the master process is responsible only for state management and request routing. Worker process crashes or memory leaks are isolated within process boundaries, affecting neither the master process nor other workers.
-
-### Process Model
+Every compile runs in a worker process; the master process holds the state and routes requests. A worker's crash or leak stays inside the worker.
 
 ```text
-Master Process (MasterServer)
-├── Event loop (kotatsu)
-├── LSP / control protocol handling
-├── State management (workspace, sessions, invalidation)
-├── Compile scheduling (task graph: PCH, PCM, AST and unit nodes)
-├── Background indexing (project index + feeder)
+Master process
+├── event loop: LSP and control requests, state, invalidation
+├── compile scheduling (the task graph) and background indexing
 │
-├── Stateful Worker Processes × N
-│   ├── SF-0: holds AST, serves queries
-│   ├── SF-1: holds AST, serves queries
-│   └── ...
-│
-└── Stateless Worker Processes × M
-    ├── SL-0: executes one-shot tasks
-    ├── SL-1: executes one-shot tasks
-    └── ...
+├── stateful workers × N    hold open files' ASTs, answer queries on them
+└── stateless workers × M   one-shot work: PCH and module builds, index runs,
+                            completion, signature help, formatting
 ```
 
-All worker processes communicate with the master process via stdin/stdout pipes, using bincode serialization (an efficient binary format based on kotatsu's BincodePeer). Each worker's stderr is redirected to an independent log file for isolated debugging.
+Workers talk to the master over pipes in a binary encoding, and each logs to a file of its own.
 
-### Role of the Master Process
+The **master** is single-threaded: it compiles nothing, so routing and state fit one coroutine event loop, and its state needs no locks.
 
-The master process is the system's coordinator, running a single-threaded event loop. It performs no CPU-intensive compilation work — all compilation is delegated to worker processes. The master process is responsible for:
+Work splits into two kinds because they schedule oppositely. Queries on an open file — hover, semantic tokens, the outline — reuse one AST, so they need **affinity**: a file stays with the stateful worker holding its AST. One-shot work keeps nothing, so it needs **load balancing and priorities**: any idle worker takes it, and the user's work goes first.
 
-- Receiving and routing LSP / control requests
-- Managing global state (the project, Session mappings)
-- Scheduling compilation tasks and background indexing
-- Monitoring worker process health
-- Handling file change notifications and cascading updates
+## Stateful Workers
 
-The single-threaded design means the master process requires no locks — all state modifications are executed serially within the event loop. This greatly simplifies state management complexity.
+A newly compiled file goes to the stateful worker holding the fewest. The master decides which ASTs are kept: about one per GB of memory, between 8 and 32; past that, the file asked about least recently is evicted. Eviction is not invalidation — nothing the compile read changed — so an evicted file still answers the whole-document requests its compile had answered (semantic tokens, folds, outline, links, diagnostics, and the last range of inlay hints) as it answered them, and anything else recompiles it once, over its PCH, in tens of milliseconds.
 
-### Why Two Kinds of Worker Processes
+## Stateless Workers
 
-Language server compilation tasks naturally fall into two categories whose differing characteristics require different scheduling strategies:
+Each dispatch is **high** priority when a user request waits on it — completion, signature help, formatting, a PCH a hover needs — and **low** for the background index. Priority belongs to the dispatch, not the task: a background PCH build the user comes to wait for becomes high at once.
 
-**Tasks that need to hold state**: After a user opens a file, they repeatedly query its hover information, semantic highlighting, symbol outline, etc. All of these queries are based on the same AST. If every query triggered recompilation, the latency would be unacceptable (a full compilation can take several seconds). Therefore, the compiled AST must be kept in memory for subsequent queries to reuse. These tasks require **file affinity** — each file is permanently bound to one process.
-
-**One-shot tasks**: PCH builds, PCM builds, background indexing, code completion, signature help, formatting, etc. are all one-shot — no state needs to be retained after execution. These tasks require **load balancing and priority scheduling** — any available worker can execute them, but user-interactive tasks should take priority over background tasks.
-
-Separating them into two kinds of workers allows each to use the most appropriate scheduling strategy.
-
-## Stateful Worker Processes
-
-The core responsibility of stateful workers is to hold compiled ASTs and serve query requests.
-
-### File-Affinity Routing
-
-Each compiled file is bound to a stateful worker via its path_id. This binding is stored in the master process's residency table, together with whether the worker holds the file's AST and when the file was last asked about. When a query request arrives for that file while its worker holds the AST, the master process routes it to that worker based on the table; an evicted file answers from its kept answers or compiles again (see Document Eviction).
-
-The allocation strategy for new files is **least loaded** — the worker currently holding the fewest documents is selected. This ensures an even distribution of documents across workers.
-
-### Compilation and Query Flow
-
-1. The master process sends CompileParams (source text, compilation flags, PCH/PCM paths, etc.)
-2. The worker compiles the AST and caches it in an in-memory DocumentEntry
-3. Subsequent feature requests (hover, semantic tokens, document symbols, etc.) reuse the cached AST
-4. When file content changes (didChange), the master process sends a DocumentUpdate notification
-5. On the next compilation request, the worker recompiles the AST with the new content
-
-Requests for each document are serialized through a per-document mutex, ensuring that compilation and queries do not run concurrently on the same document.
-
-### Document Eviction
-
-The master process decides which ASTs the stateful workers keep: at most one document per GB of the machine's memory (or of a tighter limit clice runs under), between 8 and 32, counted once at startup. When a compile leaves more ASTs than that, the master evicts the document asked about least recently that nobody holds, and tells its worker to drop it; a worker never evicts on its own. Every request about a document counts, whatever answers it: the editor asks about what it shows. A document is held while a request about it is in flight, and a request that needs the AST holds its document from before the compile until the answer — the limit is exceeded briefly instead — so a burst of more documents than the limit compiles each document once rather than evicting compiles that would then start over.
-
-Eviction is not invalidation: nothing the document's compile read changed, so the compile still describes the buffer, and what its AST answered still holds. The compile keeps those answers: the whole document's (semantic tokens, folding ranges, the outline, document links, diagnostics) and, of a request about a range (inlay hints), the last range asked. An evicted document answers from them at once, with no compile and no refresh; any other request compiles it again, once, and waits. The recompile reuses the document's PCH, so it takes tens of milliseconds. A header that changed on disk meanwhile is seen before any kept answer is given, and an edit drops them. A worker that crashes loses its documents' ASTs the same way.
-
-## Stateless Worker Processes
-
-Stateless workers execute one-shot compilation tasks using a priority-aware scheduling strategy.
-
-### Two-Level Priority Queue
-
-- **High priority**: Work a user request is actively waiting on — interactive builds (code completion, signature help), formatting, and the PCH/PCM builds a foreground request depends on.
-- **Low priority**: Background indexing runs, which can be deferred without affecting user experience.
-
-Priority is a property of the dispatch, not of the task type: the same PCH build is dispatched High when a user request is blocked on it and Low when produced by background indexing. A Low build that a user request comes to wait for becomes High at once, whether it is still queued or already running.
-
-High-priority tasks always take precedence in acquiring worker resources. Low-priority tasks are subject to a concurrency limit — the number of low-priority tasks running simultaneously has an upper bound, ensuring that workers are always available to handle high-priority requests. Background index runs additionally run on a thread of lowered scheduling priority, which ends with the run, reducing their CPU impact on other system processes, including the editor itself.
-
-### Dynamic Concurrency Control
-
-The concurrency cap for low-priority tasks is dynamically adjusted based on system state:
-
-**Foreground-aware budget**: With the user idle, background work keeps at most the configured number of stateless workers busy — by default half the physical cores; the pool grows past it, up to its maximum, only for interactive work that finds every worker busy. While foreground activity is detected (a user request in flight for up to a minute, or one within the last ten seconds), background work is capped at a single task: compiles share the processor's power budget, so every extra background compile slows the user's own. When foreground activity returns, workers are reclaimed quickly — running low-priority tasks hit cooperative cancellation checkpoints and requeue themselves, with a kill as the timeout fallback — so a burst of typing never waits behind a wall of index builds. A task killed for ignoring the cancel for ten seconds counts as lost work, retried a bounded number of times.
-
-**Admission by memory**: Every second while stateless work runs, the master samples the memory the machine has left and each worker's own memory. What is left is, on Linux, the least of the available memory and what each memory cgroup clice runs in can still take, with the file cache no process maps counted as free; on macOS, the physical memory less what the rest of the system holds, compressed pages included and pages given back as reusable left out; on Windows, the least of the available physical memory and the commit charge left. A reserve stays free: 5% of the memory, at least 512 MiB — on macOS 10%, at least 1.5 GiB, since its compressor slows everything down well before memory runs out. A background task starts only if what is left, less the growth the running background tasks still have ahead, holds its expected peak and the reserve. A file's expected peak is what its worker reached the last time it was indexed, which the index keeps; a file never indexed is expected to take the 75th percentile of the peaks seen so far: at least 1.5 GiB while fewer than three are known, and for every such task beyond the third running at once, since a wrong estimate shows only as the tasks outgrow it and they are killed one at a time. On macOS a worker's own memory is its footprint, which counts a page an allocator reuses only when the allocator tells the system, as mimalloc, clice's allocator there, does and the system's own does not. A task that does not fit lets those behind it that do go first for up to half a minute; then the queue waits for it. With no background task running, the first one queued starts once what is left holds two thirds of the reserve, room to grow by a third of it before it is found too big for the machine (see below), or the whole reserve beside other work, below which it would be killed at once. Waiting would free nothing.
-
-**Under pressure**: When what is left falls below the reserve, or would within two seconds at the rate the background tasks grow, each up to its expected peak, the newest background task is killed: it has the least work to lose and the most growth ahead. On Linux, several background tasks also count as short of memory once the system moves clice's workers' memory out to swap, whatever the available memory says: it can keep a large file cache and swap instead. A background task that runs with no other work, an open document's included, may use the reserve down to a third of it, by the same projection, before it is killed, and idle workers above the minimum are scaled down first to make room for it. One task is killed at a time, the next only once the first worker's process has exited. Foreground work is never held back or killed for memory. An indexing task killed beside other work keeps the memory it reached as a floor on its expected peak and runs again in the background index's next pass, at no cost to its retries. One killed with nothing else running does not fit the machine: it is not run again until the file changes, and `clice index` lists it apart from the failures, with the memory it reached. A worker whose allocation fails counts the same way, never as a crash its file caused. Other work whose worker's memory ran out, a PCH or module build, is sent once more.
+- **Foreground first.** With the user idle, background work keeps up to `[workers] background` workers busy. While the user is active, it drops to a single task: compiles share the processor's power budget, so each extra background compile slows the user's own. Running background tasks stop at their next cancellation point and requeue, so typing never waits behind index builds. Index runs also run at a lowered scheduling priority.
+- **Memory.** While stateless work runs, the master samples the machine's free memory (and that of the cgroup clice runs in) every second and keeps a reserve free. A background task starts only when the memory left, less what the running tasks are still expected to grow, holds its expected peak: what its worker reached when the file was last indexed. When memory runs short, the newest background task is killed — it has the least done and the most growth ahead — and runs again later; a task running alone may use part of the reserve first. One that does not fit even alone is not run again until the file changes, and `clice index` names it. Foreground work is never held back for memory.
 
 ## Crash Recovery
 
-The core value of process isolation lies in crash recovery — containing a worker's failure within that process without affecting overall service.
-
 ### Who Crashed It
 
-A worker runs several requests at once — a stateful worker compiles and answers queries for several documents side by side — so its death alone does not tell which request caused it. A dying worker therefore names the request it was running in its last line on stderr: the crash handler runs on the thread that faulted, and that thread knows its request. The master reads the line before it answers the requests that died with the worker:
+A stateful worker runs several requests at once, so its death alone does not say which one caused it. A dying worker therefore names, in its last line on stderr, the request its faulting thread was running. That request is blamed; every other request in flight was merely taken along and is resent once. A death that names nothing — a signal, a crash where it could not report — resends everything in flight once, and blames a request only after it dies twice as the worker's only request. Running out of memory blames no request.
 
-- The request the worker named crashed it, and its document is blamed for that kind of work.
-- Every other request in flight was merely taken along. It is resent once, and its document is not blamed.
-- A death that names no request — the worker was killed from outside, by the OOM killer or a signal, or crashed where it could not report — resends every request in flight once. A request that dies this way twice, the only request on its worker both times, is blamed; when several were in flight, nothing tells which one did it, and none is.
+### What a Crash Pauses
 
-### What a Crashed Document Shows
+Blame is kept per document and per kind of work — the compile, the preamble, the modules it imports, each query, completion, signature help, formatting — and pauses that kind of work on that document alone. A crashed compile leaves the document without an AST and a warning on its first line saying what crashed — unless it is the first crash right after an edit, which most likely comes from half-typed code; a crashed hover pauses hover only. A compile that crashes with clang-tidy running is tried again without it, and only clang-tidy pauses if that one succeeds. A request like one that just crashed on the same content answers empty instead of crashing a worker again.
 
-Blame is recorded per document and per kind of work: the compile, the precompiled preamble, the modules a document imports, each query (hover, semantic highlighting, inlay hints, document symbols, folding ranges, code actions, document links), code completion, signature help and formatting. A crash pauses that kind of work for that document only:
+Paused work never retries while the document sits still. It retries after the document or a file it includes changes, for up to three crashes in a row — half-typed code usually stops crashing once complete — and at once on a save, the explicit retry. Background indexing skips a file whose run crashes until the file changes. A crash while reading a cached PCH first rebuilds the PCH, since a corrupted file crashes the same way, and blames the document only if the rebuilt one crashes too.
 
-- A crashed compile or preamble leaves the document without an AST. Its diagnostics give way to a warning on the first line that names what crashed and how the worker died, and the features that need the AST answer empty. Completion and signature help pause with it, since they parse the same code.
-- A crashed query pauses that query alone; the compile's diagnostics stay, with the warning added.
-- A crashed module build is refused to every importer, which still compiles, reports the missing module and carries the warning.
-- A preamble shared by several documents crashes once: the others show the warning without a crash of their own.
-- A compile that crashes while reading its precompiled preamble first rebuilds the preamble, since a corrupted cache file crashes the same way: a corrupted file heals without a warning, and only a crash on the rebuilt preamble is blamed on the document.
-- A request waiting for a worker when one like it crashes on the same content is not sent: it answers empty instead of crashing a worker once more.
+### Restarts
 
-A request the workers cannot serve answers empty rather than with an error; the warning on the file explains the gap. The pauses belong to the document, not to the project serving it: a document that moves to another project, as when its context is switched to a file there, keeps them.
+A dead worker is replaced at once, its documents recompiling on their next request; their text lives in the master, so nothing typed is lost. Requests wait for a replacement rather than fail. Each slot has a crash budget, spent only by deaths nothing explains — not a blamed request, a lack of memory, a terminated session, or a kill of an idle worker: a slot that exhausts it rests for thirty seconds and is then revived, so the pool degrades under systemic failure and heals without interrupting the master.
 
-### When It Retries
+A request past its deadline — ten minutes for a build, two for anything else, counted in CPU time for stateless work — is taken for a hung worker, which is killed and the request blamed like a crash; so is a stateless worker whose CPU time stands still for five minutes.
 
-A paused kind of work is never retried while its document sits still: asking again does not crash a worker again. It retries:
+## Design Decisions
 
-- after the document or a file it includes changes, once two seconds have passed since the crash, for up to three crashes in a row — code that crashes while half typed usually stops crashing once it is complete;
-- at once when the document is saved. Saving is the explicit retry, and it starts a fresh run of three.
-
-A first crash right after an edit stays silent, since it most likely comes from half-typed code that the next edit retries. Closing and reopening a document retries its paused work: the reopened document starts with no pauses. An answer from the paused work clears the pause and its warning.
-
-Background indexing follows the same rule without a warning: a file whose own index run crashes its worker is skipped until it changes. A run that crashes while reading the precompiled header its target's build declares runs again without it, the file parsing the header itself. If that run succeeds, the crash counts against the header, as a compile's crash on its preamble does: a corrupted one is rebuilt for the next file, and one that keeps crashing its readers is left out for a while. If it crashes again, the crash is the file's own.
-
-A precompiled header the build declares that crashes the worker building it is not built again until the header changes; its readers parse the header themselves meanwhile.
-
-A module whose build fails on errors in the code is not built again while nothing it read or looked for has changed: the documents importing it compile without it and report the errors. It is built again once one of those files changes, once the compile flags change, and whenever a document importing it is saved.
-
-A precompiled preamble is built in spite of errors in the code, and the documents using it report them along with their own. Such a preamble is built again once one of the files it read or looked for changes, and whenever a document using it is saved.
-
-### Worker Restarts
-
-1. The master process detects the exit, takes the dead worker's documents off the residency table at once, and launches a replacement — immediately for an occasional crash, with exponential backoff for a crash loop
-2. Requests that find no live worker of their kind wait for one to come back instead of failing, and documents keep the diagnostics they show meanwhile
-3. A stateful worker's documents recompile on their next request — the user may notice a brief delay, but no editing content is lost: the text buffer lives in the master process's Session
-
-### Crash Budget and Revival
-
-Each worker slot has a crash budget with exponential backoff between restarts. Only deaths that name no request count against it, and of those neither a terminated session (SIGTERM, SIGINT or SIGHUP) nor a SIGKILL of an idle worker, one running no request and holding no document: a crash a request caused is that request's document's doing, and the document's pause already contains it; an idle worker the OOM killer or a user killed says nothing about whether the worker can stay up. A worker killed while running requests or holding documents does count: when several requests were in flight, or none, no request is blamed, and only the budget slows a load that keeps getting killed. A request found to have died alone twice is blamed after all, and its two deaths give their count back. A stretch of healthy uptime resets the budget, so occasional crashes do not accumulate into a death sentence. A slot that exhausts its budget stops being restarted — but not permanently: after a cooldown of thirty seconds its budget is restored and the slot revived, and nothing brings it back sooner. When every worker of a kind is stopped this way, the editor shows a message saying which features wait and for how long. The pool therefore degrades temporarily under systemic failure (fewer workers, slower background indexing) and heals itself once the trigger passes, without ever interrupting the master.
-
-### Hangs and Oversized Results
-
-A request running past its deadline is taken for a hung worker: the worker is killed and the request blamed like a crash, with the same warning and the same retries. The deadline is ten minutes for a build (a compile, a PCH or module build, an indexing run) and two for anything else. A stateless worker's deadline counts its CPU time, so a loaded machine slows a build down without killing it, and a stateless worker whose CPU time stands still for five minutes is hung as well. Work on an open document counts the time since its worker began it: a request waits behind the earlier ones about the same document, and for one of its worker's threads, and that wait does not count. One kill names every request on the worker that outlived its deadline. An index too large for the 64 MiB limit on a message between processes is sent through a file in the cache store instead. Without a cache store it cannot be sent, which is no crash: an open document's compile keeps its diagnostics and drops only the document's own index, with a warning, and a background index run of the file fails until the file changes.
-
-## Design Decisions and Trade-offs
-
-**Why multi-process instead of multi-threaded?** Threads cannot isolate crashes — a segfault in one thread terminates the entire process. Threads also cannot isolate memory leaks — all threads share the same address space. Multi-process adds IPC overhead (bincode serialization/deserialization) but provides genuine fault isolation. For a library like Clang, which has a known large number of crash and leak paths, process isolation is an engineering necessity.
-
-**Why separate stateful and stateless workers instead of a unified worker pool?** Their scheduling strategies are fundamentally different. Stateful workers need file affinity (to ensure AST reuse); stateless workers need load balancing and priority queues. A unified pool would sacrifice either affinity (causing frequent recompilation) or scheduling flexibility (inability to differentiate priorities). Separating them lets each kind of worker focus on its own scheduling needs.
-
-**Why is the master process single-threaded?** The master process has a light workload — it only performs routing and state management, not compilation. A single thread avoids all concurrency control complexity (locks, atomic operations, race conditions), while a coroutine-based event loop is sufficient for the I/O-intensive routing work.
+- **Why processes, not threads?** Threads isolate neither crashes nor leaks: a segfault ends the process, and all threads share one heap. Processes cost serialization between them, and buy real isolation from a library with as many crash and leak paths as Clang.
+- **Why two kinds of workers?** One pool would give up either affinity, recompiling ASTs, or priorities, mixing the user's work with the background's.
 
 ## Known Limitations
 
-- **Foreground work has no memory bound.** Background work is killed before the reserve runs out, but a pathological translation unit an open document compiles can grow its worker until the operating system's OOM killer intervenes. A worker holding a request or documents ranks just above the master for the OOM killer, so it is taken before the session is; an idle worker keeps the master's own score, since killing it would free nothing. The killed worker's requests follow the rules for a death that names no request.
-
-- **A small memory limit slows background work to one task.** While what is left stays below the reserve, at least 512 MiB (1.5 GiB on macOS), background tasks run one at a time, and none starts below two thirds of it: a unit that needs more than a container limited to little more than the reserve leaves is killed and not indexed until it changes, and background work on a machine other programs fill waits until they give memory back.
-
-- **Synchronous startup.** Loading the compilation database, warming the toolchain cache, and the initial dependency scan run to completion before the server starts answering requests, and there is no progress reporting yet — on very large projects the server can appear unresponsive for a while right after startup.
+- **Foreground work has no memory bound.** A pathological unit an open file compiles can grow its worker until the system's OOM killer steps in. On Linux, a worker holding work ranks above the master for it, so the worker goes, not the server.
+- **A small memory limit slows background work to one task**, and a unit needing more than the limit leaves is not indexed until it changes.
+- **Startup reports no progress.** Loading the compilation database, warming the toolchain cache and the first dependency scan finish before the server answers; on a very large project it can look unresponsive for a while.

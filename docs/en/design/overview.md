@@ -1,147 +1,34 @@
 # Source Code Overview
 
-This document describes the responsibilities and role of each module in the clice source tree, providing readers with a high-level understanding of the overall project structure. For detailed design information on each module, refer to the corresponding topic documents.
+clice is a C++ language server designed from the architecture up around problems earlier servers could not solve without a redesign:
 
-## Project Vision
+- **Compilation context.** Every step of compiling, indexing and answering knows which context a file compiles in — which command, which includer for a header — and the user can see and switch it. See [Compilation Context](compilation-context.md).
+- **Multiple processes.** A master process holds the state; worker processes run Clang, so a crash or a leak in Clang costs a worker, never the server. See [Multi-process Architecture](multi-process.md).
+- **One build graph.** Every expensive product — a preamble's PCH, a module's PCM, an open file's AST, a unit's compile for its index — is a node of one graph that shares builds, cancels them and invalidates them along their dependencies. See [Compile Task Graph](task-graph.md).
+- **Coroutines.** Asynchronous work is written as C++20 coroutines on the kotatsu library instead of callbacks.
 
-clice is a brand-new C++ language server, redesigned from the architecture level to solve long-standing problems in previous C++ language servers. Key features:
+## Layers
 
-- **Compilation Context**: clice is the first language server to introduce compilation context as a formal concept. Every step of compilation, indexing, and querying explicitly distinguishes the current compilation context, and users can query and switch between them. See [Compilation Context](compilation-context.md).
+`src/` is one C++20 module in layers, listed here from the bottom up: each imports only the layers listed before it, except that `server` and `analysis` sit side by side above `project`, and `analysis` imports no `worker`.
 
-- **Multi-process Architecture**: A master + worker process model isolates Clang's memory leaks and crashes while enabling priority-aware scheduling and real-time memory monitoring. See [Multi-process Architecture](multi-process.md).
+| Layer      | What it holds                                                                                                                                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `support`  | Utilities: logging, JSON, text, fuzzy matching, markup, failure records.                                                                                                                                        |
+| `vfs`      | clice's view of the disk: one identity per file however a path spells it, one freshness check (a stat, then a content hash) shared by everything that asks whether a file changed, and the on-disk cache store. |
+| `command`  | Compile commands: parsed once from the compilation databases, edited by the rules, completed by asking each command's compiler. See [Command Resolution](command-resolve.md).                                   |
+| `syntax`   | What needs no AST: the lexer, the include and module dependency scan, the dependency graph, include resolution. See [Dependency Scanning](dependency-scanning.md).                                              |
+| `compile`  | Clang behind one interface: a compilation's AST, diagnostics, tokens and directives, and clang-tidy.                                                                                                            |
+| `semantic` | Analysis over the AST: one traversal per compilation that every feature queries, symbol identities equal across units, the [template resolver](template-resolver.md), documentation comments.                   |
+| `index`    | The symbol index: a unit's index, the per-file shards, the project index and its database, and the queries over all of them. See [Symbol Index](symbol-index.md).                                               |
+| `feature`  | Each language feature's answer, computed from an AST, the index or a document's text, with no state of its own.                                                                                                 |
+| `settings` | `clice.toml` and the editor's settings over it, and the rules deciding what applies to each file.                                                                                                               |
+| `worker`   | The worker processes and their pool: placement, priorities, memory, crashes and deadlines.                                                                                                                      |
+| `project`  | A project as the disk describes it: its databases, members and commands, the build graph with its PCHs and modules, and its index. Unsaved buffers never change what a project says of the disk.                |
+| `server`   | The language server: the open documents, which project serves each, what answers a request now, and the connection to the editor.                                                                               |
+| `analysis` | The analyses behind `clice analyze` and `clice modularize`.                                                                                                                                                     |
+| `driver`   | The `clice` binary's subcommands.                                                                                                                                                                               |
 
-- **Coroutine-based Async Model**: Built on C++20 coroutines and the kotatsu library, replacing traditional callback-style async and making business logic clearer.
-
-- **Unified Compile Scheduling**: Every expensive build product — preamble PCHs, C++20 module PCMs, document ASTs, one unit's compile for its index or its lint — is a node in a single compile task graph with shared builds, real-time cooperative cancellation, and dependency-aware invalidation. See [Compile Task Graph](task-graph.md).
-
-## Module Overview
-
-### `src/support/` — Foundation Utility Library
-
-General-purpose utilities and infrastructure shared by all other modules.
-
-- `FuzzyMatcher`: Token-aware fuzzy matching for code completion and symbol search
-- Markup: The markdown or plain text a card or a query answer is rendered in
-- `FailureRecord`: What is remembered of an operation that failed — how many times in a row, when and why — and its operation's policy for when it runs again: how many failures stop it, a cooldown, whether a change of its inputs or a save retries it
-- Logging, filesystem abstractions, string utilities, etc.
-
-### `src/vfs/` — File Identity and Versions
-
-- `FileTable`: Internalizes file paths as stable `Fid` identifiers used throughout the system, and owns the shared per-file facts derived from them — the last observation of each file on disk, content versions, directory listings. A file has one `Fid` however a path spells it: it is identified by the name the operating system gives it (through symlinks, and on Windows through letter case, junctions and subst drives), and shown to the user under the name the user knows it by — the open document's, else its own path under the workspace folder the user opened, never the spelling an include lookup reached it by. The two-layer freshness check (stat fast path, then content hash) lives here once and is shared by every consumer: PCH validation, index staleness, and disk polling. Every look that finds other content than the last one is reported as a change, whoever looked.
-- `CacheStore`: The on-disk artifact store for file-shaped build products (PCH/PCM and friends) — atomic pair commits, namespace quotas, LRU eviction, and crash recovery
-
-### `src/settings/` — Settings
-
-- `Settings`: Loading and merging of `clice.toml` and LSP `initializationOptions`, located errors and unknown-key warnings, the JSON schema the configuration docs are generated from, and choosing the build configuration.
-- `Rules`: The rules of `clice.toml` under one configuration, the one place that knows rule priority: which rules a file matches, how they edit its command, whether it is indexed, linted and formatted, which default command covers it, and which databases it compiles from in what order.
-
-### `src/command/` — Compilation Command Processing
-
-Commands read from the compilation database (CDB) are raw commands generated by the build system and cannot be fed directly to the Clang frontend -- they may contain options meant only for code generation, lack system header search paths, or include parameters irrelevant to a language server. This module parses each command once into a structured form that the rest of the system consumes.
-
-- `CommandTable`: Every command clice knows, parsed once into an interned, classified argument structure identified by a stable `CommandID`, with what derives from one command: its input language, the precompiled headers it writes and reads, its command hash, its driver-level renders
-- `CompilationDatabase`: Loads, reloads and diffs the `compile_commands.json` files, their entries normalized (`Normalizer`) into the `CommandTable`; the rules' edits apply on top of an entry's command (`apply_edits`)
-- `Toolchain`: Queries system compilers for implicit compilation parameters (such as system header search paths), with a two-layer cache — query results per driver invocation shape, and synthesized flag sets per input kind — and renders the `-cc1` command lines; how each compiler kind is asked (GCC-style, cl, nvcc, clang's own driver) lives under `src/command/toolchains/`
-- `SearchConfig`: A four-tier model for header search paths (Quoted / Angled / System / After), matching Clang's internal search logic
-
-See [Compilation Command Resolution](command-resolve.md).
-
-### `src/compile/` — Compilation Abstraction
-
-Wraps the Clang compiler, abstracting Clang APIs into safe, unified compilation interfaces. This layer is purely a compilation abstraction with no server logic.
-
-- `CompilationUnit`: one compilation's AST, what Clang reported while it ran (diagnostics, preprocessor directives, tokens, dependencies), and the helpers that read them, such as source location mappings. `compile()` returns it, and it is the primary input for `src/feature/` and `src/index/`.
-- `CompilationParams`: Describes a single compilation: its kind (Preprocess / Preamble / ModuleInterface / Content / Whole / Completion), its input (the command, the files served from memory, the PCH and PCMs it loads), and what else runs over the parse, such as clang-tidy.
-- Diagnostic and clang-tidy collection during compilation.
-- What the layers above derive from the AST, such as the semantic map, is built on first use and kept with the unit (`CompilationUnit::get`).
-
-### `src/syntax/` — Lightweight Syntax Processing
-
-Syntax-level processing that does not require a full AST. Runs before compilation to quickly obtain structural information and dependency relationships for files.
-
-- `Lexer` and the lexical scan: `Lexer` is a token-level utility built on Clang's raw lexer that marks directive lines, their keywords and header names. The lexical scan lexes a file once into its tokens, comments and directive lines (with the conditional blocks around each), its include guard and its module declarations; the features answered from an open file's compiled unit share the one scan the unit caches. Neither runs the preprocessor.
-- `DependencyGraph`: A global include/module dependency graph supporting forward queries, reverse queries, host source file search, include chain lookup, etc.
-- Dependency scanning: Wraps Clang's `DependencyDirectivesScanner` to quickly extract include and module dependencies
-- `IncludeResolver`: Resolves include paths to actual files based on search path configuration
-- Header contexts: Builds the prefix/suffix files that let a header compile under its host's preprocessor state
-
-See [Dependency Scanning](dependency-scanning.md).
-
-### `src/semantic/` — Semantic Analysis
-
-Semantic analysis capabilities beyond Clang's native APIs, over the AST of a compilation unit.
-
-- `Semantics`: The unified semantic map — a single AST traversal per compilation records every interesting node of the focus file and its token ownership; selection and features are pure queries over the map rather than separate AST walks, while indexing a whole unit runs the same traversal over everything the unit parsed and hands each node to the indexer as it is reached, holding only that node and its ancestors
-- `EntityTable`: The identity of a declaration, equal across translation units for the declarations the compiler would merge
-- `TemplateResolver`: Resolves dependent names through pseudo-instantiation, enabling semantic analysis to see through template contexts. See [Template Resolver](template-resolver.md).
-- `SymbolKind` / `RelationKind`: Fine-grained symbol kinds and relation types
-- Documentation comments (`comment/`): Finds the comment documenting a declaration in a file's text, the same way for a compiled unit and for the index, and reads it as Doxygen and Markdown — commands, parameters, return values, `@copydoc` — into one structured form that hover and `clice query` render
-
-### `src/index/` — Symbol Index
-
-Symbol indexing system with cross-translation-unit query support. Layered as:
-
-- `TUIndex`: Index entries produced from a single compilation, projected node by node from its AST traversal
-- `ProjectIndex`: The global layer — externally visible symbols, plus the record of which translation units contributed which files — in memory and on disk in one type: it merges translation units' indexes, judges their freshness, saves its changes to the index database and loads them back
-- `Shard`: The per-file storage unit. Each compilation context that preprocesses the file differently contributes a variant, deduplicated by the content identity of its encoded entries; names local to the file live in the shard itself, only external names enter the `ProjectIndex`
-- `BlobDatabase`: Persistence backend — all index blobs live in a single LMDB database
-- `IndexQuery`: Read-only queries over every index source — the project index, per-file shards, and the open documents' indexes its owner hands it as plain data for one read — under one freshness arbitration, answering in domain values that the transports project onto their protocols; a query may also ask the other projects' views about the same entity, each answering for the files it serves
-
-See [Symbol Index](symbol-index.md).
-
-### `src/feature/` — LSP Feature Implementations
-
-Concrete implementations of LSP features. Each feature decides what the user sees — which items, their text, their edits and their protocol form — from the inputs it is given: a `CompilationUnit`, the index (`IndexQuery`), a document's text. This layer is purely computational -- it has no involvement with network communication, state management, or process scheduling.
-
-Includes: code completion, hover information, signature help, semantic highlighting, inlay hints, document symbols, document links, folding ranges, formatting, diagnostics, etc.
-
-> `feature/` decides each answer; the server routes each request to the source that can answer it now, gathers the feature's inputs, calls it and replies. Cross-file navigation features (go to definition, find references, etc.) answer from the index (`IndexQuery`). Some features involve multi-phase processing -- for example, include path completion in code completion can be resolved at the syntax layer without full compilation.
-
-### `src/worker/` — Worker Processes
-
-- `WorkerPool`: Manages worker process lifecycles and scheduling — spawn/monitor/respawn with crash budgets and cooldown revival, attribution of every worker death to the request that caused it, a deadline on every request, stateful placement with document affinity, and stateless dispatch with priority queues and foreground-aware capacity
-- `StatefulWorker`: Holds document ASTs and serves query requests
-- Stateless workers execute one-shot tasks (PCH/PCM builds, completion, formatting, indexing runs)
-
-### `src/project/` — Projects and What They Build
-
-A project is what one set of compilation databases and one cache directory describe: the state derived from files on disk, independent of editors, and the builds it runs over that state — its PCHs, its modules and its index. The command line runs one project. The server runs one per workspace folder, plus one for any file opened outside them whose directory or an ancestor holds a `clice.toml` or a `compile_commands.json`, and gives each file to the project that compiles it. A subdirectory with a configuration of its own is its own project: the one above it loads no database there and takes none of its files as its own, unless a database of its own lists them.
-
-- `Project`: The disk-truth aggregate — configuration, its rules (`Rules`), compilation database, members, dependency graph, the PCH and PCM entries, persisted index and the queries over it (`IndexQuery`, with its freshness gate), and the task graph its builds run on, with the event loop and worker pool its owner hands it. One class whose operations are its members, split across files by subject (`command/`, `graph/`, `background/`). Core invariant: unsaved buffer contents of open files never modify what a `Project` says of the disk; the one thing it learns from a buffer, whether a header compiles alone, is recorded under that text's version, which a reader of the disk ignores until the disk holds it
-- Opening (`Project::open`), one way for every entry point, in a fixed order: the rules under the configuration, the cache store and index database, the databases and provisional members the index remembers, the build and its dependency graph, then the saved index reconciled with the build
-- Discovery: where a project's compilation databases are and how they are watched — a rewrite reloaded once it holds for two looks, a discovered database's presence ranking it, the places one may appear at watched until it does —, which directory a file's project is rooted at, and which subdirectories are projects of their own
-- Members: what the build compiles — each file's database entries under the rules, the sources a rule's default command covers, and the provisional members (a source the user opened or saved that no database lists) — and the commands they compile under
-- Changes: what a change of the project's inputs invalidates, a file on disk or the build's commands — the include and module graphs rescanned, the PCMs and the units that read the file gone stale, the closed units booked to reindex, a vanished file forgotten. The project never calls its owner: the server hands it its open documents and what their compiles read, and hears back which of them went stale
-- Command resolution: the compile command a file compiles under, from the project alone: selected from six tiers in order — the host the user chose, the file's own command, the host ranking first, a rule's default command, the command of a nearby unit it borrows, clice's own fallback — each a candidate naming the file it is the command of, then rendered with the includer context a header needs; and the identity of a unit's command — the command it compiles under, rules applied, the project root written as `${workspace}` so a moved checkout keeps it — which its index, include trees, self-containment checks and header contexts are keyed by
-- `Hosting`: What clice knows of the headers that compile in a unit's context, which the editor and `clice inspect` read alike: the hosts' include trees, whether each header compiles alone (saved with the PCH and PCM records), the includer contexts synthesized, and what a file outside the build can borrow
-- Contexts: the contexts a file can compile in — its own commands and the hosts whose commands it can compile under — whether a user's choice still holds, and the format the choices are saved in
-- `TaskGraph`: The shared build graph. Every expensive product is a node — a preamble PCH, a module's PCM, an open document's AST, one unit's compile for its index or its lint; whoever waits on a node carries how to build it, concurrent requests for the same node join one attempt instead of duplicating work, a clean node's product is checked when a waiter reaches it, cancellation is cooperative, and edges drive dependency-aware invalidation
-- PCHs and modules: building preamble PCHs (keyed by content) and C++20 module PCMs (with import edges and provider tracking), each entry holding its product and its last build's failure, and what the two share (`Precompiled`): a build's key and blob, the check of a cached build against the inputs it recorded, refusing a build that failed or crashed a worker until the files it is known to have read change (and a PCH its readers keep failing to read, for a while), and sending one to a stateless worker
-- Units: one translation unit compiled on a stateless worker for its index or its lint, shared by the background index and `clice lint`
-- `BackgroundIndex`: started by the project's owner — the server when it indexes, `clice index` at once, `clice lint --index` after its own pass — it runs passes over its queue of owed reindexes (`ReindexQueue`, which holds each unit's reason), admits only the build's units, feeds them through stateless workers, taking only the capacity the foreground leaves, and merges what comes back; a unit an open document's compile indexes is left to that document until it closes, and a run's skipped-body diagnostics are kept with the file's last attempt; the end of an attempt and the index's changes are signals its owner subscribes to
-- `SavedMembers`: Which databases listed each file when the index was last saved, and the provisional members. Loading reindexes a unit whose command changed while no server ran, since its index records the command it was built with, and drops the index of one no database lists any more — when every database that listed it loaded, so one that failed to load keeps serving
-- Saving and loading: one transaction writes the index's changes with what the database carries beside it — the members, the PCH and PCM records, the editor's context choices — and the load reads them back; shutting down (`Project::shutdown`) stops the background index, winds down the graph's attempts, saves a last time and closes the cache store
-- `Memo`: Results remembered by request with the trace of the files each read, checked on lookup: the hosts' include trees, the self-containment checks and the header contexts synthesized
-
-### `src/server/` — Server Runtime
-
-The language server's core runtime, assembling all the layers above into a running service: one class per boundary of the design, each larger one in a directory of its own with its work split in files.
-
-- `MasterServer` (`master/`): The process. Owns the file table, the worker pool and the projects served, and holds the editor's state, one per process: the open documents — each with the project it belongs to, and the documents open under a second name of its file — and the user's context choices. It gives each open file to the project that compiles it, and moves a document to another project by changing its owner; the lifecycle, the polling and shutdown are its
-- `Session`: One open document — its text, version and generation — and what crashed on it: a kind of work that crashed a worker on the document pauses until the document changes (spaced and bounded) or is saved. The records live as long as the document is open
-- `LSPClient` (`client/`): The connection to the editor: the handshake and the client's capabilities, the document notifications handed to `MasterServer`, every language request — each written once, in its handler, behind one check of the server's lifecycle — clice's own requests, pushing diagnostics and the one refresh — asked of the client when a better answer replaces one the index gave, which the connection notes as it answers — progress, and the test hooks
-- `ServedProject` (`served_project/`): One served project: its project, the open documents that belong to it and what it derives for them — compiling them and what their diagnostics show; what answers a request on them now (the worker's AST, the PCH's cached preamble products, or the index, by readiness and whether the document is compiled: an up-to-date AST when there is one, otherwise results computed from the index at once, the request saying what it needs — only the AST, a lex of the whole buffer, a wait for the file's pending index attempt) and asking the workers, each dispatch admitted by the document's crash records and answering `ContentModified` for a buffer the client already edited away; what the project's changes mean for the open documents; the open documents' commands under their context choices; and the open documents as the reads of the index take them. Under `readonly = auto`, a document is not compiled — the index alone answers its reads — until an edit intent starts compiling it, and under `readonly = on` it never is; compilation is pull-based throughout, triggered by requests rather than lifecycle events
-- Protocols: the LSP extension types, and the control channel through which `clice index` and `clice query --fresh` ask a running server to index — a local socket (a named pipe on Windows) only its user connects to, which the server opens while it holds the project's index writer lock and records next to the lock for the command-line tools to find
-
-See [Multi-process Architecture](multi-process.md).
-
-### `src/driver/` — Subcommands
-
-Entry points for the `clice` binary: `serve` (the LSP server), `worker`, `index` (batch indexing), `lint` (batch clang-tidy), `inspect`, `format`, `query`, `refactor`, and `analyze`. `index` and `lint` run a project of their own with a worker pool of their own, headless.
-
-## Inter-module Relationships
-
-The data flow roughly follows this direction:
+## Data Flow
 
 ```text
 command (structured compile commands)
@@ -150,12 +37,9 @@ project (task graph: PCH / PCM / AST / unit nodes) ──→ worker (processes)
     ↓ products
 compile (drives Clang compilation)
     ↓
-semantic (semantic map) ──→ index (TUIndex / shards / ProjectIndex)
+semantic (semantic map) ──→ index (unit index / shards / project index)
     ↓
-feature (produces LSP responses)
-
-The server layer assembles all of the above via sessions, routing,
-invalidation, and transports into a runnable service.
+feature (answers)
 ```
 
-`support`, `vfs`, `config`, and `syntax` are cross-cutting layers shared by multiple modules.
+The server routes each request to the source that can answer it now — an up-to-date AST, or the index while the file compiles — gathers the feature's inputs and replies. Compilation is pulled by requests, never started by an edit alone (see [Incremental Compilation](incremental-parse.md)).

@@ -40,7 +40,7 @@ A logs artifact holds, under the runner's directories:
   `clice index` run, `master.log`, a log per worker (`SF-n` stateful, `SL-n`
   stateless), `index.log`. The clice under test and the baseline write into
   the same directory: a log's first lines name its version and the commit
-  it was built from (`clice 0.1.0+g<commit> (<target>) starting, …`, then
+  it was built from (`clice 1.1.2026112002 (<target>) starting, …`, then
   `Built from https://github.com/clice-io/clice/tree/<commit>`), and a perf
   run's `logs` in `results.json` names its sessions. A crashed process's stack is in its own log after
   `=== CRASH STACK TRACE ===` (symbolize it: the release skill).

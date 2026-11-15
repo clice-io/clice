@@ -14,7 +14,7 @@ body:
     attributes:
       label: clice version
       description: Output of `clice --version`, or the nightly build date / extension version you installed.
-      placeholder: e.g. clice 0.1.0-nightly-20260801
+      placeholder: e.g. clice 1.0.0
     validations:
       required: true
 

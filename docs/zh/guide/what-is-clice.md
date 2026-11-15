@@ -1,21 +1,57 @@
 # 什么是 clice？
 
-clice 是一个全新的 C++ 语言服务器，旨在解决现有 C++ 语言服务器的不足。它为你的编辑器提供代码导航和智能建议。
+简而言之，clice 是一个使用**现代 C++** 编写而成的 C/C++ 语言服务器，但**不只是**语言服务器。它仍然基于 LLVM/Clang，但与同样基于 Clang 的 clangd/ccls 不同，进行了彻底的 redesign，旨在彻底解决这些语言服务器中由于架构问题而数年无法解决的问题。它完全使用 C++23 编写，并且本身就是现代 C++ 的最佳实践，所有主要的现代 C++ 特性以一种奇妙的方式组合在一起，这体现在：
 
-## 为什么需要新的语言服务器？
+- 完全使用 C++20 [coroutine](https://github.com/clice-io/kotatsu/tree/main/include/kotatsu/async) 编写，使用我们基于 libuv 的结构化并发异步库编写复杂异步逻辑。它是在主线程上运行事件循环，多进程（IPC）/多线程均有涉及的复杂并发程序。
+- 完全使用 C++20 named module 和 C++23 `import std` 编写，并且完成了自举，三方库的模块包装是用 `clice modularize` 工具自动生成的，并且 clice 本身可以良好地运行在自身的代码库上，提供模块相关的语言服务。
+- 完全使用基于 template 和 C++20 concept 的 [static reflection](https://github.com/clice-io/kotatsu/tree/main/include/kotatsu/codec) 技巧进行多种格式的序列化和反序列化。这包括 toml/json/bincode/blob/cli，支持 Rust macro like 式的注解式声明，无需编写任何样板代码。
+- 完全面向数据的代码设计，除了实现 Clang 要求的回调接口，几乎不用虚函数。大量使用 `std::format`、`std::expected`、`std::ranges`、`std::views` 等现代 C++ API，不使用 legacy 的 C++98/11 的过时 API。
+- 完全封闭可复现的构建流程，使用 Bazel 进行封闭构建。采用统一的 [xclang](https://github.com/clice-io/xclang) 工具链进行编译，提供统一的跨平台交叉编译体验。编译产物经过高度优化（ThinLTO），构建产物除了 system library 无任何依赖。
 
-那么第一个问题是：为什么要开发新的语言服务器？有必要重复造轮子吗？
+> 一直有关于 module 等现代 C++ 特性是否可以使用的讨论。现在 clice 告诉你，是的，当然，完全可用！它们可以用于编写 clice 这样拥有数十万行代码的复杂软件，这或许就是我们理想中现代 C++ 的模样。但是另一方面，现有的生态确实如此不方便，以至于为了走通这套流程，我花费了大量的精力来跟进适配它们。
 
-这个问题值得认真回答。在开发这个项目之前，我写过许多大大小小的项目。但其中绝大多数都是玩具项目，只是为了验证某个想法或用于个人学习，并没有解决任何实际问题。clice 并非如此——它确实是为了解决现有问题（具体问题将在后文讨论），而不是为了重写而重写。
+## 语言服务器
 
-今年年初，我想参与 LLVM 项目的开发。我想从自己比较熟悉的领域入手——C++，具体来说就是 clang。但没有具体需求，我总不能只是盯着源码看。这种情况下，通常会从一些适合新手的 issue 入手，逐步熟悉项目。但我觉得这很无聊——我想从一开始就做点大事，比如实现某项新的 C++ 标准特性。然而，我发现自己几乎没有参与这类工作的机会，因为新特性几乎总是由少数几位 clang 核心开发者实现。好吧，既然这里没有机会，那就去别处看看。我的注意力自然转向了 clangd，因为我主要使用 VS Code 开发，而 VS Code 上最好的 C++ 语言服务器就是 clangd。
+接下来是 clice 的主要功能介绍：
 
-当时我对 clangd 一无所知，只是发现它对关键字的高亮渲染似乎不正确。于是，我一边阅读 clangd 的源码，一边浏览 clangd 的大量 issue，看看有没有自己能解决的问题。翻阅了几百个 issue 后，我发现这里的问题还真不少。当时，我对一个有关模板内代码补全的 [issue](https://github.com/clangd/clangd/issues/443) 特别感兴趣。为什么会对它感兴趣？熟悉我的读者可能知道，我是个颇有经验的元编程玩家，此前也写过许多相关文章。自然，我不仅好奇模板元编程本身如何运作，也好奇 clang 作为编译器是如何实现相关特性的。这个 issue 对我来说是个很好的切入点。花了几周时间探索原型实现后，我初步解决了那个 issue，**但随后我发现根本没有人来审查相关代码！**
+- **多进程编译**：clice 采用类似现代浏览器设计的进程池来进行编译，clangd 则采用多线程。为什么采用多进程？这是因为 C++ 实在**太过复杂**，对于某些 [corner case](https://github.com/clice-io/clice/issues/1057) 编译器很容易崩溃或者产生内存泄漏。尤其是对于正在编辑的**不完整**代码，这里有广泛的下游用户验证编译器在完整代码上的正确性，但是验证不完整代码的人则非常少，编译器往往采用启发式的猜测尽力而为。对于 clangd，如果编译崩溃，则整个服务器都必须要重启。对于 clice，编译发生在隔离的子进程，一个 worker 崩溃并不影响其他服务，跳转高亮之类的仍然可以处理。并且也可以更好地管理内存使用和编译优先级调度，降低不必要的资源消耗。
 
-一番调查之后，我发现 clangd 目前的情况相当糟糕。让我们梳理一下时间线：clangd 最初只是 LLVM 内部一个简单的小项目，功能和易用性都不突出。正如 MaskRay 在这篇关于 ccls 的 [博客](https://maskray.me/blog/2017-12-03-c++-language-server-cquery) 中提到的，当时的 clangd 只能处理单个编译单元，无法处理跨编译单元的请求。这篇博客发布于 2017 年，这也是 MaskRay 选择编写 ccls 的原因之一。ccls 同样是一个 C/C++ 语言服务器，当时比 clangd 更强。然而，后来 Google 开始派人改进 clangd，以满足其内部大型代码库的需求。与此同时，LSP 标准的内容不断扩充，clangd 也在持续跟进新内容，但 ccls 的作者似乎逐渐忙于其他事情，没有太多时间维护 ccls。所以最终，clangd 整体上超越了 ccls。转折点大约出现在 2023 年，当时 clangd 似乎已经达到了足以满足 Google 内部使用需求的状态，原先负责 clangd 的员工也被调去做其他事情了。目前，clangd 的 issue 主要由 [HighCommander4](https://github.com/HighCommander4) 一个人处理，他纯粹出于热爱参与其中，并未受雇于任何人。由于没有受雇专门维护 clangd，他只能在有限的空闲时间处理 issue，而且只能回答问题和进行极为有限的代码审查。正如他在这条 [评论](https://github.com/clangd/clangd/issues/1690#issuecomment-1619735578) 中提到的：
+  <video src="https://github.com/user-attachments/assets/01e7b675-dcd3-475f-b8ab-bed70cf4f603" controls autoplay loop muted playsinline style="max-width: 100%"></video>
 
-> 另一部分原因是缺乏资源去实践我们已有的想法，例如上面提到的通过更激进的 Preamble 缓存，增加磁盘使用以分担更多负担。我是一名业余贡献者，能投入 clangd 的时间非常有限，主要用于回答问题、进行一些代码审查，以及偶尔做些小修复或改进；我没有足够的精力推动这类与性能相关的实验。
+  _左为 clangd 23.1.0 默认设置，右为 clice：在同一处请求补全，Clang 每次都崩。clangd 整个进程崩了 5 次后插件不再重启，悬浮也没了；clice 只丢了一个 worker，在文件上提示这次崩溃，其他功能照常。_
 
-既然如此，像 clangd 的 [C++20 模块初步支持](https://github.com/llvm/llvm-project/pull/66462) 这样的大型 PR 被拖延了将近一年，也就不足为奇了。意识到这一现状后，我萌生了自己编写一个语言服务器的想法。我估算了一下项目规模：不计测试代码，大约需要两万行就能完成，这是一个人花一段时间可以完成的工作量，而且也有 ccls 和 rust-analyzer 这样的先例。另外，clangd 的代码已经有些陈旧了——尽管注释很多，相关逻辑仍然非常复杂，大规模修改所需的时间可能并不比重写更短。
+- **模块和共享缓存**：clice 具有完整的 C++20 named module 支持。只需提供一份含有所有模块文件的 `compile_commands.json` 文件，clice 便会自己进行依赖扫描，然后按需 lazy 构建所需要的模块，无论你使用的是什么构建系统或者编译器。并且提供完整的模块补全、高亮、跳转、悬浮等功能支持。同时会将构建的 PCH 和 PCM 缓存在本地磁盘上，供不同会话之间复用。相比之下 clangd 只提供了十分有限的模块功能支持，并且不支持持久化缓存。
 
-于是我开始动手。我对 clangd 的数百个 issue 进行了分类，想看看其中是否有些问题因 clangd 最初的架构设计错误而难以解决，最终被搁置。如果有，能否在重新设计时将它们纳入考虑并加以解决？我发现确实有一些！于是，在接下来的时间里，我花了大约两个月学习和研究 clang 中的相关机制，探索相关问题的解决方案和原型实现。在确认这些问题基本都能解决后，我正式开始开发 clice。
+  <video src="https://github.com/user-attachments/assets/b4956c32-da19-42dc-b0e1-2314ff3df680" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _左为 clangd 23.1.0 默认设置，右为 clice：补全模块名、悬浮模块名看到注释、Ctrl+点击跳进 `math.cppm`，再补全模块导出的函数并悬浮。_
+
+- **编译上下文**：clice 完全支持非自包含（non-self-contained）的文件，更一般地说，支持编译上下文（compilation context）这个概念。你可以显式选择这个文件的工作上下文，对于源文件来说是不同的编译命令，对于头文件来说则是被包含在不同的位置。并且在你打开非自包含文件的时候会做自动探测，从而提供开箱即用的非自包含文件使用体验。也支持更通用的编译分组概念，允许你为不同的编译配置进行分组，比如说可以在 debug 和 release 之间切换编译命令。
+
+  <video src="https://github.com/user-attachments/assets/bcc372d3-d2bc-4cdc-8c12-fd34517f62eb" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _左为 clangd 23.1.0 默认设置，右为 clice：从 `precise.cpp` 打开非自包含的 `real.hpp`，clangd 报 3 个错，clice 正常；再把上下文从 `fast.cpp` 切到 `precise.cpp`，跳过区域和 `Real` 的类型跟着变。_
+
+- **更好的模板支持**：clice 实现了一个 DFS 伪模板实例化器（pseudo instantiator），不需要具体的模板参数进行确定的实例化，就推断出很多依赖名的指向。如果模板被实例化过一次，还会额外使用这次实例化的结果来提供语言服务，例如 `ranges` 调用用 lambda 的 `auto` 参数补全。另外，clice 把模板看成一个鸭子类型（duck type）的接口，每一次实例化都是它的一个实现，就像虚函数和它的 override 一样：在模板里的依赖调用上跳转到实现，会列出它在每次实例化里实际调用的函数，查找引用和调用层级也是如此。
+
+  <video src="https://github.com/user-attachments/assets/e41b26b8-9d36-43e9-a8d7-ab9dfdd3afd4" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _模板里补全依赖名 `grid[0].`，以及传给 `ranges::for_each` 的 lambda 的 `auto` 参数。_
+
+  <video src="https://github.com/user-attachments/assets/7619f5ef-5e9e-406e-9b6c-a6e6f72ff2b5" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _在依赖调用 `shape.draw()` 上跳转到实现，列出 `Circle::draw` 和 `Square::draw`。_
+
+- **开箱即用的使用体验**：绝大多数项目只需要一份 `compile_commands.json` 即可使用，clice 内置了 50+ 工具链的环境探测，涵盖 nvcc、msys2、cygwin、zigcc 等等。会自动处理好实际使用的编译器和 Clang 不一致的问题。无需像 clangd 那样在配置文件中手动添加大量的编译选项。
+
+除了这些主要的特性，clice 还解决了 clangd 长期存在并且无人问津的很多小 issue，涵盖语义高亮、折叠、悬浮等功能，感兴趣的读者欢迎立即使用，看看能收获哪些惊喜。总的来说，clice 在易用性、功能支持和性能上均超过 clangd。
+
+## 为什么不改进 clangd？
+
+首先为什么要编写一个新的项目而不是改进 clangd？这是最常被问到的问题。这里有多方面的原因，在我最早期的[文章](https://zhuanlan.zhihu.com/p/13394352064)中有一些阐述：
+
+- **关于投入问题**：最根本的问题是 clangd 从 2024 年前后开始基本处于**实质上无人维护**的状态。这很令人惊讶，数十万开发者使用的工具怎么会无人维护呢？2024 年我准备给 clangd 提模板内代码补全改进的 [PR](https://github.com/clangd/clangd/issues/443#issuecomment-2254535078) 的时候意外发现了这个事实。据我了解，这与 Google 对 C++ 的策略转向有关，在这之前 clangd 主要由 Google 的数名员工维护，而在 2024 年前后，Google 对 C++（Clang）的投入开始减少，clangd 也被认为已经满足了 Google 内部的代码需求，从而原有的数名员工都被调离去做别的工作了。在那之后 clangd 缺乏实质上的长期维护者，只有 [Nathan Ridge](https://github.com/HighCommander4) 完全出于热爱（无任何薪酬）在业余时间解答问题，但是一个人的精力有限，几乎无法处理大型 PR。这也就是 clangd 的模块化 [PR](https://github.com/llvm/llvm-project/pull/66462) 拖了将近一年的原因，并且时至今日仍然无法正式地在大型项目使用，存在诸多缺陷，无人处理。2026 年，Clang 的 lead maintainer Aaron Ballman 意识到了这个问题，在社区的论坛上发了一个[求助帖](https://discourse.llvm.org/t/help-needed-with-clangd-maintenance/89820)，说 clangd 已经非常接近无人维护，积压了大量的 PR 和 issue，希望能找到新的社区维护者，否则 clangd 最终有**可能**会被从 LLVM 项目里移除。
+- **关于代码规模**：正如上文所说的，clice 做了大量的架构创新，比如多进程编译。如果要在 clangd 里面实现这些功能，那接近于**重写** clangd。这样大规模的改动不可能有人 review 并接受。并且想要实现模块化自举，LLVM 的构建流程也会有巨大的修改。
+- **关于 LLVM 仓库的限制**：clice 依赖大量的三方库来获取更好的性能和用户体验，比如 `libuv`、`simdjson` 和 `tomlplusplus` 等，LLVM 出于构建便捷的考虑，要求自包含，不可能引入这么多的三方库。要么将它们重写移植到 LLVM 中，要么忍受功能上的不便利和性能的低下。此外，语言服务器并不是一个**独立**的项目，它还包含各种编辑器的插件适配部分。为了方便维护，当然和语言服务器放在一个仓库比较好，而 LLVM 同样不太会接受这些代码（包含 Rust、Lua、TS 等语言）。所以从长期维护便捷性和我们的核心目标来说，独立的仓库势在必行。
+
+于是，在 2024 年中，我开始研究如何设计和编写一个新的语言服务器，并在 2024 年底发布了[一个新 C++ language server 的设计与实现](https://zhuanlan.zhihu.com/p/13394352064)，确立了 clice 开发的核心目标，并正式开始开发 clice。

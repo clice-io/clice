@@ -2,15 +2,15 @@
 
 ## 跳转到定义
 
-“跳转到定义”会从名称跳转到其所指实体的定义，并从定义跳回声明。
+“跳转到定义”从名称跳往它所指实体的定义，也能从定义跳回声明。
 
 <!-- BEGIN GENERATED ITEMS: navigation/definition -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**只有声明的符号**
+**仅有声明的符号**
 
-如果找不到符号的定义，则跳转到其声明
+找不到定义的符号会跳转到其声明
 
 ```case
 tests/navigation/definition/01_declaration_only
@@ -22,7 +22,7 @@ tests/navigation/definition/01_declaration_only
 
 **模块分区导入**
 
-模块分区导出的名称会跳转到该分区，导入语句中的分区名也会跳转到该分区
+模块分区导出的名称会跳转到该分区，导入语句中的分区名同样跳转到该分区
 
 ```case
 tests/navigation/definition/02_partition_import
@@ -34,9 +34,9 @@ tests/navigation/definition/02_partition_import
 
 **声明与定义交替跳转**
 
-从使用处跳转到定义，从声明处或定义处跳转到另一处
+从使用处跳转到定义，在声明与定义之间则跳往另一侧
 
-如果函数的声明和定义分开，在声明处或定义处发起的每次请求都会跳转到另一处。如果函数没有单独的声明，在任何位置发起请求都会跳转到其定义。
+声明与定义分离的函数，在声明处或定义处发起请求都会跳往另一处。没有独立声明的函数，在任何位置都会跳转到其定义。
 
 ```case
 tests/navigation/definition/03_declaration_and_definition
@@ -48,9 +48,9 @@ tests/navigation/definition/03_declaration_and_definition
 
 **在 `#include` 指令上跳转到定义**
 
-在包含指令上执行跳转到定义，会打开其引用的文件
+在包含指令上执行“跳转到定义”会打开所引用的文件
 
-文件开头的包含指令与文件后面普通的包含指令行为一致。
+文件开头的包含指令与后文中的普通包含指令行为一致。
 
 ```case
 tests/navigation/definition/05_include_directives
@@ -62,7 +62,7 @@ tests/navigation/definition/05_include_directives
 
 **局部符号导航**
 
-在局部变量或参数上执行“跳转到定义”，会跳转到其在函数体内的声明
+在局部变量或形参上执行“跳转到定义”会跳转到函数内的声明处
 
 ```case
 tests/navigation/definition/06_local_symbols
@@ -72,11 +72,11 @@ tests/navigation/definition/06_local_symbols
 
 <!-- BEGIN CAPABILITY: unsupported -->
 
-**无法解析的变量类型**
+**类型未解析的变量**
 
-如果变量的类型无法解析，目前还无法从其使用处跳转到该变量的声明
+若变量的类型无法解析，则无法从使用处跳转到该变量
 
-虽然变量的声明就在那里，但在该变量后续的使用处执行“跳转到定义”不会返回任何结果。
+即便变量的声明就在上文，在后续使用处执行“跳转到定义”也不会返回任何结果。
 
 ```case
 tests/navigation/definition/07_error_recovery
@@ -88,9 +88,9 @@ tests/navigation/definition/07_error_recovery
 
 **纯虚函数**
 
-在纯虚函数的声明上执行“跳转到定义”，会列出它的重写方法
+在纯虚函数声明上执行“跳转到定义”会列出其所有重写函数
 
-纯虚函数没有定义：在它的声明上执行“跳转到定义”，会跳转到给出了定义的那些重写方法。通过它发起的调用则跳转到其声明，与其他没有定义的函数一样。
+纯虚函数本身没有定义：光标停在其声明上时，“跳转到定义”会跳往提供定义的各个重写函数。通过纯虚函数发起的调用则会跳转到该声明，与任何没有定义的函数一致。
 
 ```case
 tests/navigation/definition/10_pure_virtual
@@ -102,9 +102,9 @@ tests/navigation/definition/10_pure_virtual
 
 ## 跳转到声明
 
-从符号的使用处或定义处跳转到其声明。在 C++ 中，许多实体的声明和定义是分开的。
+从符号的使用处或定义跳转到其声明。C++ 中许多实体的声明与定义是分离的。
 
-clice 返回声明和定义的位置，并排除光标当前所在的位置；内联定义的符号没有单独的声明。因此，声明与定义位置会像“跳转到定义”一样交替跳转。对于有定义却没有自己的声明的函数，则退而列出同一作用域中同名且没有定义的函数：也就是因参数改动而与它分离的那个声明。
+clice 会返回所有声明位置加上定义位置（内联定义的符号没有独立声明），再排除光标当前所在的位置，因此声明与定义之间也能像“跳转到定义”那样来回切换。如果一个函数有定义却没有对应的声明，则会回退到同一作用域内同名且尚无定义的函数——也就是因修改形参而与该定义脱节的原声明。
 
 <!-- BEGIN GENERATED ITEMS: navigation/declaration -->
 
@@ -112,9 +112,9 @@ clice 返回声明和定义的位置，并排除光标当前所在的位置；�
 
 **函数**
 
-从使用处和单独给出的定义处跳转到函数原型
+使用处与独立定义都会跳转到函数原型
 
-从调用处和单独给出的定义处执行“跳转到声明”，都能到达函数原型；原型会与这两处非当前光标位置交替跳转。
+无论是从调用处还是从独立定义处，“跳转到声明”都会到达函数原型——函数原型正是与这两处非光标位置来回切换的。
 
 ```case
 tests/navigation/declaration/01_functions
@@ -124,9 +124,9 @@ tests/navigation/declaration/01_functions
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**前置声明的记录类型**
+**带前置声明的类类型**
 
-对于先前置声明、后定义的类，从使用处跳转时会同时列出两者；前置声明仍保留在声明集合中，不会因优先返回定义而被丢弃
+既有前置声明又有后续定义的类，在使用处会同时给出这两处位置——前置声明会保留在声明集合中，不会因存在定义而舍弃
 
 ```case
 tests/navigation/declaration/02_forward_declarations
@@ -138,9 +138,9 @@ tests/navigation/declaration/02_forward_declarations
 
 **静态数据成员**
 
-从静态成员的使用处跳转到类内声明
+静态成员的使用处会跳转到类内声明
 
-静态数据成员在类内声明、类外定义；在使用处执行“跳转到声明”时，会同时列出类内声明和定义。
+静态数据成员在类内声明、在类外定义；在使用处执行“跳转到声明”会同时给出类内声明和类外定义。
 
 ```case
 tests/navigation/declaration/03_static_members
@@ -152,9 +152,9 @@ tests/navigation/declaration/03_static_members
 
 **`extern` 变量**
 
-从外部变量的使用处跳转到其声明
+外部变量的使用处会跳转到其声明
 
-从 `extern` 变量的使用处跳转时，会同时列出 `extern` 声明和定义性声明，因此始终可以从使用处到达头文件中的声明。
+在 `extern` 变量的使用处会同时给出 `extern` 声明与定义性声明，因此从使用处总能到达头文件中的声明。
 
 ```case
 tests/navigation/declaration/04_extern_variables
@@ -166,9 +166,9 @@ tests/navigation/declaration/04_extern_variables
 
 **多处声明**
 
-从使用处跳转到所有声明位置
+使用处会跳转到每一处声明位置
 
-当函数在多处声明时，从使用处执行“跳转到声明”会列出所有声明，而不只是最近的一处。
+函数在多处声明时，在使用处执行“跳转到声明”会列出全部声明，而不只是最近的一处。
 
 ```case
 tests/navigation/declaration/05_redeclarations
@@ -178,9 +178,9 @@ tests/navigation/declaration/05_redeclarations
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**签名的表面差异**
+**签名写法上的表面差异**
 
-参数名以及参数上的顶层 `const` 都不属于函数类型：下面的声明和定义以不同的写法表示同一个函数，但“跳转到声明”仍能从使用处跳转到函数原型
+形参名以及形参的顶层 `const` 不属于函数类型的一部分：下方示例中的声明与定义写法不同，但指代同一个函数，“跳转到声明”依然能将使用处连向函数原型
 
 ```case
 tests/navigation/declaration/06_signature_spelling
@@ -192,9 +192,9 @@ tests/navigation/declaration/06_signature_spelling
 
 **声明已改动的定义**
 
-在与声明不再匹配的定义上执行“跳转到声明”，会跳转到与它分离的那个声明
+当定义因改动而不再匹配原有声明时，在定义上执行“跳转到声明”仍能找到与之脱节的声明
 
-只在一侧改动参数时，定义和头文件中的声明就成了两个函数，定义也就没有了自己的声明。在这样的定义上执行“跳转到声明”，会退而列出同一作用域中名称和链接都与它相同、却没有定义的函数：也就是需要做同样修改的那个声明，对 `static` 函数而言则是它自己文件中的那个。自身已有定义的重载不在候选之列；链接不同的函数，以及位于定义所不在的匿名命名空间中的函数，也都不在其列。在类中定义的方法，从来就没有与之分离的声明；模板和系统头文件中的函数则不做这种回退：它们都在定义处声明。
+只在一侧修改形参时，定义与头文件中的声明会变成两个不同的函数，该定义也就没有了对应的声明。此时在定义上执行“跳转到声明”，会退而查找同一作用域内同名、链接方式相同且尚无定义的函数——即同样需要同步修改的那条声明（若是 `static` 函数则限于当前文件内）。已有自身定义的重载不算候选，链接方式不同或位于另一个匿名命名空间中的函数也不算。在类内定义的方法从来没有单独的声明；模板和系统头文件中的函数则不做处理：它们就声明在定义处。
 
 ```case
 tests/navigation/declaration/07_changed_signatures
@@ -206,15 +206,15 @@ tests/navigation/declaration/07_changed_signatures
 
 ## 跳转到类型定义
 
-跳转到符号的类型定义。适用于变量、参数、字段以及其他具有类型的命名实体。类型别名会同时跳转到别名本身和它所指代的类型，类似指针的包装类型会同时跳转到包装类型和它所指向的类型；类型自身的名称会跳转到该类型本身。
+跳转到符号所属类型的定义，适用于变量、形参、字段以及任何带有类型的具名实体。类型别名会同时跳往别名本身及其所指的类型；类似指针的包装类型会同时跳往包装类型和被指向的类型；类型名本身则跳转到该类型自身。
 
 <!-- BEGIN GENERATED ITEMS: navigation/type_definition -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**变量和参数**
+**变量与形参**
 
-在局部变量或参数上执行“跳转到类型定义”，会跳转到其类型的定义
+在局部变量或形参上执行“跳转到类型定义”会跳往其类型的定义
 
 ```case
 tests/navigation/type_definition/01_variables
@@ -224,9 +224,9 @@ tests/navigation/type_definition/01_variables
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**类和结构体字段**
+**类与结构体字段**
 
-在字段访问处执行“跳转到类型定义”，会跳转到该字段类型的定义
+在字段访问处执行“跳转到类型定义”会跳往该字段类型的定义
 
 ```case
 tests/navigation/type_definition/02_fields
@@ -236,9 +236,9 @@ tests/navigation/type_definition/02_fields
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**由 `auto` 推导类型的变量**
+**由 `auto` 推导的变量**
 
-在以 `auto` 声明的变量上执行“跳转到类型定义”，会跳转到其推导出的类型；在 `auto` 关键字上执行该操作也是如此
+在声明为 `auto` 的变量上执行“跳转到类型定义”会跳往推导出的类型，在 `auto` 关键字本身上执行也是如此
 
 ```case
 tests/navigation/type_definition/03_deduced_variables
@@ -248,9 +248,9 @@ tests/navigation/type_definition/03_deduced_variables
 
 <!-- BEGIN CAPABILITY: supported clangd#1026 -->
 
-**跳转到智能指针所指向的类型**
+**智能指针所指类型导航**
 
-在智能指针变量上执行“跳转到类型定义”，既会跳转到包装类型，也会跳转到它所指向的类型
+在智能指针变量上执行“跳转到类型定义”会同时跳往包装类型和所指向的类型
 
 ```case
 tests/navigation/type_definition/04_smart_pointers
@@ -262,9 +262,9 @@ tests/navigation/type_definition/04_smart_pointers
 
 **类型别名**
 
-在使用类型别名的变量上执行“跳转到类型定义”，会同时跳转到 `using` 或 `typedef` 声明以及它所指代的类型
+在使用类型别名的变量上执行“跳转到类型定义”，会同时跳往 `using` 或 `typedef` 声明及其所指的类型
 
-对于别名模板，别名会跳转到其目标类型所特化的那个模板。
+别名模板则会跳往其目标类型所特化的模板。
 
 ```case
 tests/navigation/type_definition/05_type_aliases
@@ -274,9 +274,9 @@ tests/navigation/type_definition/05_type_aliases
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**结构化绑定（structured bindings）变量**
+**结构化绑定变量**
 
-在结构化绑定上执行“跳转到类型定义”，会跳转到所绑定成员的类型定义
+在结构化绑定（structured bindings）变量上执行“跳转到类型定义”会跳往所绑定成员的类型定义
 
 ```case
 tests/navigation/type_definition/06_structured_bindings
@@ -286,9 +286,9 @@ tests/navigation/type_definition/06_structured_bindings
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**指针、引用和数组**
+**指针、引用与数组**
 
-“跳转到类型定义”会透过指针、引用和数组，跳转到元素类型的定义
+“跳转到类型定义”会穿透指针、引用与数组，跳往底层元素类型的定义
 
 ```case
 tests/navigation/type_definition/07_pointers_and_references
@@ -300,9 +300,9 @@ tests/navigation/type_definition/07_pointers_and_references
 
 **`this`**
 
-在 `this` 上执行“跳转到类型定义”不会返回结果，在它上面执行其他导航请求也是如此
+在 `this` 上执行“跳转到类型定义”不返回任何结果，其他导航请求同样如此
 
-写有 `this` 的代码本身就位于它所指向的类中，从该关键字跳转不会到达任何新位置；clangd 则会跳转到该类。
+写出 `this` 的代码本就位于它所指向的类中，跳转到该类并没有新信息；clangd 则会跳转到该类。
 
 ```case
 tests/navigation/type_definition/11_this
@@ -314,7 +314,7 @@ tests/navigation/type_definition/11_this
 
 ## 跳转到实现
 
-在虚方法上执行“跳转到实现”，会列出它之下各层的所有重写方法；在类上执行，则会列出直接或间接派生自它的所有类。纯虚函数没有定义，在它的声明上执行“跳转到定义”同样会列出这些重写方法。
+在虚方法上执行“跳转到实现”会列出下方各层派生类中的所有重写方法；在类上执行则会列出直接或间接继承自它的所有派生类。纯虚函数本身没有定义，在其声明上执行“跳转到定义”同样会列出所有重写方法。
 
 <!-- BEGIN GENERATED ITEMS: navigation/implementation -->
 
@@ -322,9 +322,9 @@ tests/navigation/type_definition/11_this
 
 **重写链**
 
-跳转到实现会列出其下各层的重写方法
+“跳转到实现”会列出下方每一层的重写方法
 
-在三级重写链中，从基类方法执行“跳转到实现”会到达中间类和叶子类的重写方法，从中间类方法执行则会到达叶子类的重写方法。
+在三层继承的重写链中，从基类执行“跳转到实现”会同时到达中间层和最底层的重写方法，从中间层执行则会到达最底层。
 
 ```case
 tests/navigation/implementation/01_override_chain
@@ -334,11 +334,11 @@ tests/navigation/implementation/01_override_chain
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**同级重写**
+**同级派生类的重写方法**
 
-跳转到实现时列出所有同级重写方法
+“跳转到实现”会列出各个同级派生类的重写方法
 
-在虚方法上执行“跳转到实现”，会列出各个同级派生类中的所有重写方法。
+在虚方法上执行“跳转到实现”，会列出所有同级派生类中的重写方法。
 
 ```case
 tests/navigation/implementation/02_sibling_overrides
@@ -348,11 +348,11 @@ tests/navigation/implementation/02_sibling_overrides
 
 <!-- BEGIN CAPABILITY: supported clangd#854 -->
 
-**没有被重写的函数**
+**未被重写的函数**
 
-没有被重写的函数，其实现就是它的定义
+没有任何重写版本的函数以其自身定义作为实现
 
-对于没有被重写的函数，无论是否为虚函数，在其声明上执行“跳转到实现”都会跳转到其单独给出的定义。在定义本身上执行时，已没有可以再跳转的地方。
+无论是否为虚函数，只要函数未被重写，在其声明上执行“跳转到实现”就会跳往其外部定义；在定义本身上则没有更下层的目标可跳。
 
 ```case
 tests/navigation/implementation/03_non_virtual
@@ -364,9 +364,9 @@ tests/navigation/implementation/03_non_virtual
 
 **基类**
 
-从基类跳转到所有派生类
+基类会跳转到所有派生类
 
-在基类名称上执行“跳转到实现”，会列出直接或经由其他派生类从该类派生的类。
+在基类名上执行“跳转到实现”，会列出直接或通过其他派生类间接继承自它的所有类。
 
 ```case
 tests/navigation/implementation/04_derived_classes
@@ -378,9 +378,9 @@ tests/navigation/implementation/04_derived_classes
 
 **模板鸭子类型导航**
 
-在依赖调用上执行“跳转到实现”，会到达该调用在模板的每个实例化中解析到的方法
+在依赖调用（dependent call）上执行“跳转到实现”会跳往该调用在模板各个实例化中解析到的方法
 
-函数模板和泛型 Lambda 均适用，按名称调用的转换运算符也是如此。
+这同样适用于函数模板、泛型 Lambda，以及按名称显式调用的转换运算符。
 
 ```case
 tests/navigation/implementation/05_dependent_calls
@@ -392,15 +392,15 @@ tests/navigation/implementation/05_dependent_calls
 
 ## 查找引用
 
-“查找引用”会列出所有使用该符号名称的位置，包括其声明。方法的引用包括通过它所重写的方法发起的调用，因为这些调用可能分派到它；类的引用包括其构造函数的名称。默认情况下编辑器最多收到其中 2000 处，优先保留发起请求的文件中的位置（上限由 [`[references]` 配置节](../guide/configuration.md#references)设定）；`clice query references` 会列出全部位置。
+“查找引用”会列出所有提及该符号的位置，包括其各处声明。方法的引用包含通过它重写的基类方法发起、且可能动态分派到它的调用；类的引用包含其构造函数的名称。默认情况下编辑器最多收到 2000 条结果，并优先保留发起请求的文件内的引用（上限可在 [`[references]` 小节](../guide/configuration.md#references)中配置）；`clice query references` 则会列出全部结果。
 
 <!-- BEGIN GENERATED ITEMS: navigation/references -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**引用结果中的声明**
+**引用结果包含声明**
 
-引用查询会返回符号的声明、单独给出的定义以及所有使用位置，因此从符号的任意一个出现位置都能跳转到它的所有相关位置
+引用查询会将声明、独立定义与所有使用处全部返回，从任意一处都能找全该符号出现的全部位置
 
 ```case
 tests/navigation/references/01_declarations_included
@@ -410,11 +410,11 @@ tests/navigation/references/01_declarations_included
 
 <!-- BEGIN CAPABILITY: supported clangd#1081 -->
 
-**范围 for 循环引用**
+**范围 for 循环中的引用**
 
-在 `begin` 上执行“查找引用”，结果包含调用它的范围 for 循环
+在 `begin` 上执行“查找引用”会包含隐式调用它的范围 for 循环
 
-范围 for 循环调用范围的 `begin()` 和 `end()` 时并不写出它们的名称，因此在引用结果中由循环的 `:` 代表这些调用。
+范围 for 循环虽然没有写出 `begin()` 和 `end()` 的名字，但会调用它们；引用结果中以循环里的 `:` 代表这两次调用。
 
 ```case
 tests/navigation/references/02_range_for
@@ -424,11 +424,11 @@ tests/navigation/references/02_range_for
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**隐式构造函数和析构函数调用**
+**隐式构造与析构调用**
 
-在构造函数或析构函数上执行“查找引用”，会列出写出其名称的位置，而不是隐式调用它的对象
+在构造函数或析构函数上执行“查找引用”只列出写出其名称的位置，不包含隐式运行它们的对象
 
-`Blob b;` 会调用构造函数，其作用域结束时会调用析构函数，但两者的名称都没有写出：如果把每个这样的对象都列出来，任何带有局部变量的类，其引用都会被淹没。
+`Blob b;` 会运行构造函数，离开作用域时会运行析构函数，但两处都没有写出函数名：若是把每个隐式构造或析构的对象都列出来，任何有局部变量的类的引用结果都会淹没在噪音中。
 
 ```case
 tests/navigation/references/03_implicit_construction
@@ -438,9 +438,9 @@ tests/navigation/references/03_implicit_construction
 
 <!-- BEGIN CAPABILITY: unsupported clangd#716 -->
 
-**通过转发函数产生的引用**
+**通过转发函数的引用**
 
-在构造函数上执行“查找引用”，结果包含完美转发工厂内部的构造，但不包含经由工厂间接调用它的位置
+在构造函数上执行“查找引用”会包含完美转发工厂函数内部的构造位置，但不包含调用该工厂函数的位置
 
 ```case
 tests/navigation/references/04_forwarding_factories
@@ -452,7 +452,7 @@ tests/navigation/references/04_forwarding_factories
 
 **模板中的依赖引用**
 
-在成员上执行“查找引用”，结果会包含以该成员所属的类实例化的模板中的依赖调用位置
+在类成员上执行“查找引用”，结果包含以该类实例化的模板中对该成员的依赖调用位置
 
 ```case
 tests/navigation/references/05_dependent_calls
@@ -464,7 +464,7 @@ tests/navigation/references/05_dependent_calls
 
 **引用的读写分类**
 
-引用查询的响应只包含位置信息，因此查看结果时无法区分写入和读取；不支持为每条结果标注访问类型
+查找引用的返回结果只包含位置，无法区分读取与写入；不支持为每条结果标注访问类别
 
 ```case
 tests/navigation/references/06_access_kinds
@@ -474,11 +474,11 @@ tests/navigation/references/06_access_kinds
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**引用的上下文**
+**引用所在的外层上下文**
 
-每条引用传给编辑器时只是一个位置，不附带包含它的函数
+返回给编辑器的每条引用只有位置信息，不附带其所在的外层函数
 
-`clice query references` 会给出每条引用所在的函数。
+`clice query references` 会标出每条引用所在的函数。
 
 ```case
 tests/navigation/references/07_enclosing_functions
@@ -488,9 +488,9 @@ tests/navigation/references/07_enclosing_functions
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**标签和 goto 引用**
+**标签与 goto 引用**
 
-在标签上执行“查找引用”，会列出标签本身以及所有跳转到该标签的 `goto`
+在标签上执行“查找引用”会同时列出标签本身与所有跳往它的 `goto` 语句
 
 ```case
 tests/navigation/references/08_labels
@@ -500,11 +500,11 @@ tests/navigation/references/08_labels
 
 <!-- BEGIN CAPABILITY: supported clangd#1558 -->
 
-**通过被重写方法发起的调用**
+**通过基类方法的虚调用**
 
-在重写方法上执行“查找引用”，结果包含通过它所重写的方法发起的调用，因为这些调用可能分派到它
+在重写方法上执行“查找引用”，结果包含通过它重写的方法发起、可能分派到它的调用
 
-`shape.area()` 在 `Shape&` 上调用时可能执行 `Circle::area`，因此它属于该重写方法的引用。通过 `Circle` 发起的调用绝不会执行 `Shape::area`，因此它不属于被重写方法的引用；重写方法自身函数体中的 `Shape::area()` 也不属于该重写方法的引用，因为它指名的是被重写的方法；模板中的 `circle.Shape::scale(factor)` 同样不属于，因为在任何实例化选定具体重载之前，它指名的就已是被重写的重载之一。
+在 `Shape&` 上调用 `shape.area()` 可能实际执行 `Circle::area`，因此会算在重写方法的引用中。通过 `Circle` 发起的调用绝不会执行 `Shape::area`，因此不算在基类被重写方法的引用中；重写方法体内的 `Shape::area()` 显式指名了被重写的基类方法，模板中的 `circle.Shape::scale(factor)` 也在实例化选定具体重载前就限定到了被重写的某个重载，这两处同样不算在重写方法的引用中。
 
 ```case
 tests/navigation/references/13_override_calls
@@ -514,11 +514,11 @@ tests/navigation/references/13_override_calls
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Objective-C 消息**
+**Objective-C 消息发送**
 
-方法的引用包括所有可能到达它的消息：发给其所属类的对象的、发给它所重写的方法所在父类的对象的、经由它所实现的协议发出的，以及发给 `id` 的
+方法的引用包含所有可能发往它的消息：发给所属类的对象、发给其所重写方法所属父类的对象、通过其实现的协议发送，或发给 `id`
 
-发给 `id` 或 `Class` 的消息可能到达其选择器（selector）对应的任何方法，因此会列入其中每个方法的引用；发给 `super` 的消息只会到达父类的方法。选择器分成几段书写的消息只列出一次，位置在第一段。
+发给 `id` 或 `Class` 的消息可能到达具有相同选择器（selector）的任意方法，因此会归入每个同名方法的引用；发给 `super` 的消息则只到达父类的方法。分多段写出选择器的消息只列出一次，位置落在第一段上。
 
 ```case
 tests/navigation/references/17_objective_c
@@ -530,7 +530,7 @@ tests/navigation/references/17_objective_c
 
 ## 推导类型
 
-在 `auto` 和 `decltype` 上执行导航操作，会跳转到它们所代表的类型。
+在 `auto` 和 `decltype` 上执行导航会跳往它们所代表的类型。
 
 <!-- BEGIN GENERATED ITEMS: navigation/deduced_types -->
 
@@ -538,7 +538,7 @@ tests/navigation/references/17_objective_c
 
 **`auto` 推导类型导航**
 
-对 `auto` 执行“跳转到定义”会跳转到推导出的类型，就像该位置直接写出了类型一样
+在 `auto` 上执行“跳转到定义”会跳往推导出的类型，如同该处直接写出了类型名
 
 ```case
 tests/navigation/deduced_types/01_auto_keyword
@@ -548,11 +548,11 @@ tests/navigation/deduced_types/01_auto_keyword
 
 <!-- BEGIN CAPABILITY: supported clangd#2055 -->
 
-**指针和引用形式的 `auto`**
+**带指针与引用的 `auto`**
 
-跳转时会剥去推导类型外层的指针、引用和数组：`auto*`、`const auto&`、`auto&&`、`decltype(auto)` 以及推导为指针的 `auto` 都会跳转到类
+导航会剥去推导类型外层的指针、引用与数组：`auto*`、`const auto&`、`auto&&`、`decltype(auto)` 以及推导结果为指针的 `auto` 都会跳往底层的类
 
-结构化绑定（structured bindings）的 `auto` 跳转到被分解对象的类型。
+结构化绑定中的 `auto` 会跳往所分解对象的类型。
 
 ```case
 tests/navigation/deduced_types/02_auto_declarators
@@ -564,7 +564,7 @@ tests/navigation/deduced_types/02_auto_declarators
 
 **`decltype` 类型导航**
 
-对 `decltype` 执行“跳转到定义”会跳转到其操作数所指的类型；如果该类型本身也是用 `decltype` 声明的，则会逐层追溯
+在 `decltype` 上执行“跳转到定义”会跳往操作数所指的类型，并穿透该类型自身声明时用到的任意层 `decltype`
 
 ```case
 tests/navigation/deduced_types/03_decltype
@@ -574,11 +574,11 @@ tests/navigation/deduced_types/03_decltype
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**推导出的模板和别名**
+**推导出的模板与别名**
 
-当 `auto` 推导为模板特化时，会跳转到模板，或所选的显式特化或偏特化；通过别名推导时，则跳转到该别名
+推导为模板特化的 `auto` 会跳往主模板，或所选中的显式特化与偏特化；通过类型别名推导出的 `auto` 则跳往该别名
 
-内置类型和 Lambda 的闭包类型没有可跳转的声明，`new` 表达式中的 `auto` 也不会跳转到任何位置。展开为 `auto` 的宏则跳转到该宏本身。
+内置类型与 Lambda 闭包类型没有可跳往的声明，`new` 表达式中的 `auto` 也不会跳往任何位置。展开为 `auto` 的宏则会跳转到该宏本身。
 
 ```case
 tests/navigation/deduced_types/04_deduced_templates
@@ -588,11 +588,11 @@ tests/navigation/deduced_types/04_deduced_templates
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**`auto` 参数和返回类型**
+**`auto` 形参与返回类型**
 
-简写函数模板的参数中的 `auto` 会跳转到其每个实例化所用的类型；返回类型中的 `auto` 则跳转到返回的类型
+简写函数模板（abbreviated function template）形参中的 `auto` 会跳往各个实例化中的实参类型，返回类型中的 `auto` 则跳往实际返回的类型
 
-尾置返回类型（trailing return type）开头的 `auto` 跳转到箭头之后的类型。
+尾置返回类型开头的 `auto` 会跳往箭头后面的类型。
 
 ```case
 tests/navigation/deduced_types/05_parameters_and_returns
@@ -604,9 +604,9 @@ tests/navigation/deduced_types/05_parameters_and_returns
 
 **模板中的 `auto`**
 
-在模板内部，若 `auto` 的初始化器依赖于模板参数，则会跳转到该初始化器解析出的类型
+在模板内部，初始化器依赖模板参数的 `auto` 会跳往该初始化器解析所得的类型
 
-类型为模板参数的 `auto`，无论该参数属于函数模板还是类模板，都会跳转到该参数以及它在每个实例化中的实参。
+若 `auto` 推导出的类型本身就是函数模板或类模板的模板参数，则会跳往该模板参数以及各个实例化中传入的模板实参。
 
 ```case
 tests/navigation/deduced_types/06_dependent_auto
@@ -616,11 +616,11 @@ tests/navigation/deduced_types/06_dependent_auto
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**库内部别名**
+**库内部类型别名**
 
-通过库的内部别名推导出的 `auto` 会跳转到别名所指代的类型；通过公开别名推导出的则跳转到该别名
+通过库内部别名推导出的 `auto` 会跳往该别名所指的类型；通过公开别名推导出的 `auto` 则跳往公开别名本身
 
-`std::__detail::__unique_ptr_t` 这类库留给自己使用的名称，代码不会去写，因此 `auto` 会透过它跳转到 `unique_ptr`。`iterator` 这样的公开别名，则是库提供给使用者的名称。
+像 `std::__detail::__unique_ptr_t` 这样仅供库自身保留的名称不是用户代码会写出的名字，因此 `auto` 会穿透它直达 `unique_ptr`。而像 `iterator` 这样的公开别名则是库面向用户提供的正式名称。
 
 ```case
 tests/navigation/deduced_types/08_library_aliases
@@ -632,15 +632,15 @@ tests/navigation/deduced_types/08_library_aliases
 
 ## 模板
 
-在模板内部，依赖于模板参数的名称仍可跳转到能够解析到的声明。
+在模板内部，依赖模板参数的名称依然能跳转到可触达的各处声明。
 
 <!-- BEGIN GENERATED ITEMS: navigation/templates -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**待决成员导航**
+**依赖成员导航**
 
-在从未实例化的模板中，访问待决类型（dependent type）对象的成员时，会解析到相应类模板中声明的成员
+在从未实例化的模板中，访问依赖类型对象的成员会跳转到对应类模板上声明的成员
 
 ```case
 tests/navigation/templates/01_dependent_members
@@ -652,7 +652,7 @@ tests/navigation/templates/01_dependent_members
 
 **模板特化导航**
 
-对显式特化的名称执行“跳转到定义”，会跳转到它所特化的主模板
+在显式特化的名称上执行“跳转到定义”会跳往它所特化的主模板
 
 ```case
 tests/navigation/templates/02_explicit_specializations
@@ -662,11 +662,11 @@ tests/navigation/templates/02_explicit_specializations
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**依赖调用的重载候选**
+**依赖调用的候选重载**
 
-依赖调用可能命中多个重载时，会逐一列出这些重载
+可能命中多个重载的依赖调用会列出全部候选重载
 
-每个候选各自给出结果：有定义的跳转到定义，没有定义的跳转到声明。
+每个候选各自给出跳转目标：有定义时跳往定义，没有定义时跳往声明。
 
 ```case
 tests/navigation/templates/03_overload_candidates
@@ -678,9 +678,9 @@ tests/navigation/templates/03_overload_candidates
 
 **依赖表达式的成员**
 
-在依赖下标、调用或 `auto` 变量的结果上访问成员时，解析到类模板中声明的成员
+对依赖下标、依赖调用或依赖 `auto` 变量的求值结果访问成员时，会跳转到相应类模板中声明的成员
 
-调用存在 `const` 重载时，由对象是否为 const 决定解析到哪一个重载；参数不同的各个重载中，解析到形参类型与实参类型完全一致的那一个，而写出显式模板实参时，只会解析到其中的模板。
+若成员调用存在 `const` 重载，会根据对象本身的常量性选出对应的重载；若各重载的形参不同，则会选中与实参类型精确匹配的那一个；显式指定模板实参时则只匹配函数模板。
 
 ```case
 tests/navigation/templates/04_dependent_expressions
@@ -690,11 +690,11 @@ tests/navigation/templates/04_dependent_expressions
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**被实参排除的重载**
+**由已知实参排除的重载**
 
-依赖调用会略去某个类型已知的实参无法匹配的重载
+依赖调用会剔除类型已知的实参绝无可能匹配的候选重载
 
-标准转换、转换构造函数和转换函数都无法把该实参转换为该重载对应形参的类型。形参依赖于模板参数的重载则会保留。
+当标准转换、转换构造函数与转换函数都无法将该实参转换为某个重载的形参时，该重载即告排除；形参本身依赖模板参数的重载则会保留。
 
 ```case
 tests/navigation/templates/11_known_arguments
@@ -706,7 +706,7 @@ tests/navigation/templates/11_known_arguments
 
 ## 宏
 
-宏实参中写出的名称或由宏生成的名称，都能像其他名称一样跳转；宏的引用包括所有展开它或检查它的位置。
+写在宏实参中或由宏生成的名称与普通名称一样支持导航，宏的引用结果则涵盖每一处展开或测试该宏的位置。
 
 <!-- BEGIN GENERATED ITEMS: navigation/macros -->
 
@@ -714,9 +714,9 @@ tests/navigation/templates/11_known_arguments
 
 **宏实参中的名称**
 
-宏实参中的名称可以像宏外的名称一样跳转
+宏实参中写出的名称与宏外写出的名称一样支持导航
 
-在名称的书写位置，跳转会在定义和声明之间切换；后续使用该名称时，则会跳转到宏所声明的函数。宏自身的名称无论出现在定义处还是调用处，都会解析到该宏。
+在宏实参中写出该名称的位置，定义与声明可以来回切换，后文中的使用处也会跳往该宏声明的函数。宏自身的名称无论在宏定义处还是宏调用处，都会跳转到该宏。
 
 ```case
 tests/navigation/macros/01_macro_arguments
@@ -728,9 +728,9 @@ tests/navigation/macros/01_macro_arguments
 
 **宏生成的名称**
 
-宏生成的名称会解析到生成该名称的宏调用
+由宏生成的名称会跳转到生成它的那次宏调用
 
-从通过 Token 拼接生成或写在宏体中的名称的使用处导航，会跳转到宏调用处；调用处的宏名称则解析到宏本身。宏体内的 Token 只有经过展开才有具体含义，因此对其导航不会返回结果。
+通过 Token 拼接（token paste）拼出的名称或直接写在宏体中的名称，在使用处都会跳转到生成它的宏调用处，而宏调用处的宏名本身则跳转到宏定义。宏体内部的 Token 在展开前没有确定的语义，在其上执行导航不返回任何结果。
 
 ```case
 tests/navigation/macros/02_generated_names
@@ -742,9 +742,9 @@ tests/navigation/macros/02_generated_names
 
 **宏引用**
 
-宏引用搜索包括宏展开、条件测试和取消定义
+搜索宏引用会涵盖宏展开、条件编译检测以及取消定义的位置
 
-同一名称的每次 `#define` 都被视为独立的符号，因此在 `#undef` 之后重新定义的宏只会收集自身的使用位置。
+同名宏的每次 `#define` 各自算作独立符号，因此在 `#undef` 之后重新定义的宏只会收集属于它自己的使用处。
 
 ```case
 tests/navigation/macros/04_macro_references
@@ -754,11 +754,11 @@ tests/navigation/macros/04_macro_references
 
 <!-- BEGIN CAPABILITY: supported clangd#346 -->
 
-**嵌套宏引用**
+**嵌套宏中的引用**
 
-查找宏引用时，结果包含其他宏的宏体中对该宏的引用，只要那些宏在某处展开
+在宏上执行“查找引用”，结果包含其他实际展开过的宏体中提及它的位置
 
-从未展开的宏体不指向任何东西：其中的名称指什么，由每次展开决定。
+从未展开过的宏体不指代任何具体符号：其中名称的含义要到每次展开时才能确定。
 
 ```case
 tests/navigation/macros/05_nested_macros
@@ -770,9 +770,9 @@ tests/navigation/macros/05_nested_macros
 
 **按翻译单元定义的头文件宏**
 
-在共享头文件所用的宏上执行“跳转到定义”，会跳转到包含该头文件的各个翻译单元所展开的每一个定义
+共享头文件中使用的宏，执行“跳转到定义”会到达包含它的各个翻译单元所展开的每一处宏定义
 
-两个翻译单元都包含 `config.h`，其中一个定义了 `FAST`：头文件中的 `MODE` 在两者中展开为不同的定义，在未打开的头文件中执行“跳转到定义”会把两者都列出。
+两个翻译单元都包含 `config.h`，其中一个定义了 `FAST`：头文件中的 `MODE` 在两个单元里分别展开为不同的宏定义，在该头文件未打开时发起“跳转到定义”会同时列出这两处定义。
 
 ```case
 tests/navigation/macros/10_header_variants
@@ -782,11 +782,11 @@ tests/navigation/macros/10_header_variants
 
 <!-- BEGIN CAPABILITY: partial -->
 
-**被禁用的断言**
+**已禁用的断言**
 
-被禁用的 `assert` 中的名称不指向任何东西
+已禁用的 `assert` 内部的名称不会跳往任何位置
 
-定义了 `NDEBUG` 时，`assert(...)` 展开为空，其实参从不参与编译：其中写出的名称没有可跳转的定义，也不在引用之列。clice 不会去猜测它们本应指什么。
+定义了 `NDEBUG` 时，`assert(...)` 会展开为空，其实参根本不参与编译：其中写出的名称没有可跳往的定义，也不会出现在引用结果中。clice 不会猜测它们原本指代什么。
 
 ```case
 tests/navigation/macros/12_disabled_assert
@@ -798,9 +798,9 @@ tests/navigation/macros/12_disabled_assert
 
 ## 隐式目标
 
-跳转到隐式调用的代码定义。在 C++ 中，许多语法结构会隐式调用构造函数、运算符、转换函数等。从语法结构（花括号、关键字、运算符 Token）跳转到实际调用的函数，对于理解究竟执行了哪些代码至关重要。
+跳转到隐式调用代码的定义。C++ 中许多语法结构会在背后隐式调用构造函数、运算符、类型转换函数等。从触发调用的语法位置（花括号、关键字、运算符 Token）直接跳往实际执行的函数，有助于看清代码真正在运行什么。
 
-隐式导航要求源码中的 Token 没有歧义。如果 Token 已有明确的“跳转到定义”目标（例如，变量名始终跳转到其声明），就不能再用它来导航到隐式调用。
+隐式导航需要一个无歧义的源码 Token——如果某个 Token 本身已有明确的跳转目标（例如变量名总是跳转到变量声明），就不能再挪作隐式调用的导航入口。
 
 <!-- BEGIN GENERATED ITEMS: navigation/implicit_targets -->
 
@@ -808,9 +808,9 @@ tests/navigation/macros/12_disabled_assert
 
 **`override` / `final`**
 
-`override` 和 `final` 可跳转到被重写的基类方法
+`override` 和 `final` 会跳转到所重写的基类方法
 
-在 `override` 或 `final` 说明符上执行“跳转到定义”，会跳转到被重写的基类虚方法。
+在 `override` 或 `final` 说明符上执行“跳转到定义”，会跳往它重写的基类虚方法。
 
 ```case
 tests/navigation/implicit_targets/01_override_and_final
@@ -822,9 +822,9 @@ tests/navigation/implicit_targets/01_override_and_final
 
 **`break` / `continue`**
 
-`break` 和 `continue` 尚不能跳转到它们所在的控制语句
+`break` 和 `continue` 不会跳转到外层控制语句
 
-在 `break` 或 `continue` 上执行“跳转到定义”，无法跳转到其控制的循环或 switch 语句的头部。
+在 `break` 或 `continue` 上执行“跳转到定义”，不会跳往其所属循环或 switch 语句的开头。
 
 ```case
 tests/navigation/implicit_targets/02_break_and_continue
@@ -836,9 +836,9 @@ tests/navigation/implicit_targets/02_break_and_continue
 
 **`delete` 表达式**
 
-`delete` 可跳转到它调用的析构函数和内存释放函数
+`delete` 会跳转到它运行的析构函数与内存释放函数
 
-在 `delete` 上执行“跳转到定义”，可跳转到它调用的析构函数，以及类自身的 `operator delete`。
+在 `delete` 上执行“跳转到定义”，会同时跳往它调用的析构函数与类自定义的 `operator delete`。
 
 ```case
 tests/navigation/implicit_targets/03_delete_expressions
@@ -850,9 +850,9 @@ tests/navigation/implicit_targets/03_delete_expressions
 
 **`new` 表达式**
 
-`new` 可跳转到它调用的内存分配函数和构造函数
+`new` 会跳转到它运行的内存分配函数与构造函数
 
-在 `new` 上执行“跳转到定义”，可跳转到类中重载的 `operator new`，以及同一表达式调用的构造函数。
+在 `new` 上执行“跳转到定义”，会同时跳往类重载的 `operator new` 以及同一表达式调用的构造函数。
 
 ```case
 tests/navigation/implicit_targets/04_new_expressions
@@ -864,9 +864,9 @@ tests/navigation/implicit_targets/04_new_expressions
 
 **重载运算符**
 
-重载运算符的 Token 可跳转到其定义
+重载运算符 Token 会跳转到其定义
 
-在重载运算符的 Token 上执行“跳转到定义”，可跳转到该运算符的定义。二元、下标、调用和箭头运算符（`+`、`[]`、`()`、`->`）均可解析。
+在重载运算符 Token 上执行“跳转到定义”会跳往该运算符函数的定义。二元运算符、下标运算符、函数调用运算符与箭头运算符（`+`、`[]`、`()`、`->`）均支持解析。
 
 ```case
 tests/navigation/implicit_targets/05_overloaded_operators
@@ -876,11 +876,11 @@ tests/navigation/implicit_targets/05_overloaded_operators
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**C++20 重写运算符**
+**C++20 重写比较运算符**
 
-重写后的比较可跳转到实际实现该比较的运算符
+经重写合成的比较表达式会跳转到实际实现它的运算符
 
-对于按 C++20 重写规则合成的比较，在源码中写出的运算符上执行“跳转到定义”，可跳转到实际实现该比较的运算符：`!=` 跳转到 `operator==`，`>` 跳转到 `operator<=>`。
+若比较表达式由 C++20 重写规则合成，在源码写出的运算符上执行“跳转到定义”会跳往实际提供实现的运算符：`!=` 跳往 `operator==`，`>` 跳往 `operator<=>`。
 
 ```case
 tests/navigation/implicit_targets/06_rewritten_comparisons
@@ -890,11 +890,11 @@ tests/navigation/implicit_targets/06_rewritten_comparisons
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**用户定义字面量（user-defined literals）**
+**用户定义字面量**
 
-字面量后缀可跳转到其字面量运算符
+字面量后缀会跳转到对应的字面量运算符
 
-在用户定义字面量的后缀上执行“跳转到定义”，可跳转到它调用的 `operator""`。
+在用户定义字面量的后缀上执行“跳转到定义”，会跳往它调用的 `operator""`。
 
 ```case
 tests/navigation/implicit_targets/07_user_defined_literals
@@ -906,9 +906,9 @@ tests/navigation/implicit_targets/07_user_defined_literals
 
 **隐式转换运算符**
 
-条件判断或 `!` 可跳转到其调用的转换运算符
+条件表达式或 `!` 会跳转到其触发的转换运算符
 
-在条件的括号上（`do` 循环则在其 `while` 上），或在操作数需要转换的 `!`、`&&`、`||` 或 `?` 上执行“跳转到定义”，会跳转到用于判断该操作数真假的用户定义转换运算符。
+在条件表达式的括号（`do` 循环中则是 `while` 关键字）上，或在操作数发生转换的 `!`、`&&`、`||`、`?` 上执行“跳转到定义”，会跳往用于检测操作数的用户定义转换运算符。
 
 ```case
 tests/navigation/implicit_targets/08_implicit_conversions
@@ -918,11 +918,11 @@ tests/navigation/implicit_targets/08_implicit_conversions
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**强制类型转换导航**
+**类型转换导航**
 
-强制类型转换可跳转到其调用的构造函数或转换运算符
+显式类型转换会跳转到它调用的构造函数或转换运算符
 
-在 `static_cast` 上、C 风格强制类型转换的括号上或函数式类型转换的类型上执行“跳转到定义”，会跳转到它所选的构造函数或它调用的用户定义转换运算符。
+在 `static_cast`、C 风格强制转换的括号或函数式类型转换的类型名上执行“跳转到定义”，会跳往所选中的构造函数或调用的用户定义转换运算符。
 
 ```case
 tests/navigation/implicit_targets/09_casts
@@ -932,11 +932,11 @@ tests/navigation/implicit_targets/09_casts
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**范围 for 循环（range-based for）**
+**范围 for 循环**
 
-范围 for 循环中的冒号可跳转到 `begin()` 和 `end()`
+范围 for 循环的冒号会跳转到 `begin()` 和 `end()`
 
-在范围 for 循环的 `:` 上执行“跳转到定义”，会跳转到为该范围选用的 `begin()` 和 `end()`。
+在范围 for 循环的 `:` 上执行“跳转到定义”，会跳往为该范围选定的 `begin()` 和 `end()`。
 
 ```case
 tests/navigation/implicit_targets/10_range_for
@@ -948,9 +948,9 @@ tests/navigation/implicit_targets/10_range_for
 
 **`co_await` / `co_yield` / `co_return`**
 
-协程关键字可跳转到它们调用的方法
+协程关键字会跳转到它们隐式调用的方法
 
-在 `co_await` 上执行“跳转到定义”，会跳转到等待器（awaiter）的 `await_ready`、`await_suspend` 和 `await_resume`；在 `co_yield` 上，会跳转到 promise 对象的 `yield_value`；在 `co_return` 上，会跳转到 promise 对象的 `return_value`。
+在 `co_await` 上执行“跳转到定义”会跳往 awaiter 的 `await_ready`、`await_suspend` 和 `await_resume`；在 `co_yield` 上跳往 promise 的 `yield_value`；在 `co_return` 上跳往 promise 的 `return_value`。
 
 ```case
 tests/navigation/implicit_targets/11_coroutine_keywords
@@ -962,7 +962,7 @@ tests/navigation/implicit_targets/11_coroutine_keywords
 
 ## 隐式构造
 
-从初始化、返回、捕获和分解语法执行导航，可跳转到隐式选定的构造函数、聚合类型定义或绑定。
+从初始化、返回语句、捕获与分解语法发起导航，可以跳往隐式选中的构造函数、聚合体定义或绑定。
 
 <!-- BEGIN GENERATED ITEMS: navigation/implicit_construction -->
 
@@ -970,9 +970,9 @@ tests/navigation/implicit_targets/11_coroutine_keywords
 
 **构造函数调用**
 
-圆括号和花括号可跳转到所选的构造函数
+圆括号与花括号会跳转到选中的构造函数
 
-在构造函数调用的左圆括号或左花括号上执行“跳转到定义”，可跳转到重载决议选中的构造函数，适用于 `T(args)` 和 `T{args}` 两种形式。
+在构造函数调用的左圆括号或左花括号上执行“跳转到定义”，会跳往重载决议选中的构造函数，同时支持 `T(args)` 和 `T{args}` 两种写法。
 
 ```case
 tests/navigation/implicit_construction/01_constructor_calls
@@ -982,11 +982,11 @@ tests/navigation/implicit_construction/01_constructor_calls
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**拷贝／移动构造与赋值**
+**拷贝/移动构造与赋值**
 
-初始化或赋值中的 `=` 可跳转到它调用的函数
+初始化或赋值中的 `=` 会跳转到它运行的函数
 
-在赋值中的 `=` 上执行“跳转到定义”，会跳转到赋值运算符；在拷贝初始化或移动初始化的 `=`（`T b = a;`）上，则会跳转到构造该变量的拷贝构造函数或移动构造函数。
+在赋值表达式的 `=` 上执行“跳转到定义”会跳往赋值运算符；在拷贝初始化或移动初始化（`T b = a;`）的 `=` 上执行则会跳往构造该变量的拷贝或移动构造函数。
 
 ```case
 tests/navigation/implicit_construction/02_copy_and_move
@@ -998,9 +998,9 @@ tests/navigation/implicit_construction/02_copy_and_move
 
 **CTAD**
 
-使用 CTAD 的构造调用可跳转到推导出的特化的构造函数
+使用 CTAD 的构造会跳转到所推导特化的构造函数
 
-当类模板实参推导选中特化时，在构造函数调用上执行“跳转到定义”，可跳转到选中的构造函数，而不只是类模板。
+当类模板实参推导（class template argument deduction）选定某个特化时，在构造调用上执行“跳转到定义”会跳往选中的具体构造函数，而不只是类模板本身。
 
 ```case
 tests/navigation/implicit_construction/03_deduced_class_templates
@@ -1012,9 +1012,9 @@ tests/navigation/implicit_construction/03_deduced_class_templates
 
 **聚合初始化**
 
-聚合初始化的花括号可跳转到聚合类型的定义
+聚合初始化的花括号会跳转到聚合体的定义
 
-聚合类型没有构造函数，因此在其初始化器的花括号上执行“跳转到定义”，会跳转到聚合类型的定义。
+聚合体没有构造函数，因此在其初始化器的花括号上执行“跳转到定义”会跳往该聚合体的定义。
 
 ```case
 tests/navigation/implicit_construction/04_aggregates
@@ -1026,9 +1026,9 @@ tests/navigation/implicit_construction/04_aggregates
 
 **成员初始化列表**
 
-成员初始化器的圆括号可跳转到选中的基类或成员构造函数
+成员初始化器的圆括号会跳转到选中的基类或成员构造函数
 
-在初始化列表中各初始化器的左圆括号上，可跳转到该初始化器调用的基类或成员构造函数。初始化器名称本身会解析到基类类型或成员，因此需要通过圆括号跳转到构造函数。
+初始化列表所调用的基类构造函数与成员构造函数，可从各个初始化器的左圆括号跳往。初始化器中的名称本身会解析到基类类型或成员变量，因此要跳往构造函数需在圆括号上触发。
 
 ```case
 tests/navigation/implicit_construction/05_member_initializers
@@ -1040,9 +1040,9 @@ tests/navigation/implicit_construction/05_member_initializers
 
 **委托构造函数**
 
-委托构造函数中委托调用的圆括号可跳转到目标构造函数
+委托构造函数的圆括号会跳转到目标构造函数
 
-在委托调用的左圆括号上，可跳转到委托构造函数的目标构造函数。构造函数名称本身会解析到类类型，因此需要通过圆括号跳转到目标构造函数。
+委托构造函数的目标构造函数可从委托调用的左圆括号跳往。构造函数名本身会解析到所属类类型，因此要跳往目标构造函数需在圆括号上触发。
 
 ```case
 tests/navigation/implicit_construction/06_delegating_constructors
@@ -1054,9 +1054,9 @@ tests/navigation/implicit_construction/06_delegating_constructors
 
 **继承构造函数**
 
-继承构造函数的声明可跳转到其引入的每个基类构造函数
+继承构造函数声明会跳转到引入的每一个基类构造函数
 
-在继承构造函数的声明（`using Base::Base;`）上执行“跳转到定义”，会列出它所引入的基类的每一个构造函数。
+在继承构造函数声明（`using Base::Base;`）上执行“跳转到定义”，会列出它从基类引入的每个构造函数。
 
 ```case
 tests/navigation/implicit_construction/07_inherited_constructors
@@ -1066,11 +1066,11 @@ tests/navigation/implicit_construction/07_inherited_constructors
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**返回值的隐式构造**
+**返回值隐式构造**
 
-花括号形式的返回值可跳转到选中的构造函数
+花括号形式的返回值会跳转到选中的构造函数
 
-花括号形式的 `return {args}` 会隐式构造函数返回类型的对象；在花括号上执行“跳转到定义”，可跳转到选中的构造函数。
+花括号形式的 `return {args}` 会隐式构造函数的返回类型；在花括号上执行“跳转到定义”会跳往选中的构造函数。
 
 ```case
 tests/navigation/implicit_construction/08_return_values
@@ -1082,9 +1082,9 @@ tests/navigation/implicit_construction/08_return_values
 
 **Lambda 初始化捕获**
 
-Lambda 初始化捕获可跳转到构造捕获值的构造函数
+Lambda 初始化捕获（init-capture）会跳转到构造捕获值的构造函数
 
-在 Lambda 初始化捕获的 `=` 上执行“跳转到定义”，会跳转到构造捕获值的构造函数。
+在 Lambda 初始化捕获的 `=` 上执行“跳转到定义”，会跳往构造该捕获值的构造函数。
 
 ```case
 tests/navigation/implicit_construction/09_lambda_captures
@@ -1094,11 +1094,11 @@ tests/navigation/implicit_construction/09_lambda_captures
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**结构化绑定（structured bindings）**
+**结构化绑定**
 
-结构化绑定的名称就是它自己的定义
+结构化绑定的名称就是它自身的定义
 
-在结构化绑定所声明的名称上执行“跳转到定义”，会停留在该绑定上，与其他被声明的名称一样；它所绑定的成员或访问器并不是它的定义。
+在结构化绑定所声明的名称上执行“跳转到定义”会停留在绑定本身，与任何声明的名称一样；它绑定的成员或访问器并不是它的定义。
 
 ```case
 tests/navigation/implicit_construction/10_structured_bindings
@@ -1110,7 +1110,7 @@ tests/navigation/implicit_construction/10_structured_bindings
 
 ## 模块导航
 
-`import` 和 `module` 声明中的模块名称可跳转到声明该模块的接口单元。
+`import` 与 `module` 声明中的模块名会跳转到声明该模块的接口单元。
 
 <!-- BEGIN GENERATED ITEMS: navigation/modules -->
 
@@ -1118,7 +1118,7 @@ tests/navigation/implicit_construction/10_structured_bindings
 
 **模块导入导航**
 
-在 `import` 声明中的名称上执行“跳转到定义”，会打开导出该模块的接口单元；在已导入符号的使用处执行此操作，可跳转到该符号在该单元中的定义
+在 `import` 声明中的模块名上执行“跳转到定义”会打开导出它的模块接口单元，使用导入的符号时也会跳往该单元中的定义
 
 ```case
 tests/navigation/modules/01_import_names
@@ -1130,9 +1130,9 @@ tests/navigation/modules/01_import_names
 
 **模块实现单元**
 
-接口单元与其实现单元中的模块名称可相互跳转
+模块接口单元与实现单元中的模块名可以相互跳转
 
-实现单元中的模块名称可跳转到声明该模块的接口单元，接口中的模块名称可跳转到实现该模块的各个单元。从导出函数的使用处可跳转到该函数在实现单元中的定义。
+实现单元中的模块名会跳往声明该模块的接口单元，接口单元中的模块名则会跳往实现该模块的各个单元。使用导出的函数时会跳往实现单元中的定义。
 
 ```case
 tests/navigation/modules/02_implementation_units
@@ -1142,11 +1142,11 @@ tests/navigation/modules/02_implementation_units
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**以点分隔的模块名称**
+**点号分隔的模块名**
 
-以点分隔的模块名称中，每一段都可导航到模块接口
+带点号模块名的每一段都会跳转到其接口单元
 
-在以点分隔的模块名称的任意一段上执行“跳转到定义”，都会跳转到该模块的接口单元；整个名称视为同一个引用。
+在点号分隔的模块名任意一段上执行“跳转到定义”，都会跳往该模块的接口单元；整个模块名算作同一处引用。
 
 ```case
 tests/navigation/modules/03_dotted_names
@@ -1158,15 +1158,15 @@ tests/navigation/modules/03_dotted_names
 
 ## 项目内导航
 
-符号导航可跳转到项目中的其他文件：头文件中的声明、源文件中的定义或模块分区。
+导航会跟随符号进入项目的其他文件：头文件中的声明、源文件中的定义或模块分区。
 
 <!-- BEGIN GENERATED ITEMS: navigation/projects -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**头文件中的声明**
+**头文件声明**
 
-从调用处可定位到函数在源文件中的定义和在头文件中的声明
+函数调用会关联源文件中的函数定义与头文件中的函数声明
 
 ```case
 tests/navigation/projects/01_header_to_source
@@ -1178,7 +1178,7 @@ tests/navigation/projects/01_header_to_source
 
 **模块分区**
 
-从模块函数的调用处可跳转到导出该函数的分区
+调用模块中的函数会落到导出该函数的模块分区
 
 ```case
 tests/navigation/projects/02_module_partition
@@ -1188,11 +1188,11 @@ tests/navigation/projects/02_module_partition
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**跨源文件的使用位置**
+**跨源文件的使用**
 
-查找引用会汇集项目所有源文件中的使用位置，而不限于当前文件
+“查找引用”会汇集项目中各个源文件内的使用处，而不局限于当前文件
 
-函数在一个源文件中定义、在另一个同级源文件中调用时，查找引用会列出两处调用位置，以及共享头文件中的声明。
+在一个源文件中定义、并从同级源文件中调用的函数，会同时列出各处调用位置以及共享头文件中的声明。
 
 ```case
 tests/navigation/projects/03_uses_across_sources
@@ -1202,11 +1202,11 @@ tests/navigation/projects/03_uses_across_sources
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**模板和宏内部的使用**
+**模板与宏内部的使用**
 
-只要有源文件实例化模板或展开宏，无论它是否打开，“查找引用”和调用层次结构都会包含模板的依赖代码和宏体在那里解析到的目标
+只要有源文件实例化模板或展开宏，无论该文件是否打开，“查找引用”与调用层次结构都会包含模板依赖代码和宏体在那里解析到的目标
 
-`measure` 中的 `item.open()` 只有在 `measure` 以 `Box` 实例化之后才指向 `Box::open`，`RESET_ALL` 宏体中的 `reset()` 也只在该宏展开处才指向这个函数：这里两者都发生在一个未打开的源文件中，打开头文件时照样能给出答案。
+`measure` 中的 `item.open()` 只有在以 `Box` 实例化 `measure` 后才指代 `Box::open`，`RESET_ALL` 宏体中的 `reset()` 也只在宏展开处才指代该函数：此处两者都发生在未打开的源文件中，打开头文件查询时依然能返回结果。
 
 ```case
 tests/navigation/projects/09_instantiated_templates
@@ -1218,15 +1218,15 @@ tests/navigation/projects/09_instantiated_templates
 
 ## 调用层次结构
 
-调用层次结构列出函数的调用方以及该函数调用的函数；通过函数所重写的方法发起的调用，也算作它的调用方。每个条目都显示函数的参数，用以区分不同的重载。函数的局部变量和参数没有条目：它们唯一的调用方就是函数本身。
+调用层次结构列出调用某个函数的调用方以及该函数调用的其他函数；通过该函数重写的方法发起的调用也会计入其调用方。每个条目都会显示函数的形参以区分重载。函数的局部变量与形参不生成条目：唯一能使用它们的就是该函数自身。
 
 <!-- BEGIN GENERATED ITEMS: navigation/call_hierarchy -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**函数和方法**
+**函数与方法**
 
-自由函数和成员方法都支持打开调用层次结构
+自由函数与成员方法都支持打开调用层次结构
 
 ```case
 tests/navigation/call_hierarchy/01_functions_and_methods
@@ -1238,7 +1238,7 @@ tests/navigation/call_hierarchy/01_functions_and_methods
 
 **传入调用**
 
-传入调用列出函数的所有调用方；同一调用方多次调用该函数时，会列出每一处调用位置
+传入调用列出函数的所有调用方；多次调用该函数的调用方会贡献每一处调用位置
 
 ```case
 tests/navigation/call_hierarchy/02_incoming_calls
@@ -1250,7 +1250,7 @@ tests/navigation/call_hierarchy/02_incoming_calls
 
 **传出调用**
 
-传出调用列出函数体内调用的所有函数，每个被调用函数对应一个条目
+传出调用列出函数体内调用的所有函数，每个被调函数对应一个条目
 
 ```case
 tests/navigation/call_hierarchy/03_outgoing_calls
@@ -1262,7 +1262,7 @@ tests/navigation/call_hierarchy/03_outgoing_calls
 
 **调用层次结构条目详情**
 
-调用层次结构条目会在名称旁显示函数的参数，从而区分不同的重载
+调用层次结构条目在函数名旁显示形参列表，用以区分不同重载
 
 ```case
 tests/navigation/call_hierarchy/04_signature_details
@@ -1274,7 +1274,7 @@ tests/navigation/call_hierarchy/04_signature_details
 
 **成员函数的限定名称**
 
-成员函数的调用层次结构条目会在名称旁显示其限定名称（`Circle::draw`），以便与自由函数区分开
+成员函数的调用层次结构条目会在名称旁显示限定名称（`Circle::draw`），以便与自由函数区分
 
 ```case
 tests/navigation/call_hierarchy/05_qualified_names
@@ -1284,11 +1284,11 @@ tests/navigation/call_hierarchy/05_qualified_names
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**经由重写方法的调用**
+**通过虚方法的调用**
 
-通过虚方法发起的调用会到达它可能分派到的每个重写方法，带限定的调用只到达它指名的那个方法
+通过虚方法发起的调用会到达所有可能分派到的重写方法，带作用域限定的调用则只到达它所指名的方法
 
-`b.draw()` 在 `Base&` 上调用时，可能执行 `Base::draw` 或 `Derived::draw`，因此两者都会把这次调用列为传入调用。`d.draw()` 在 `Derived&` 上调用时，执行的是 `Derived::draw` 或更下层派生类中的重写方法，绝不会是 `Base::draw`，因此只有该重写方法会列出这次调用。`Base::draw()` 无论出现在重写方法的函数体中还是别处，都只执行 `Base::draw`；而 `Group` 中的 `child->draw()` 两者都可能到达。由宏写出的 `Base::draw()` 也只执行 `Base::draw`，`Logged` 的重写方法中就有这样一处。
+在 `Base&` 上调用 `b.draw()` 可能执行 `Base::draw` 或 `Derived::draw`，因此两者的传入调用都会列出它。在 `Derived&` 上调用 `d.draw()` 只会执行 `Derived::draw` 或更下层的重写方法，绝不会执行 `Base::draw`，因此只有重写方法会列出它。`Base::draw()` 无论写在重写方法体内还是别处都只执行 `Base::draw`（而 `Group` 中的 `child->draw()` 则可能到达任一方法）；`Logged` 的重写方法中由宏展开出的 `Base::draw()` 同样只执行 `Base::draw`。
 
 ```case
 tests/navigation/call_hierarchy/06_virtual_dispatch
@@ -1300,9 +1300,9 @@ tests/navigation/call_hierarchy/06_virtual_dispatch
 
 **非函数目标**
 
-可以在变量、字段或枚举常量上打开调用层次结构
+变量、字段与枚举常量也支持打开调用层次结构
 
-在变量、字段或枚举常量上准备调用层次结构时，会返回一个条目，其传入调用就是使用它的各个函数。
+在变量、字段或枚举常量上发起调用层次结构请求时，会生成一个条目，其传入调用即为使用该符号的各个函数。
 
 ```case
 tests/navigation/call_hierarchy/07_non_functions
@@ -1312,9 +1312,9 @@ tests/navigation/call_hierarchy/07_non_functions
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Lambda 内的调用**
+**Lambda 内部的调用**
 
-Lambda 体内的调用会出现在被调用函数的传入调用中，并归于包含该 Lambda 的函数
+写在 Lambda 体内的调用会出现在被调函数的传入调用中，并归属到包含该 Lambda 的外层函数
 
 ```case
 tests/navigation/call_hierarchy/08_lambda_bodies
@@ -1324,9 +1324,9 @@ tests/navigation/call_hierarchy/08_lambda_bodies
 
 <!-- BEGIN CAPABILITY: unsupported clangd#716 -->
 
-**通过转发函数调用构造函数**
+**通过转发函数的构造函数调用**
 
-构造函数的传入调用包含运行该构造函数的完美转发工厂，但不包含经由工厂调用它的位置
+构造函数的传入调用包含运行它的完美转发工厂函数，但不包含调用该工厂函数的位置
 
 ```case
 tests/navigation/call_hierarchy/09_forwarding_factories
@@ -1336,11 +1336,11 @@ tests/navigation/call_hierarchy/09_forwarding_factories
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**函数的局部符号**
+**函数局部符号**
 
-函数的局部变量和参数没有调用层次结构条目
+函数的局部变量与形参不生成调用层次结构条目
 
-能使用它们的只有声明它们的那个函数，因此为它们提供条目，也只会得到一个事先就已知道的调用方。在函数内声明的类，其字段仍保有自己的条目：类的方法会使用这些字段。
+能使用它们的只有声明它们的函数本身，即使生成条目也只有一个事先已知的调用方。而在函数内声明的类，其字段仍会生成条目，因为类自身的方法会使用这些字段。
 
 ```case
 tests/navigation/call_hierarchy/15_function_locals
@@ -1352,7 +1352,7 @@ tests/navigation/call_hierarchy/15_function_locals
 
 ## 类型层次结构
 
-类型层次结构列出类的基类以及从该类派生的类。
+类型层次结构列出类的基类以及继承自它的派生类。
 
 <!-- BEGIN GENERATED ITEMS: navigation/type_hierarchy -->
 
@@ -1360,7 +1360,7 @@ tests/navigation/call_hierarchy/15_function_locals
 
 **类型类别**
 
-任何用户定义的类型都支持打开类型层次结构，包括类、结构体、枚举和联合体
+任何用户定义类型均可打开类型层次结构，包括类、结构体、枚举与联合体
 
 ```case
 tests/navigation/type_hierarchy/01_type_kinds
@@ -1372,9 +1372,9 @@ tests/navigation/type_hierarchy/01_type_kinds
 
 **超类型**
 
-超类型列出类的所有直接基类，多重继承时也会列出每个基类
+超类型列出类的所有直接基类，多重继承下也会逐一列出每个基类
 
-通过别名写出的基类，会列出该别名所指的类。
+以类型别名写出的基类会列出该别名所指的类。
 
 ```case
 tests/navigation/type_hierarchy/02_supertypes
@@ -1386,7 +1386,7 @@ tests/navigation/type_hierarchy/02_supertypes
 
 **子类型**
 
-子类型列出继承自某个基类的所有类，包括各个同级派生类
+子类型列出继承自该基类的所有派生类，涵盖各个同级派生类
 
 ```case
 tests/navigation/type_hierarchy/03_subtypes
@@ -1398,7 +1398,7 @@ tests/navigation/type_hierarchy/03_subtypes
 
 **模板继承**
 
-基类的子类型包括通过类模板（如 CRTP 包装类）继承自该基类的类
+基类的子类型包含通过类模板（如 CRTP 包装类）继承自它的类
 
 ```case
 tests/navigation/type_hierarchy/04_template_bases
@@ -1408,9 +1408,9 @@ tests/navigation/type_hierarchy/04_template_bases
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**模板参数所指的基类**
+**由模板参数指定的基类**
 
-以自身模板参数为基类的类模板，是实例化它所用的每个类的子类型
+继承自自身模板参数的类模板，会成为用来实例化它的每个类的子类型
 
 ```case
 tests/navigation/type_hierarchy/09_dependent_bases
@@ -1422,11 +1422,11 @@ tests/navigation/type_hierarchy/09_dependent_bases
 
 ## 文档高亮
 
-高亮显示当前文件中对光标所在符号的所有引用（`textDocument/documentHighlight`）。高亮与查找引用来自同一份索引，因此覆盖的名称与查找引用相同，在只读模式下同样可用；变量、字段或参数在代码写入或读取它的位置会被标为写入或读取，其他高亮则不作标记，只有实例化或宏展开才能解析出的使用也是如此。
+高亮显示当前文件中光标下符号的所有引用（`textDocument/documentHighlight`）。文档高亮与“查找引用”共用同一份索引，因此覆盖相同的名称，在只读模式下同样可用；变量、字段或形参在代码中发生写入或读取的位置会分别标为写入或读取，其余高亮（包括只能靠模板实例化或宏展开解析出的使用处）则标为普通高亮。
 
 ### 声明与使用
 
-文件中该符号名称的所有出现位置都会高亮显示，宏也不例外。
+文件中出现该符号的每一处名称都会高亮，宏也不例外。
 
 <!-- BEGIN GENERATED ITEMS: document_highlights/symbols -->
 
@@ -1434,7 +1434,7 @@ tests/navigation/type_hierarchy/09_dependent_bases
 
 **声明与使用**
 
-文件中光标所在符号的名称会在所有出现位置高亮显示，包括声明和定义处
+文件中光标下符号的每一处名称都会高亮，涵盖各处声明与定义
 
 ```case
 tests/document_highlights/symbols/01_declarations_and_uses
@@ -1444,11 +1444,11 @@ tests/document_highlights/symbols/01_declarations_and_uses
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**宏名称与宏参数**
+**宏名与宏实参**
 
-宏会在定义、展开、检测它的条件编译指令和 `#undef` 处高亮显示
+宏会在宏定义、各处展开、检测它的条件编译指令以及 `#undef` 处高亮
 
-宏参数中写出的名称会在其书写位置高亮显示；来自宏替换文本的名称则会高亮显示整个宏调用。在另一个宏的替换文本中使用的宏，会在该处作为普通文本出现而高亮显示，但不会在另一个宏的调用处高亮显示。
+写在宏实参中的名称就在写出它的位置高亮；写在宏替换体中的名称则会高亮整处宏调用。出现在另一个宏替换体中的宏会在该替换体中按普通文本出现位置高亮，但不会在外层宏的调用处高亮。
 
 ```case
 tests/document_highlights/symbols/03_macros
@@ -1460,7 +1460,7 @@ tests/document_highlights/symbols/03_macros
 
 **控制流关键字**
 
-`break` 或 `continue` 不会高亮显示它所离开的循环
+`break` 或 `continue` 不会高亮它所跳出的循环
 
 ```case
 tests/document_highlights/symbols/08_control_flow
@@ -1472,7 +1472,7 @@ tests/document_highlights/symbols/08_control_flow
 
 ### 读取与写入
 
-每处高亮都会标明该处代码是在读取还是写入符号。
+每处高亮都会标明该处代码是在读取还是写入该符号。
 
 <!-- BEGIN GENERATED ITEMS: document_highlights/access_kinds -->
 
@@ -1480,7 +1480,7 @@ tests/document_highlights/symbols/08_control_flow
 
 **读取与写入**
 
-变量的每次使用都会高亮显示，赋值标记为写入，其他使用标记为读取
+变量的每处使用都会高亮，赋值标为写入，其余使用标为读取
 
 ```case
 tests/document_highlights/access_kinds/01_reads_and_writes
@@ -1490,9 +1490,9 @@ tests/document_highlights/access_kinds/01_reads_and_writes
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**通过非 const 引用传递的实参**
+**按可变引用传递的实参**
 
-绑定到非 const 引用形参的实参被视为写入，而绑定到 const 引用、复制或取地址则被视为读取
+绑定到非 const 引用形参的实参标为写入，而绑定到 const 引用、按值拷贝或取地址则标为读取
 
 ```case
 tests/document_highlights/access_kinds/03_reference_arguments
@@ -1504,9 +1504,9 @@ tests/document_highlights/access_kinds/03_reference_arguments
 
 **成员访问**
 
-通过 `object.member` 写入时，会写入成员并读取对象
+通过 `object.member` 写入时，成员标为写入，对象标为读取
 
-指定初始化器（designated initializer）或构造函数的成员初始化器会写入字段。匿名联合体的字段与其他字段一样高亮显示。
+指定初始化器（designated initializer）或构造函数的成员初始化器会将对应字段标为写入。匿名联合体的字段与普通字段一样支持高亮。
 
 ```case
 tests/document_highlights/access_kinds/06_member_access
@@ -1518,7 +1518,7 @@ tests/document_highlights/access_kinds/06_member_access
 
 ### 模块单元
 
-高亮显示适用于模块单元以及模块导出的名称。
+在模块单元中以及模块导出的名称上同样支持文档高亮。
 
 <!-- BEGIN GENERATED ITEMS: document_highlights/modules -->
 
@@ -1526,7 +1526,7 @@ tests/document_highlights/access_kinds/06_member_access
 
 **模块单元**
 
-模块单元和从模块导入的名称均支持高亮显示，也包括模块名称
+在模块单元中以及从模块导入的名称（包括模块名本身）上均支持高亮
 
 ```case
 tests/document_highlights/modules/01_module_units
@@ -1538,11 +1538,11 @@ tests/document_highlights/modules/01_module_units
 
 ## 工作区符号
 
-按名称在整个项目中搜索符号（`workspace/symbol`），包括命名空间作用域中具有内部链接的名称（`static`、匿名命名空间）。每个结果的种类与大纲中给出的一致，函数还会显示其参数。
+按名称在编辑器打开的所有项目中搜索符号（`workspace/symbol`），命名空间作用域下具有内部链接（internal linkage）的名称（如 `static` 符号与匿名命名空间成员）也涵盖在内。每条结果带有与大纲一致的符号类别，函数结果还会附带形参列表。
 
 ### 查询
 
-查询根据名称中的单词进行匹配，并通过查询语法缩小搜索范围。
+查询按名称中的单词匹配，并可借助查询语法收窄搜索范围。
 
 <!-- BEGIN GENERATED ITEMS: workspace_symbols/queries -->
 
@@ -1550,7 +1550,7 @@ tests/document_highlights/modules/01_module_units
 
 **按名称搜索**
 
-查询会找到名称匹配的符号，并为成员显示其所属容器
+查询会找出名称匹配的符号，成员符号还会附带所属容器
 
 ```case
 tests/workspace_symbols/queries/01_name_search
@@ -1562,9 +1562,9 @@ tests/workspace_symbols/queries/01_name_search
 
 **模糊匹配**
 
-查询以子序列的形式匹配名称，并对齐到名称中的各个单词
+查询以对齐单词边界的子序列方式匹配名称
 
-`LinLis` 能找到 `LinkedList`，`pconf` 能找到 `parse_config`：查询中除首字母外的每个字母，要么紧接上一个匹配位置，要么位于名称中某个单词的开头，因此 `pcfg` 找不到任何结果，因为其中的 `f` 位于 `config` 中间。
+`LinLis` 可以匹配 `LinkedList`，`pconf` 可以匹配 `parse_config`：除首字母外，查询中的每个字母要么紧接上一段连续字符，要么落在名称中某个单词的开头；因此 `pcfg` 什么也匹配不到——其中的 `f` 落在了 `config` 中间。
 
 ```case
 tests/workspace_symbols/queries/03_fuzzy_matching
@@ -1576,10 +1576,9 @@ tests/workspace_symbols/queries/03_fuzzy_matching
 
 **查询语法**
 
-引号、通配符、作用域和过滤条件都能收窄一次搜索
+引号、通配符、作用域与筛选条件可以收窄搜索范围
 
-`"process"` 只匹配完整的名称，`proc*` 则匹配它通配到的一切；`io::*` 列出一个命名空间的成员，`io::**` 列出它的整棵子树；`kind:function` 只保留一种种类。各词项之间以空格分隔，可以组合使用。
-VS Code 的符号搜索只发送查询中的第一个词项，并按它过滤返回的结果：在 VS Code 中，第一个之后的词项，以及单独一个过滤条件，都找不到任何东西。
+`"process"` 只精确匹配完整名称，`proc*` 按通配符匹配；`io::*` 列出命名空间的直接成员，`io::**` 列出整个子树；`kind:function` 只保留指定类别。多个条件以空格分隔组合使用。VS Code 的符号搜索只会把查询中的第一项发给服务器，再用该项在本地过滤返回结果，因此在 VS Code 中第二项及之后的条件以及单独使用的筛选器都查不到结果。
 
 ```case
 tests/workspace_symbols/queries/04_query_syntax
@@ -1589,9 +1588,9 @@ tests/workspace_symbols/queries/04_query_syntax
 
 <!-- BEGIN CAPABILITY: unsupported -->
 
-**按修饰后的名称（链接器名称）搜索**
+**按修饰名（链接器名称）搜索**
 
-尚无法通过修饰后的链接器名称找到源代码中对应的函数
+修饰后的链接器名称不会解析回源码中的函数
 
 ```case
 tests/workspace_symbols/queries/05_mangled_names
@@ -1603,7 +1602,7 @@ tests/workspace_symbols/queries/05_mangled_names
 
 ### 限定名称
 
-限定查询指定符号必须位于哪些作用域中。
+带限定的查询可指明符号必须位于哪些外层作用域中。
 
 <!-- BEGIN GENERATED ITEMS: workspace_symbols/scopes -->
 
@@ -1611,9 +1610,9 @@ tests/workspace_symbols/queries/05_mangled_names
 
 **限定名称搜索**
 
-带限定的查询指明符号必须位于哪些容器之内
+带限定的查询可指定符号所属的外层容器
 
-`net::Socket` 能找到 `deep::net::Socket`：这些限定符必须按同样的顺序出现在符号的容器链中，其间和两端允许有别的容器；而以 `::` 开头则要求容器链与之完全一致。对限定查询的回复会写出限定名称，这样那些按查询文本过滤结果的编辑器就不会把它们滤掉。
+`net::Socket` 能找到 `deep::net::Socket`：各限定名只需按顺序出现在符号的容器链中，前后和中间允许夹有其他容器；加上前导 `::` 则要求容器链完全吻合。对带限定的查询返回的结果会写出限定名称，因此按查询文本再次过滤结果的编辑器不会把它们滤掉。
 
 ```case
 tests/workspace_symbols/scopes/01_qualified_names
@@ -1623,9 +1622,9 @@ tests/workspace_symbols/scopes/01_qualified_names
 
 <!-- BEGIN CAPABILITY: supported clangd#931 -->
 
-**有作用域枚举的枚举项查找**
+**带作用域枚举项查找**
 
-枚举和其他容器一样，为自己的枚举项提供限定
+枚举类型与其他容器一样可以限定其枚举项
 
 ```case
 tests/workspace_symbols/scopes/02_enumerators
@@ -1637,7 +1636,7 @@ tests/workspace_symbols/scopes/02_enumerators
 
 ### 排序
 
-名称完全匹配的结果排在首位。
+完全匹配的名称排在最前。
 
 <!-- BEGIN GENERATED ITEMS: workspace_symbols/ranking -->
 
@@ -1645,9 +1644,9 @@ tests/workspace_symbols/scopes/02_enumerators
 
 **别名排序**
 
-名称完全一致的结果排在仅以该名称开头的结果之前
+拼写完全一致的名称排在仅以它为前缀的名称之前
 
-`Connection` 会先列出别名，随后才是 `ConnectionImpl`。
+搜索 `Connection` 时，同名类型别名排在前面，`ConnectionImpl` 排在其后。
 
 ```case
 tests/workspace_symbols/ranking/01_exact_name
@@ -1659,17 +1658,17 @@ tests/workspace_symbols/ranking/01_exact_name
 
 ### 结果
 
-每个结果都会显示符号及其所属容器的名称。
+每条结果都会标出符号名称及其所在的外层容器。
 
 <!-- BEGIN GENERATED ITEMS: workspace_symbols/results -->
 
 <!-- BEGIN CAPABILITY: supported clangd#1344 -->
 
-**重载消歧**
+**区分重载函数**
 
-工作区符号结果会显示每个函数的参数，从而区分不同的重载
+工作区符号结果会显示每个函数的形参，便于区分重载
 
-查询重载名称会找到所有重载，每个条目都带有其参数：两个 `process` 结果一眼就能区分。
+查询重载函数名会返回每一个重载，并各自附带形参列表：两条 `process` 结果一眼即可区分。
 
 ```case
 tests/workspace_symbols/results/01_overloads
@@ -1679,11 +1678,11 @@ tests/workspace_symbols/results/01_overloads
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**具有内部链接的名称**
+**内部链接名称**
 
-搜索能找到命名空间作用域中具有内部链接的名称，每个声明了它的文件各给出一条，但绝不会找到函数内的局部名称
+搜索会找出各个文件中声明于命名空间作用域的内部链接名称，但不包含函数内的局部符号
 
-`static` 变量或匿名命名空间的成员只有它所在的文件才知道，但它仍是项目声明的名称：搜索会列出它，每个声明了它的文件各列一次。局部变量则不会列出。
+`static` 变量或匿名命名空间的成员虽然仅对所在文件可见，但仍属于项目声明的符号：每个声明它的文件都会在搜索结果中列出一条。局部变量则不会列出。
 
 ```case
 tests/workspace_symbols/results/06_internal_names
@@ -1695,17 +1694,17 @@ tests/workspace_symbols/results/06_internal_names
 
 ### 未打开的文件
 
-搜索范围涵盖项目中的所有文件，无论它们是否已在编辑器中打开。
+搜索范围覆盖项目中的所有文件，无论是否已在编辑器中打开。
 
 <!-- BEGIN GENERATED ITEMS: workspace_symbols/projects -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**搜索覆盖整个项目**
+**覆盖整个项目的搜索**
 
-工作区符号搜索会返回尚未打开的项目文件中的匹配项
+工作区符号搜索会返回未打开项目文件中的匹配结果
 
-查询会找到 `other.cpp` 中的一个函数。此时 `main.cpp` 已打开，`other.cpp` 仍未打开，结果由后台索引提供。
+只打开 `main.cpp` 而未打开 `other.cpp` 时，查询依然能找到 `other.cpp` 中的函数——结果由后台索引提供。
 
 ```case
 tests/workspace_symbols/projects/01_closed_files
@@ -1715,11 +1714,11 @@ tests/workspace_symbols/projects/01_closed_files
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**同一份检出的多个副本**
+**同一代码库的多份检出副本**
 
-并排打开同一份代码的两个检出时，每个符号只列出一次，取自正在编辑的那个文件夹
+并排打开同一代码的两份检出目录时，每个符号只列出一次，取正在编辑的那个文件夹中的副本
 
-把同一仓库的两个 worktree 作为工作区文件夹打开时，它们的文件文本相同，相同的符号也位于相同的位置。搜索只列出每个符号一次，取自有已打开文档的那个文件夹中的副本：也就是编辑器正在工作的那一个。某个文件夹中的文件内容若有不同，其中的符号就是这个文件夹自己的，同样会列出。
+同一仓库的两个工作树（worktree）作为工作区文件夹同时打开时，相同文本的相同位置上会有完全相同的符号。搜索对每个符号只列出一次，取打开了文档的那个文件夹——也就是当前正在编辑的文件夹中的副本。若某个文件夹中的文件内容不同，它就持有独立的符号，也会列出。
 
 ```case
 tests/workspace_symbols/projects/03_worktree_copies
@@ -1729,11 +1728,11 @@ tests/workspace_symbols/projects/03_worktree_copies
 
 <!-- END GENERATED ITEMS -->
 
-## 切换源文件／头文件
+## 切换源文件与头文件
 
-打开与当前文件配对的文件：头文件的源文件、源文件的头文件、模块接口的实现单元、实现单元的接口。在 VS Code 中，可以从编辑器的右键菜单选择 **Switch Header and Source (Module Interface and Implementation)**，也可以按 `Alt+O`，或在命令面板中运行 **clice: Switch Header and Source (Module Interface and Implementation)**；Neovim 中是 `:LspCliceSwitchSourceHeader`，命令行上则由 `clice query counterparts <file>` 给出同样的答案。Zed 不允许扩展添加命令，它自带的 _switch source header_ 只适用于 clangd。
+打开与当前文件配对的文件：头文件对应的源文件、源文件对应的头文件、模块接口对应的实现单元，或实现单元对应的模块接口。在 VS Code 中，可在编辑器右键菜单选择 **Switch Header and Source (Module Interface and Implementation)**、按快捷键 `Alt+O`，或在命令面板运行 **clice: Switch Header and Source (Module Interface and Implementation)**；在 Neovim 中可运行 `:LspCliceSwitchSourceHeader`；命令行下运行 `clice query counterparts <file>` 也会返回相同的结果。Zed 不支持由扩展注册命令，其内置的 _switch source header_ 仅支持 clangd。
 
-候选文件来自构建和索引已经掌握的信息，因此给出答案无需编译任何东西：另一侧的同名文件（位于该文件自己的目录中，或者位于工作区的其他位置、但两者之间有包含关系）、一方声明而另一方定义的那些声明，以及模块声明。每个候选都附有理由。最佳候选是唯一的候选，或者胜过其余每个候选时，编辑器会直接打开它。胜过对方需要同时满足：在共享声明和同名这两项理由中，对方具备的它都具备；共享声明不比对方少；并且理由比对方多一项，或者在双方都有共享声明时达到对方的两倍，或者在双方都没有共享声明时具备对方没有的模块配对。否则编辑器会列出这些候选，供用户挑选。
+候选文件直接取自构建和索引已知的信息，无需为此触发任何编译，来源包括：另一侧的同名文件（位于当前文件所在目录，或位于项目其他目录但两者存在包含关系）、一方声明而另一方定义的共享声明，以及模块声明关系。每个候选文件都附有入选理由。当只有一个候选文件，或最佳候选胜过其余每一个候选时，编辑器会直接打开它——所谓胜过另一候选，是指在“共享声明”与“同名”两项理由上对方具备的它都具备，共享声明数量不少于对方，并且满足以下至少一条：多出一项理由；双方都有共享声明且数量至少是对方的两倍；或双方都没有共享声明，但具备对方所没有的模块配对关系。否则，编辑器会列出所有候选文件供用户选择。
 
 ### 头文件与源文件
 
@@ -1755,9 +1754,9 @@ tests/counterparts/basics/01_header_and_source
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**模板定义分开存放**
+**分离存放的模板定义**
 
-头文件与它为存放模板定义而包含的 `.tpp` 文件之间可以相互切换
+头文件与它为存放模板定义而包含的 `.tpp` 文件可相互切换
 
 ```case
 tests/counterparts/basics/02_template_definitions
@@ -1767,9 +1766,9 @@ tests/counterparts/basics/02_template_definitions
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**没有配对的文件**
+**无配对的文件**
 
-自身定义了全部所声明内容的头文件，以及 `.def` 片段，都没有配对文件
+自行定义了所声明全部内容的头文件以及 `.def` 片段没有配对文件
 
 ```case
 tests/counterparts/basics/03_no_counterpart
@@ -1781,17 +1780,17 @@ tests/counterparts/basics/03_no_counterpart
 
 ### 目录布局
 
-头文件可以跨目录找到对应的源文件，例如在 `include/` 和 `src/` 之间查找。
+头文件能够跨目录（如 `include/` 与 `src/`）找到对应的源文件。
 
 <!-- BEGIN GENERATED ITEMS: counterparts/layouts -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**头文件与源文件分开存放**
+**头文件与源文件分目录存放**
 
-`include/` 下的头文件能找到 `src/` 下的源文件，并把它排在另一个同名、但未定义该头文件任何声明的文件之前
+`include/` 下的头文件能找到 `src/` 下的源文件，并排在另一个未定义其任何声明的同名文件之前
 
-在头文件所在目录之外，同名文件只有在两者中一方包含另一方时才算数（`tools/shape.cpp` 什么都没有包含，因此不是配对文件），而且其中只取最近的那个：`src/legacy/shape.cpp` 比 `src/shape.cpp` 深一层目录。
+在头文件自身所在目录之外，同名文件只有在双方存在包含关系时才计入候选（`tools/shape.cpp` 未包含任何文件，因此不算配对文件），且只取目录距离最近的那个：`src/legacy/shape.cpp` 比 `src/shape.cpp` 多深一层目录。
 
 ```case
 tests/counterparts/layouts/01_split_directories
@@ -1803,7 +1802,7 @@ tests/counterparts/layouts/01_split_directories
 
 ### 多个候选文件
 
-如果有多个文件可以配对，配对关系最明确的文件会直接打开，其余候选仍会列在列表中。
+存在多个可配对的文件时，配对关系最明确的一个会直接打开，其余候选仍保留在列表中。
 
 <!-- BEGIN GENERATED ITEMS: counterparts/ranking -->
 
@@ -1811,7 +1810,7 @@ tests/counterparts/layouts/01_split_directories
 
 **定义分散在多个源文件中**
 
-多个源文件分别定义同一头文件的声明时，直接选中定义数量明显最多的那个，其余的仍留在列表中
+多个源文件分别定义了同一头文件的声明时，定义数量明显最多的那个会直接选中，其余文件保留在候选列表中
 
 ```case
 tests/counterparts/ranking/01_scattered_definitions
@@ -1821,9 +1820,9 @@ tests/counterparts/ranking/01_scattered_definitions
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**没有明确的配对文件**
+**无明显占优的配对文件**
 
-没有哪个候选明显胜过其他候选时，编辑器会列出所有候选及其理由，供用户挑选
+没有哪个候选明显胜出时，编辑器会列出所有候选及其入选理由供用户选择
 
 ```case
 tests/counterparts/ranking/02_split_evenly
@@ -1841,9 +1840,9 @@ tests/counterparts/ranking/02_split_evenly
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**模块接口与实现**
+**模块接口与实现单元**
 
-模块接口单元与实现该模块的各个单元配对，每个实现单元也与该接口配对
+模块接口单元与实现该模块的各个单元配对，每个实现单元也与该接口单元配对
 
 ```case
 tests/counterparts/modules/01_module_units
@@ -1853,11 +1852,11 @@ tests/counterparts/modules/01_module_units
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**分区与其实现单元**
+**分区与对应的实现单元**
 
-内部分区与定义其声明的同名实现单元之间可以直接相互切换
+内部模块分区与定义其声明的同名实现单元可直接相互切换
 
-该实现单元还会列出其模块的主接口，排在分区之后。
+该实现单元还会将所属模块的主接口单元列在分区之后。
 
 ```case
 tests/counterparts/modules/02_partitions

@@ -611,7 +611,7 @@ tests/inlay_hints/other_kinds/02_ctad_arguments
 
 ## Configuration
 
-The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializationOptions`) holds a switch for every kind of hint, the height from which a block's end gets a hint, and the length limits under `[inlay_hints.max_length]`. See the [configuration guide](../guide/configuration.md#inlay-hints) for details. Configuration changes take effect after a server restart — a recompile is never involved.
+The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializationOptions`) holds a switch for every kind of hint, the height from which a block's end gets a hint, and the length limits under `[inlay_hints.max_length]`. See the [configuration reference](../guide/configuration.md#inlay-hints) for details. Configuration changes take effect after a server restart.
 
 ## Interactive Behavior
 
@@ -620,7 +620,3 @@ The `[inlay_hints]` section of `clice.toml` (or the same keys via `initializatio
 - Identical duplicate hints (e.g. from template instantiations) collapse into one.
 - A line carries at most 100 hints; the rest of a longer one, such as a generated table written on one line, are not sent.
 - Type names, parameter names and designated fields in a hint are links: clicking one goes to the definition of what it names, and hovering it shows that symbol's card. A link points at a declaration of the symbol when one exists, so that go-to-definition from it reaches the definition. The links come with the hints; clients without LSP 3.17 inlay hint support receive plain text.
-
-## Other Known Gaps
-
-- [ ] Abbreviated type hints with expandable label parts via `InlayHintLabelPart` ([clangd#2269](https://github.com/clangd/clangd/issues/2269))

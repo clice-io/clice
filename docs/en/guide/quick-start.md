@@ -16,13 +16,13 @@ Download the latest binary from the [Releases](https://github.com/clice-io/clice
 
 ### Build from Source
 
-See [build from source](../dev/build.md) for detailed instructions.
+See [build from source](./build.md) for detailed instructions.
 
 ## Project Setup
 
 For clice to correctly understand your code (e.g., find header file locations), you need to provide a `compile_commands.json` file, also known as a [compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html). The compilation database provides compilation options for each source file.
 
-By default, clice loads every `compile_commands.json` in your workspace root and its immediate subdirectories (e.g. `build/`), and the ones above a file when you open it — a nested project's database loads the first time one of its files is opened. A subdirectory with a `clice.toml` or `.clice/config.toml` of its own is a project of its own, whose databases the root never loads. This discovery is off as soon as any rule declares a source, a database or a `default_command` alike. You can name the databases explicitly with the `compile_commands` option in [clice.toml](./configuration.md), and describe files that have no database entry with a rule's `default_command`.
+By default, clice loads every `compile_commands.json` in the project's root directory and its immediate subdirectories (e.g. `build/`), and those in the directories between a file you open and the root, so a database deeper in the tree loads the first time a file in its directory, or below it, is opened. A subdirectory with a `clice.toml` or `.clice/config.toml` of its own is a separate project, whose databases the outer one never loads. This discovery turns off as soon as any rule sets `compile_commands` or `default_command`. The [Configuration Guide](./config-guide.md#compile-commands) shows how to name the databases in `clice.toml`, and how to compile files that have no database entry.
 
 ### CMake
 
@@ -40,11 +40,26 @@ This option only works with Makefile and Ninja generators. For other generators 
 
 ### Bazel
 
-Use [bazel-compile-commands-extractor](https://github.com/hedronvision/bazel-compile-commands-extractor):
+Use the `compdb` module of clice's Bazel registry. Add the registry and the module to the project:
+
+```
+# .bazelrc
+common --registry=https://bazel.clice.io/
+common --registry=https://bcr.bazel.build/
+```
+
+```python
+# MODULE.bazel
+bazel_dep(name = "compdb", version = "0.1.0", dev_dependency = True)
+```
+
+Then write `compile_commands.json` beside `MODULE.bazel`:
 
 ```bash
-bazel run @hedron_compile_commands//:refresh_all
+bazel run @compdb//:refresh -- --output_groups=+compilation_prerequisites_INTERNAL_
 ```
+
+It covers `//...`; targets after `--` narrow it. The added output group builds what the commands read but do not build: the generated headers and the `_virtual_includes` directories through which Bazel exposes a library's headers. Without it, those headers are missing until something else builds them, and every file including them reports them not found.
 
 ### Visual Studio
 
@@ -111,4 +126,4 @@ clice index --workspace /path/to/project
 
 The run is resumable — interrupting it with Ctrl-C saves progress, and the
 next invocation continues where it left off instead of starting over.
-`clice index stats` prints what the persisted index currently contains.
+`clice index stats --workspace /path/to/project` prints what the persisted index contains. [A Faster First Index](./config-guide.md#a-faster-first-index) says how to make the first one take less time.

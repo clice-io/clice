@@ -7,10 +7,10 @@ description: Read before editing anything under docs/, and for the end-of-branch
 
 ## Layout and sources of truth
 
-- `docs/en/` — English pages. Handwritten pages (design/, guide/, dev/,
-  index.md) are edited directly; feature pages (features/\*.md) contain
-  GENERATED regions listing the documented cases (`tests/README.md`,
-  "Docs"), and guide/configuration.md is rendered from the config schema.
+- `docs/en/` — English pages, written by hand except their GENERATED
+  regions: the cards of the documented cases (`tests/README.md`, "Docs") on
+  the feature, CLI and guide pages, and the option lists of
+  guide/configuration.md, rendered from the config schema.
   **Never edit inside a `<!-- BEGIN GENERATED ... -->` region** — edit the
   case's `README.md` or the config annotations instead.
 - `docs/cards/` — one card per documented case, written by every cases run

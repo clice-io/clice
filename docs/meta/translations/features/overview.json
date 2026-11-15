@@ -2,12 +2,12 @@
   "version": 1,
   "pairs": [
     { "kind": "heading", "en": "432209f65ff8c9a4", "zh": "a37b99a2eccc10f8" },
-    { "kind": "paragraph", "en": "00a982881567067c", "zh": "afad92d3080ca9da" },
+    { "kind": "paragraph", "en": "5d47765f95c7d10c", "zh": "6b2d9f2172c8e430" },
     { "kind": "heading", "en": "779a2b2bf00d6d95", "zh": "196e945a77ea4cf4" },
-    { "kind": "paragraph", "en": "9a1a3b092ddbc4b7", "zh": "37d551c36f60f700" },
-    { "kind": "paragraph", "en": "a05d936e434cb238", "zh": "e65ef84463599fec" },
+    { "kind": "paragraph", "en": "9a1a3b092ddbc4b7", "zh": "608984cd2d50208b" },
+    { "kind": "paragraph", "en": "a05d936e434cb238", "zh": "d37944dd00c4cdc0" },
     { "kind": "heading", "en": "9eb55e137a031f4b", "zh": "a4526d8b86a8d211" },
-    { "kind": "paragraph", "en": "9b63deaf622af3c6", "zh": "c0406fe29532e12e" },
+    { "kind": "paragraph", "en": "9b63deaf622af3c6", "zh": "d1b869234e2ed626" },
     { "kind": "tableRow", "en": "54b260b31b682e94", "zh": "8ec067fd67e60301" },
     { "kind": "tableRow", "en": "8fbd5c9f2b179e5d", "zh": "fd5926b819366081" },
     { "kind": "tableRow", "en": "462fab1c6ed61758", "zh": "f27f3f258e4c314e" },
@@ -27,9 +27,9 @@
     { "kind": "tableRow", "en": "89d63b611a3060c1", "zh": "74653af501caf03f" },
     { "kind": "tableRow", "en": "b74b07788071ed32", "zh": "d8073401b0f86895" },
     { "kind": "heading", "en": "830b09ab4f7e5144", "zh": "22050c6bcdcc6671" },
-    { "kind": "paragraph", "en": "8b99976bb8c1fddc", "zh": "cc6838cc13d15f16" },
-    { "kind": "listItem", "en": "fddd8c67ffad5586", "zh": "a111ebbd9a0ab099" },
-    { "kind": "listItem", "en": "a3fd36fb88aa678c", "zh": "8efb0884484b2af4" },
-    { "kind": "listItem", "en": "563a929d3b906aac", "zh": "3ecad2375ede58dc" }
+    { "kind": "paragraph", "en": "8b99976bb8c1fddc", "zh": "70de361c0c00af09" },
+    { "kind": "listItem", "en": "fddd8c67ffad5586", "zh": "7bc6251a3c81e457" },
+    { "kind": "listItem", "en": "242312ac41b2b32b", "zh": "217c0685ff9aba3f" },
+    { "kind": "listItem", "en": "12159937b347bc0d", "zh": "fc58f3255f2f8787" }
   ]
 }

@@ -5,7 +5,7 @@
      GENERATED markers by hand — edit the cases' README.md and run
      `pixi run docs-update`. -->
 
-通过 `textDocument/documentSymbol` 提供文件大纲和面包屑导航：嵌套符号树包含范围、选择范围和 `detail` 字段，该字段用于区分重载并显示所声明的类型。
+通过 `textDocument/documentSymbol` 提供文件大纲和面包屑导航：返回包含符号范围、选择范围以及 `detail` 字段的嵌套符号树，用来区分重载并展示所声明的类型。
 
 ## 符号层级
 
@@ -29,7 +29,7 @@ tests/document_symbols/symbol_hierarchy/01_nested_scopes
 
 **作用域外定义（out-of-line definitions）**
 
-作用域外定义按代码中的书写位置列出，并显示其限定名；多次打开的命名空间每次打开都会单独列出
+作用域外定义在其书写位置以限定名列出，重复打开的命名空间每次打开各列出一次
 
 ```case
 tests/document_symbols/symbol_hierarchy/02_qualified_definitions
@@ -39,9 +39,9 @@ tests/document_symbols/symbol_hierarchy/02_qualified_definitions
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**匿名作用域和内联作用域**
+**匿名作用域与内联作用域**
 
-匿名命名空间、匿名结构体和匿名联合体的成员会归在各自的占位名称下，内联命名空间则保留自己的节点
+匿名命名空间、匿名结构体和匿名联合体将成员归在占位名称下，内联命名空间保留自身节点
 
 ```case
 tests/document_symbols/symbol_hierarchy/03_anonymous_scopes
@@ -53,7 +53,7 @@ tests/document_symbols/symbol_hierarchy/03_anonymous_scopes
 
 **局部符号**
 
-在函数体中声明的变量、类型和 Lambda 会嵌套在该函数之下
+在函数体中声明的变量、类型和 Lambda 嵌套在该函数之下
 
 ```case
 tests/document_symbols/symbol_hierarchy/04_local_symbols
@@ -65,7 +65,7 @@ tests/document_symbols/symbol_hierarchy/04_local_symbols
 
 **友元函数定义**
 
-在类内定义的友元函数会列在该类之下
+在类内部定义的友元函数列在该类之下
 
 ```case
 tests/document_symbols/symbol_hierarchy/05_friend_definitions
@@ -77,7 +77,7 @@ tests/document_symbols/symbol_hierarchy/05_friend_definitions
 
 **访问控制区段**
 
-成员按代码中的书写顺序列出；所属的 `public` 和 `private` 访问控制区段不构成大纲中的一层
+成员按代码中的书写顺序列出；所属的 `public` 和 `private` 区段不单独构成大纲层级
 
 ```case
 tests/document_symbols/symbol_hierarchy/06_access_sections
@@ -89,7 +89,7 @@ tests/document_symbols/symbol_hierarchy/06_access_sections
 
 **宏声明的成员**
 
-一次宏调用以代码中没有写出的名称声明的内容会列在该调用之下，连同它在实参中命名的内容，例如测试宏生成的测试、类宏添加的成员；只声明实参中写出的名称的宏调用，则按书写形式列出这些名称
+单次宏调用以代码中未写出的名称声明的实体会列在该次调用之下，并带上实参中给出的名称（例如测试宏生成的测试、类宏添加的成员）；只声明实参中所写名称的宏调用则直接按所写名称列出
 
 ```case
 tests/document_symbols/symbol_hierarchy/09_macro_members
@@ -101,7 +101,7 @@ tests/document_symbols/symbol_hierarchy/09_macro_members
 
 ## 符号种类
 
-所有符号列出时都会标明其种类，包括命名空间、类、宏和模块声明。
+每个符号列出时都会标明其种类，涵盖从命名空间、类到宏和模块声明的各类实体。
 
 <!-- BEGIN GENERATED ITEMS: document_symbols/symbol_kinds -->
 
@@ -109,7 +109,7 @@ tests/document_symbols/symbol_hierarchy/09_macro_members
 
 **核心符号种类**
 
-命名空间、类、联合体、枚举及其成员，以及函数、变量、字段、绑定和 Lambda 都会标明各自的种类
+命名空间、类、联合体、枚举及其成员，以及函数、变量、字段、结构化绑定（structured bindings）和 Lambda 各自按其种类列出
 
 ```case
 tests/document_symbols/symbol_kinds/01_core_kinds
@@ -121,7 +121,7 @@ tests/document_symbols/symbol_kinds/01_core_kinds
 
 **模板**
 
-类模板、函数模板和变量模板的详细信息中会显示 `template`，其范围从 `template` 关键字开始；Concept 和简写模板（abbreviated templates）也会列出
+类模板、函数模板和变量模板在详情中标明 `template`，其范围从 `template` 关键字开始；概念（concept）和简写函数模板也会列出
 
 ```case
 tests/document_symbols/symbol_kinds/02_templates
@@ -131,9 +131,9 @@ tests/document_symbols/symbol_kinds/02_templates
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**模板特化和推导指引（deduction guides）**
+**模板特化与推导指引（deduction guides）**
 
-模板特化会显示其模板实参及自身成员，推导指引则显示其推导出的签名
+模板特化连同其模板实参和自身成员一起列出，推导指引则带上它推导出的签名
 
 ```case
 tests/document_symbols/symbol_kinds/03_specializations
@@ -145,7 +145,7 @@ tests/document_symbols/symbol_kinds/03_specializations
 
 **类型别名**
 
-`typedef` 和 `using` 别名以及别名模板都会作为类型别名列出
+`typedef` 与 `using` 别名以及别名模板均作为类型别名列出
 
 ```case
 tests/document_symbols/symbol_kinds/04_type_aliases
@@ -157,7 +157,7 @@ tests/document_symbols/symbol_kinds/04_type_aliases
 
 **显式实例化**
 
-类模板、函数模板和变量模板的显式实例化（explicit instantiation）都会列出，但不包含成员
+类模板、函数模板和变量模板的显式实例化会列出，但不展开成员
 
 ```case
 tests/document_symbols/symbol_kinds/05_explicit_instantiations
@@ -169,7 +169,7 @@ tests/document_symbols/symbol_kinds/05_explicit_instantiations
 
 **宏**
 
-对象式宏和函数式宏都会列出，函数式宏还会在详细信息中显示其参数
+对象式宏和函数式宏均会列出，函数式宏还会将形参作为详情显示
 
 ```case
 tests/document_symbols/symbol_kinds/06_macros
@@ -181,7 +181,7 @@ tests/document_symbols/symbol_kinds/06_macros
 
 **模块声明**
 
-模块单元会列出其声明或所属的模块
+模块单元会列出其声明或归属的模块
 
 ```case
 tests/document_symbols/symbol_kinds/07_modules
@@ -193,7 +193,7 @@ tests/document_symbols/symbol_kinds/07_modules
 
 **包含指令**
 
-`#include` 指令不会列在大纲中；它们的文档链接会跳转到所指的文件
+`#include` 指令不列入大纲；其文档链接可直接跳转到目标文件
 
 ```case
 tests/document_symbols/symbol_kinds/10_includes
@@ -203,9 +203,9 @@ tests/document_symbols/symbol_kinds/10_includes
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**Pragma mark 区段**
+**Pragma mark 分组**
 
-`#pragma mark - Name` 开启一个区段，将其后的符号归入其中
+`#pragma mark - Name` 开启一个分组，将随后的符号归入其下
 
 ```case
 tests/document_symbols/symbol_kinds/11_pragma_marks
@@ -217,7 +217,7 @@ tests/document_symbols/symbol_kinds/11_pragma_marks
 
 **命名空间别名**
 
-命名空间别名作为命名空间列出，详细信息为 `namespace alias`
+命名空间别名作为命名空间列出，详情显示为 `namespace alias`
 
 ```case
 tests/document_symbols/symbol_kinds/20_namespace_aliases
@@ -227,9 +227,9 @@ tests/document_symbols/symbol_kinds/20_namespace_aliases
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**头文件保护（include guards）**
+**头文件保护宏（include guards）**
 
-头文件保护所用的宏不会列出，即包住整个头文件的 `#ifndef` 和 `#define`
+包裹整个头文件的 `#ifndef` 与 `#define` 头文件保护宏不列入大纲
 
 ```case
 tests/document_symbols/symbol_kinds/21_include_guards
@@ -239,9 +239,9 @@ tests/document_symbols/symbol_kinds/21_include_guards
 
 <!-- END GENERATED ITEMS -->
 
-## 符号详细信息
+## 符号详情
 
-名称旁的 `detail` 用于区分重载，并显示变量的声明类型。
+名称旁的 `detail` 用于区分重载，并展示变量所声明的类型。
 
 <!-- BEGIN GENERATED ITEMS: document_symbols/symbol_detail -->
 
@@ -249,7 +249,7 @@ tests/document_symbols/symbol_kinds/21_include_guards
 
 **函数签名**
 
-`detail` 字段显示函数的参数（包括参数名）和返回类型，借此区分重载；构造函数不显示返回类型
+`detail` 字段显示函数的形参（含形参名）和返回类型，用以区分重载；构造函数不显示返回类型
 
 ```case
 tests/document_symbols/symbol_detail/01_detail_signatures
@@ -259,9 +259,9 @@ tests/document_symbols/symbol_detail/01_detail_signatures
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**变量和字段类型**
+**变量与字段类型**
 
-变量或字段在详细信息中显示其声明类型，Lambda 则显示调用它时所接受的参数和返回类型
+变量或字段将所声明的类型显示为详情，Lambda 则显示调用它时的形参与返回类型
 
 ```case
 tests/document_symbols/symbol_detail/02_variable_types
@@ -273,7 +273,7 @@ tests/document_symbols/symbol_detail/02_variable_types
 
 **默认实参**
 
-函数的详细信息会列出参数及其默认值
+函数的详情会列出各形参及其默认值
 
 ```case
 tests/document_symbols/symbol_detail/03_default_arguments
@@ -285,7 +285,7 @@ tests/document_symbols/symbol_detail/03_default_arguments
 
 **基类**
 
-派生类的详细信息会按书写形式列出其基类，并带上访问权限
+派生类的详情按代码写法列出各个基类及其访问说明符
 
 ```case
 tests/document_symbols/symbol_detail/04_base_classes
@@ -295,9 +295,9 @@ tests/document_symbols/symbol_detail/04_base_classes
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**带作用域的类型**
+**带类作用域的类型**
 
-类型名中写出的类作用域限定会在详细信息中保留，且只出现一次，待决名（dependent names）也不例外
+书写时带有类作用域的类型在详情中保留一次该作用域，依赖名也不例外
 
 ```case
 tests/document_symbols/symbol_detail/05_scoped_types
@@ -309,7 +309,7 @@ tests/document_symbols/symbol_detail/05_scoped_types
 
 ## 符号范围
 
-每个符号都包含其完整声明的范围和名称范围；选择该符号时，编辑器会选中其名称。
+每个符号都带有完整声明的范围以及名称本身的范围，选中符号时编辑器会定位并选中名称范围。
 
 <!-- BEGIN GENERATED ITEMS: document_symbols/symbol_ranges -->
 
@@ -317,7 +317,7 @@ tests/document_symbols/symbol_detail/05_scoped_types
 
 **名称与声明范围**
 
-符号的声明范围涵盖整个声明，名称范围涵盖代码中写出的完整名称，包括 `~Widget`、`operator==` 和 `operator bool`
+符号的范围覆盖整条声明，名称范围覆盖完整写出的名称，包括 `~Widget`、`operator==` 和 `operator bool`
 
 ```case
 tests/document_symbols/symbol_ranges/01_selection_ranges
@@ -329,7 +329,7 @@ tests/document_symbols/symbol_ranges/01_selection_ranges
 
 **多行签名**
 
-跨行声明的范围从第一行延伸至最后一行
+跨越多行的声明范围从首行延伸至末行
 
 ```case
 tests/document_symbols/symbol_ranges/02_multiline_signatures
@@ -339,9 +339,9 @@ tests/document_symbols/symbol_ranges/02_multiline_signatures
 
 <!-- BEGIN CAPABILITY: supported clangd#475 -->
 
-**宏声明的符号**
+**宏展开产生的符号**
 
-宏调用声明的符号列在调用位置，而非宏定义处
+宏调用所声明的符号列在宏调用处，而非宏定义处
 
 ```case
 tests/document_symbols/symbol_ranges/03_macro_expansions
@@ -353,7 +353,7 @@ tests/document_symbols/symbol_ranges/03_macro_expansions
 
 **宏实参中的名称**
 
-写在宏实参中的名称用作符号名称；若名称写在宏体中，则回退到宏调用处
+写在宏实参中的名称作为符号的名称范围；写在宏体中的名称则回退到宏调用处
 
 ```case
 tests/document_symbols/symbol_ranges/04_macro_arguments
@@ -365,15 +365,15 @@ tests/document_symbols/symbol_ranges/04_macro_arguments
 
 ## 符号标签
 
-标签用于标记符号已弃用；成员的其他属性写在它的详细信息里。
+标签用于将符号标为已弃用；成员的其他性质则体现在详情中。
 
 <!-- BEGIN GENERATED ITEMS: document_symbols/symbol_tags -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**已弃用的符号**
+**已弃用符号**
 
-已弃用的符号带有 Deprecated 标签，编辑器会以删除线显示
+已弃用的符号带有 Deprecated 标签，编辑器会为其加上删除线
 
 ```case
 tests/document_symbols/symbol_tags/01_deprecated
@@ -385,7 +385,7 @@ tests/document_symbols/symbol_tags/01_deprecated
 
 **成员标记**
 
-成员为 `static`、`virtual` 或 `= 0` 时，其详细信息会注明；协议的标签只能表达弃用，访问权限不显示
+成员带有 `static`、`virtual` 或 `= 0` 时会在详情中注明；协议的标签只表达弃用状态，访问权限不作显示
 
 ```case
 tests/document_symbols/symbol_tags/02_modifiers

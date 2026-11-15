@@ -4,4 +4,4 @@ issues: [clangd#2472]
 
 # Subscript operators
 
-An overloaded `operator[]` shows no signature help yet
+An overloaded `operator[]` shows no signature help

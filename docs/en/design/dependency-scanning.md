@@ -2,140 +2,49 @@
 
 ## Background
 
-A C++ language server needs to know the include relationships between files. This requirement comes from several directions:
+A language server needs the include relationships of the whole project from the start:
 
-**Compilation context for headers**: Header files are not listed in the compilation database (CDB), so the language server must select a host source file for each header to obtain compilation commands. This requires knowing "which source files include this header" -- the reverse include relationship. Without this information, users opening a header file cannot get correct diagnostics, completions, or navigation features.
+- **Headers need hosts.** A header has no entry in the compilation database; to compile it, clice needs a source that includes it — the reverse of the include graph.
+- **Modules need a map.** Building a module needs to know which file declares each module name and what each file imports.
 
-**Module dependency resolution**: Compiling C++20 modules requires knowledge of inter-module dependencies. The mapping from module names to files and the import relationships between modules must be discovered by scanning file contents.
-
-**Priority scheduling**: Background indexing needs to determine the order in which files are indexed. Files that have an include relationship with the user's currently open files should be indexed first. The include graph enables tracking this relevance.
-
-The problem is that precisely determining include relationships requires running the full C preprocessor -- expanding all macros and evaluating all conditional compilation directives. For large C++ projects (tens of thousands of files), running the preprocessor on every file during startup takes minutes, which is unacceptable.
-
-clangd's approach is to build the include graph incrementally during background indexing -- each time a file is compiled, its include relationships are recorded. This means that until background indexing completes (which may take tens of minutes), the include graph is incomplete. Users opening header files during this period may not find the correct host source file, leading to incorrect diagnostics. In the clangd community, users have repeatedly reported that headers display incorrect diagnostics for extended periods after startup and that correct behavior requires waiting for background indexing to finish.
-
-clice solves this problem with a purpose-built fast dependency scanner -- trading precision for results that are good enough, with the ability to scan tens of thousands of files within seconds during startup.
+Exact include relationships take the full preprocessor — every macro expanded, every condition evaluated — and on tens of thousands of files that takes minutes. clangd builds its include graph as its background index compiles files, so until indexing finishes, which can take tens of minutes, a header opened may find no host and show false errors. clice runs a fast scanner of its own instead, and has a usable graph seconds after startup.
 
 ## Design
 
-### Core Idea
+### A Superset, Shared by Every Includer
 
-The core trade-off of dependency scanning is **exchanging precision for speed**. A full preprocessor can precisely determine which includes are active and which are excluded by conditional compilation, but it has a fundamental performance problem: the same header may produce different expansion results in different source file contexts, so each (source file, header) combination must be preprocessed independently -- results cannot be shared. The fast scanner abandons preprocessing, making scan results independent of inclusion context -- each file needs to be scanned only once, and results are shared across all contexts. The cost is that includes from all conditional branches are treated as active, yielding a **superset of all possible include relationships**. Although this superset is larger than the actual include relationships, it is safe for the primary use cases of dependency scanning:
+The scanner does not preprocess. Without macros or conditions evaluated, what a file includes no longer depends on who includes it, so each file is scanned once and its result shared by every includer: the work is the number of distinct files, not the number of (source, header) pairs. The price is that both branches of every `#if` count, giving a superset of the real include relationships. For what the graph is used for, a superset is safe: host lookup may find more candidates but never misses the real one — and each candidate is checked against its real compile before it hosts a header.
 
-- When finding host source files, the superset may yield more candidate hosts but will never miss a correct one
-- When judging file relevance, the superset may consider some unrelated files as related but will never miss truly related files
+### Why It Is Fast
 
-### Why It Is So Fast
+- **Directive scanning.** Clang's dependency directive scanner reads only the directive lines of a file, microseconds per file, and yields the raw include names (`"foo.h"`, `<vector>`).
+- **Cached resolution.** Include names are resolved against cached directory listings rather than by a stat of each candidate path, and an angled include is resolved once per configuration and name.
+- **Waves.** The scan starts with every translation unit of the build and the files their commands force in (`-include`, `-imacros`), resolves what they include, scans the headers newly found, and repeats until nothing new turns up. While one wave resolves, the next one's files are already being read.
 
-The fast scanner's speed comes from one fundamental design choice and several key optimizations:
+### The Graph
 
-**Fundamental advantage: cross-context result sharing**
+- **Forward edges**: what each file includes. A unit is resolved under each of its commands, since search paths differ between them; a header under the first command that reaches it.
+- **Reverse edges**, built in bulk, for climbing from a header to the units that include it.
+- **Forced includes** kept apart from the include edges, as no directive in the source names them; host lookup climbs them too.
+- **Module names** mapped to the units declaring them, interfaces and partitions. A module declaration the directive scanner cannot read — one inside an `#if` — makes the preprocessor run on that file alone, up to the declaration.
 
-This is the root reason the fast scanner can be orders of magnitude faster than full preprocessing. Under full preprocessing, when different source files include the same header, the preceding `#define`s and `#include`s differ, so the preprocessing results may be entirely different. This means each (source file, header) combination must be preprocessed independently -- the workload is O(number of source files x average header depth). For a large project with tens of thousands of source files, each including hundreds of headers on average, this amounts to millions of preprocessing operations.
+Each file's scan is kept against its content version and reused while the content holds. A changed file is rescanned and resolved as the startup scan reached it, which replaces its edges and scans the headers it newly reaches.
 
-The fast scanner abandons preprocessing, so scan results are **independent of inclusion context** -- the same header yields the same `#include` list regardless of which source file includes it. This means each header needs to be scanned only once, and results are shared across all source files. The workload drops to O(number of unique files) -- typically just thousands to tens of thousands of files, rather than millions of operations.
+### Exact Answers Where Needed
 
-**Lightweight lexical scanning**
+Where an exact answer matters — the modules a unit imports, before each of its builds (see [Compile Task Graph](task-graph.md)) — the preprocessor runs on that unit. The fast scan says where that can be skipped: it records which files hold module syntax, and a unit reaching none of them through its includes imports nothing, since no macro can produce an `import`.
 
-The scanner uses Clang's dependency directive scanner (scanSourceForDependencyDirectives), which identifies only preprocessor directive lines beginning with `#` without performing macro expansion, evaluating conditional expressions, or expanding includes. Scanning each file takes on the order of microseconds.
+The background index compiles every unit with the full preprocessor and records the exact include trees in the index, which host lookup reads to check where a candidate's compile really enters a header. The fast scan's graph stays what finds the candidates.
 
-The scan results are raw include names (e.g., `"foo.h"` or `<vector>`) that require a subsequent path resolution phase to map them to actual file paths.
+## Design Decisions
 
-For includes inside conditional compilation, the scanner tracks `#if`/`#ifdef`/`#ifndef` nesting depth to tag them: includes encountered at a depth greater than zero are marked as "conditional." While this tag does not know the specific evaluation result of the condition, it provides useful metadata.
-
-**Separate path resolution phase**
-
-Mapping include names to actual file paths is a separate phase. The resolver uses a directory listing cache -- it pre-reads the file listing for each directory in the search paths, then checks file existence via in-memory string sets, avoiding large numbers of stat system calls.
-
-Resolution results for angle-bracket includes (e.g., `<vector>`) can be cached across files -- under the same compilation configuration, the same header name always resolves to the same path. Double-quoted includes depend on the includer's directory and cannot be cached across files, but each file typically has very few double-quoted includes.
-
-**Wavefront BFS discovery**
-
-Rather than processing all files at once, scanning unfolds in waves:
-
-- **Wave 0**: Scan every translation unit of the build (parallel I/O + lexical scanning) — the database's entries, the sources rules claim and the provisional members (see [Command Resolution](command-resolve.md#rules-and-members)) — and resolve each command's forced includes (every `-imacros`, then every `-include`) the way the compiler does -- the compile's working directory first, then the search paths as for a quoted include
-- **Path resolution**: Map discovered include names to file paths, identifying newly discovered headers
-- **Wave 1**: Scan the newly discovered headers, discovering their includes...
-- Repeat until no new files are found
-
-A key optimization: while the current wave is performing path resolution (serial), the next wave's files can already begin prefetching and scanning (parallel). This pipeline-style overlap hides most I/O latency.
-
-### DependencyGraph Storage Structure
-
-DependencyGraph stores include relationships between files and supports both forward and reverse queries:
-
-**Forward includes**: Given a file and compilation configuration, returns all files it directly includes. Each edge records whether it is a conditional include (distinguished via bit flags). A file may have different include sets under different compilation configurations (because search paths differ), so the key is a (file, configuration) pair.
-
-**Reverse includes**: Given a file, returns all files that directly include it. This is a reverse index built in bulk after all forward includes have been established. It is used for "finding host source files" -- BFS upward from the target header along reverse edges, collecting the translation units on the way and the roots above them.
-
-**Forced includes**: The headers a source file's compilation commands include ahead of its text (`-include`, such as the `cmake_pch.hxx` of a CMake precompiled header, and `-imacros`, such as Zephyr's `autoconf.h`, whose macros alone the compile keeps) are scanned like any header, so their own includes and their import syntax are part of the graph. The link from the source file to a forced header is kept apart from the include edges: no directive in the source file's text names it, so no cut of that text reproduces it. Host lookup climbs it to the units forcing the header in, and a header context entered through it starts at the forced header (see [Compilation Context](compilation-context.md)).
-
-**Module mapping**: A mapping from module names to module interface unit file paths, used for C++20 module dependency resolution. Only interface units (`export module`) are registered in the mapping. A module name may map to multiple paths (when the same module is discovered in different compilation configurations).
-
-### Handling Conditional Includes
-
-The scanner does not evaluate conditional expressions but uses nesting depth tracking to tag includes as "conditional" or "unconditional":
-
-```cpp
-#include <vector>           // unconditional (depth 0)
-#ifdef USE_BOOST
-#include <boost/any.hpp>    // conditional (depth 1)
-#ifdef BOOST_HAS_X
-#include <boost/x.hpp>      // conditional (depth 2)
-#endif
-#endif
-#include <string>           // unconditional (depth 0)
-```
-
-When querying the union of a file's includes across all configurations, if the same header is unconditional in one configuration and conditional in another, unconditional takes precedence -- reflecting the semantics that "in at least one configuration, it will definitely be included."
-
-### Handling Module Declarations
-
-C++20 module declarations (`export module foo;`, `module foo:bar;`) typically appear at the top of a file, and the fast scanner can identify them directly. However, if a module declaration appears inside a conditional compilation block (`#ifdef`), the fast scanner cannot determine which declaration is in effect.
-
-In this case, the scanner sets a `need_preprocess` flag, triggering a precise fallback -- running the preprocessor only on the file's header (up to the module declaration), evaluating conditional expressions to determine the actual module name. This fallback affects very few files (the vast majority of module declarations are at the top level) and does not impact overall scanning speed.
-
-### Caching and Incremental Updates
-
-Scan results are cached at multiple levels:
-
-- **Scan result cache**: Each file's scan result (include list, module declaration) is recorded against the file's identity and content version in the master's file table, and reused across rescans for as long as the content version still matches — a rescan after a save only re-reads the files whose content actually changed. The cache is in-memory only; a server restart scans from scratch.
-- **Directory listing cache**: File listings for each directory in the search paths are cached in memory, populated via concurrent readdir tasks during the initial scan.
-- **Include resolution cache**: Resolution results for angle-bracket includes are cached by (configuration, header name), including negative caches for resolution failures.
-
-A file whose content changes on disk is rescanned by the same per-file step as the startup scan: the graph records how the scan reached each file — the compilation configuration that resolved it and the search directory it was found in — and the rescan resolves the new content the same way, so a header's edges after a save are the ones a fresh start would give it, `#include_next` included. Files the new content reaches for the first time are scanned too. A file the scan never reached stays out of the graph: no unit's text names it.
-
-### Collaboration with Host Source File Lookup
-
-One of the core uses of dependency scanning is finding host source files for headers. The process is as follows:
-
-1. Starting from the target header, traverse upward via the reverse include index
-2. Find the files that transitively include the target header: the roots (files not included by any other file) and the translation units on the way up
-3. Filter for the build's translation units as candidate hosts
-4. Select the first candidate host whose compile enters the header as the default host
-
-The candidate's include tree — from its index entry, or from preprocessing it — tells where the compile enters the header and through which files. The compilation context system then uses that chain to synthesize the header's compilation environment.
-
-### Precise Scanning and Background Indexing as Supplements
-
-The fast scan provides approximate results during the startup phase. As the server runs, the background indexing system gradually compiles every translation unit in the project, obtaining precise include relationships during compilation (with full preprocessing, evaluating all macros and conditional compilation). These precise include relationships are recorded in the index data (TUIndex/MergedIndex). Note that background indexing currently does not update the DependencyGraph built during startup — the fast-scan include graph remains in use for host source lookup and file-dependency queries throughout the server's lifetime.
-
-Additionally, the system provides a precise scanning mode (scan_precise) -- running the full Clang preprocessor where an exact answer is needed: the modules a unit imports, resolved at the start of each of its builds (see [Task Graph](task-graph.md)). The fast scan decides where that is: it records which files hold module syntax (an import or a module declaration), and a unit that reaches none of them through its includes and forced includes imports nothing -- no macro can produce an import directive -- so it is never precise-scanned.
-
-Fast scanning and background indexing are complementary: fast scanning guarantees that a usable include graph is available within seconds of startup (so users immediately get header file support), while background indexing gradually supplements precise information over the following minutes. The two are not alternatives -- even after background indexing completes, fast scanning results are still used for initial file discovery and building the initial dependency graph.
-
-## Design Decisions and Trade-offs
-
-**Why a superset instead of precise results?** Precise results require running the preprocessor, which takes minutes for tens of thousands of files. The superset completes in seconds and is safe for host lookup and relevance judgment -- finding a few extra candidate hosts is far better than missing the correct one.
-
-**Why not rely solely on background indexing to build a precise include graph?** clangd relies entirely on background indexing to build include relationships, but background indexing may take tens of minutes to complete. During this period, the header file experience is incomplete -- users open a header file and see incorrect diagnostics that take a long time to self-correct. clice uses fast scanning to guarantee a usable include graph within seconds of startup, with background indexing gradually supplementing precise information afterward. The combination ensures both immediate availability and eventual precision.
-
-**Why unfold in waves instead of scanning all files at once?** The system does not know upfront which headers need scanning -- they are not in the CDB and can only be discovered by resolving source files' includes. Wavefront expansion is the natural pattern for lazy discovery, while pipeline overlap maximizes parallelism.
-
-**Why is the conditional include tag useful?** Although the specific condition result is unknown, distinguishing "will definitely be included" from "might be included" guides the context synthesis where a `#line` in a chain file throws the include tree's line count off: it then prefers the include outside `#if` blocks, as one in an untaken branch must not shadow the real one.
+- **Why a superset instead of exact results?** Exact results take minutes; the superset takes seconds and misses no host.
+- **Why not wait for the background index?** Headers would be wrong for as long as indexing runs — tens of minutes on a big project. The fast scan gives a usable graph at once; the index refines it.
+- **Why waves?** Headers are not in the database: they are found only by resolving what the sources include, and each wave's results name the next wave's files.
 
 ## Known Limitations
 
-- **Macro-ized includes**: Includes of the form `#include MACRO_NAME` cannot be resolved by the fast scanner -- they require macro expansion to determine the actual header name. This pattern is relatively uncommon in real projects; affected files are correctly handled during precise compilation.
-- **Conditional compilation precision**: Includes from all conditional branches are recorded, making the include graph larger than the actual one. This is safe for host lookup (nothing is missed) but may cause relevance judgments to be overly broad.
-- **Case sensitivity**: On case-insensitive file systems (macOS, Windows), if the case of an include does not match the file name, resolution may fail.
+- **Macro includes** (`#include MACRO_NAME`) are not resolved by the scan; the compile handles them.
+- **Both branches of every condition count**, so the graph is larger than any one compile's, and a file can look related to one it never includes.
+- **A header is resolved under the first command reaching it.** A header two units reach through different include paths gets no host from the second until that unit is indexed.
+- **The scan reads the disk.** An `#include` typed in an open buffer adds no edge until it is saved.

@@ -40,8 +40,9 @@ lint = false
 ```
 
 Each translation unit takes its configuration from the nearest `.clang-tidy`,
-with the inheritance clang-tidy applies. A compiler warning is a finding only
-when `Checks` enables its `clang-diagnostic-<flag>` name, as in clang-tidy.
+with the inheritance clang-tidy applies. A compiler warning the unit's command
+enables is a finding under its `clang-diagnostic-<flag>` name unless `Checks`
+turns it off, as in clang-tidy.
 `NOLINT`, `NOLINTNEXTLINE` and `NOLINTBEGIN`/`NOLINTEND` comments are honored
 in every file. A header is
 checked in every translation unit that includes it, as clang-tidy would; a
@@ -59,7 +60,7 @@ in the JSON report an `entry` with the unit's `file` and the `index`.
 
 ### Compiler Warnings
 
-A compiler warning is a finding only when the checks name it.
+A compiler warning is a finding unless the checks turn it off.
 
 <!-- BEGIN GENERATED ITEMS: lint/checks -->
 
@@ -67,9 +68,9 @@ A compiler warning is a finding only when the checks name it.
 
 **Compiler warnings as findings**
 
-A warning the build enables is a finding only when the checks name it
+A warning the build enables is a finding unless the checks turn it off
 
-The compiler warnings a unit's command enables are findings when `Checks` lists their `clang-diagnostic-<flag>` name, reported under that name. The others stay out of the report.
+The compiler warnings a unit's command enables are findings, reported under their `clang-diagnostic-<flag>` name, as clang-tidy reports them. A `Checks` starting with `-*`, as here, turns them off but for those it names.
 
 ```case
 tests/lint/checks/02_compiler_warnings
@@ -136,20 +137,3 @@ tests/lint/scope/01_keep_files_out
 <!-- END CAPABILITY -->
 
 <!-- END GENERATED ITEMS -->
-
-## clang-tidy Integration Quality
-
-Issues that affect the quality of clang-tidy diagnostics within a language server:
-
-- [x] Suppress clang-tidy warnings from macros in system headers ([clangd#1587](https://github.com/clangd/clangd/issues/1587), [clangd#2000](https://github.com/clangd/clangd/issues/2000))
-- [ ] Run checks on preprocessor directives in preamble (header guards, macros) ([clangd#2501](https://github.com/clangd/clangd/issues/2501), [clangd#160](https://github.com/clangd/clangd/issues/160))
-- [ ] Configurable diagnostic severity per check category ([clangd#1937](https://github.com/clangd/clangd/issues/1937))
-- [ ] Support loading clang-tidy plugins ([clangd#1458](https://github.com/clangd/clangd/issues/1458))
-- [ ] Clang static analyzer support ([clangd#905](https://github.com/clangd/clangd/issues/905))
-- [ ] Clean up replacements when applying clang-tidy fixes ([clangd#429](https://github.com/clangd/clangd/issues/429))
-- [ ] Filter diagnostics by version control diff ([clangd#822](https://github.com/clangd/clangd/issues/822))
-- [x] NOLINT / NOLINTNEXTLINE / NOLINTBEGIN-END comment suppression
-- [ ] `Diagnostics.ClangTidy` configuration in `.clangd` config
-- [x] Fast-check filtering for clang-tidy performance
-- [x] Fix-it suggestions from clang-tidy as code actions
-- [x] Diagnostic metadata: check name, documentation URL, source tag

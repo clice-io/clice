@@ -3,8 +3,10 @@ guide:
   items:
     - what-is-clice
     - quick-start
+    - editors
+    - config-guide
     - configuration
-    - indexing
+    - build
 
 features:
   label: Language Server
@@ -54,12 +56,3 @@ design:
     - incremental-parse
     - template-resolver
     - dependency-scanning
-
-dev:
-  label: Development
-  collapsed: false
-  items:
-    - build
-    - contribution
-    - extension
-    - test-and-debug

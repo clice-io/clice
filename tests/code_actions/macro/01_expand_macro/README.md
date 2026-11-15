@@ -1,7 +1,3 @@
----
-issues: [clangd#820]
----
-
 # Expand a macro invocation
 
 A macro invocation is replaced by the tokens it expands to

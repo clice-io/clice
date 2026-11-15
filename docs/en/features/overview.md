@@ -1,6 +1,6 @@
 # Language Server Overview
 
-clice provides a suite of C++ development tools built on LLVM/Clang. This section documents what's implemented, what's planned, and links to relevant upstream issues.
+clice provides a suite of C++ development tools built on LLVM/Clang. This section documents what clice does, feature by feature, and the clangd issues each feature answers.
 
 ## Languages
 
@@ -45,5 +45,5 @@ Language Server Protocol features available when using clice as an editor backen
 Each feature counts the documented capabilities on its page at each status:
 
 - **supported** — the capability works; a snapshot pins the behavior
-- **partial** — incomplete; the snapshot pins what works today
-- **unsupported** — a documented gap, tracked but not yet implemented
+- **partial** — some of it works; the snapshot pins what does
+- **unsupported** — a documented gap; the snapshot pins what clice does instead

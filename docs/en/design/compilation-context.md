@@ -2,152 +2,64 @@
 
 ## Background
 
-C++'s `#include` is a very primitive code reuse mechanism — it is essentially textual substitution. Unlike the module systems universally adopted by modern languages, it has no isolation: what a header file sees when included depends entirely on the preprocessor state before the inclusion point. This means **the same file can produce entirely different compilation results under different conditions**, and makes compiler caching optimizations much harder.
+`#include` is textual substitution: what a header means depends on the preprocessor state before the include. The same file can therefore compile to entirely different results — a source file under its Debug and its Release command, a header under each file that includes it.
 
-Source files produce different results due to different compilation commands (Debug/Release, different platforms); header files produce entirely different expansions depending on which source file includes them and what `#define` and `#include` directives precede the inclusion.
+A language server must pick one such context to serve a file, and every answer depends on that pick. Existing servers pick implicitly and give the user no way to see or change the pick; when it is wrong, the user sees a flood of false errors. In clangd this shows as long-standing issues: headers that are not self-contained do not work ([clangd#45](https://github.com/clangd/clangd/issues/45)), a header's command is guessed from file names and often wrong ([clangd#1505](https://github.com/clangd/clangd/issues/1505)), and of a file's several commands the user cannot choose one ([clangd#681](https://github.com/clangd/clangd/issues/681)).
 
-When a user opens a file in their editor, the language server must choose an appropriate compilation context to serve it — diagnostics, completion, and go-to-definition all depend on this context. Existing language servers (not just those for C++) have no formal concept of compilation context — they implicitly pick a context but give users no way to perceive or control this choice. When the context is wrong, compilation produces errors and the user sees a flood of false-positive diagnostics. clice is the first language server to introduce compilation context as a formal concept.
+clice makes the compilation context a first-class concept: every compile, index entry and answer knows which context it belongs to, and the user can list the contexts of a file and switch between them.
 
-Taking clangd as an example, the lack of a compilation context concept has led to long-standing issues in the community:
+## What a Context Is
 
-- **Non-self-contained headers are not supported**. This is one of the earliest reported and still unresolved issues in the clangd community (clangd [#45](https://github.com/clangd/clangd/issues/45)). Since clangd has no concept of header context, it cannot restore the correct preprocessor state for non-self-contained headers, and users see a flood of meaningless errors when opening such files.
+A compilation context is everything needed to restore a file's compilation state.
 
-- **Guessing compilation commands for headers**. When clangd selects a compilation command for a header file, it mainly relies on path heuristics — guessing the "most relevant" source file from the compilation database (CDB) based on filename and directory structure, then borrowing that source file's compilation command. This guessing is unreliable and frequently picks the wrong file, leading to spurious diagnostics (clangd [#1505](https://github.com/clangd/clangd/issues/1505)).
+- For a **source file**, it is one of its commands. A file listed several times in the compilation database — Debug and Release, two platforms — has several contexts.
+- For a **self-contained header**, one that includes everything it needs, it is the command of a source including it: the header compiles alone under that command's search paths and language standard.
+- For a header that is **not self-contained**, such as an X macro list that only means something after its includer defines `X`, it is a **header context**: a host source file that includes it, and the position in the host's include tree where it is included. A header without an include guard can be included several times by one host, each time in another state, so the positions are numbered and a host plus a number names one context.
 
-- **Cannot select context in multi-configuration projects**. When a file appears multiple times in `compile_commands.json` (Debug/Release, different platforms), clangd picks only one entry, and the user has no control over which one is chosen (clangd [#681](https://github.com/clangd/clangd/issues/681)).
+## Choosing a Context
 
-clice's design incorporates the compilation context framework from the start — this concept is naturally woven into the entire system. Users can not only see the currently active compilation context, but also query available contexts and switch between them.
+A file compiles in the first of these that applies:
 
-## Design
+1. **The user's choice**, made through `clice/switchContext` and kept in the project's cache directory; a header chosen to compile in a host always takes the host's prefix. A choice that stops holding — its host no longer includes the file, its entry left the database — waits, inactive, and applies again once it holds.
+2. **The file's own command**, when it is a unit of the build: its entry in a compilation database (of several, the first, until the user picks another), the `default_command` covering it, or a provisional member's.
+3. **A host**: a source the build compiles that includes the header, ranked as [Command Resolution](command-resolve.md#rules-members-and-hosts) describes. A self-contained header takes its command; one that is not takes its command and a synthesized prefix (below).
+4. **A rule's `default_command`**, for a header no unit hosts.
+5. **A borrowed command**: a nearby unit's, for a file nothing describes yet — a new source, a header nothing includes (see [Command Resolution](command-resolve.md#rules-members-and-hosts)).
+6. **clice's own command**, so an isolated file still gets basic answers.
 
-A compilation context is **the complete set of conditions needed to fully restore the compilation state of a file**. Its meaning varies by file type.
+The editor reaches this through clice's requests:
 
-For **source files**, the compilation context is their compilation command. A source file may correspond to multiple compilation commands in the CDB — common in multi-configuration projects. Each command represents a different compilation context, and which one is selected determines the file's behavior in the language server. For example, the same file can produce different code under Debug and Release:
+| Request                   | What it does                                                                                                                            |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `clice/queryContext`      | Lists a file's contexts: a source's entries, a header's hosts, best first and paged. Contexts that compile identically are listed once. |
+| `clice/currentContext`    | The context the file compiles in, whether the user chose it, and the command it compiles with and where that command comes from.        |
+| `clice/switchContext`     | Picks one of the listed contexts; the file recompiles in it, without being closed.                                                      |
+| `clice/resetContext`      | Drops the choice, back to the context clice picks.                                                                                      |
+| `clice/showOtherContexts` | Whether the code the file's context skips shows what the file's other contexts compile there, which the index holds.                    |
 
-```cpp
-void initialize() {
-    auto* conn = create_connection();
-#ifndef NDEBUG
-    conn->debug_label = "main";       // Only present in Debug builds
-    log("connection created");
-#endif
-    conn->start();
-}
-```
+Inside the chosen context, the branches the preprocessor skips are dimmed, so a switch shows at once.
 
-Under Debug builds (`-O0`, without `NDEBUG` defined) and Release builds (`-O2 -DNDEBUG`), the visible symbols, diagnostics, and completion suggestions can all differ.
+## Build Configurations
 
-For **header files**, the compilation context falls into two cases. First, it helps to understand what "self-contained" means: a header file is self-contained if it does not depend on `#define` or `#include` directives provided by the includer and can compile independently on its own. The vast majority of modern C++ headers are self-contained — they `#include` all their dependencies and make no assumptions about the includer's state.
+A file's context is chosen per file; a **build configuration** is chosen per project. Rules can carry a `configuration` tag, the tags form a menu, and one is active in a server: its tagged rules apply, untagged rules always do. It is resolved once at startup from `--configuration`, the selection persisted from the editor, then `default_configuration` or the first tag.
 
-Self-contained headers can be treated like source files. However, headers are typically not in the CDB (the CDB only records compilation commands for source files), so even self-contained headers need to find a source file that includes them via the dependency graph and borrow that source file's compilation command (search paths, language standard, etc.). The key distinction is that self-contained headers do not need synthesized prefix code — borrowing the compilation command is sufficient.
+Switching configurations restarts the server, on purpose: a server holds one configuration's whole world — its databases, dependency graph, contexts and index — and starting into another is the cold start every session performs anyway, warm from that configuration's own cache. Each configuration has an index database of its own, so switching never mixes two configurations' indexes, and switching back reindexes only what changed on disk meanwhile.
 
-> Strictly speaking, "self-contained" is a tendency rather than an absolute property. Even if a header can compile independently, the includer can still alter its semantics through `-D` flags or preceding `#define` / `#undef` directives. In practice, however, this is rarely done — a header designed to be self-contained should not depend on external preprocessor state.
+## Is a Header Self-Contained?
 
-Non-self-contained headers have compilation results that depend on the source file that includes them. A classic example is X macros:
+Most headers are, and synthesizing a prefix for them is wasted work. clice tries first: it compiles the header alone under its host's command. Without errors, the header is self-contained. With errors, it compiles the header once more with the host's prefix, and the compile with fewer errors stands: fewer in the host's context makes the header not self-contained, a tie keeps it self-contained. No list of what an includer provides is needed — whatever the context fixes counts. Fragment extensions by convention (`.def`, `.inc`, `.inl`, `.tpp`, …) skip the check.
 
-```cpp
-// errors.def — not self-contained, requires the includer to define the X macro
-X(Ok,           0, "success")
-X(NotFound,     1, "not found")
-X(InvalidArg,   2, "invalid argument")
-X(Timeout,      3, "operation timed out")
-```
+The verdict is kept with the files the check read and holds while they do not change. A change of another file it read runs the check again. The header's own edits keep it — typing never checks again, or a half-typed name would keep switching it — except that saving a header judged self-contained while its compile has errors checks it again.
 
-Different source files include the same `errors.def`, each defining a different `X` macro, expanding into entirely different code:
+## Compiling a Header in Its Host's Context
 
-```cpp
-// error_enum.cpp — generates an enum
-#define X(name, code, msg) name = code,
-enum ErrorCode {
-#include "errors.def"
-};
-#undef X
-
-// error_message.cpp — generates a string mapping
-#define X(name, code, msg) case code: return msg;
-const char* error_message(int code) {
-    switch(code) {
-#include "errors.def"
-    }
-}
-#undef X
-```
-
-`errors.def` expands into completely different ASTs in the two source files — one is an enum definition, the other a switch statement. For such non-self-contained headers, the compilation context is called a **Header Context**, determined by two elements:
-
-1. **Host source file**: A source file that directly or indirectly includes the header, providing the base compilation command
-2. **Include position**: The specific position in the host source file's include tree where the header is included
-
-The include position is important because the same header may be included multiple times within the same source file, with different preprocessor states each time (e.g., in the X macro pattern, a different macro is defined before each inclusion). All include positions in a source file can be flattened into an ordered sequence, with each position assigned a unique number. The host source file plus this number uniquely identifies a header context.
-
-## How the Compilation Context is Determined
-
-When a file needs to be compiled, the compilation context is automatically determined by the following priority:
-
-1. **User selection takes priority**. If the user has actively selected a compilation context via `clice/switchContext`, that selection is used. Choices are persisted in the workspace cache and restored automatically when the file is opened in a later session. A choice that stops holding — its host no longer includes the file, or its entry left the database — waits, inactive, while the rules below pick the context (a file with entries of its own compiles under them), and applies again once it holds.
-
-2. **Direct CDB lookup**. If the file has an entry in the compilation database, that entry's compilation command is used. In multi-configuration projects where one file has several commands, the first one is used by default; the user can switch to another entry by command hash — the hash of the entry as written, so a rule's edit leaves the choice standing, while a change of the entry in its database makes it stop holding.
-
-3. **Dependency graph lookup**. If the file is not in the CDB (the common case for headers), the dependency graph's include relationships are used to find a source file that includes it, and that source file's compilation command is borrowed. Host candidates are ranked by relevance: a source sharing the header's stem (`utils.h` -> `utils.cpp`) wins, then sources in the same directory, then path proximity, with a lexicographic tie-break for determinism. For self-contained headers, borrowing the compilation command is sufficient; for non-self-contained headers, prefix code must also be synthesized to restore the preprocessor state — the distinction is made automatically, see the next section.
-
-4. **Rule default command**. A file with neither an entry nor a host takes the `default_command` of the first matching rule that declares one — the way to describe a project whose files all share one set of flags.
-
-5. **Borrowed command**. For a file with neither a CDB entry nor any host, and no matching rule with a `default_command` — a freshly created source or a header nothing includes yet — the command of a nearby translation unit of the same language: a unit in the file's directory (same stem first), else the unit whose header search directories (`-I` etc.) contain the header, else the unit closest by path (see [Inference](command-resolve.md#inference)). The command source is labeled `Borrowed`, the decision log names the unit it comes from, and diagnostics about missing files come with a guidance note. Opening or saving a source file (never a header) makes it a provisional member of the build (see [Provisional Members](command-resolve.md#provisional-members)), which then hosts the headers it includes.
-
-6. **Builtin fallback**. When everything above falls through, an isolated file compiles with a synthesized builtin command, so basic language services keep working.
-
-Beyond automatic resolution, clice also provides five LSP extension requests that let users explicitly query and switch compilation contexts:
-
-**`clice/queryContext`** lists all available compilation contexts for a file. For headers, it returns the source files that can serve as hosts, ranked by relevance; for source files, it returns all CDB entries, using key flags from the compilation command (`-D`, `-std`, `-O`, etc.) as human-readable descriptions, each carrying the command hash of the entry as written, which identifies it. Results support pagination. For self-contained headers and source files, the context list is deduplicated by the **command hash** of the effective command, the rules' edits applied, computed over every argument it keeps plus the input's slot position and working directory: two contexts with the same identity produce identical compilation results, so only the best-ranked representative is kept — otherwise a widely-included header like `<vector>` could list thousands of contexts. Non-self-contained headers are not merged this way: different hosts synthesize different prefixes, so every host is a distinct context. When the host's compile enters a header several times (a guard-less header), each place it does is returned as a separate entry distinguished by an occurrence number, once the host's include tree is known.
-
-**`clice/currentContext`** returns the context the file compiles under, as the listing names it, and whether the user chose it: the selection when there is one (host + occurrence, or command hash), else the context picked automatically, with a choice that stopped holding as `inactiveChoice`. It returns no context only for a file that borrows none and has no entry of its own. It also returns the command the file compiles with, as its next compile sends it, and where that command comes from — an entry of a compilation database, the host's, a rule's `default_command`, a nearby unit's, or clice's own — with the file it borrows from and why its compiler could not be queried, and whether the file's answers show its other contexts (`otherContexts`).
-
-**`clice/switchContext`** switches to the user's chosen new context. The choice must be one the listing offers — a host whose compile enters the header (one whose include tree is not known yet is offered too, and the choice holds once its tree shows the compile entering the header), an occurrence in range, a command hash of a real CDB entry of the file — otherwise the request fails. **`clice/resetContext`** drops the selection, returning the file to the automatic context. Either way the document stays open: the server recompiles the unchanged text, publishes its diagnostics anew, and asks the client to re-pull semantic tokens, inlay hints and folding ranges.
-
-**`clice/showOtherContexts`** chooses whether a file's answers show, beside its own context, the code its other contexts compile — the default — or its own context alone. While the buffer is the text the index read, the code the file's context skips (its inactive regions) keeps the semantic colors, outline entries, folds, links and hover the index gives it, which holds every context; hidden, the file's answers wait for its own compile and stay within it. The choice lasts while the server runs.
-
-Besides the requests, the file's preprocessor-inactive regions (bodies of untaken `#if` branches) surface through semantic tokens: under the current compilation context, every token inside them carries the **`inactive`** modifier and editors render the regions dimmed. A context switch recompiles and the server requests that refresh, so the client re-pulls and the dimming flips — the most immediate visual feedback of switching.
-
-## Switching Build Configurations
-
-Context selection is per file. The workspace-wide counterpart is the **build configuration**: rules in `clice.toml` can carry a `configuration` tag (see [Command Resolution](command-resolve.md)), the distinct tags form a menu, and exactly one of them is active in a server process — its tagged rules apply, untagged rules always apply, and everything a file compiles with follows from that: the databases consulted, the default commands, the edits. The active configuration is resolved once at startup, from three layers in priority order:
-
-1. `--configuration <tag>` on the command line, which pins the session; `clice serve`, `clice index`, `clice lint` and `clice inspect` all take it.
-2. The persisted selection: `state.json` under the cache directory, next to the store. It survives cache layout upgrades, which discard the store but not this file.
-3. `default_configuration` from the configuration, else the first declared tag.
-
-A name in either of the first two layers that no rule declares is reported as guidance and skipped, and the selection file is left as it is — a renamed tag falls back to the default until the user picks again. That is the server's rule, since an editor must always start; `clice index`, `clice lint` and `clice inspect` run scripted and fail on an undeclared `--configuration` instead of reporting success for another configuration.
-
-Two extension requests drive the menu. **`clice/listConfigurations`** returns the declared tags with the active, selected and default names, and for an active configuration whose rules resolve symlinks, the build they resolve to. **`clice/switchConfiguration`** validates the name and persists it as the selection; the running server keeps its configuration and asks the client to restart it (`clice/restartServer`), which applies the choice. Switching is a restart on purpose: a server process holds one configuration's world — its loaded databases, dependency graph, contexts, artifacts and index — and a fresh start into that world is the cold start every session already performs, warm from the configuration's own cache. In VS Code the context menu of a C or C++ editor offers **Switch Build Configuration** whenever the rules declare any; picking another configuration persists it, and the server asks the extension to restart it, after which every open document goes through the ordinary open path and its diagnostics, inactive regions and semantic tokens flip. A restart in socket mode drops every connected client.
-
-Each configuration owns an **index database** of its own under the cache store, `index/<tag>~<hash>` (`index/default` for a configuration without tags): the persisted symbol index (each unit's records naming the command it was indexed under), which databases listed each file, the context choices and the PCH and PCM records. Switching therefore never mixes the indexes of two configurations and never reindexes a configuration on the way back: the database it left is reopened as is, and the usual reconciliation picks up only what changed on disk meanwhile. Only the active configuration is indexed. PCH and PCM blobs stay in the shared content-addressed namespaces but carry the configuration in their keys, since the dependency records that vouch for a blob live in the configuration's database. Databases of configurations no longer in use are not reclaimed automatically.
-
-## Automatic Self-Containedness Detection
-
-The vast majority of headers are self-contained, and synthesizing a prefix for them is pure waste — it requires computing the include chain, reading every file on it, and pulling in a large number of preceding dependencies. clice therefore uses a **try-then-fall-back** strategy for headers without a CDB entry:
-
-1. **Self-containment check**: treat the header as self-contained and compile it directly with the borrowed host command (no prefix). Where the host's compile enters the header through a file its command forces in (`-include` or `-imacros`) — a header a CMake target's precompiled header holds is entered through `cmake_pch.hxx` — that forced file is left out, as it would enter the header ahead of its own text, and so are the ones the host's compile enters after it (clang enters every `-imacros` before every `-include`). The forced files before it stay, as they come first in the host's compile.
-2. **Comparison**: a check without errors makes the header self-contained. One with errors compiles the header once more, with a synthesized prefix: the compile with fewer errors, in any of its files but the includer's own code before the header, stands; a context that cannot be synthesized (an include chain the host's command does not follow) leaves the header non-self-contained, compiled alone with a warning that says so. Fewer errors in the includer's context make the header non-self-contained; a tie, as a typo makes it, keeps it self-contained, and it is compiled alone again. No list of what an includer provides is needed: whatever the context fixes — an undeclared name, rows of a table inside the includer's array, an address-of-label outside a function, a library function the includer's headers declare — counts. One warning counts as an error: C's that a struct a prototype names first is visible in that prototype alone, where the includer declares the struct.
-3. **Result**: the editor sees only the compile that stands; the check's other compile is never published.
-
-Files with `.def`, `.inc`, `.inl`, `.tpp`, `.ipp`, `.tcc` or `.txx` extensions (fragments by convention) skip the check and are treated as non-self-contained directly, and a host the user picks through `clice/switchContext` always compiles the header in that host's context. The verdict, either way, is persisted in the workspace cache under the header and the command it borrows, with the files the check read: it holds while they are unchanged, so a restart does not repeat the check, and `clice inspect` takes the editor's verdict — or runs the check itself where there is none. Re-evaluation timing is deliberately split: **dependency changes** (a file the header includes changed, external on-disk modifications) re-run the check, while **user typing** never does — otherwise a half-typed unknown type name would keep triggering pointless prefix synthesis. Saving the header itself re-runs the check only when its compile has errors: an edit can make a header lean on its includer, but a save adds nothing the compile of the buffer had not already seen.
-
-## Header Context in Practice
-
-The header context is conceptually clear (host source file + include position), but given a header context, how to actually make Clang compile the header under the correct preprocessor state is an engineering problem that requires choosing an approach.
-
-> The prefix synthesis discussed here only applies to headers the user has opened, or that `clice inspect` compiles. Headers on disk that are not open do not need special handling — they are included and processed normally when each source file is compiled. The indexing system collects symbol information from headers as part of each source file's indexing pass, and the header's per-file index shard merges the variants produced under different source files (see [Index Design](symbol-index.md) for the merging mechanism).
-
-clice uses **prefix synthesis + `-include` injection**: based on the host source file and include position from the header context, it extracts all content before the target header along the include chain, synthesizes it into prefix code held in memory, and then injects it into the compilation command via Clang's `-include` flag. The core advantage of this approach is its natural compatibility with PCH optimization — `-include`'d files are processed through Clang's predefines buffer before the focus file, so when the preamble PCH is built, the prefix content is baked into the **same** PCH as the header's own preamble region; even a header with no directives of its own (an X macro style `.def` file) gets a PCH built for its prefix. On PCH reuse Clang validates and subsumes matching `-include`s, so the prefix is never processed twice. A header inside braces its includer opens — a class body, an enumerator list — would leave the preamble ending inside a declaration, which a PCH cannot: there the prefix splits at the last place outside every brace, the part before it becoming the preamble and the rest an `-include` the compile enters after it. PCHs are cached by content key (preamble text + canonical flags), so files with identical prefixes automatically share one. When the user subsequently edits the header body, the large volume of header inclusions in the prefix does not need to be reprocessed each time. Detailed rationale for this design choice is in the FAQ section below. PCH construction, caching, and invalidation mechanisms are described in [Incremental Compilation Design](incremental-parse.md).
-
-The synthesis process has four stages. The following example illustrates the process. Suppose the project has these files:
+clice compiles the header itself, with a synthesized **prefix** forced in through `-include`. Following the host's include tree down to the header, it takes from each file on the way everything before the include of the next one, each piece behind a `#line` so positions stay those of the original files:
 
 ```cpp
 // main.cpp
 #include <vector>
 #define DEBUG 1
 #include "utils.h"
-int main() { ... }
 ```
 
 ```cpp
@@ -155,16 +67,9 @@ int main() { ... }
 #pragma once
 #include <string>
 #include "math.h"
-void util_func();
 ```
 
-The user opens `math.h`, which is not in the CDB, so prefix code must be synthesized for it.
-
-**Step 1: Find the host source file.** Using the DependencyGraph's reverse include graph, perform a BFS upward from `math.h` to find source files that transitively include it, also through a file their commands force in. In this example, `math.h` is included by `utils.h`, which is included by `main.cpp`, and `main.cpp` has a CDB entry, so it is selected as the host. Units whose indexed compiles contributed to the header's index are candidates too, which covers an include the scan resolved under another configuration. If the user has specified a preferred host via `clice/switchContext`, that preference takes priority.
-
-**Step 2: Compute the include chain.** The host's include tree says where its compile enters `math.h` and through which files: `[main.cpp, utils.h, math.h]`, with the line of each directive on the way. The tree comes from the host's index entry, or else from preprocessing the host once — the editor on a worker, `clice inspect` in its own process — and holds while the files the run read are unchanged; the header waits for it, and a host that fails to preprocess gives no context. Following the real compile matters when the header is first entered through another header, when one of its includes sits in a branch the compile does not take — one a `__has_include` check picks included —, or when the host's configuration resolves an include differently than the scan did; a host whose compile never enters the header gives no context, even when the lexical graph says it includes it. Where the compile enters the header through a file the host's command forces in, the chain starts at that file, the host's text taking no part: `[cmake_pch.hxx, math.h]` for a header a precompiled header holds. The index entry of a host that loads the precompiled header does not show the files the precompiled header holds; preprocessing the host, which enters them as text, does.
-
-**Step 3: Synthesize the prefix code.** Along the include chain, for each file (except the final `math.h`), read its content, find the `#include` line that includes the next file, and extract everything before that line. Each fragment is prefixed with a `#line` directive to ensure diagnostics point to the correct original positions. The synthesized prefix code for this example is:
+Opening `math.h` compiles it with this prefix forced in:
 
 ```cpp
 #line 1 "main.cpp"
@@ -175,69 +80,23 @@ The user opens `math.h`, which is not in the CDB, so prefix code must be synthes
 #include <string>
 ```
 
-The content after `#include "utils.h"` in `main.cpp` (`int main() { ... }`) is truncated, and the content after `#include "math.h"` in `utils.h` (`void util_func();`) is also truncated. This prefix code restores the preprocessor state that `math.h` would see in the original compilation: `<vector>` and `<string>` have been included, and `DEBUG` is defined as 1.
+The prefix exists only in memory, in pieces placed in the directories of the files they were cut from, so every relative lookup inside them resolves as it does in those files. A cut inside `#if` blocks, such as an include guard, is balanced: the prefix closes them and the suffix reopens them. A header inside braces its includer opens — an enumerator list, a class body — also gets a **suffix** that closes them. Any change to a file on the chain discards the context, and the next compile synthesizes it again.
 
-The prefix code is not written to disk: it is handed to the compiler together with the request, as a file that exists only in memory. It is split along the chain — the part cut from each file becomes its own in-memory file, placed in that file's directory and ending with an include of the next part — and each part is named by the xxh3 hash of its content, so identical content always gets the same name.
+The reason for `-include` is the preamble's PCH: what is forced in is compiled before the header's own text, so the whole prefix lands in the header's PCH, and an edit to the header recompiles only its body.
 
-**Step 4: Inject into the compilation command.** Using the host `main.cpp`'s CDB compilation command, replace the source file path with `math.h` and inject the host's part of the prefix via the `-include` flag:
+## Contexts in the Index
 
-```bash
-clang -std=c++17 -Iinclude -include .clice-a1b2c3d4.h math.h
-```
-
-Clang processes the `-include` prefix file first, then compiles `math.h`. The effect is that `math.h` is compiled as if at the `#include "math.h"` position in `main.cpp`, with the correct preprocessor state. A chain starting at a forced file leaves that file and the ones the compile enters after it out of the command, as the self-containment check does; the prefix cut from the forced file takes its place, after the forced files ahead of it.
-
-Several engineering details matter here. Include directives are resolved against the host command's real search paths and matched by **absolute path**, so same-named headers in different directories cannot be confused; an `#include_next` in a chain file resumes after the search directory its includer's directive found it in, as the compiler's does. Because each part of the prefix sits in the directory of the file it was cut from, every lookup inside it — a quoted include, a `__has_include` check, an include spelled through a macro — resolves exactly as it does in that file. Each chain file is cut at the directive the include tree names; where a `#line` in the file throws the count off, the directive naming the next file is matched instead, preferring includes outside `#if` blocks (an occurrence in an untaken branch must not shadow the real one). When the cut lands inside `#if` blocks (most commonly an include guard on an intermediate header), balancing `#endif`s are appended so the prefix stays well-formed — the guard condition is still evaluated by the compiler, preserving the semantics.
-
-Beyond the prefix there is also a **suffix**, which closes the braces the header sits in — an X macro fragment in an enum or a function body, members in a class body. The content after the include position is synthesized into in-memory suffix files the same way (mirrored along the chain — the direct includer's remainder first, the host's last), and every compile reading the header's whole buffer appends a single `#include` of it to the editor's text. The suffix ends where the braces open at the include position close: an enumerator list or a function body takes only its closing `};` or `}`, a class body the rest of its members, which its member functions may use, with the declarators after its `}`; a conditional block those braces close in is taken whole, both branches; nothing past the enclosing declaration is parsed, and a header cut outside every brace gets an empty suffix. Braces are counted lexically, and a macro's are not seen: one a macro writes to close a scope never closes in that count, so the suffix takes the includer's whole remainder, and a scope a macro opens — a namespace or an `extern "C"` block — stays open past the header's text, where the error it raises at the end is never shown; a class a macro opens thus ends at the header's text, without the members declared after it. When the cut lands inside `#if` blocks, the prefix closes them with `#endif`s and the suffix reopens the same depth with `#if 1`s and closes whatever is still open where it ends, keeping both sides balanced. Includes of the header itself along the chain (other occurrences) are redirected to a snapshot of its disk content — the header's own path is remapped to the buffer with the trailing suffix include, so keeping them verbatim would recurse forever. A file the context does not cut can enter the header too, before the cut — an LLVM-style `.def` list that a header's enum includes and the source's table includes again: there the header is its text alone, since the suffix applies only where the header's own buffer includes it. The appended line sits past the editor's text, which the compile knows the end of, and diagnostics inside the suffix are never attributed to the header itself. The synthesized files name nothing on disk: they are never reported as dependencies, and the symbols declared in them — and in the files they include — are left for the host's own indexing.
-
-The synthesis result (host, the synthesized files, and the include chain with the content versions it read) is kept with the project's answers about the header, which the editor and `clice inspect` share, and outlives the editing session — closing and reopening the header reuses it. The chain files' content is embedded in the prefix and the compiler never opens them, so regular dependency tracking is blind to them — staleness is handled by the chain's recorded content versions: any change to a chain file discards the context, and the next compile synthesizes it again.
-
-## Multi-Context in Indexing
-
-Compilation context affects not only live compilation but also index construction. The same header file may produce different symbols under different compilation contexts. For example:
-
-```cpp
-// config.h
-#ifdef USE_V2
-    using Handler = AsyncHandler;    // Visible in context A
-#else
-    using Handler = SyncHandler;     // Visible in context B
-#endif
-```
-
-If the index only records the result from one context, go-to-definition or find-references would miss information from the other context. Each file's index shard therefore stores the entries produced under different compilation contexts as separate variants, and the project index records which translation units contributed them; queries return the union of the live variants — for `config.h`, find-references can find references to both `AsyncHandler` and `SyncHandler`. See [Index Design](symbol-index.md) for the specific merging and deduplication mechanisms.
+A header's entries differ from context to context. Its index shard keeps the entries of each context as a variant, and queries take the union of the live variants: references to both branches of a header's `#ifdef` are found. See [Symbol Index](symbol-index.md).
 
 ## FAQ
 
-- **Can the same source file provide multiple contexts for the same header?**
+- **Is a header compiled through `-include` the same as in its host?** For everything the standard defines, yes: `#line` sets what `__FILE__`, `__LINE__` and `std::source_location` say. Two extensions differ: `__INCLUDE_LEVEL__` is 0, and `__BASE_FILE__` names the header rather than the host. Neither matters to the answers.
 
-  Yes. If the header has a header guard or `#pragma once`, multiple `#include` directives for it are effective only the first time, so a source file provides at most one context. But if the header has no include protection (e.g., X macro-style `.def` files), every `#include` introduces a new context. As described above, all effective include positions within a source file are numbered in order, so even when the same header is included multiple times, each inclusion can be uniquely distinguished by its number.
-
-- **Is injecting the prefix file via `-include` fully equivalent to the original compilation?**
-
-  For mechanisms defined by the C++ standard, yes. The only ways user code can observe file names and line numbers are `__FILE__`, `__LINE__`, and `std::source_location`. According to the C++ standard, [`#line` directives](https://en.cppreference.com/w/cpp/preprocessor/line) change the values of `__LINE__` and `__FILE__`, and [`std::source_location`](https://en.cppreference.com/w/cpp/utility/source_location) behavior is also determined by them. Therefore, the `#line` directives in the prefix file ensure that all three correctly reflect the target header's position information.
-
-  However, two GCC/Clang compiler extensions behave differently: `__INCLUDE_LEVEL__` is 0 under `-include` mode (the target file is the compile's input file), whereas in the original compilation it reflects the nested include depth; `__BASE_FILE__` returns the target header's path under `-include` mode, whereas in the original compilation it returns the host source file's path. These two extensions are rarely used in practice and have no impact on language server functionality.
-
-- **Why keep the prefix in memory instead of writing it to disk?**
-
-  A file on disk would be derived state with a life of its own: it needs a writable cache directory (without one, every header that needs its includer's context breaks), it must be kept in step with eviction, and it can surface to the user as if it were a source file. Placing it in the cache directory also moves relative lookups away from the file the text came from. In memory, the synthesized text exists exactly as long as the context it belongs to, and each part can be placed where its lookups resolve correctly.
-
-- **Why not use an approach that "compiles the host source file as the main unit and stops at the target position"?**
-
-  Another approach that was considered: instead of synthesizing a prefix file, compile the host source file as the main compilation unit directly. Clang provides a declaration-level callback mechanism that allows checking the current source location after each top-level declaration is parsed. Using this mechanism, compilation can be stopped when parsing reaches the end of the target header based on the include position from the header context. At that point, the compiler has naturally accumulated the correct preprocessor state and can provide language services for the target header directly in that state.
-
-  This approach has clear advantages: no files need to be synthesized, no include chains need to be tracked, and specifying the host source file alone solves the problem. Moreover, for non-self-contained headers like X macros that are embedded inside function bodies, since the compilation subject is the complete source file, the surrounding context (braces, statements, etc.) before and after the include position is intact, so there are no mismatched syntax issues.
-
-  However, this approach has a critical flaw: **it cannot effectively leverage PCH optimization**. PCH works by precompiling and caching a contiguous preamble segment (typically a sequence of `#include` directives) at the beginning of a file. In the prefix synthesis approach, the target header is the compilation subject, and the synthesized prefix code is its preamble, which can be fully cached by PCH. But in the host compilation approach, the compilation subject is the host source file, and the target header is embedded somewhere in the include tree — typically not in the host source file's preamble region but somewhere in the middle of the file. Clang's PCH mechanism cannot split at such a position, so none of the content before the target header can be cached by PCH.
-
-  For a header the user is actively editing, the file body is the most frequently updated part, requiring recompilation on each edit. Without PCH caching for the prefix content, every compilation would need to reprocess the large volume of preceding header inclusions in the host source file — an unacceptable cost in large projects. The prefix synthesis approach makes the target header the compilation subject and the prefix code a separately cacheable preamble, fully preserving PCH generation and usage.
+- **Why not compile the host and stop at the end of the header?** It needs no synthesis and keeps the surrounding braces intact, but the header then sits in the middle of the host's include tree, where no PCH can split. Every edit of the header would parse everything the host includes before it again, which is too slow on a large project. Making the header the compiled file keeps its prefix in a PCH.
 
 ## Known Limitations
 
-- **A host is tried under its first configuration**. Host lookup checks each candidate's include tree under the first of its commands that fits the header: a header that only another configuration of a multi-configuration host enters is hosted elsewhere, and that host is not offered for it.
-
-- **A chosen host that includes the header through a macro stops holding when it changes**. Until a compile takes the changed host's include tree again, only the lexical include graph tells whether the host still includes the header, and it cannot expand a macro include: the choice waits, inactive, and choosing the host again restores it.
-
-- **Switching a build configuration restarts the server**. The selection is persisted and applied by the next server start rather than swapped in-process; open documents are re-opened by the client afterwards. Without any declared database, discovery loads every `compile_commands.json` at the project root and in its immediate subdirectories, and the ones above a file when it is opened; a nested project's database is not scanned for before then.
+- **A host is tried under one command.** Of a host's several commands, the first that fits the header is tried; a header only another of them enters is hosted elsewhere, or nowhere.
+- **An include spelled through a macro cannot be cut** (`#include FT_FREETYPE_H`): a header entered that way that needs its includer's state compiles under the host's command alone.
+- **A chosen host that includes the header through a macro stops holding when it changes**, until a compile reads its include tree again; choosing the host again restores it.
+- **Switching a build configuration restarts the server.**

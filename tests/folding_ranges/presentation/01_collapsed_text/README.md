@@ -11,6 +11,6 @@ of the range. A client folding whole lines, such as Neovim, shows its text in
 place of the whole first line, so it gets the first line followed by `...`
 instead (see "Closing lines fold in").
 
-> **Client support**: VS Code does not show `collapsedText` yet
+> **Client support**: VS Code does not show `collapsedText`
 > ([vscode#70794](https://github.com/microsoft/vscode/issues/70794)). A client
 > that ignores it still folds, without the placeholder.
