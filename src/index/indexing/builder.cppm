@@ -309,7 +309,7 @@ private:
     /// the encode step converts it through tree.path_id.
     llvm::DenseMap<clang::FileID, FileIndex> file_indices;
 
-    /// In a Content compile, the symbols registered that an imported
+    /// With focus_only, the symbols registered that an imported
     /// module declares, a namespace aside: every unit reopening it
     /// redeclares it.
     llvm::SmallVector<const clang::NamedDecl*> imported;

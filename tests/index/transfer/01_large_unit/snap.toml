@@ -23,9 +23,3 @@ int function_000()
 ```
 '''
 range = "int ⟦function_000⟧() { return 0; }"
-
-["headers left out without store".diagnostics]
-diagnostics = []
-
-["headers left out without store".references]
-references = ["int ⟦use⟧() { return function_000(); }", "int again() { return ⟦use⟧(); }"]

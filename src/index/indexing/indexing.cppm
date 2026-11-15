@@ -18,9 +18,8 @@ SymbolScope scope_of(const clang::NamedDecl* decl);
 /// How build_tu_index shapes the TU index blob.
 struct TUIndexOptions {
     /// Index every file a Content compile entered, not its focus file
-    /// alone: `clice inspect`'s stand-in for the server's project index,
-    /// and an open file's compile with no PCH, whose headers no preamble's
-    /// index holds. A Whole compile always indexes every file.
+    /// alone: `clice inspect`'s stand-in for the server's project index.
+    /// A Whole compile always indexes every file.
     bool all_files = false;
 
     /// The variants the receiver already stores, each as its file knows it
