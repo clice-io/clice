@@ -1,6 +1,7 @@
 module;
 
 #ifndef _WIN32
+#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -37,7 +38,15 @@ std::expected<std::string, std::string> temp_root() {
         return unusable(made.error());
     }
 #ifndef _WIN32
-    // Only its owner may change it: another user's directory fails here.
+    // Its own, a directory: not another user's, which root may still chmod,
+    // nor a link planted at its name.
+    struct ::stat entry{};
+    if(::lstat(dir.c_str(), &entry) != 0) {
+        return unusable(std::error_code(errno, std::generic_category()));
+    }
+    if(!S_ISDIR(entry.st_mode) || entry.st_uid != getuid()) {
+        return unusable(std::make_error_code(std::errc::permission_denied));
+    }
     if(auto error = fs::set_permissions(dir, 0700)) {
         return unusable(error);
     }

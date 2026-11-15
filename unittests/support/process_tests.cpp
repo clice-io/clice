@@ -1,7 +1,14 @@
+module;
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 module clice;
 
 import :support.process;
 import :unittests.utils;
+import :unittests.utils.platform;
 import :unittests.utils.temp_dir;
 
 namespace clice::testing {
@@ -17,6 +24,19 @@ ZEST_CASE(OwnerOnly) {
     ZASSERT(status);
     ZEXPECT(status->type == fs::FileType::Directory);
     ZEXPECT(status->permissions == 0700);
+}
+
+ZEST_CASE(LinkRefused) {
+    TempDir tmp;
+    ScopedEnv temp("TMPDIR", tmp.root);
+    auto made = temp_root();
+    ZASSERT(made.has_value());
+    ZASSERT(fs::remove(*made).has_value());
+    tmp.mkdir("elsewhere");
+    ZASSERT(::symlink(tmp.path("elsewhere").c_str(), made->c_str()) == 0);
+    auto refused = temp_root();
+    ZASSERT(!refused.has_value());
+    ZEXPECT(refused.error().contains(*made));
 }
 #endif
 

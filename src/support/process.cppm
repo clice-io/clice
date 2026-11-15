@@ -49,8 +49,8 @@ inline chrono::milliseconds test_jitter() {
 /// clice's directory for its temporary files, under the system's, made
 /// when missing: `clice` on Windows, whose temporary directory is the
 /// user's own, `clice-<uid>` elsewhere, where /tmp is every user's, there
-/// the user's alone (0700). Another user's directory of that name is an
-/// error naming it, never written into.
+/// the user's alone (0700). Another user's directory of that name, or a
+/// link there, is an error naming it, never written into.
 std::expected<std::string, std::string> temp_root();
 
 /// Remove the entries of `parent` named by the id of a process that has
