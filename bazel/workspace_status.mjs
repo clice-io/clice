@@ -13,7 +13,7 @@ import { realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BASE_VERSION = "0.1.0";
+const BASE_VERSION = "1.0.0";
 
 const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 

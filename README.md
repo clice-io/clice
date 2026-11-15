@@ -33,8 +33,8 @@ Download the latest binary from the [releases page](https://github.com/clice-io/
 
 | Channel        | Version                           | Where to get it                                                                                                                                                                                                     |
 | -------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Stable**     | even minor, e.g. `v0.2.0`         | [releases page](https://github.com/clice-io/clice/releases) + [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) + [Open VSX](https://open-vsx.org/extension/clice-io/clice) |
-| **Nightly**    | odd minor, e.g. `v0.1.2026071902` | [GitHub pre-releases](https://github.com/clice-io/clice/releases) + Marketplace and Open VSX pre-release channel (`Switch to Pre-Release Version` on the extension page)                                            |
+| **Stable**     | even minor, e.g. `v1.0.0`         | [releases page](https://github.com/clice-io/clice/releases) + [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) + [Open VSX](https://open-vsx.org/extension/clice-io/clice) |
+| **Nightly**    | odd minor, e.g. `v1.1.2026112002` | [GitHub pre-releases](https://github.com/clice-io/clice/releases) + Marketplace and Open VSX pre-release channel (`Switch to Pre-Release Version` on the extension page)                                            |
 | **Per-commit** | untagged                          | artifacts on the [latest green `main` CI runs](https://github.com/clice-io/clice/actions/workflows/main.yml?query=branch%3Amain+is%3Asuccess)                                                                       |
 
 The versioning rule is the VS Code Marketplace convention: **even minor = stable, odd minor = pre-release**. Nightly patch numbers encode the UTC build time as `YYYYMMDDHH` (year, month, day, hour — e.g. `2026071902` is 2026-07-19 02:00 UTC), so newer is always higher; a nightly is published only when `main` gained commits, and only the newest 25 nightlies, none older than 30 days, are kept, besides the one Neovim's Mason registry installs. Every published binary is the exact one that passed the full test suites — releases promote CI builds rather than rebuilding.
@@ -64,7 +64,7 @@ cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 By default clice loads every `compile_commands.json` in the project root and its immediate subdirectories (e.g. `build/`). See [project setup](https://docs.clice.io/clice/guide/quick-start#project-setup) for other build systems, and the [configuration guide](https://docs.clice.io/clice/guide/config-guide) for databases elsewhere and files without one.
 
 > [!NOTE]
-> clice is in beta on the road to its first stable release: nightlies are ready to try today. Bug reports via [issues](https://github.com/clice-io/clice/issues) are welcome.
+> clice 1.0 is its first stable release. Bug reports via [issues](https://github.com/clice-io/clice/issues) are welcome.
 
 ## Documentation
 

@@ -4,7 +4,7 @@ layout: home
 hero:
   name: clice
   text: 下一代 C++ 语言服务器
-  tagline: 快、不崩、懂项目。每日构建预发布版本，支持 VS Code、Neovim 和 Zed。
+  tagline: 快、不崩、懂项目。为 VS Code、Neovim 和 Zed 提供稳定版与每日构建。
   actions:
     - theme: brand
       text: 什么是 clice？

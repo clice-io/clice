@@ -10,12 +10,12 @@ description: Read before any release work — instant builds, nightlies, stable 
 One version number everywhere: git tag `vX.Y.Z` == extension version == release
 page. Odd minor = pre-release channel, even minor = stable (the VS Code
 Marketplace convention). Nightlies compute `X.<odd>.YYYYMMDDHH` (UTC hour) on the
-odd minor above the newest release — `0.1.*` today, `0.3.*` after stable
-`v0.2.0` — so nobody edits version numbers by hand. The versions in
+odd minor above the newest release — `1.1.*` after stable `v1.0.0`, `1.3.*`
+after `v1.2.0` — so nobody edits version numbers by hand. The versions in
 `bazel/workspace_status.mjs`, `pixi.toml`, and `editors/vscode/package.json`
-are permanent placeholders (`0.1.0`); the real version is injected from the
+are permanent placeholders (`1.0.0`); the real version is injected from the
 tag at build time (binary via git describe, vsix via CI). A local `vsce publish` with the placeholder is rejected by the
-Marketplace — that is intentional accident protection. Open VSX has no such
+Marketplace once `v1.0.0` is out — intentional accident protection. Open VSX has no such
 guard: a local `pixi run publish-ovsx` publishes the placeholder version for
 real, so leave Open VSX to CI.
 
@@ -91,7 +91,7 @@ Every step that tags or publishes needs the maintainer's explicit approval first
    `gh workflow run ecosystem.yml --ref main -f run=<its CI run> -f clangd=true`
    (the round reads the run's `build-*` artifacts, which live three days:
    for an older nightly, rerun its main workflow first). Then tag its commit:
-   `git tag v0.2.0 <commit> && git push origin v0.2.0`.
+   `git tag v1.0.0 <commit> && git push origin v1.0.0`.
    The tag push runs the release path of `main.yml`, which promotes the
    already-tested packages from that commit's green CI run and publishes the
    extensions (Marketplace and Open VSX, without the pre-release flag). The promote path

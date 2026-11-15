@@ -4,7 +4,7 @@ layout: home
 hero:
   name: clice
   text: Next Generation C++ Language Server
-  tagline: Fast, crash-proof and project-aware. Pre-release builds ship nightly for VS Code, Neovim and Zed.
+  tagline: Fast, crash-proof and project-aware. Stable releases and nightly builds for VS Code, Neovim and Zed.
   actions:
     - theme: brand
       text: What is clice?
