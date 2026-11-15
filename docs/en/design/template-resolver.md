@@ -2,154 +2,64 @@
 
 ## Background
 
-A core design principle of C++ templates is **deferred instantiation** -- before template code is instantiated with concrete type arguments, the compiler does not (and cannot) resolve names that depend on template parameters. These are called **dependent names**, and their types are unknown at template definition time.
-
-For a language server, this means the interior of template code is a "blind spot":
+Inside a template, a name that depends on a template parameter has no meaning until the template is instantiated: the compiler does not resolve it, and a language server sees a blind spot.
 
 ```cpp
 template <typename T>
-void foo(std::vector<T> vec) {
-    vec.  // cursor here -- vec's type is known to be vector<T>, completions can be provided
+void foo(std::vector<std::vector<T>> rows) {
+    rows[0].  // what is rows[0]?
 }
 ```
 
-For simple cases, using the primary template's definition suffices to provide basic completions. But consider a more complex scenario:
+`rows[0]` is `std::vector<std::vector<T>>::reference`, a dependent name that the standard library defines through layers of aliases, partial specializations and default arguments: `reference` → `allocator_traits<Alloc>::value_type` → …. clangd users have long found completion and hover dead inside template bodies, for three reasons in how clangd resolves such names:
 
-```cpp
-template <typename T>
-void foo(std::vector<std::vector<T>> vec2) {
-    vec2[0].  // What is the type of vec2[0]?
-}
-```
-
-The type of `vec2[0]` is `std::vector<std::vector<T>>::reference` -- a dependent name. In standard library implementations, resolving it requires tracing through dozens of layers of nested template typedef chains: `reference` -> `allocator_traits<Alloc>::value_type` -> `__alloc_traits<Alloc>::reference` -> ... Each layer involves partial specialization matching, default template arguments, typedef expansion, and other complex operations.
-
-In the clangd community, completion and hover issues in template code have persisted for a long time. Users repeatedly report the inability to get completion suggestions inside template function bodies -- the cursor position shows `<dependent type>` and all LSP features become non-functional. The root cause is that clangd's resolution strategy has several fundamental limitations:
-
-**No partial specialization handling**: clangd assumes the primary template's definition is always used for member lookup. However, the standard library makes heavy use of partial specializations (e.g., `allocator_traits` specialized for different allocators), and the primary template may not even have the member being looked up -- the member only exists in a specific partial specialization.
-
-**Missing argument mapping**: Even when name lookup finds a member's type, that type is still expressed in terms of the looked-up template's parameters (e.g., `Alloc` in `allocator_traits<Alloc>::value_type`), not the caller's parameters (e.g., `T`). Since clangd does not perform instantiation, it cannot establish mappings between parameters.
-
-**Ignoring default template arguments**: `std::vector<T>` is actually `std::vector<T, std::allocator<T>>` -- the second argument is defaulted. clangd does not expand default arguments, causing names that depend on defaulted arguments to be unresolvable.
+- **No partial specializations.** It looks members up in the primary template, which may not even declare them: `allocator_traits` defines them in its specializations.
+- **No argument mapping.** A member found in `allocator_traits<Alloc>` is expressed in `Alloc`, not in the caller's `T`.
+- **No default arguments.** `std::vector<T>` is `std::vector<T, std::allocator<T>>`; a name depending on the default stays unresolved.
 
 ## Design
 
-### Core Idea
+### Pseudo-Instantiation
 
-clice implements a **PseudoInstantiator** -- it resolves dependent names through heuristic methods without requiring concrete type arguments. The core insight is: you do not need to know whether `T` is `int` or `string`; you only need to trace how `T` propagates through the template typedef chain and express the final result in terms of `T`.
+clice resolves dependent names without concrete arguments. It does not need to know whether `T` is `int` or `string`; it follows how `T` flows through the chain of aliases and expresses the result in `T`: `std::vector<std::vector<T>>::reference` becomes `std::vector<T>&`, concrete enough to complete members while keeping `T` symbolic.
 
-For example: `std::vector<std::vector<T>>::reference` is simplified through pseudo-instantiation to `std::vector<T>&` -- a type concrete enough to provide completions while preserving the symbolic meaning of the template parameter `T`.
+The resolver is a type rewriter of its own. It uses neither Sema nor Clang's `TreeTransform`, which both assume a real instantiation with concrete arguments — exactly what is absent here. It runs under two policies: **resolve**, which looks names up — a dependent member, a dependent template, a parameter's binding or default, a `decltype` of a variable or a call — and **substitute**, which only replaces parameters and expands aliases. Resolving delegates alias expansion to substitution, so a lookup never starts another lookup through an alias that leads back to it.
 
-### One Rewriter, Two Policies
+### Parameters and Specializations
 
-The resolver is a handwritten type rewriter. It deliberately uses neither Sema nor Clang's TreeTransform — both assume a real instantiation context with concrete arguments, which is exactly what is absent here. A single rewriter runs under one of two policies:
+Nested templates bind parameters at several levels, kept as a stack of frames; a parameter is looked up in the frame of the template declaring it, so two templates whose parameters share a depth never capture each other's. A parameter with no binding takes its default.
 
-**Resolve policy (heuristic resolution)**
+To look a member up in `A<T>`, the resolver matches the arguments against each partial specialization's pattern with its own unification, picks the specialization, looks the member up there, then in the primary template and the bases, and maps the found type back onto the caller's arguments. This is what reaches `allocator_traits<allocator<T>>::value_type` where the primary template declares nothing.
 
-This is the main engine, responsible for resolving various kinds of dependent names:
+The `type` of the standard library's type traits — `conditional`, `enable_if`, `type_identity`, the `remove_*` and `add_*` traits, `decay` — and the `value` of `conjunction`, `disjunction` and `negation` are answered by the rule the standard gives them: every library writes them through its own partial specializations, deducing through those would cost every query, and the answer is the same in all of them.
 
-- **DependentNameType** (e.g., `typename Container::value_type`): looks up `value_type` among the template's members, matches partial specializations, expands typedefs, and re-expresses the result using the caller's parameters
-- **DependentTemplateSpecializationType** (e.g., `Alloc::rebind<U>`): resolves dependent template specializations, with a fast path for standard library patterns tried first
-- **TemplateTypeParmType** (e.g., `T`): looks up the parameter's bound value or default argument via the instantiation stack
-- **DecltypeType** (e.g., `decltype(var)`, `decltype(make(x))`): resolves a variable to its declared type and a call to what the overload it chooses returns
+Results are **resugared**: shown with the parameters' names (`T`), not Clang's canonical "parameter 0 of depth 0".
 
-**Substitute policy (cycle breaking)**
+### Degrading Gracefully
 
-When heuristic resolution expands a typedef, it may encounter another dependent name requiring heuristic lookup, forming a cycle: typedef A's underlying type references dependent name B, and looking up B reveals its type involves typedef A again.
-
-The substitute policy breaks such cycles -- it only performs argument substitution and typedef expansion without heuristic lookups. When resolution needs to expand a typedef, it delegates to the substitute policy, ensuring that recursive heuristic lookups are never triggered.
-
-### Instantiation Stack
-
-Template parameters may exist at different depth levels in nested templates. The instantiation stack (InstantiationStack) maintains a stack of parameter mappings, with each frame recording one level of template parameter bindings.
-
-When a `TemplateTypeParmType` (a template parameter identified by depth and index) is encountered, the resolver searches from the top of the stack (innermost level) to the bottom (outermost level) for the frame whose template declares the parameter — a canonical parameter, which names no declaration, by its depth — so two templates whose parameters share a depth never capture each other's. If a match is found, the parameter is substituted with the bound type; if not found, the parameter's default value is tried. When the stack is empty (a standalone dependent type), the resolver walks up through enclosing template declarations and pushes their injected template parameters as context.
-
-This allows the resolver to handle multi-level nested templates:
-
-```cpp
-template<typename X>
-struct Outer {
-    template<typename Y>
-    struct Inner {
-        typename std::pair<X, Y>::first_type member;
-        // X is at depth 0, Y is at depth 1
-        // Both need to be tracked in the stack for correct resolution
-    };
-};
-```
-
-### Dependent Name Resolution Flow
-
-Using `typename A<T>::type` as an example:
-
-1. **Cache check**: If this node has been resolved before, return the cached result directly
-2. **Cycle detection**: If this node is currently being resolved, abort to prevent infinite recursion
-3. **Qualifier transform**: Transform the `A<T>` part -- substitute parameters, match partial specializations
-4. **Member lookup**: Look up `type` in the transformed type. Try each partial specialization and its bases, then the primary template and its bases
-5. **Argument deduction**: Unify the actual arguments with the pattern of the template the member was found in — the resolver's own unification, not Sema's deduction — to map its parameters to the caller's arguments
-6. **Substitution**: Expand typedefs in the found member type under the substitute policy, substituting with the caller's parameters
-7. **Recursion**: If the result still contains dependent names, resolve recursively
-
-A query nests at most 32 resolving rewrites and takes at most 2048 rewrite steps, which bounds extreme cases.
-
-The resolver also keeps three kinds of cycle detection: one prevents re-entrant resolution of the same dependent name or specialization, another a recursive lookup of the same name in the same class template (CRTP and other self-referential patterns), and a third the deduction of an `auto` variable whose initializer needs its own type.
-
-### Partial Specialization Matching
-
-Partial specialization matching is a key advantage of the pseudo-instantiator over clangd. The standard library makes heavy use of partial specializations, for example:
-
-```cpp
-// Primary template -- does not define value_type
-template<typename Alloc> struct allocator_traits;
-
-// Partial specialization -- defines value_type
-template<typename T> struct allocator_traits<allocator<T>> {
-    using value_type = T;
-};
-```
-
-When resolving `allocator_traits<allocator<int>>::value_type`, clangd fails because it looks up `value_type` in the primary template. The pseudo-instantiator tries matching the actual arguments against each partial specialization's pattern, finds the correct specialization, and then looks up the member within it.
-
-### Standard Library Special Handling
-
-The `type` of the standard library's type traits — `conditional`, `enable_if`, `type_identity`, the `remove_*` and `add_*` traits and `decay` — and the `value` of `conjunction`, `disjunction` and `negation` are answered by the rule the standard gives them, without reading their definitions: each library writes them through partial specializations of its own, which a deduction would walk on every query, and the answer is the same in all of them.
-
-### Type Resugaring
-
-Internally, Clang represents template parameters as canonical `TemplateTypeParmType` values (depth + index). Users should see parameter names (e.g., `T`), not `parameter 0 of depth 0`. Resugaring maps canonical parameter types back to their original declarations, producing user-friendly type information.
-
-### Graceful Degradation
-
-If any step in the resolution process fails (lookup failure, cycle detection triggered, depth limit exceeded), the resolver returns the original dependent type rather than reporting an error. This means LSP features are never completely broken due to a resolution failure -- they simply degrade to the "unresolvable" state, which is no worse than not performing pseudo-instantiation at all.
-
-## Design Decisions and Trade-offs
-
-**Why pseudo-instantiation instead of real template instantiation?** Real instantiation requires concrete type arguments (e.g., `T = int`), but this information is unavailable at template definition time. Moreover, code in a language server is frequently incomplete and cannot undergo full instantiation. Pseudo-instantiation avoids dependence on concrete types by preserving symbolic parameters (`T` itself).
-
-**Why a two-phase design?** In a single-phase design, typedef expansion would trigger new heuristic lookups, and lookup results might in turn require typedef expansion -- forming a cycle. The two-phase design breaks this cycle through separation of concerns: heuristic lookups are performed only in Phase 1, and typedef expansion is delegated to Phase 2, which does not perform lookups.
-
-**Why answer standard library traits by rule?** The traits are the most common dependent types in real code, and each library writes them differently; deducing through their partial specializations costs every query, while the standard fixes the answer.
-
-**Why graceful degradation instead of error reporting?** Template resolution is inherently heuristic -- it is impossible to cover every edge case in C++ templates. Graceful degradation ensures that resolution failure is never worse than "not resolving at all," while providing a significant experience improvement in the cases where resolution succeeds.
+A step that fails — a lookup that finds nothing, a cycle, a budget exhausted — returns the dependent name as it was, never an error, so resolving is never worse than not resolving. Cycles are cut at three places: resolving a name already being resolved, looking up a name in a class template already being searched for it (CRTP), deducing an `auto` whose initializer needs its own type. A query also has a bound on its nesting and on its total steps.
 
 ## Instantiations as Implementations
 
-Pseudo-instantiation works from the written side of a template: it reasons about what a dependent name _could_ mean from the pattern alone. The translation unit often holds a complementary source of truth -- the _actual_ instantiations, which record what every dependent name _does_ mean for each concrete argument list.
+Pseudo-instantiation reads the written template and says what a dependent name could mean. The unit's actual instantiations say what it does mean for each argument list. clice treats a template like an interface and its instantiations like implementations, as a virtual function and its overrides:
 
-clice deliberately treats a template like a duck-typed interface and each of its instantiations like an implementation of that interface, analogous to how virtual functions relate to their overrides. This is a long-term direction, and it already shapes today's behavior:
+- **Semantic tokens** read instantiated code too: an instantiation reuses the template's locations, so its resolution lands on the token written in the template. Instantiations agreeing on a name's kind keep it, and the modifiers they share; disagreeing ones make it a `conflict`.
+- **Hover and inlay hints** inside a function template the unit instantiates exactly once show that instantiation's arguments; with several, the parameters stay as written.
+- **Navigation** reads every instantiation: the index keeps what each instantiation resolves in the template's text, so definition, references, call hierarchy and implementation on a dependent name list each resolution, in open and closed files alike.
+- **Completion** parses only up to the cursor, before the code that calls the template, so a member access resolving no other way compiles the buffer once more and offers the members every instantiation has (of eight at most).
 
-- Semantic classification does not skip instantiated code. An instantiation reuses the pattern's source locations, so the resolution of a dependent name inside an instantiated body lands on the very token the user wrote in the template. With one instantiation the dependent name is classified as its actual resolution; when instantiations agree on the kind, only the modifiers they all share survive; when they disagree (one resolves a name to a function, another to a variable), the token is classified as a conflict -- disagreement between implementations is information, not noise.
-- A function template the translation unit instantiates exactly once -- a generic lambda called with one type among them -- has its template parameters stand for that instantiation's arguments in hover and inlay hints inside its body. Several instantiations leave the parameters as they are. Resolution reads a class template's pattern with its parameters unbound, with one exception: an `auto` variable inside a class template the unit instantiates once deduces as in that instantiation, so its inlay hint and hover show the instantiation's type.
-- Navigation reads every instantiation instead. Beside a template's own entries, the symbol index keeps what each instantiation of each indexed unit resolves in the template's text (see the symbol index design), so go-to-definition, references, call hierarchy and go-to-implementation on a dependent name list what it resolves to in each instantiation, the same way go-to-implementation on a virtual function lists its overrides -- in open and closed files alike. A template's own entries leave its parameters unbound: a header's index, which every unit including the header shares, would otherwise differ with what each unit instantiates.
-- Code completion parses only up to the cursor, before the code that calls a template, so a member access inside a function template that resolves no other way compiles the whole buffer once more and takes the arguments of the template's instantiations from there: of several, at most eight, it offers the names every one of them has, and in a branch of an `if constexpr` only the instantiations taking it count.
+Features that emit one item per location — inlay hints, folds, the outline — skip instantiated code: an instantiation could only repeat or contradict what the template gives there.
 
-Walk-based features (inlay hints, folding ranges, document symbols) still skip instantiated subtrees: they emit location-keyed items, where an instantiation can only repeat -- or contradict -- what the pattern already produced. The distinction is deliberate: merging many resolutions is meaningful for classification and navigation, but not for per-location rendering.
+## Design Decisions
+
+- **Why not real instantiation?** It needs concrete arguments, which do not exist inside the template, and code being edited is often too incomplete to instantiate.
+- **Why two policies?** If expanding an alias could start a lookup, and a lookup's result needed alias expansion, the two would recurse into each other. Substitution never looks anything up.
+- **Why answer standard traits by rule?** They are the most common dependent types in real code and each library writes them differently; the standard fixes their answers.
 
 ## Known Limitations
 
-The resolver works out what the written code determines and leaves the rest unresolved rather than guess. What stays unresolved, or resolves otherwise than the compiler would:
+The resolver works out what the written code determines and leaves the rest unresolved rather than guess:
 
-- **Expressions on dependent operands.** A value expression folds once its operands are known (`N + 1` with `N` given), and matches a pattern spelled the same way (`trait<X, X + 1>` against `trait<N, N + 1>`); one it cannot prove equal to the pattern stays dependent. The type of an operator expression on a dependent operand (`value + 1`) is not deduced, while subscripts, `->` and calls through member operators resolve.
-- **Choices the code leaves open.** A constraint that depends on an unknown argument, two partial specializations neither of which is more specialized, a base class naming itself through `decltype`, and a `decltype` of a call that needs argument-dependent lookup leave the name dependent.
-- **Overloads told apart by reference binding.** Among overloads that differ in how they bind an argument or the object — `const U&&` against `const int&`, a template binding the object without adding `const` against a `const` member, an explicit object parameter — the resolver can choose another overload than the compiler, or none.
+- **Expressions on dependent operands.** A value expression folds once its operands are known (`N + 1` with `N` given), and matches a pattern spelled the same way (`trait<X, X + 1>` against `trait<N, N + 1>`); one it cannot prove equal stays dependent. The type of an operator expression on a dependent operand (`value + 1`) is not deduced; subscripts, `->` and calls through member operators resolve.
+- **Choices the code leaves open.** A constraint depending on an unknown argument, two partial specializations neither more specialized, a base naming itself through `decltype`, and a `decltype` of a call that needs argument-dependent lookup leave the name dependent.
+- **Overloads told apart by reference binding.** Among overloads differing in how they bind an argument or the object — `const U&&` against `const int&`, a template binding the object without `const` against a `const` member, an explicit object parameter — the resolver can choose another overload than the compiler, or none.
