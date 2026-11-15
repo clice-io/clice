@@ -22,6 +22,27 @@ if(COMPAT_IMPORT_STD)
   add_library(compat_std STATIC std/use_std.cpp)
   target_compile_features(compat_std PUBLIC cxx_std_23)
   set_target_properties(compat_std PROPERTIES CXX_SCAN_FOR_MODULES ON)
+
+  # A named module importing `std` in its primary interface, its partition
+  # and its implementation unit, imported by another target beside `std`.
+  add_library(compat_shapes STATIC std/shapes.cpp)
+  target_sources(compat_shapes PUBLIC FILE_SET CXX_MODULES FILES std/shapes.cppm std/geometry.cppm)
+  target_compile_features(compat_shapes PUBLIC cxx_std_23)
+  add_library(compat_std_users STATIC std/use_shapes.cpp std/mixed.cpp std/use_compat.cpp)
+  target_link_libraries(compat_std_users PRIVATE compat_shapes)
+  set_target_properties(compat_shapes compat_std_users PROPERTIES CXX_SCAN_FOR_MODULES ON)
+endif()
+
+# A module unit and an importer of `std` in a target with a precompiled
+# header, which CMake hands both (#1078). Only cl builds it: GCC 15 rejects
+# the header ahead of the module declaration, and clang 18 finds libc++'s
+# definitions in the header and in `std` differ.
+if(COMPAT_STD_PCH)
+  add_library(compat_std_pch STATIC std/pch_user.cpp)
+  target_sources(compat_std_pch PUBLIC FILE_SET CXX_MODULES FILES std/pch_unit.cppm)
+  target_precompile_headers(compat_std_pch PRIVATE <vector>)
+  target_compile_features(compat_std_pch PUBLIC cxx_std_23)
+  set_target_properties(compat_std_pch PROPERTIES CXX_SCAN_FOR_MODULES ON)
 endif()
 
 # An importer of `std` with other language options: CMake builds the

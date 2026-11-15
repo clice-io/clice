@@ -23,8 +23,8 @@ export const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
 /// without a look at the disk is checked against one, a contradiction
 /// being an anomaly the gates catch, and the test hooks are on (the
 /// clice/internal requests the tests wait through).
-export function serverEnv(): NodeJS.ProcessEnv {
-    return { ...process.env, CLICE_SHADOW_FRESHNESS: "1", CLICE_TEST_HOOKS: "1" };
+export function serverEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+    return { ...base, CLICE_SHADOW_FRESHNESS: "1", CLICE_TEST_HOOKS: "1" };
 }
 
 /// A session directory's name: when its process started and its pid,

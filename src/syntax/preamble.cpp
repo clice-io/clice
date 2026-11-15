@@ -174,13 +174,15 @@ std::uint32_t preamble_bound(llvm::StringRef content, std::uint32_t limit) {
     // clang keeps none of these stacks in a PCH: a push the preamble ends
     // with is lost to the body, whose pop then finds nothing (the min/max
     // macros Windows code pushes around its includes). The preamble ends
-    // before it; in a global module fragment, before an include of its own,
-    // not at all: the include would declare ahead of the module declaration.
+    // before it. A global module fragment cut before an include of its own,
+    // there or at `limit`, has none: the include would declare ahead of the
+    // module declaration.
     // LIMITATION: a push in a header the preamble includes, popped in the
     // file (pshpack1.h included directly), is not seen: the pop warns.
-    auto bound = directive_bound(content, limit).bound;
+    auto cut = directive_bound(content, limit);
+    auto bound = cut.include_past_limit ? 0 : cut.bound;
     while(auto push = open_push(content, bound)) {
-        auto cut = directive_bound(content, *push);
+        cut = directive_bound(content, *push);
         bound = cut.include_past_limit ? 0 : cut.bound;
     }
     return bound;

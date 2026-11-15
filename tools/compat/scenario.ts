@@ -24,6 +24,23 @@ export interface FileExpectation {
     excludes?: string[];
 }
 
+/// What the editor answers at one place of a file: the first `at` written
+/// there, `offset` UTF-16 code units into it.
+export interface Answer {
+    at: string;
+    offset?: number;
+
+    /// Go to definition lands in a file whose path, `/`-separated, contains
+    /// this.
+    definition?: string;
+
+    /// The hover card shows this.
+    hover?: string;
+
+    /// Completion offers an item of this label.
+    completion?: string;
+}
+
 export interface Scenario {
     /// What the scenario exercises, e.g. "cmake ninja gcc".
     name: string;
@@ -65,6 +82,10 @@ export interface Scenario {
 
     /// The project's source files under check, project-relative.
     files: Record<string, FileExpectation>;
+
+    /// What a server started as an editor starts it answers in the
+    /// project's files, project-relative, each opening with no error.
+    answers?: Record<string, Answer[]>;
 }
 
 /// Hang detection: a build step, a compile or a clice run over the small

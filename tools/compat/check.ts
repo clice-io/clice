@@ -1,10 +1,14 @@
 /// One scenario end to end: build the project copy with real tools, then
 /// hold clice to what the build proved — every unit parses clean, the
 /// macros and the headers found agree with the compiler's, each file's
-/// entry reads as written and its command resolves as the scenario expects.
+/// entry reads as written and its command resolves as the scenario expects
+/// — and to what the editor answers over that build.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as proto from "vscode-languageserver-protocol";
+import { URI } from "vscode-uri";
+import { CliceClient } from "../client/client.ts";
 import { ending, runProcess } from "../client/process.ts";
 import { Workspace } from "../client/workspace.ts";
 import { REPO_ROOT } from "../repo.ts";
@@ -23,6 +27,7 @@ import {
     cliceEnv,
     missingTools,
     STEP_MS,
+    type Answer,
     type FileExpectation,
     type Scenario,
 } from "./scenario.ts";
@@ -100,6 +105,101 @@ async function commandProblems(
     return problems.map((problem) => `${file}: ${problem}\n    ${resolved.join(" ")}`);
 }
 
+/// Where `answer` asks in `text`.
+function placeOf(text: string, answer: Answer): proto.Position {
+    const at = text.indexOf(answer.at);
+    if (at < 0) {
+        throw new Error(`\`${answer.at}\` is not in the file`);
+    }
+    const before = text.slice(0, at + (answer.offset ?? 0));
+    const line = before.split("\n").length - 1;
+    return { line, character: before.length - before.lastIndexOf("\n") - 1 };
+}
+
+function definitionPaths(
+    answer: proto.Location | proto.Location[] | proto.LocationLink[] | null,
+): string[] {
+    const locations = answer === null ? [] : Array.isArray(answer) ? answer : [answer];
+    return locations.map((location) =>
+        URI.parse("targetUri" in location ? location.targetUri : location.uri).fsPath.replaceAll(
+            "\\",
+            "/",
+        ),
+    );
+}
+
+function hoverText(hover: proto.Hover | null): string {
+    const contents = hover?.contents;
+    if (contents === undefined) {
+        return "";
+    }
+    const parts = Array.isArray(contents) ? contents : [contents];
+    return parts.map((part) => (typeof part === "string" ? part : part.value)).join("\n");
+}
+
+/// What is wrong with the editor's answers in the scenario's files, empty
+/// when nothing is.
+async function answerProblems(
+    clice: string,
+    ws: Workspace,
+    answers: Record<string, Answer[]>,
+    env: NodeJS.ProcessEnv,
+): Promise<string[]> {
+    const problems: string[] = [];
+    const client = CliceClient.start(clice, { cwd: ws.root, baseEnv: env });
+    try {
+        await client.initialize(ws);
+        for (const [file, wanted] of Object.entries(answers)) {
+            const [uri, text] = await client.openAndWait(file, STEP_MS);
+            for (const diagnostic of client.diagnostics.get(client.normalizeUri(uri)) ?? []) {
+                if (diagnostic.severity === proto.DiagnosticSeverity.Error) {
+                    const message =
+                        typeof diagnostic.message === "string"
+                            ? diagnostic.message
+                            : diagnostic.message.value;
+                    problems.push(`${file}:${diagnostic.range.start.line + 1}: ${message}`);
+                }
+            }
+            for (const answer of wanted) {
+                const { line, character } = placeOf(text, answer);
+                const where = `${file}:${line + 1}:${character + 1} (${answer.at})`;
+                const { definition } = answer;
+                if (definition !== undefined) {
+                    const paths = definitionPaths(await client.definitionAt(uri, line, character));
+                    if (!paths.some((found) => found.includes(definition))) {
+                        problems.push(
+                            `${where}: go to definition answers ${paths.join(", ") || "nothing"}, ` +
+                                `no path holding ${definition}`,
+                        );
+                    }
+                }
+                if (answer.hover !== undefined) {
+                    const card = hoverText(await client.hoverAt(uri, line, character));
+                    if (!card.includes(answer.hover)) {
+                        problems.push(`${where}: the hover lacks ${answer.hover}: ${card}`);
+                    }
+                }
+                if (answer.completion !== undefined) {
+                    const list = await client.completionAt(uri, line, character);
+                    const items = list === null ? [] : Array.isArray(list) ? list : list.items;
+                    if (!items.some((item) => item.label === answer.completion)) {
+                        problems.push(
+                            `${where}: completion lacks ${answer.completion}: ` +
+                                items
+                                    .slice(0, 20)
+                                    .map((item) => item.label)
+                                    .join(", "),
+                        );
+                    }
+                }
+            }
+        }
+    } finally {
+        await client.shutdown();
+    }
+    return problems;
+}
+
 /// Run `body` on a fresh copy of the project, built in the scenario's
 /// environment and held to what the checks need from the build: an entry
 /// per checked file carrying what `recorded` names, and the compiler's
@@ -163,6 +263,9 @@ export async function checkScenario(clice: string, scenario: Scenario): Promise<
             problems.push(
                 ...(await commandProblems(clice, ws.root, file, expectation, entries, env)),
             );
+        }
+        if (scenario.answers !== undefined) {
+            problems.push(...(await answerProblems(clice, ws, scenario.answers, env)));
         }
         if (problems.length > 0) {
             throw new Error(problems.join("\n"));

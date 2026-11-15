@@ -301,7 +301,8 @@ RequestResult<worker::CompileParams>
                 index_error =
                     send_index(index::build_tu_index(
                                    *unit,
-                                   {.known_variants = params.indexing.known_variants,
+                                   {.all_files = params.pch.first.empty(),
+                                    .known_variants = params.indexing.known_variants,
                                     .known_instantiations = params.indexing.known_instantiations}),
                                params.indexing.output_path,
                                result);

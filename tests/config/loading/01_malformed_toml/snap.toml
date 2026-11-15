@@ -1,6 +1,6 @@
 ["nothing is served".guidance]
 value = [
-    "Configuration problem in ${WS}/clice.toml:1:10: TOML parse error: Error while parsing table header: expected ']', saw 'e'. Nothing under ${WS} is served until it is fixed and saved",
+    "Configuration problem in ${WS}/clice.toml:1:10: TOML parse error: Error while parsing table header: expected ']', saw 'e'. Nothing under ${WS} is served until it is fixed and clice restarts",
 ]
 
 ["nothing is served"."clice.toml"]
@@ -21,5 +21,5 @@ diagnostics = []
 ["nothing is served".log]
 value = [
     "warning: clice.toml clice.toml:1:10: TOML parse error: Error while parsing table header: expected ']', saw 'e'",
-    "warning: Configuration problem in clice.toml:1:10: TOML parse error: Error while parsing table header: expected ']', saw 'e'. Nothing under ${WS} is served until it is fixed and saved",
+    "warning: Configuration problem in clice.toml:1:10: TOML parse error: Error while parsing table header: expected ']', saw 'e'. Nothing under ${WS} is served until it is fixed and clice restarts",
 ]

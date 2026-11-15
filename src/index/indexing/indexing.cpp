@@ -133,8 +133,8 @@ index::SymbolHash Builder::ensure_symbol(const clang::NamedDecl* decl) {
             described = tmpl->getTemplatedDecl();
         }
         it->second = describe(described);
-        if(focus_only && decl->isFromASTFile() && decl->isInNamedModule() &&
-           !llvm::isa<clang::NamespaceDecl>(decl)) {
+        if(unit.kind() == CompilationKind::Content && decl->isFromASTFile() &&
+           decl->isInNamedModule() && !llvm::isa<clang::NamespaceDecl>(decl)) {
             imported.push_back(decl);
         }
         if(it->second.scope != SymbolScope::External) {

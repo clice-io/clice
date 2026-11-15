@@ -278,7 +278,10 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
         if(id == clang_options::OPT_INPUT) {
             llvm::StringRef token = parsed->values.empty() ? llvm::StringRef(parsed->spelling)
                                                            : llvm::StringRef(parsed->values[0]);
-            if(token.starts_with("@") && unreadable) {
+            // CMake's module map (`<object>.modmap`) holds module options
+            // alone, which clice drops for its own module builds; the
+            // build's scan writes it, so a project not built yet lacks it.
+            if(token.starts_with("@") && unreadable && !token.ends_with(".modmap")) {
                 unreadable->push_back(spelled(token.drop_front(), directory, mounts).str());
             }
             if(command.family == CompilerFamily::NVCC) {

@@ -1,0 +1,2 @@
+[test.area.rename]
+error = "cannot rename `area`: these files are not indexed yet: ${WS}/shape.h"
