@@ -62,7 +62,8 @@ export interface TestContext {
 class TestRun implements TestContext {
     readonly root: string;
     /// The servers' system temporary directory, a root of its own past
-    /// ASCII as the copy's is.
+    /// ASCII as the copy's is, its name short: a socket clice makes there
+    /// holds about a hundred bytes of path, on macOS under a long TMPDIR.
     private readonly temp: string;
     readonly output = new Output();
     readonly disk: Disk;
@@ -82,7 +83,7 @@ class TestRun implements TestContext {
     constructor(c: Case, options: TestOptions) {
         this.case = c;
         this.root = copyRoot("clice-case-");
-        this.temp = copyRoot("clice-temp-");
+        this.temp = copyRoot("t");
         this.workspace = new Workspace(this.root);
         this.disk = new Disk(this.root, c.project, this.steps);
         this.errors = (options.errors ?? []).map((source) => new RegExp(source));
