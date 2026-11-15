@@ -637,5 +637,4 @@ tests/code_actions/formatting/01_project_style
 
 - A definition placed in the host source goes after the last definition of the class's members the index knows in that file, or at the end of the file when it holds none. Which source file hosts a header follows the header's compilation context.
 - Members already defined in another source file are left out of a "define missing members" action only when the project index knows that definition; while the index does not hold the file defining them, every undefined member is offered.
-- A return type naming a member of a dependent base class is copied as written into an out-of-line definition, where it may need `typename` and the base's qualifier.
 - Missing-include candidates come from the standard library mapping and from headers the project index has seen; a header no indexed source file includes is not suggested.

@@ -464,7 +464,7 @@ tests/navigation/references/05_dependent_calls
 
 **引用的读写分类**
 
-查找引用的返回结果只包含位置，无法区分读取与写入；目前不支持为每条结果标注访问类别
+查找引用的返回结果只包含位置，无法区分读取与写入；不支持为每条结果标注访问类别
 
 ```case
 tests/navigation/references/06_access_kinds
@@ -730,7 +730,7 @@ tests/navigation/macros/01_macro_arguments
 
 由宏生成的名称会跳转到生成它的那次宏调用
 
-通过 Token 拼接（token paste）拼出的名称或直接写在宏体中的名称，在使用处都会跳转到生成它的宏调用处，而宏调用处的宏名本身则跳转到宏定义。宏体内部的 Token在展开前没有确定的语义，在其上执行导航不返回任何结果。
+通过 Token 拼接（token paste）拼出的名称或直接写在宏体中的名称，在使用处都会跳转到生成它的宏调用处，而宏调用处的宏名本身则跳转到宏定义。宏体内部的 Token 在展开前没有确定的语义，在其上执行导航不返回任何结果。
 
 ```case
 tests/navigation/macros/02_generated_names

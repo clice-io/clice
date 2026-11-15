@@ -55,7 +55,7 @@ tests/contexts/switching/01_two_hosts
 
 头文件中仅由其他宿主文件编译的代码，仍保留语义着色、大纲、折叠范围、文档链接和悬停
 
-`shared.h` 在被 `fast_host.cpp` 包含时定义 `fast_path()`，在被 `slow_host.cpp` 包含时定义 `slow_path()`。在第一个宿主文件的上下文中查看时，第二个分支会作为非活动代码淡化显示，但仍保留语义着色、大纲条目、折叠范围和包含链接，悬停在 `slow_path` 上也能显示其声明：clice 的索引保存了该头文件的所有上下文，只要文件内容与磁盘保存状态一致，各项响应就会从索引中补齐其他上下文的代码。在切换上下文的菜单中选择 Hide other contexts，即可仅显示第一个宿主文件的上下文。
+`shared.h` 在被 `fast_host.cpp` 包含时定义 `fast_path()`，在被 `slow_host.cpp` 包含时定义 `slow_path()`。在第一个宿主文件的上下文中查看时，第二个分支会作为非活动代码变暗显示，但仍保留语义着色、大纲条目、折叠范围和包含链接，悬停在 `slow_path` 上也能显示其声明：clice 的索引保存了该头文件的所有上下文，只要文件内容与磁盘保存状态一致，各项响应就会从索引中补齐其他上下文的代码。在切换上下文的菜单中选择 Hide other contexts，即可仅显示第一个宿主文件的上下文。
 
 ```case
 tests/contexts/switching/14_other_host_code

@@ -12,7 +12,7 @@
 - `definition <locator>`、`read-symbol <locator>`、`references <locator> [--include-declaration]`、`call-graph <locator> [--direction callers|callees|both]`、`type-hierarchy <locator> [--direction supertypes|subtypes|both]` 和 `implementation <locator>` 针对定位符指明的那一个符号作答：没有任何定义时，`definition` 给出它的声明；在多处定义时，把其余定义列在 `otherDefinitions` 中；没有任何文件定义的宏，则给出 `<command line>` 或 `<built-in>`；每条引用都会指明所在的函数；`implementation` 列出类之下各层的所有派生类，或函数之下各层的所有重写函数。定位符匹配到多个符号时，会将它们列在 `candidates` 中；没有任何符号与所写名称完全一致（区分大小写）时，不会指明任何符号，而是同样把最接近的匹配列出来，哪怕只有一个。`definition` 和 `read-symbol` 还会给出符号的 `documentation`：以 Markdown 形式返回其文档注释，解析方式与编辑器的悬停一致——展开 `@param`、`@return` 和 `@copydoc`，无注释的重写函数则显示被重写函数的文档。
 - `document-symbols <file>` 给出该文件的大纲。
 - `project-files [--filter all|source|header|module]` 列出构建涉及的文件；`file-deps <file> [--direction includes|includers|both] [--depth <n>]` 沿包含关系图查询，`impact-analysis <file>` 则同时沿包含关系图以及导入该文件所属模块的文件查询。
-- `counterparts <file>` 列出与该文件配对的文件——头文件的源文件、源文件的头文件、模块的接口单元与实现单元——最佳匹配排在最前，每项均附带配对理由，并将编辑器无需询问就会直接打开的那一个标为 `preferred`（参见[切换源文件／头文件](../features/navigation.md#switch-source-header)）。
+- `counterparts <file>` 列出与该文件配对的文件——头文件的源文件、源文件的头文件、模块的接口单元与实现单元——最佳匹配排在最前，每项均附带配对理由，并将编辑器无需询问就会直接打开的那一个标为 `preferred`（参见[切换源文件与头文件](../features/navigation.md#switch-source-header)）。
 
 问题中的路径可以是相对于当前目录的相对路径或绝对路径，答案中的路径一律为绝对路径；行号从 1 开始。
 

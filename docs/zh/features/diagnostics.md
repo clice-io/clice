@@ -185,7 +185,7 @@ tests/diagnostics/clang_tidy/01_findings
 
 没有 `.clang-tidy` 时仍会运行少量默认检查
 
-没有 `.clang-tidy` 的项目仍会运行几项极少误报的检查，例如未使用的声明，编辑器会将其淡化显示。
+没有 `.clang-tidy` 的项目仍会运行几项极少误报的检查，例如未使用的声明，编辑器会将其变暗显示。
 
 ```case
 tests/diagnostics/clang_tidy/02_default_checks

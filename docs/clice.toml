@@ -35,7 +35,7 @@ foreground = 2
 background = "auto"
 # The most compile workers at once: "auto" (the physical cores) or a number.
 max = "auto"
-# How long the background index waits after the last edit or request.
+# How long the background index waits, once work is queued, before it starts.
 background_delay_ms = 3000
 
 # Rules name files by pattern and say where they take their compile commands

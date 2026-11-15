@@ -135,7 +135,7 @@ tests/folding_ranges/sections/02_switch_cases
 
 ## 注释与连续行组
 
-块注释在定界符处折叠，连续的行注释、include 指令、import 声明或 `using` 声明则合为一组折叠。
+块注释在定界符处折叠，连续的行注释、包含指令、import 声明或 `using` 声明则合为一组折叠。
 
 <!-- BEGIN GENERATED ITEMS: folding_ranges/runs -->
 
@@ -155,9 +155,9 @@ tests/folding_ranges/runs/01_comments
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**连续 include 指令组**
+**连续 包含指令组**
 
-连续的 include 指令合为一组，从第一条 include 下方开始折叠
+连续的 包含指令合为一组，从第一条 include 下方开始折叠
 
 include 之间的空行和注释行仍归入同一组；代码或其他预处理指令会结束这一组。条件分支内的 include 在该分支内部折叠，无论该分支是否启用。
 
@@ -185,7 +185,7 @@ tests/folding_ranges/runs/03_using_declarations
 
 **连续 import 声明组**
 
-连续的 import 声明与 include 指令一样合为一组折叠
+连续的 import 声明与 包含指令一样合为一组折叠
 
 `export import` 也会并入同一组，import 之间的空行和注释行同样留在组内。
 
@@ -245,7 +245,7 @@ tests/folding_ranges/conditionals/01_branches
 
 未启用的分支与启用的分支一样可折叠
 
-预处理条件的每个分支无论编译时是否启用均可折叠，嵌套在未启用分支中的条件也不例外，便于手动收起不参与编译的代码。未启用的代码由语义 Token 的 `inactive` 修饰符淡化显示；折叠范围本身不区分分支是否启用。
+预处理条件的每个分支无论编译时是否启用均可折叠，嵌套在未启用分支中的条件也不例外，便于手动收起不参与编译的代码。未启用的代码由语义 Token 的 `inactive` 修饰符变暗显示；折叠范围本身不区分分支是否启用。
 
 ```case
 tests/folding_ranges/conditionals/02_untaken_branches

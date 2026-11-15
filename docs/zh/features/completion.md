@@ -91,7 +91,7 @@ tests/code_completion/symbols/11_required_qualifier
 
 **文档**
 
-补全项显示所指实体的文档注释；模板实例化的成员显示其主模板编写的注释
+补全项显示所指实体的文档注释；模板实例化的成员显示其所属模板编写的注释
 
 ```case
 tests/code_completion/symbols/13_documentation
@@ -315,7 +315,7 @@ tests/code_completion/functions_snippets/06_call_parentheses
 
 **模板实参占位符**
 
-类模板会为每个没有默认值的模板形参插入占位符；若所有形参都有默认值，则插入空尖括号
+类模板会为每个没有默认值的模板参数插入占位符；若所有形参都有默认值，则插入空尖括号
 
 ```case
 tests/code_completion/functions_snippets/07_template_arguments
@@ -353,7 +353,7 @@ tests/code_completion/functions_snippets/12_objective_c_methods
 
 ## 模板与概念
 
-在模板内部，即使成员依赖模板形参也能正常补全。
+在模板内部，即使成员依赖模板参数也能正常补全。
 
 <!-- BEGIN GENERATED ITEMS: code_completion/templates -->
 
@@ -571,7 +571,7 @@ tests/code_completion/include_path_completion/09_header_order
 
 **库内部名称排后**
 
-标准库或运行库的保留名称（如 `__algorithm/`、`_mingw.h`）排在所属搜索分组的其余名称之后，隐藏项（如 `.git/`）排在所有候选项最后
+库的保留名称（如 `__algorithm/`、`_mingw.h`）排在所属搜索分组的其余名称之后，隐藏项（如 `.git/`）排在所有候选项最后
 
 ```case
 tests/code_completion/include_path_completion/11_reserved_names

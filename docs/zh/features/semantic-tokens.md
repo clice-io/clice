@@ -29,7 +29,7 @@ clice 为文档中的每个 Token 着色：名称按其声明或指代的实体�
 | `interface`                        | Objective-C 协议                                                                                                                                                                                                            |
 | `function`、`method`               | 自由函数；成员函数（含构造函数和析构函数），以及标在其选择器（selector）每一段上的 Objective-C 方法                                                                                                                         |
 | `variable`、`parameter`、`field`   | 变量、函数形参、数据成员，以及 Objective-C 属性或实例变量                                                                                                                                                                   |
-| `enumMember`、`label`              | 枚举值；标签                                                                                                                                                                                                                |
+| `enumMember`、`label`              | 枚举项；标签                                                                                                                                                                                                                |
 | `macro`、`macroParameter`          | 宏；函数式宏定义中的形参                                                                                                                                                                                                    |
 | `attribute`                        | 属性名：`nodiscard`、`gnu::packed`                                                                                                                                                                                          |
 | `unknown`                          | 只有实例化才能解析的依赖名（dependent name）：`T::reset()`、`value.size()`                                                                                                                                                  |
@@ -44,7 +44,7 @@ clice 为文档中的每个 Token 着色：名称按其声明或指代的实体�
 | ---------------- | ------------------------------------------------------------------------------- |
 | `declaration`    | 声明该实体而不定义它                                                            |
 | `definition`     | 定义该实体                                                                      |
-| `readonly`       | 无法通过该名称修改对象：常量、指向 const 的引用、const 指针、枚举值、const 方法 |
+| `readonly`       | 无法通过该名称修改对象：常量、指向 const 的引用、const 指针、枚举项、const 方法 |
 | `static`         | 静态成员或静态局部变量                                                          |
 | `deprecated`     | 实体已弃用                                                                      |
 | `abstract`       | 纯虚方法，或含有纯虚方法的类                                                    |
@@ -994,5 +994,5 @@ tests/semantic_tokens/inactive/08_edited_condition
 
 ## 已知限制
 
-- 文件正在编译期间——首次打开时，或其包含的头文件发生更改后——其 Token 先由项目索引提供。这些 Token 能标出编译完成后所能标出的一切具名实体，但缺少只有完整编译才能得知的信息：依赖名与 `unknown` 名称、声明符运算符、Lambda 模板形参两侧的尖括号、格式字符串占位符、未命中的分支，以及被宏丢弃的实参。编译完成后这些内容便会出现。
+- 文件正在编译期间——首次打开时，或其包含的头文件发生更改后——其 Token 先由项目索引提供。这些 Token 能标出编译完成后所能标出的一切具名实体，但缺少只有完整编译才能得知的信息：依赖名与 `unknown` 名称、声明符运算符、Lambda 模板参数两侧的尖括号、格式字符串占位符、未命中的分支，以及被宏丢弃的实参。编译完成后这些内容便会出现。
 - 控制流不可达的代码，以及 `if constexpr` 中在某次实例化时被丢弃的分支，均不会变暗显示：前者需要控制流分析，后者在不同实例化之间各不相同（[clangd#1828](https://github.com/clangd/clangd/issues/1828)）。

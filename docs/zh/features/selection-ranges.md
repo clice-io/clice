@@ -55,7 +55,7 @@ tests/selection_ranges/syntax_ranges/03_argument_lists
 
 **模板实参与形参列表**
 
-先选中尖括号内的模板实参列表和模板形参列表，再把尖括号纳入选区
+先选中尖括号内的模板实参列表和模板参数列表，再把尖括号纳入选区
 
 ```case
 tests/selection_ranges/syntax_ranges/04_template_lists

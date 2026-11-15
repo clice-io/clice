@@ -2,7 +2,7 @@
 
 ## Overview
 
-`clice refactor` rewrites the project's sources from the persisted index, the same index `clice query` reads. Nothing is compiled, so a refactoring over a large tree takes about as long as a query. `rename` is the one refactoring today; an editor's rename runs the same engine.
+`clice refactor` rewrites the project's sources from the persisted index, the same index `clice query` reads. Nothing is compiled, so a refactoring over a large tree takes about as long as a query. `rename` is the one refactoring it offers; an editor's rename runs the same engine.
 
 **Usage**: `clice refactor rename (<locator> <new-name> | --spec <file>) [--workspace <dir>] [--configuration <tag>] [--dry-run] [--fresh]`
 

@@ -42,7 +42,7 @@ tests/config/layers/01_editor_overrides
 
 <!-- END GENERATED ITEMS -->
 
-Most of what follows is written as rules. A `[[rules]]` entry names files by `patterns`, relative to the project root, and sets fields for them. Every rule matching a file applies, in order: their `append` and `remove` add up, and each other field is decided by the first rule setting it, so a rule for some files goes before a rule for all of them, and a rule without `patterns` goes last. `clice command <file>` shows what the rules make of a file: the command it compiles with, and the value of each per-file setting with the rule deciding it.
+Most of what follows is written as rules. A `[[rules]]` entry names files by `patterns`, relative to the project root, and sets fields for them. Every rule matching a file applies, in order: their `append` and `remove` add up, and each other field is decided by the first rule setting it, so a rule for some files goes before a rule for all of them, and a rule without `patterns` goes last. `clice command <file>` shows what the rules make of a file: each command its databases list for it, with the rules' edits, and the value of each per-file setting with the rule deciding it. In VS Code, Show Compile Command shows the command an open file compiles with, wherever it comes from.
 
 ## Compile Commands
 

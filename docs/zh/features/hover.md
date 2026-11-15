@@ -181,7 +181,7 @@ tests/hover/variables/02_constant_values
 
 **较长的初始化器**
 
-较长的初始化器不会完整写入定义，值一行只显示前几个元素
+较长的初始化器不写入定义，值一行只显示前几个元素
 
 ```case
 tests/hover/variables/04_long_initializers
@@ -347,15 +347,15 @@ tests/hover/deduced_types/14_library_aliases
 
 ## 模板
 
-模板形参会显示其种类和默认值，模板的使用处会显示实例化所用的实参。
+模板参数会显示其种类和默认值，模板的使用处会显示实例化所用的实参。
 
 <!-- BEGIN GENERATED ITEMS: hover/templates -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**模板形参**
+**模板参数**
 
-模板形参显示其种类（类型、模板或值）及默认值
+模板参数显示其种类（类型、模板或值）及默认值
 
 ```case
 tests/hover/templates/01_template_parameters

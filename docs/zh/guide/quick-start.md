@@ -6,7 +6,7 @@ clice 实现了[语言服务器协议](https://microsoft.github.io/language-serv
 
 除标准协议外，clice 还支持若干协议扩展。为获得更完整的集成体验，建议使用专用的 clice 插件。
 
-各编辑器的配置说明见[编辑器配置](./editors.md)：Visual Studio Code、Neovim 和 Zed 提供官方插件，使用通用 LSP 客户端的编辑器（Helix、Emacs、Sublime Text、Kate、Vim）则提供配置片段。
+各编辑器的配置说明见[编辑器设置](./editors.md)：Visual Studio Code、Neovim 和 Zed 提供官方插件，使用通用 LSP 客户端的编辑器（Helix、Emacs、Sublime Text、Kate、Vim）则提供配置片段。
 
 ## 安装
 
@@ -22,7 +22,7 @@ clice 实现了[语言服务器协议](https://microsoft.github.io/language-serv
 
 要让 clice 正确理解代码（例如定位头文件），需要提供 `compile_commands.json` 文件，即[编译数据库](https://clang.llvm.org/docs/JSONCompilationDatabase.html)。编译数据库记录每个源文件的编译选项。
 
-默认情况下，clice 会加载项目根目录及其直接子目录（如 `build/`）中的每一份 `compile_commands.json`，并在打开某个文件时加载该文件到项目根目录之间各级目录中的编译数据库，因此目录树深处的数据库会在其所属文件首次打开时加载。带有独立 `clice.toml` 或 `.clice/config.toml` 的子目录视为独立项目，外层项目绝不会加载它的数据库。只要任意规则设置了 `compile_commands` 或 `default_command`，这项自动发现就会关闭。如何在 `clice.toml` 中指定编译数据库、如何编译没有数据库条目的文件，参见[配置指南](./config-guide.md#compile-commands)。
+默认情况下，clice 会加载项目根目录及其直接子目录（如 `build/`）中的每一份 `compile_commands.json`，并在打开某个文件时加载该文件到项目根目录之间各级目录中的编译数据库，因此目录树深处的数据库，会在其所在目录或更深层目录中的文件首次打开时加载。带有独立 `clice.toml` 或 `.clice/config.toml` 的子目录视为独立项目，外层项目绝不会加载它的数据库。只要任意规则设置了 `compile_commands` 或 `default_command`，这项自动发现就会关闭。如何在 `clice.toml` 中指定编译数据库、如何编译没有数据库条目的文件，参见[配置指南](./config-guide.md#compile-commands)。
 
 ### CMake
 

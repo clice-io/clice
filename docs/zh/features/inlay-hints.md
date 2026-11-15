@@ -417,7 +417,7 @@ tests/inlay_hints/type_hints/25_base_member_aliases
 
 按位置进行聚合初始化时显示 `.field=`，启用后还会显示 `[index]=`
 
-数组索引默认关闭，可通过 `inlay_hints.array_indices` 开启，否则数据表中的每个元素都会带上索引。未开启数组索引时，穿过数组的路径只显示其中的字段；开启数组索引但关闭字段指派符时，这类路径不显示任何内容。即使成员大小依赖于模板参数，数组指派符仍能正常显示；保留成员名则会跳过，不予显示。
+数组索引默认关闭，可通过 `inlay_hints.array_indices` 开启：一旦开启，数据表中的每个元素都会带上索引。未开启数组索引时，穿过数组的路径只显示其中的字段；开启数组索引但关闭字段指派符时，这类路径不显示任何内容。即使成员大小依赖于模板参数，数组指派符仍能正常显示；保留成员名则会跳过，不予显示。
 
 ```case
 tests/inlay_hints/designator_hints/01_fields_and_indices
@@ -609,7 +609,7 @@ tests/inlay_hints/other_kinds/02_ctad_arguments
 
 ## 配置
 
-`[inlay_hints]` 配置节（位于 `clice.toml` 中，或通过 `initializationOptions` 传入同名键）包含每种提示的开关、代码块结尾显示提示的最小行数，以及 `[inlay_hints.max_length]` 下的长度上限。详见[配置指南](../guide/configuration.md#inlay-hints)。配置修改在重启服务器后生效。
+`[inlay_hints]` 配置节（位于 `clice.toml` 中，或通过 `initializationOptions` 传入同名键）包含每种提示的开关、代码块结尾显示提示的最小行数，以及 `[inlay_hints.max_length]` 下的长度上限。详见[配置参考](../guide/configuration.md#inlay-hints)。配置修改在重启服务器后生效。
 
 ## 交互行为
 

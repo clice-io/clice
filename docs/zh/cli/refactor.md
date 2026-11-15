@@ -2,7 +2,7 @@
 
 ## 概述
 
-`clice refactor` 根据持久化索引改写项目的源代码，读取的正是 `clice query` 所用的同一份索引。整个过程无需编译，因此在大型源码树上执行一次重构的耗时与一次查询相当。目前提供的重构是 `rename`；编辑器中的重命名运行的也是同一个引擎。
+`clice refactor` 根据持久化索引改写项目的源代码，读取的正是 `clice query` 所用的同一份索引。整个过程无需编译，因此在大型源码树上执行一次重构的耗时与一次查询相当。它提供的重构只有 `rename`；编辑器中的重命名运行的也是同一个引擎。
 
 **用法**：`clice refactor rename (<locator> <new-name> | --spec <file>) [--workspace <dir>] [--configuration <tag>] [--dry-run] [--fresh]`
 
