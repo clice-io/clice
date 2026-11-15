@@ -1,0 +1,5 @@
+[test.skipped]
+definition = ["flags.h │ #define ⟦FEATURE_FLAG⟧ 1"]
+
+[test.defined]
+definition = ["flags.h │ #define ⟦FEATURE_FLAG⟧ 1"]
