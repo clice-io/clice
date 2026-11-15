@@ -15,9 +15,33 @@
 接下来是 clice 的主要功能介绍：
 
 - **多进程编译**：clice 采用类似现代浏览器设计的进程池来进行编译，clangd 则采用多线程。为什么采用多进程？这是因为 C++ 实在**太过复杂**，对于某些 [corner case](https://github.com/clice-io/clice/issues/1057) 编译器很容易崩溃或者产生内存泄漏。尤其是对于正在编辑的**不完整**代码，这里有广泛的下游用户验证编译器在完整代码上的正确性，但是验证不完整代码的人则非常少，编译器往往采用启发式的猜测尽力而为。对于 clangd，如果编译崩溃，则整个服务器都必须要重启。对于 clice，编译发生在隔离的子进程，一个 worker 崩溃并不影响其他服务，跳转高亮之类的仍然可以处理。并且也可以更好地管理内存使用和编译优先级调度，降低不必要的资源消耗。
+
+  <video src="https://github.com/user-attachments/assets/01e7b675-dcd3-475f-b8ab-bed70cf4f603" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _左为 clangd 23.1.0 默认设置，右为 clice：在同一处请求补全，Clang 每次都崩。clangd 整个进程崩了 5 次后插件不再重启，悬浮也没了；clice 只丢了一个 worker，在文件上提示这次崩溃，其他功能照常。_
+
 - **模块和共享缓存**：clice 具有完整的 C++20 named module 支持。只需提供一份含有所有模块文件的 `compile_commands.json` 文件，clice 便会自己进行依赖扫描，然后按需 lazy 构建所需要的模块，无论你使用的是什么构建系统或者编译器。并且提供完整的模块补全、高亮、跳转、悬浮等功能支持。同时会将构建的 PCH 和 PCM 缓存在本地磁盘上，供不同会话之间复用。相比之下 clangd 只提供了十分有限的模块功能支持，并且不支持持久化缓存。
+
+  <video src="https://github.com/user-attachments/assets/b4956c32-da19-42dc-b0e1-2314ff3df680" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _左为 clangd 23.1.0 默认设置，右为 clice：补全模块名、悬浮模块名看到注释、Ctrl+点击跳进 `math.cppm`，再补全模块导出的函数并悬浮。_
+
 - **编译上下文**：clice 完全支持非自包含（non-self-contained）的文件，更一般地说，支持编译上下文（compilation context）这个概念。你可以显式选择这个文件的工作上下文，对于源文件来说是不同的编译命令，对于头文件来说则是被包含在不同的位置。并且在你打开非自包含文件的时候会做自动探测，从而提供开箱即用的非自包含文件使用体验。也支持更通用的编译分组概念，允许你为不同的编译配置进行分组，比如说可以在 debug 和 release 之间切换编译命令。
+
+  <video src="https://github.com/user-attachments/assets/bcc372d3-d2bc-4cdc-8c12-fd34517f62eb" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _左为 clangd 23.1.0 默认设置，右为 clice：从 `precise.cpp` 打开非自包含的 `real.hpp`，clangd 报 3 个错，clice 正常；再把上下文从 `fast.cpp` 切到 `precise.cpp`，跳过区域和 `Real` 的类型跟着变。_
+
 - **更好的模板支持**：clice 实现了一个 DFS 伪模板实例化器（pseudo instantiator），不需要具体的模板参数进行确定的实例化，就推断出很多依赖名的指向。如果模板被实例化过一次，还会额外使用这次实例化的结果来提供语言服务，例如 `ranges` 调用用 lambda 的 `auto` 参数补全。另外，clice 把模板看成一个鸭子类型（duck type）的接口，每一次实例化都是它的一个实现，就像虚函数和它的 override 一样：在模板里的依赖调用上跳转到实现，会列出它在每次实例化里实际调用的函数，查找引用和调用层级也是如此。
+
+  <video src="https://github.com/user-attachments/assets/e41b26b8-9d36-43e9-a8d7-ab9dfdd3afd4" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _模板里补全依赖名 `grid[0].`，以及传给 `ranges::for_each` 的 lambda 的 `auto` 参数。_
+
+  <video src="https://github.com/user-attachments/assets/7619f5ef-5e9e-406e-9b6c-a6e6f72ff2b5" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _在依赖调用 `shape.draw()` 上跳转到实现，列出 `Circle::draw` 和 `Square::draw`。_
+
 - **开箱即用的使用体验**：绝大多数项目只需要一份 `compile_commands.json` 即可使用，clice 内置了 50+ 工具链的环境探测，涵盖 nvcc、msys2、cygwin、zigcc 等等。会自动处理好实际使用的编译器和 Clang 不一致的问题。无需像 clangd 那样在配置文件中手动添加大量的编译选项。
 
 除了这些主要的特性，clice 还解决了 clangd 长期存在并且无人问津的很多小 issue，涵盖语义高亮、折叠、悬浮等功能，感兴趣的读者欢迎立即使用，看看能收获哪些惊喜。总的来说，clice 在易用性、功能支持和性能上均超过 clangd。

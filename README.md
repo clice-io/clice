@@ -14,9 +14,23 @@ A C/C++ language server written in modern C++, and more than a language server. 
 ## Language Server
 
 - **Multi-process compilation** — Compiles run in a pool of isolated worker processes, as in a modern browser. A compile that crashes or leaks on a corner case or on half-typed code costs one worker, not the server: navigation and highlighting keep working, and memory and compile priorities are managed across the pool.
+
+  https://github.com/user-attachments/assets/01e7b675-dcd3-475f-b8ab-bed70cf4f603
+
 - **Modules and a shared cache** — Full C++20 named module support from a `compile_commands.json` listing the module files: clice scans the dependencies and builds the modules needed on demand, whatever the build system or compiler, with completion, highlighting, navigation and hover on modules. PCHs and PCMs are cached on disk and reused across sessions.
+
+  https://github.com/user-attachments/assets/b4956c32-da19-42dc-b0e1-2314ff3df680
+
 - **Compilation contexts** — Non-self-contained files work out of the box: a header compiles in the context of a file including it, detected when it is opened, and you can pick another, or another compile command for a source. Build configurations group compiles, for example to switch between debug and release.
+
+  https://github.com/user-attachments/assets/bcc372d3-d2bc-4cdc-8c12-fd34517f62eb
+
 - **Better template support** — A pseudo-instantiator works out what dependent names refer to without concrete arguments, and a template instantiated once also answers through that instantiation, such as the `auto` parameter of a lambda passed to a `ranges` call. A template is a duck-typed interface and each instantiation one of its implementations: go to implementation, references and the call hierarchy on a dependent call list what each instantiation calls.
+
+  https://github.com/user-attachments/assets/e41b26b8-9d36-43e9-a8d7-ab9dfdd3afd4
+
+  https://github.com/user-attachments/assets/7619f5ef-5e9e-406e-9b6c-a6e6f72ff2b5
+
 - **Works out of the box** — Most projects need nothing but a `compile_commands.json`: clice detects the environment of 50+ toolchains, nvcc, MSYS2, Cygwin and zig cc among them, and reconciles the compiler actually used with Clang, with no flags to add by hand.
 
 ## Command Line

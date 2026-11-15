@@ -15,9 +15,33 @@ In short, clice is a C/C++ language server written in **modern C++**, and **more
 The main features of clice:
 
 - **Multi-process compilation**: clice compiles in a pool of processes, in the way modern browsers are designed, where clangd uses threads. Why processes? Because C++ is just **too complex**: on some [corner cases](https://github.com/clice-io/clice/issues/1057) the compiler easily crashes or leaks memory. All the more on **incomplete** code being edited: many downstream users verify the compiler on complete code, very few on incomplete code, where the compiler guesses heuristically as best it can. In clangd, a crashing compile takes the whole server down with it. In clice, compiles run in isolated child processes: one worker crashing affects nothing else, and navigation, highlighting and the like keep working. It also manages memory use and compile priorities better, and spends fewer resources for nothing.
+
+  <video src="https://github.com/user-attachments/assets/01e7b675-dcd3-475f-b8ab-bed70cf4f603" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _Left, clangd 23.1.0 with its default settings; right, clice: completion at the same spot crashes Clang every time. After 5 crashes of its whole process, clangd's extension stops restarting it, and hover is gone too; clice loses one worker, notes the crash on the file, and everything else keeps working._
+
 - **Modules and a shared cache**: clice fully supports C++20 named modules. Given a `compile_commands.json` holding all the module files, clice scans the dependencies itself and builds the modules needed, lazily and on demand, whatever your build system or compiler. Completion, highlighting, navigation and hover all support modules fully. The PCHs and PCMs it builds are cached on the local disk and reused across sessions. clangd, by comparison, has only very limited module support, and no persistent cache.
+
+  <video src="https://github.com/user-attachments/assets/b4956c32-da19-42dc-b0e1-2314ff3df680" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _Left, clangd 23.1.0 with its default settings; right, clice: completing a module name, hovering it to see its comment, Ctrl+clicking into `math.cppm`, then completing a function the module exports and hovering it._
+
 - **Compilation contexts**: clice fully supports non-self-contained files and, more generally, the concept of a compilation context. You can pick the context a file works in explicitly: for a source file, one of its compile commands; for a header, one of the places it is included. Opening a non-self-contained file detects its context automatically, so such files work out of the box. A more general grouping of compiles is supported too, letting you group them by build configuration, for example to switch the compile commands between debug and release.
+
+  <video src="https://github.com/user-attachments/assets/bcc372d3-d2bc-4cdc-8c12-fd34517f62eb" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _Left, clangd 23.1.0 with its default settings; right, clice: opening the non-self-contained `real.hpp` from `precise.cpp`, clangd reports 3 errors and clice none; then switching the context from `fast.cpp` to `precise.cpp`, the skipped regions and the type of `Real` follow._
+
 - **Better template support**: clice implements a DFS pseudo-instantiator, which works out what many dependent names refer to without instantiating the template with concrete arguments. When the template is instantiated once, clice also uses that instantiation to answer, such as completing the `auto` parameter of a lambda passed to a `ranges` call. Beyond that, clice treats a template as a duck-typed interface and each instantiation as one of its implementations, as a virtual function and its overrides: go to implementation on a dependent call in a template lists the function it actually calls in each instantiation, and so do find references and the call hierarchy.
+
+  <video src="https://github.com/user-attachments/assets/e41b26b8-9d36-43e9-a8d7-ab9dfdd3afd4" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _Completing the dependent name `grid[0].` in a template, and the `auto` parameter of a lambda passed to `ranges::for_each`._
+
+  <video src="https://github.com/user-attachments/assets/7619f5ef-5e9e-406e-9b6c-a6e6f72ff2b5" controls autoplay loop muted playsinline style="max-width: 100%"></video>
+
+  _Go to implementation on the dependent call `shape.draw()` lists `Circle::draw` and `Square::draw`._
+
 - **Works out of the box**: most projects need nothing but a `compile_commands.json`. clice detects the environment of 50+ toolchains, nvcc, MSYS2, Cygwin and zig cc among them, and handles the differences between the compiler actually used and Clang on its own. No adding piles of compile flags to a configuration file, as clangd needs.
 
 Beyond these main features, clice also solves many small, long-standing clangd issues nobody took up, across semantic highlighting, folding, hover and more; try it now and see what surprises you find. All in all, clice surpasses clangd in ease of use, features and performance.
