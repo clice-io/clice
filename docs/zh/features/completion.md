@@ -43,7 +43,7 @@ tests/code_completion/symbols/02_class_templates
 
 对象式宏按常量形式补全，函数式宏按带参数签名的函数形式补全
 
-实参占位方式遵循函数的设置 `code_completion.arguments`。
+它们的实参与函数一样，按 `code_completion.arguments` 的设置补全。
 
 ```case
 tests/code_completion/symbols/05_macros
