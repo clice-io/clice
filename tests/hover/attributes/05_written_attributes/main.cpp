@@ -3,6 +3,7 @@
 #define PACKED __attribute__((packed))
 #define HOT_PATH __attribute__((hot, noinline))
 #define FORCE_INLINE static inline __attribute__((always_inline))
+#define NESTED_INLINE FORCE_INLINE __attribute__((hot))
 
 namespace written_attributes {
 NODISCARD int §(macro_attribute)compute();
@@ -41,6 +42,10 @@ struct §(member_attributes)Holder {
 
 FORCE_INLINE int §(macro_with_specifiers)twice(int x) {
     return x * 2;
+}
+
+NESTED_INLINE int §(nested_macro_with_specifiers)thrice(int x) {
+    return x * 3;
 }
 
 #pragma clang attribute push(__attribute__((cold)), apply_to = function)
