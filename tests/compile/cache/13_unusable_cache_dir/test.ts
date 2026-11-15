@@ -12,7 +12,11 @@ test("server", { errors: ["Cannot create the log directory"] }, async (t) => {
 });
 
 // A lint run builds its preambles into the cache too: it stops at once.
-test("lint", { errors: ["Cannot create the log directory", "Cannot use the cache directory"] }, async (t) => {
-    t.disk.write(".clice", "not a directory\n");
-    await t.cli("lint");
-});
+test(
+    "lint",
+    { errors: ["Cannot create the log directory", "Cannot use the cache directory"] },
+    async (t) => {
+        t.disk.write(".clice", "not a directory\n");
+        await t.cli("lint");
+    },
+);
