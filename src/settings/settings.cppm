@@ -413,8 +413,8 @@ struct SettingsIssue {
 
     Severity severity;
     /// Absolute path of the configuration file; empty for a problem of the
-    /// overlay, whose message names it, or of the `--configuration` asked
-    /// for.
+    /// overlay, whose message names it, of the `--configuration` asked for,
+    /// or of the cache directory.
     std::string file;
     std::string message;
     /// 1-based position in the file; 0 when unknown.

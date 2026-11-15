@@ -9,6 +9,7 @@ import :server.session;
 import :settings.rules;
 import :support.prelude;
 import :unittests.utils.project_fixture;
+import :unittests.utils.temp_dir;
 import :vfs.file_table;
 import :vfs.path;
 
@@ -22,6 +23,9 @@ namespace clice::testing {
 /// tests set up or check goes through the accessors below, ServedProject's
 /// only friend.
 struct ServedProjectFixture : zest::LoopFixture {
+    /// Where the project's cache store lives: a served project has one.
+    TempDir cache;
+
     MasterServer server{loop, ""};
     std::shared_ptr<ServedProject> served;
 
@@ -31,6 +35,7 @@ struct ServedProjectFixture : zest::LoopFixture {
         watchdog = chrono::seconds(45);
         served = std::make_shared<ServedProject>(server, CanonicalPath(Spelling::absolute(root)));
         skip_toolchain_query(served->project);
+        open_cache(cache, served->project);
         server.projects.push_back(served);
         // The server applies the file table's changes, and the project
         // flushes its metadata, on a later turn of its running event loop;

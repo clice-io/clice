@@ -144,7 +144,7 @@ struct IndexRequest {
     FunctionBodyRules function_bodies;
 
     /// Where the worker writes an index too large for an IPC message: a
-    /// transfer path of the master's store, empty when it has none.
+    /// transfer path of the master's store.
     std::string output_path;
 };
 

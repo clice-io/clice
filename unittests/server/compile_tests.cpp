@@ -387,7 +387,6 @@ ZEST_CASE(BufferImportBuildsPCM) {
     }));
     scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
-    open_cache(tmp, project);
 
     auto session = fixture.open(src, "import m;\nint main() { return mv(); }\n");
 
@@ -437,7 +436,6 @@ ZEST_CASE(RefusedModuleForgotten) {
     }));
     scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
-    open_cache(tmp, project);
 
     auto crashed = fixture.intern(tmp.path("crashed.cppm"));
     auto read = current_input(project.file_table, crashed);
@@ -509,7 +507,6 @@ ZEST_CASE(DiamondDepsDeduplicated) {
     }));
     scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
-    open_cache(tmp, project);
 
     auto session = fixture.open(src, "import top;\nint main() { return t(); }\n");
 
@@ -556,7 +553,6 @@ ZEST_CASE(ImportScanPerUnit) {
     }));
     scan_all(project.cdb, project.toolchain, project.dep_graph);
     project.dep_graph.build_reverse_map();
-    open_cache(tmp, project);
 
     auto plain = fixture.open(tmp.path("plain.cpp"), "int plain() { return 0; }\n");
     auto main = fixture.open(tmp.path("main.cpp"), "import m;\nint main() { return mv(); }\n");
@@ -866,7 +862,6 @@ ZEST_CASE(PCHCrashStopsDocument) {
 
     ServedProjectFixture fixture(tmp.root);
     auto& served = *fixture.served;
-    open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "#pragma clang __debug crash\n");
 
     std::string directory = tmp.path(".");
@@ -905,7 +900,6 @@ ZEST_CASE(PCHCrashStopsBuild) {
 
     ServedProjectFixture fixture(tmp.root);
     auto& served = *fixture.served;
-    open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "#pragma clang __debug crash\nint value;\n");
 
     auto body = [&]() -> async::task<> {
@@ -939,7 +933,6 @@ ZEST_CASE(QueuedRequestStops) {
 
     ServedProjectFixture fixture(tmp.root);
     auto& served = *fixture.served;
-    open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "int value;\n#pragma clang __debug crash\nint other;\n");
 
     auto body = [&]() -> async::task<> {
@@ -1114,7 +1107,6 @@ ZEST_CASE(PoisonPreambleShared) {
 
     TempDir tmp;
     ServedProjectFixture fixture(tmp.root);
-    open_cache(tmp, fixture.served->project);
 
     auto open_poisoned = [&](llvm::StringRef name) {
         tmp.touch(name, "");
@@ -1169,7 +1161,6 @@ ZEST_CASE(AbandonedPCHDropsIndex) {
 
     ServedProjectFixture fixture(tmp.root);
     auto& project = fixture.served->project;
-    open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "#define X 1\nint x;\n");
     auto& hooks = fixture.server.hooks;
     fixture.server.pool.hooks = &hooks;
@@ -1234,7 +1225,6 @@ ZEST_CASE(GenerationGuardsPCHClear) {
 
     ServedProjectFixture fixture(tmp.root);
     auto& served = *fixture.served;
-    open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "#define X 1\nint x;\n");
     // One prior crash on the PCH record.
     auto crashed = [&] {
@@ -1301,7 +1291,6 @@ ZEST_CASE(StaleDepsNoAdopt) {
 
     ServedProjectFixture fixture(tmp.root);
     auto& served = *fixture.served;
-    open_cache(tmp, fixture.served->project);
     auto session = fixture.open(src, "#include \"dep.h\"\nint x;\n");
 
     std::string directory = tmp.path(".");

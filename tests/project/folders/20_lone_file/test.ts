@@ -49,3 +49,15 @@ test("next file waits for the cache", async (t) => {
     expect(await s.errors("other.cpp")).toEqual([]);
     expect(fs.existsSync(cache(s))).toBe(true);
 });
+
+// clice's temporary directory cannot be made (a file sits where it goes):
+// the files outside every folder are not served, and the user is told why.
+test("temporary directory unusable", async (t) => {
+    t.disk.write("tmp", "not a directory\n");
+    const tmp = path.join(t.root, "tmp");
+    const s = await t.start({ folders: [], env: { TMPDIR: tmp, TMP: tmp, TEMP: tmp } });
+    expect(await s.errors("main.cpp")).toEqual([]);
+    const guidance = (await s.guidance()).join("\n");
+    expect(guidance).toContain("cannot hold clice's temporary files");
+    expect(guidance).toContain("no file outside every workspace folder is served");
+});

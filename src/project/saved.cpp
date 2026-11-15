@@ -319,9 +319,7 @@ void Project::reconcile_index(index::IndexReport& report) {
 }
 
 async::task<> Project::checkpoint() {
-    if(store) {
-        co_await async::queue([this] { store->checkpoint(); });
-    }
+    co_await async::queue([this] { store->checkpoint(); });
     // A full search build or a fold here could still be running on the
     // thread pool when a shutdown cancels the checkpoint, holding up the
     // final save behind seconds of derived work: the pass end does them,
@@ -660,23 +658,17 @@ bool Project::load_saved(bool reconcile, index::IndexReport& report) {
         // members of a session whose index was discarded.
         case index::LoadResult::Empty: break;
         case index::LoadResult::Unreadable:
-            // Run this session memory-only — saving a fresh lineage over
-            // records whose header was never read could alias their path
-            // ids — and leave everything for a healthier restart to load.
-            // Confirmed page corruption heals through rebuildability
-            // instead: the condemned database deletes itself and a fresh
-            // empty one opens in its place, so this session's rebuild
-            // persists instead of being redone at the next start.
+            // Left for a healthier restart to load: saving a fresh lineage
+            // over records whose header was never read could alias their
+            // path ids. Confirmed page corruption heals through
+            // rebuildability instead: the condemned database deletes itself
+            // and a fresh empty one opens in its place, so this session's
+            // rebuild persists instead of being redone at the next start.
             if(!read_only && db.corrupted()) {
                 LOG_WARN("Index database is corrupt; discarding it and rebuilding from scratch");
                 reopen_fresh_database();
             } else {
-                // Best effort before detaching: the metadata blobs may
-                // still read while only the header is unreadable.
-                load_metadata();
-                LOG_WARN(
-                    "Index database header unreadable; disabling index persistence this "
-                    "session");
+                LOG_WARN("Index database header unreadable");
                 database.reset();
             }
             return true;
@@ -792,7 +784,7 @@ std::string Project::serialize_precompiled_records() {
 }
 
 void Project::load_precompiled_records(llvm::StringRef bytes) {
-    if(bytes.empty() || !store) {
+    if(bytes.empty()) {
         return;
     }
     Records data;

@@ -33,6 +33,11 @@ struct IndexerFixture {
 
     constexpr static unsigned budget = BackgroundIndex::max_requeues;
 
+    /// Where the project's cache store lives: a project that builds has
+    /// one. A test reopening a store across fixtures opens its own
+    /// (open_store).
+    TempDir cache;
+
     async::event_loop loop;
     FileTable files;
     WorkerPool pool{loop};
@@ -48,6 +53,7 @@ struct IndexerFixture {
 
     IndexerFixture() {
         project.rules = Rules(project.settings, project.root, "");
+        open_cache(cache, project);
     }
 
     struct Unit {

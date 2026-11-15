@@ -93,11 +93,8 @@ bool has_build(const Project& project) {
     if(declared || !discovered_databases(project.root).empty()) {
         return true;
     }
-    auto& cache_dir = project.settings.cache_dir;
-    if(cache_dir.empty()) {
-        return false;
-    }
-    auto store = CacheStore::open(cache_dir, cache_format_version, /*read_only=*/true);
+    auto store =
+        CacheStore::open(project.settings.cache_dir, cache_format_version, /*read_only=*/true);
     return store && index::database_exists(*store, project.database_key);
 }
 
@@ -105,22 +102,20 @@ bool has_build(const Project& project) {
 /// settings name — theirs is the folders', and a cache directory serves one
 /// project of a server: this server's own directory under clice's temporary
 /// one, removed with the project (make_project) — those of servers killed
-/// before, when the next one makes its own.
-void use_temporary_cache(Settings& settings) {
+/// before, when the next one makes its own. Why there is none: the
+/// temporary directory cannot be used.
+std::optional<std::string> use_temporary_cache(Settings& settings) {
     settings.cache_dir.clear();
     settings.cache_identity = {};
     auto temp = temp_root();
     if(!temp) {
-        LOG_GUIDANCE(
-            "{}; no preamble or module is precompiled for the files outside every "
-            "folder",
-            temp.error());
-        return;
+        return std::move(temp.error());
     }
     remove_left_by_exited(*temp);
     CanonicalPath cache(Spelling::absolute(path::join(*temp, std::to_string(sys::pid()))));
     settings.cache_dir = cache.str();
     settings.cache_identity = std::move(cache);
+    return std::nullopt;
 }
 
 }  // namespace
@@ -141,7 +136,9 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
     settings_file = std::move(loaded.file);
     settings_issues = std::move(loaded.issues);
     if(project.root.empty()) {
-        use_temporary_cache(project.settings);
+        if(auto error = use_temporary_cache(project.settings)) {
+            refuse_cache(*error);
+        }
     }
 
     // The file's problems are listed as its diagnostics, with one message;
@@ -198,11 +195,14 @@ void ServedProject::open() {
     waiting = false;
     server.log_into(*this);
     if(!broken() && project.root.empty()) {
-        project.open({
+        auto opened = project.open({
             .configuration = configuration,
             .load = Project::OpenOptions::Load::Rules,
             .cache = Project::OpenOptions::Cache::Build,
         });
+        if(!opened.unwritable.empty()) {
+            refuse_cache(opened.unwritable);
+        }
     } else if(!broken()) {
         llvm::SmallVector<CanonicalPath> open_files;
         for(auto& [path_id, document]: documents) {
@@ -218,12 +218,15 @@ void ServedProject::open() {
             .cache = Project::OpenOptions::Cache::Write,
             .files = std::move(open_files),
         });
+        if(!opened.unwritable.empty()) {
+            refuse_cache(opened.unwritable);
+            serve();
+            return;
+        }
         // Rules keeping every unit out of the background index leave the
         // index as saved: no indexer refreshes what it withholds.
         project.freshness.options.withhold = project.rules.indexes_any();
-        if(project.store) {
-            bg_tasks.spawn(checkpoint_task());
-        }
+        bg_tasks.spawn(checkpoint_task());
         commands_missing =
             ranges::none_of(opened.members, [&](Fid member) { return project.declared(member); }) &&
             !project.rules.declares_sources() && !project.found_unreadable_database();
@@ -293,7 +296,7 @@ async::task<> ServedProject::open_index_task() {
     auto lock = co_await project.wait_for_writer();
     if(!lock) {
         project.index_waits = false;
-        index_kept_elsewhere = true;
+        cache_unusable = true;
         auto holder = index::WriterLock::holder(project.settings.cache_dir);
         LOG_GUIDANCE(
             "Another clice process{} keeps the index in {}: nothing under {} is served until it "
@@ -303,9 +306,23 @@ async::task<> ServedProject::open_index_task() {
             project.file_table.display(project.root));
     } else {
         Project::Opened opened;
-        follow({.commands = project.open_index(std::move(*lock), opened)});
+        auto commands = project.open_index(std::move(*lock), opened);
+        if(opened.unwritable.empty()) {
+            follow({.commands = std::move(commands)});
+        } else {
+            refuse_cache(opened.unwritable);
+        }
     }
     serve();
+}
+
+void ServedProject::refuse_cache(llvm::StringRef why) {
+    cache_unusable = true;
+    LOG_GUIDANCE("{}. Until clice restarts, {} is served",
+                 why,
+                 project.root.empty()
+                     ? std::string("no file outside every workspace folder")
+                     : std::format("nothing under {}", project.file_table.display(project.root)));
 }
 
 async::task<> ServedProject::shutdown() {

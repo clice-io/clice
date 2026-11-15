@@ -313,7 +313,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
             with_index ? Project::OpenOptions::Cache::Write : Project::OpenOptions::Cache::Build,
     });
 
-    if(auto unwritable = with_index ? co_await writes_index(project, opened) : std::string();
+    if(auto unwritable = with_index ? co_await writes_index(project, opened) : opened.unwritable;
        !unwritable.empty()) {
         result.error = std::move(unwritable);
     } else if(opened.members.empty()) {

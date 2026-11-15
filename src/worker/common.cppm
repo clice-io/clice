@@ -46,8 +46,7 @@ inline std::size_t max_index_bytes() {
 
 /// Put a built index into `result`: inline when it fits, else written to
 /// `output_path` — the master's transfer file — with the reply saying so.
-/// Returns why the index cannot be sent: too large with no path to
-/// write to, or the write failed.
+/// Returns why the index cannot be sent: the write failed.
 template <typename Result>
 std::optional<std::string> send_index(std::vector<std::byte> blob,
                                       llvm::StringRef output_path,
@@ -55,10 +54,6 @@ std::optional<std::string> send_index(std::vector<std::byte> blob,
     if(blob.size() <= max_index_bytes()) {
         result.tu_index_data = std::move(blob);
         return std::nullopt;
-    }
-    if(output_path.empty()) {
-        return std::format("the index ({} MiB) is too large to send between clice processes",
-                           blob.size() / (1024 * 1024));
     }
     if(auto error = fs::write_file(output_path, as_chars(blob))) {
         return std::format("writing the index to {} failed: {}", output_path, error.message());

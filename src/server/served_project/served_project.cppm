@@ -373,11 +373,11 @@ public:
     /// index stops, the final state is persisted and the store closes.
     async::task<> shutdown();
 
-    /// The settings have errors, or another process keeps the project's
-    /// index: the project starts nothing, and the files under its root
-    /// answer every request at once with nothing.
+    /// The settings have errors, or the project's cache cannot be used:
+    /// the project starts nothing, and the files under its root answer
+    /// every request at once with nothing.
     bool broken() const {
-        return has_error(settings_issues) || index_kept_elsewhere;
+        return has_error(settings_issues) || cache_unusable;
     }
 
     /// Whether the project's root holds `path`; the rootless project's
@@ -837,8 +837,12 @@ private:
     /// What open() leaves while another process holds the writer lock: the
     /// index, opened once the lock comes free (Project::wait_for_writer),
     /// then serve(). The documents wait meanwhile; a lock still held when
-    /// the wait ends leaves the project unserved (index_kept_elsewhere).
+    /// the wait ends leaves the project unserved (cache_unusable).
     async::task<> open_index_task();
+
+    /// The project's cache cannot be used, as `why` says: it serves
+    /// nothing, and the user is told so.
+    void refuse_cache(llvm::StringRef why);
 
     /// The default-sources loop, poll_sources on the workspace poll's pace,
     /// asking the compilers that could not be asked again: the documents
@@ -967,9 +971,10 @@ private:
     /// whether they compile.
     bool started = false;
 
-    /// Another process kept the writer lock of the project's index through
-    /// the wait (open_index_task): the project serves nothing (broken).
-    bool index_kept_elsewhere = false;
+    /// The project's cache cannot be used: its directory cannot be written,
+    /// or another process kept the writer lock of its index through the wait
+    /// (open_index_task). The project serves nothing (broken).
+    bool cache_unusable = false;
 
     /// start() found nothing to open the project for: no database and no
     /// document.

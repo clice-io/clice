@@ -1,15 +1,11 @@
-[test.diagnostics]
-diagnostics = [
-    {
-        at = "import ⟦circle;⟧",
-        severity = "error",
-        message = "module 'circle' does not build: the cache directory ${WS}/.clice cannot be used",
-        source = "clice",
-        code = "module-not-built",
-    },
+[server.guidance]
+value = [
+    "Cannot use the cache directory ${WS}/.clice: Not a directory; give clice write access to it, or set `cache_dir` in clice.toml to a directory it can write. Until clice restarts, nothing under ${WS} is served",
 ]
 
-[test.guidance]
-value = [
-    "Cannot use the cache directory ${WS}/.clice: Not a directory; no preamble or module is precompiled, and the index is not saved",
-]
+[lint."$ clice lint"]
+stderr = '''
+error: Cannot create the log directory .clice/logs/${SESSION}: Not a directory
+error: Cannot use the cache directory .clice: Not a directory; give clice write access to it, or set `cache_dir` in clice.toml to a directory it can write
+'''
+exit = 2
