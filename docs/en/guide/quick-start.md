@@ -16,7 +16,7 @@ Download the latest binary from the [Releases](https://github.com/clice-io/clice
 
 ### Build from Source
 
-See [build from source](../dev/build.md) for detailed instructions.
+See [build from source](./build.md) for detailed instructions.
 
 ## Project Setup
 

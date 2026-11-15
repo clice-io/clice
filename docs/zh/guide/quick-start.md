@@ -16,7 +16,7 @@ clice 实现了 [语言服务器协议](https://microsoft.github.io/language-ser
 
 ### 从源码构建
 
-参见 [从源码构建](../dev/build.md) 了解详细步骤。
+参见 [从源码构建](./build.md) 了解详细步骤。
 
 ## 项目配置
 

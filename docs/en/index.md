@@ -14,7 +14,7 @@ hero:
       link: ./guide/quick-start
     - theme: alt
       text: Build from Source
-      link: ./dev/build
+      link: ./guide/build
   image:
     src: /mascot/hero-working.webp
     alt: clice

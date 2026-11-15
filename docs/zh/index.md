@@ -14,7 +14,7 @@ hero:
       link: ./guide/quick-start
     - theme: alt
       text: 从源码构建
-      link: ./dev/build
+      link: ./guide/build
   image:
     src: /mascot/hero-working.webp
     alt: clice

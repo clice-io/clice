@@ -25,7 +25,7 @@ Some problems in C++ tooling require architectural changes that cannot be easily
 
 ### Install
 
-Download the latest binary from the [releases page](https://github.com/clice-io/clice/releases), or [build from source](https://docs.clice.io/clice/dev/build).
+Download the latest binary from the [releases page](https://github.com/clice-io/clice/releases), or [build from source](https://docs.clice.io/clice/guide/build).
 
 **Platforms:** Linux (x64, ARM64), macOS (x64, ARM64), Windows (x64, ARM64)
 
@@ -72,7 +72,7 @@ Full docs at [**docs.clice.io/clice**](https://docs.clice.io/clice/) covering co
 
 ## Contributing
 
-See [building from source](https://docs.clice.io/clice/dev/build) or join our [Discord](https://discord.gg/PA3UxW2VA3).
+See [building from source](https://docs.clice.io/clice/guide/build) or join our [Discord](https://discord.gg/PA3UxW2VA3).
 
 ```shell
 bazel build //:dist   # clice and the unit tests

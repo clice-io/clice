@@ -7,6 +7,7 @@ guide:
     - configuration
     - indexing
     - from-clangd
+    - build
 
 features:
   label: 语言服务器
@@ -56,9 +57,3 @@ design:
     - incremental-parse
     - template-resolver
     - dependency-scanning
-
-dev:
-  label: 开发
-  collapsed: false
-  items:
-    - build
