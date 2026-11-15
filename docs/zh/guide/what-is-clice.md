@@ -21,3 +21,13 @@
 - **开箱即用的使用体验**：绝大多数项目只需要一份 `compile_commands.json` 即可使用，clice 内置了 50+ 工具链的环境探测，涵盖 nvcc、msys2、cygwin、zigcc 等等。会自动处理好实际使用的编译器和 Clang 不一致的问题。无需像 clangd 那样在配置文件中手动添加大量的编译选项。
 
 除了这些主要的特性，clice 还解决了 clangd 长期存在并且无人问津的很多小 issue，涵盖语义高亮、折叠、悬浮等功能，感兴趣的读者欢迎立即使用，看看能收获哪些惊喜。总的来说，clice 在易用性、功能支持和性能上均超过 clangd。
+
+## 为什么不改进 clangd？
+
+首先为什么要编写一个新的项目而不是改进 clangd？这是最常被问到的问题。这里有多方面的原因，在我最早期的[文章](https://zhuanlan.zhihu.com/p/13394352064)中有一些阐述：
+
+- **关于投入问题**：最根本的问题是 clangd 从 2024 年前后开始基本处于**实质上无人维护**的状态。这很令人惊讶，数十万开发者使用的工具怎么会无人维护呢？2024 年我准备给 clangd 提模板内代码补全改进的 [PR](https://github.com/clangd/clangd/issues/443#issuecomment-2254535078) 的时候意外发现了这个事实。据我了解，这与 Google 对 C++ 的策略转向有关，在这之前 clangd 主要由 Google 的数名员工维护，而在 2024 年前后，Google 对 C++（Clang）的投入开始减少，clangd 也被认为已经满足了 Google 内部的代码需求，从而原有的数名员工都被调离去做别的工作了。在那之后 clangd 缺乏实质上的长期维护者，只有 [Nathan Ridge](https://github.com/HighCommander4) 完全出于热爱（无任何薪酬）在业余时间解答问题，但是一个人的精力有限，几乎无法处理大型 PR。这也就是 clangd 的模块化 [PR](https://github.com/llvm/llvm-project/pull/66462) 拖了将近一年的原因，并且时至今日仍然无法正式地在大型项目使用，存在诸多缺陷，无人处理。2026 年，Clang 的 lead maintainer Aaron Ballman 意识到了这个问题，在社区的论坛上发了一个[求助帖](https://discourse.llvm.org/t/help-needed-with-clangd-maintenance/89820)，说 clangd 已经非常接近无人维护，积压了大量的 PR 和 issue，希望能找到新的社区维护者，否则 clangd 最终有**可能**会被从 LLVM 项目里移除。
+- **关于代码规模**：正如上文所说的，clice 做了大量的架构创新，比如多进程编译。如果要在 clangd 里面实现这些功能，那接近于**重写** clangd。这样大规模的改动不可能有人 review 并接受。并且想要实现模块化自举，LLVM 的构建流程也会有巨大的修改。
+- **关于 LLVM 仓库的限制**：clice 依赖大量的三方库来获取更好的性能和用户体验，比如 `libuv`、`simdjson` 和 `tomlplusplus` 等，LLVM 出于构建便捷的考虑，要求自包含，不可能引入这么多的三方库。要么将它们重写移植到 LLVM 中，要么忍受功能上的不便利和性能的低下。此外，语言服务器并不是一个**独立**的项目，它还包含各种编辑器的插件适配部分。为了方便维护，当然和语言服务器放在一个仓库比较好，而 LLVM 同样不太会接受这些代码（包含 Rust、Lua、TS 等语言）。所以从长期维护便捷性和我们的核心目标来说，独立的仓库势在必行。
+
+于是，在 2024 年中，我开始研究如何设计和编写一个新的语言服务器，并在 2024 年底发布了[一个新 C++ language server 的设计与实现](https://zhuanlan.zhihu.com/p/13394352064)，确立了 clice 开发的核心目标，并正式开始开发 clice。
