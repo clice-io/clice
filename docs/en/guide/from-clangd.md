@@ -6,7 +6,7 @@ A project set up for clangd often carries workarounds for what clangd cannot rea
 
 ### Header Entries in the Compilation Database
 
-clangd compiles a header without an entry by guessing a command from a nearby source, so some projects add the headers to `compile_commands.json`, by hand or with a tool. clice compiles a header in the context of a source that includes it, with that source's command and what the source declares before the include (see [header contexts](../features/header-contexts.md)); a header nothing includes yet borrows the command of a unit nearby. An entry of the header's own takes precedence over that context, and makes the header a unit of its own that the background index compiles beside the sources including it. Generate the database without them; a build system that writes them itself has them kept out of the index by a rule:
+clangd compiles a header without an entry by guessing a command from a nearby source, so some projects add the headers to `compile_commands.json`, by hand or with a tool. clice compiles a header in the context of a source that includes it, with that source's command and what the source declares before the include (see [header contexts](../features/header-contexts.md)); a header nothing includes yet borrows the command of a unit nearby. An entry of the header's own takes precedence over that context, and makes the header a unit of its own that the background index compiles beside the sources including it. Generate the database without header entries; if your build system writes them anyway, keep them out of the background index with a rule:
 
 ```toml
 [[rules]]
@@ -25,11 +25,11 @@ A `.clangd` often removes from GCC's, cl's or nvcc's commands what clang cannot 
 - The warnings GCC knows and clang does not (`-Wlogical-op`, `-Wuseless-cast`) are left out, and the warnings GCC, cl or nvcc make errors (`-Werror`, `-Werror=shadow`, `/WX`) stay warnings: clang warns of things those compilers do not.
 - What only shapes the generated code, or writes a file beside the object — the LTO job count, GCC's module mapper and its dependency scan outputs, cl's module interface outputs — is left out.
 - GCC's `-fmodules` reads as C++20 modules, a cross GCC's `-march` and `-mabi` as clang takes them, and nvcc's options as nvcc reads them, those for the host compiler included.
-- An option clang does not know at all is left out of the compile, with a warning in the log.
+- An option clang does not know at all is left out of the compile.
 
 ### A Symlinked `compile_commands.json`
 
-clangd looks for `compile_commands.json` in the directories above a file and in their `build/` directories, so a build tree elsewhere is often linked into the project's root. clice loads every `compile_commands.json` in the project's root directory and its immediate subdirectories, whatever their names (`build/`, `cmake-build-debug/`), and a link to one it finds already is the same database. One deeper or elsewhere is named by a rule:
+clangd looks for `compile_commands.json` in the directories above a file and in their `build/` directories, so a build tree elsewhere is often linked into the project's root. clice loads every `compile_commands.json` in the project's root directory and its immediate subdirectories, whatever their names (`build/`, `cmake-build-debug/`), and those between a file you open and the root; a link to one it finds already is the same database. A subdirectory with a `clice.toml` or `.clice/config.toml` of its own is another project, and a rule setting `compile_commands` or `default_command` turns this discovery off. One deeper or elsewhere is named by a rule:
 
 ```toml
 [[rules]]
@@ -46,7 +46,7 @@ A unity build lists only the generated files including the sources, so clangd fi
 
 | `.clangd` or clangd's option             | `clice.toml`                                                 |
 | ---------------------------------------- | ------------------------------------------------------------ |
-| `If: PathMatch`                          | a rule's `patterns`                                          |
+| `If: PathMatch`                          | a rule's `patterns` (globs, not regular expressions)         |
 | `CompileFlags: Add`                      | a rule's `append`                                            |
 | `CompileFlags: Remove`                   | a rule's `remove`                                            |
 | `CompileFlags: CompilationDatabase`      | a rule's `compile_commands`                                  |
@@ -60,4 +60,4 @@ A unity build lists only the generated files including the sources, so clangd fi
 | `--function-arg-placeholders=0`          | `[code_completion] arguments = "delimiters"`                 |
 | `--limit-results`                        | `[code_completion] limit`                                    |
 | `--limit-references`                     | `[references] limit`                                         |
-| `-j`                                     | `[workers] background`                                       |
+| `-j`                                     | `[workers] background` and `[workers] max`                   |

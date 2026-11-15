@@ -17,18 +17,18 @@ The scanner does not preprocess. Without macros or conditions evaluated, what a 
 
 ### Why It Is Fast
 
-- **Directive scanning.** Clang's dependency directive scanner reads only the directive lines of a file, microseconds per file, and yields the raw include names (`"foo.h"`, `<vector>`), each tagged unconditional or conditional by its `#if` depth.
-- **Resolution apart.** Include names are resolved to files against cached directory listings, without a stat per candidate; an angled include resolves once per configuration and name.
+- **Directive scanning.** Clang's dependency directive scanner reads only the directive lines of a file, microseconds per file, and yields the raw include names (`"foo.h"`, `<vector>`).
+- **Cached resolution.** Include names are resolved against cached directory listings rather than by a stat of each candidate path, and an angled include is resolved once per configuration and name.
 - **Waves.** The scan starts with every translation unit of the build and the files their commands force in (`-include`, `-imacros`), resolves what they include, scans the headers newly found, and repeats until nothing new turns up. While one wave resolves, the next one's files are already being read.
 
 ### The Graph
 
-- **Forward edges** per file and configuration, since search paths differ between commands; each marked conditional or not. A header unconditional in one configuration counts as unconditional.
+- **Forward edges**: what each file includes. A unit is resolved under each of its commands, since search paths differ between them; a header under the first command that reaches it.
 - **Reverse edges**, built in bulk, for climbing from a header to the units that include it.
 - **Forced includes** kept apart from the include edges, as no directive in the source names them; host lookup climbs them too.
-- **Module names** mapped to the interface units declaring them. A module declaration inside an `#if` cannot be read without evaluating it, so for such a file alone the preprocessor runs up to the module declaration.
+- **Module names** mapped to the units declaring them, interfaces and partitions. A module declaration the directive scanner cannot read — one inside an `#if` — makes the preprocessor run on that file alone, up to the declaration.
 
-Each file's scan is kept against its content version and reused while the content holds; a changed file is rescanned the way the startup scan reached it, so its edges after a save are the ones a fresh start would give.
+Each file's scan is kept against its content version and reused while the content holds. A changed file is rescanned and resolved as the startup scan reached it, which replaces its edges and scans the headers it newly reaches.
 
 ### Exact Answers Where Needed
 
@@ -46,3 +46,5 @@ The background index compiles every unit with the full preprocessor and records 
 
 - **Macro includes** (`#include MACRO_NAME`) are not resolved by the scan; the compile handles them.
 - **Both branches of every condition count**, so the graph is larger than any one compile's, and a file can look related to one it never includes.
+- **A header is resolved under the first command reaching it.** A header two units reach through different include paths gets no host from the second until that unit is indexed.
+- **The scan reads the disk.** An `#include` typed in an open buffer adds no edge until it is saved.

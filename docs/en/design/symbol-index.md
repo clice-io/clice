@@ -44,7 +44,7 @@ live index        the open buffer's latest compile
 ```
 
 - The **project index** holds one small record per externally visible symbol — what it is, never where: its name, its parent, kind, flags, and the sets of files naming, declaring and defining it — and records of which units contributed which files. A query reads a handful of records; opening the index reads only the database's header and the name search.
-- A **shard** holds a file's entries, with a variant for each context that preprocesses it differently. Names local to the file — internal linkage, function locals — stay in the shard; only names other files can reach enter the project index.
+- A **shard** holds a file's entries, with a variant for each context that preprocesses it differently. Names local to the file — internal linkage, function locals — keep their metadata in the shard; one several files name, such as a `static` helper in a header, gets a project record of the files holding its entries.
 - An open file's **live index** comes from its last compile and is never written to the global index: incomplete code being typed must not change what other files see. While the buffer is the text the shard indexed, the code the compile's context skipped answers from the shard, so a header's other contexts show too.
 
 ### One Variant per Distinct Content
@@ -61,7 +61,7 @@ A system header's function bodies, and the instantiations of its templates, are 
 
 ### Storage
 
-All index data — records, shards, unit manifests, the name search — lives in one LMDB database. Each blob is encoded canonically and compactly, validated once when read, then used in place from the memory map, with no deserialization step. The database records files inside the project by their paths relative to the project root, so a moved checkout finds its index current. A save writes the changes in one transaction; a record that fails its checks means damaged storage, and the next save discards the database and indexes again. LMDB never returns freed pages, so once indexing is idle and a quarter of the file is free, the writer replaces it with a compact copy.
+All index data — records, shards, unit manifests, the name search — lives in one LMDB database. Each blob is encoded canonically and compactly, validated once when read, then used in place from the memory map, with no deserialization step. The database records files inside the project by their paths relative to the project root, so a moved checkout finds its index current. A save writes the changes in one transaction; a record that fails its checks means damaged storage, and the next save discards the database and indexes again. LMDB never returns freed pages, so once indexing is idle and much of the file is free, the writer replaces it with a compact copy.
 
 A unit's **manifest** keeps its context once — which files it saw, through which include tree — so shards need not repeat it. Staleness checks and reconciliation (a unit gone from the database, a changed command, a changed dependency) run from the manifests.
 
@@ -71,11 +71,11 @@ Find references, for instance: the occurrence under the cursor gives the symbol;
 
 ### Name Search
 
-Searching by name (`workspace/symbol`, `clice query` locators) runs over a search index derived from the records, persisted beside them in segments. Its tokens are trigrams along the paths a fuzzy match can take through a name's words (`gsh` and `symhash` both reach `getSymbolHash`), so intersecting the query's trigrams selects every candidate the matcher could accept, and only those are scored. Entries are kept in quality order, so the scan stops once the rest cannot enter the result. Each save adds what changed as a new segment run, folding small runs into larger ones, so a symbol is rewritten a logarithmic number of times.
+Searching by name (`workspace/symbol`, `clice query` locators) runs over a search index derived from the records, persisted beside them in segments. Its tokens are trigrams along the paths a fuzzy match can take through a name's words (`gsh` and `symhash` both reach `getSymbolHash`), so intersecting a query's trigrams selects every candidate the matcher could accept, and only those are scored; shorter queries key a name's first words, and a pass tolerating a typo fills a result left short. Entries are kept in quality order, so the scan stops once the rest cannot enter the result. Each save adds what changed as a new segment run, folding small runs into larger ones, so a symbol is rewritten a logarithmic number of times.
 
 ### Staleness
 
-Each indexed artifact records the content versions of its inputs, checked by the shared two-layer check — a stat, then a content hash (see [Incremental Compilation](incremental-parse.md)). A unit is reindexed when an input's content actually changed, or when its command hash changed. At startup the writer checks every file record against the disk and queues the units owed; the stored shards answer until then.
+Each indexed artifact records the content versions of its inputs, checked by the shared freshness check (see [Incremental Compilation](incremental-parse.md)). A unit is reindexed when an input's content actually changed, or when its command hash changed. At startup the writer checks every file record against the disk and queues the units owed; the stored shards answer until then.
 
 ## FAQ
 

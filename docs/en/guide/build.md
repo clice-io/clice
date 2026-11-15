@@ -6,7 +6,7 @@ clice builds with [Bazel](https://bazel.build) alone. Bazel downloads everything
 
 - Bazel, run through [bazelisk](https://github.com/bazelbuild/bazelisk), which fetches the release `.bazelversion` names.
 - git and [Node.js](https://nodejs.org) on `PATH`: the build stamps clice with the version `git describe` gives, through a Node script.
-- On Windows, a Bash, which [Git for Windows](https://gitforwindows.org) provides, and a short output root: Bazel's default one is too deep for Windows paths. Put it in `%USERPROFILE%\.bazelrc`:
+- On Windows, Bash (which [Git for Windows](https://gitforwindows.org) includes) and a short Bazel output root, as Bazel's default one is too deep for Windows paths. Put it in `%USERPROFILE%\.bazelrc`:
 
   ```
   startup --output_user_root=C:/b
@@ -31,7 +31,7 @@ The build types are configurations, each with a directory of its own, `build/<ty
 
 The LLVM/Clang libraries hold ThinLTO bitcode, so every link of a program redoes their code generation, minutes per program. lld keeps what it generated in a cache, `/var/tmp/xclang-thinlto` (`C:/xclang-thinlto` on Windows), and later links take seconds.
 
-`bazel build //:package //:symbols` builds the release archive and the symbol package, which `scripts/symbolize.py` reads: `clice.tar.gz` and `clice-symbol.tar.xz` in `build/<type>/bin` (`.zip` on Windows).
+`bazel build //:package //:symbols` builds the release archive and the symbol package, whose `clice.gsym` `scripts/symbolize.py` reads: `clice.tar.gz` and `clice-symbol.tar.xz` in `build/<type>/bin` (`.zip` on Windows).
 
 ## Working on clice
 

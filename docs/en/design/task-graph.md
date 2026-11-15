@@ -17,8 +17,8 @@ clangd's module support has lacked a design of its own for years — its own sum
 
 The graph knows nodes, edges, interest, attempts and invalidation, and nothing of what a node builds. A node's kind gives its meaning:
 
-- **PCM**: a module under a command it is built with; its edges are its imports.
-- **PCH**: a preamble's content — files whose preambles are identical share one node and one build.
+- **PCM**: a module under a command it is built with; its edges are its imports, and the precompiled header its target reads.
+- **PCH**: a preamble's content under its command — files whose preambles and commands agree share one node and one build.
 - **AST**: an open document's compile, whose generation is the document's freshness.
 - **Unit**: a translation unit compiled for its index or its lint.
 
@@ -30,11 +30,11 @@ A node is created when a request first reaches it, and each build resolves its d
 
 ### Interest
 
-Interest counts how many active requests care about a node: a request acquires it while it waits and releases it when it finishes or is cancelled. A build waiting on its dependencies holds interest in them too, so a module another module needs keeps building after the request that started it went away. At zero, the build is cancelled — after a short delay, since a request superseded by an edit releases its interest just before its successor takes it again.
+Interest counts how many active requests care about a node: a request acquires it while it waits and releases it when it finishes or is cancelled. A background build that a foreground request joins becomes foreground, and so do the builds it waits on. A build waiting on its dependencies holds interest in them too, so a module another module needs keeps building after the request that started it went away. At zero, the build is cancelled — after a short delay, since a request superseded by an edit releases its interest just before its successor takes it again.
 
 ### Attempts
 
-Each build is an attempt; concurrent requests join the running one. It ends **succeeded**, **failed** (an error, a cycle) or **stale** (overtaken by a change, or by nobody wanting it). Failure is not sticky: the node stays dirty, so the next request after the user fixes the code checks it again — while what the failed build read is unchanged it fails again without running, and once something changes or an importer is saved it builds again.
+Each build is an attempt; concurrent requests join the running one. It ends **succeeded**, **failed** (an error, a cycle) or **stale** (overtaken by a change, or by nobody wanting it). Failure is not sticky: the node stays dirty, so the next request after the user fixes the code checks it again — while the failed build's inputs are unchanged it fails again without running, and once one changes or an importer is saved it builds again.
 
 A clean node's product can still vanish or go stale behind the graph's back — an evicted PCH, an evicted AST, a file changed before any event says so — so the work also carries a **check**, asked when a waiter reaches a clean node: the product **holds**; the product is **gone** but what it was built from is not, and only this node builds again; or the **inputs changed**, and the node and its dependents are invalidated.
 
@@ -46,7 +46,7 @@ Each node has a generation, raised by every invalidation that reaches it. A buil
 
 ### Edges and Cascades
 
-A node's edges are what its sources declare and what its last successful attempt waited on. A module's import scan declares its imports before it builds, and they stay its edges through a failed build, or fixing an import could never reach the module that failed on it. When a module file is saved, the graph walks reverse edges: every node above is marked dirty, and a running attempt is overtaken only if it has read what changed — one still waiting for the changed product gets the fresh one. Before waiting on a dependency, the graph follows the chain of builds in progress and fails at once if it leads back to the waiter: a cycle is an error.
+A node's edges are what its sources declare and what its last successful attempt waited on. A module's import scan declares its imports before it builds, and they stay its edges through a failed build, or fixing an import could never reach the module that failed on it. When a module file is saved, the graph walks reverse edges: every node above is marked dirty, and the running attempts that read what changed are overtaken. Before waiting on a dependency, the graph follows the chain of builds in progress and fails at once if it leads back to the waiter: a cycle is an error.
 
 ### Resolving Imports
 
@@ -67,5 +67,5 @@ Each module keeps a record of its last build under each command: its key, what i
 
 ## Known Limitations
 
-- **A module never saved to disk cannot be built**: there is no file to compile. Once it is saved, the placeholder finds it, and its importers heal on their next edit or reopen.
+- **A module never saved to disk cannot be built**: there is no file to compile. Once it is saved, its placeholder is invalidated and the importers rebuild against it.
 - **The graph lives in memory.** A restart rebuilds it lazily from the persisted records and the module registry.

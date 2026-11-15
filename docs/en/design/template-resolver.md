@@ -29,11 +29,11 @@ The resolver is a type rewriter of its own. It uses neither Sema nor Clang's `Tr
 
 Nested templates bind parameters at several levels, kept as a stack of frames; a parameter is looked up in the frame of the template declaring it, so two templates whose parameters share a depth never capture each other's. A parameter with no binding takes its default.
 
-To look a member up in `A<T>`, the resolver matches the arguments against each partial specialization's pattern with its own unification, picks the specialization, looks the member up there, then in the primary template and the bases, and maps the found type back onto the caller's arguments. This is what reaches `allocator_traits<allocator<T>>::value_type` where the primary template declares nothing.
+To look a member up in `A<T>`, the resolver matches the arguments against each partial specialization's pattern with its own unification, picks the specialization — the primary template when none matches — looks the member up there and in its bases, and maps the found type back onto the caller's arguments. This is what reaches `allocator_traits<allocator<T>>::value_type` where the primary template declares nothing.
 
 The `type` of the standard library's type traits — `conditional`, `enable_if`, `type_identity`, the `remove_*` and `add_*` traits, `decay` — and the `value` of `conjunction`, `disjunction` and `negation` are answered by the rule the standard gives them: every library writes them through its own partial specializations, deducing through those would cost every query, and the answer is the same in all of them.
 
-Results are **resugared**: shown with the parameters' names (`T`), not Clang's canonical "parameter 0 of depth 0".
+Types stay as written throughout: a parameter binds its argument as the code spells it (`std::string`, not `std::basic_string<char, …>`), and results show parameters by name.
 
 ### Degrading Gracefully
 
@@ -44,9 +44,9 @@ A step that fails — a lookup that finds nothing, a cycle, a budget exhausted �
 Pseudo-instantiation reads the written template and says what a dependent name could mean. The unit's actual instantiations say what it does mean for each argument list. clice treats a template like an interface and its instantiations like implementations, as a virtual function and its overrides:
 
 - **Semantic tokens** read instantiated code too: an instantiation reuses the template's locations, so its resolution lands on the token written in the template. Instantiations agreeing on a name's kind keep it, and the modifiers they share; disagreeing ones make it a `conflict`.
-- **Hover and inlay hints** inside a function template the unit instantiates exactly once show that instantiation's arguments; with several, the parameters stay as written.
+- **Hover and inlay hints** inside a function template the unit instantiates exactly once show that instantiation's arguments, and an `auto` variable in a class template instantiated once deduces as there; with several, the parameters stay as written.
 - **Navigation** reads every instantiation: the index keeps what each instantiation resolves in the template's text, so definition, references, call hierarchy and implementation on a dependent name list each resolution, in open and closed files alike.
-- **Completion** parses only up to the cursor, before the code that calls the template, so a member access resolving no other way compiles the buffer once more and offers the members every instantiation has (of eight at most).
+- **Completion** parses only up to the cursor, before the code that calls the template, so a member access or a qualified name the template leaves open compiles the buffer once more and offers the names every instantiation has.
 
 Features that emit one item per location — inlay hints, folds, the outline — skip instantiated code: an instantiation could only repeat or contradict what the template gives there.
 
@@ -60,6 +60,7 @@ Features that emit one item per location — inlay hints, folds, the outline —
 
 The resolver works out what the written code determines and leaves the rest unresolved rather than guess:
 
-- **Expressions on dependent operands.** A value expression folds once its operands are known (`N + 1` with `N` given), and matches a pattern spelled the same way (`trait<X, X + 1>` against `trait<N, N + 1>`); one it cannot prove equal stays dependent. The type of an operator expression on a dependent operand (`value + 1`) is not deduced; subscripts, `->` and calls through member operators resolve.
-- **Choices the code leaves open.** A constraint depending on an unknown argument, two partial specializations neither more specialized, a base naming itself through `decltype`, and a `decltype` of a call that needs argument-dependent lookup leave the name dependent.
+- **Expressions on dependent operands.** A value expression folds once its operands are known (`N + 1` with `N` given), and matches a pattern spelled the same way (`trait<X, X + 1>` against `trait<N, N + 1>`); one it cannot prove equal stays dependent. The type of an arithmetic expression on a dependent operand (`value + 1`) is not deduced; subscripts, `->`, `*` and calls through operators resolve.
+- **Choices the code leaves open.** A constraint depending on an unknown argument, two partial specializations neither more specialized, a base naming itself through `decltype`, and a `decltype` of a call whose argument-dependent lookup needs a dependent argument leave the name dependent — unless every candidate gives the same answer.
+- **A value trait the primary template answers.** A value `true` only in explicit specializations folds to the primary template's value: libstdc++'s `is_integral<T>::value` is `false`, so `conditional_t<is_integral_v<T>, A, B>` shows `B` as if it were certain.
 - **Overloads told apart by reference binding.** Among overloads differing in how they bind an argument or the object — `const U&&` against `const int&`, a template binding the object without `const` against a `const` member, an explicit object parameter — the resolver can choose another overload than the compiler, or none.

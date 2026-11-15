@@ -20,22 +20,22 @@ A compilation context is everything needed to restore a file's compilation state
 
 A file compiles in the first of these that applies:
 
-1. **The user's choice**, made through `clice/switchContext` and kept in the project's cache directory. A choice that stops holding — its host no longer includes the file, its entry left the database — waits, inactive, and applies again once it holds.
-2. **The file's own entry** in a compilation database; of several, the first, until the user picks another.
+1. **The user's choice**, made through `clice/switchContext` and kept in the project's cache directory; a header chosen to compile in a host always takes the host's prefix. A choice that stops holding — its host no longer includes the file, its entry left the database — waits, inactive, and applies again once it holds.
+2. **The file's own command**, when it is a unit of the build: its entry in a compilation database (of several, the first, until the user picks another), the `default_command` covering it, or a provisional member's.
 3. **A host**: a source the build compiles that includes the header, ranked as [Command Resolution](command-resolve.md#rules-members-and-hosts) describes. A self-contained header takes its command; one that is not takes its command and a synthesized prefix (below).
-4. **A rule's `default_command`.**
+4. **A rule's `default_command`**, for a header no unit hosts.
 5. **A borrowed command**: a nearby unit's, for a file nothing describes yet — a new source, a header nothing includes (see [Command Resolution](command-resolve.md#rules-members-and-hosts)).
 6. **clice's own command**, so an isolated file still gets basic answers.
 
 The editor reaches this through clice's requests:
 
-| Request                   | What it does                                                                                                                             |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `clice/queryContext`      | Lists a file's contexts: a source's entries, a header's hosts, best first and paged. Contexts that compile identically are listed once.  |
-| `clice/currentContext`    | The context the file compiles in, whether the user chose it, and the command it compiles with and where that command comes from.         |
-| `clice/switchContext`     | Picks one of the listed contexts; the file recompiles in it, without being closed.                                                       |
-| `clice/resetContext`      | Drops the choice, back to the context clice picks.                                                                                       |
-| `clice/showOtherContexts` | Whether the code the file's context skips shows what the file's other contexts compile there, from the index, which holds every context. |
+| Request                   | What it does                                                                                                                            |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `clice/queryContext`      | Lists a file's contexts: a source's entries, a header's hosts, best first and paged. Contexts that compile identically are listed once. |
+| `clice/currentContext`    | The context the file compiles in, whether the user chose it, and the command it compiles with and where that command comes from.        |
+| `clice/switchContext`     | Picks one of the listed contexts; the file recompiles in it, without being closed.                                                      |
+| `clice/resetContext`      | Drops the choice, back to the context clice picks.                                                                                      |
+| `clice/showOtherContexts` | Whether the code the file's context skips shows what the file's other contexts compile there, which the index holds.                    |
 
 Inside the chosen context, the branches the preprocessor skips are dimmed, so a switch shows at once.
 
@@ -49,7 +49,7 @@ Switching configurations restarts the server, on purpose: a server holds one con
 
 Most headers are, and synthesizing a prefix for them is wasted work. clice tries first: it compiles the header alone under its host's command. Without errors, the header is self-contained. With errors, it compiles the header once more with the host's prefix, and the compile with fewer errors stands: fewer in the host's context makes the header not self-contained, a tie keeps it self-contained. No list of what an includer provides is needed — whatever the context fixes counts. Fragment extensions by convention (`.def`, `.inc`, `.inl`, `.tpp`, …) skip the check.
 
-The verdict is kept with the files the check read and holds while they do not change. A change of what the header includes runs the check again; typing in the header never does, or a half-typed name would keep switching it.
+The verdict is kept with the files the check read and holds while they do not change. A change of one of them runs the check again, and so does saving the header while its compile has errors; typing never does, or a half-typed name would keep switching it.
 
 ## Compiling a Header in Its Host's Context
 
@@ -80,7 +80,7 @@ Opening `math.h` compiles it with this prefix forced in:
 #include <string>
 ```
 
-The prefix exists only in memory, in pieces placed in the directories of the files they were cut from, so every relative lookup inside them resolves as it does in those files. A header inside braces its includer opens — an enumerator list, a class body — also gets a **suffix** that closes them. Any change to a file on the chain discards the context, and the next compile synthesizes it again.
+The prefix exists only in memory, in pieces placed in the directories of the files they were cut from, so every relative lookup inside them resolves as it does in those files. A cut inside `#if` blocks, such as an include guard, is balanced: the prefix closes them and the suffix reopens them. A header inside braces its includer opens — an enumerator list, a class body — also gets a **suffix** that closes them. Any change to a file on the chain discards the context, and the next compile synthesizes it again.
 
 The reason for `-include` is the preamble's PCH: what is forced in is compiled before the header's own text, so the whole prefix lands in the header's PCH, and an edit to the header recompiles only its body.
 
@@ -96,6 +96,7 @@ A header's entries differ from context to context. Its index shard keeps the ent
 
 ## Known Limitations
 
-- **A host is tried under its first configuration.** A header that only another command of a host enters is hosted elsewhere.
+- **A host is tried under one command.** Of a host's several commands, the first that fits the header is tried; a header only another of them enters is hosted elsewhere, or nowhere.
+- **An include spelled through a macro cannot be cut** (`#include FT_FREETYPE_H`): a header entered that way that needs its includer's state compiles under the host's command alone.
 - **A chosen host that includes the header through a macro stops holding when it changes**, until a compile reads its include tree again; choosing the host again restores it.
 - **Switching a build configuration restarts the server.**

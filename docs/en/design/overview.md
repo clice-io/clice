@@ -9,7 +9,7 @@ clice is a C++ language server designed from the architecture up around problems
 
 ## Layers
 
-`src/` is one C++20 module in layers, each importing only the layers below it:
+`src/` is one C++20 module in layers, listed here from the bottom up: each imports only the layers listed before it, except that `server` and `analysis` sit side by side above `project`, and `analysis` imports no `worker`.
 
 | Layer      | What it holds                                                                                                                                                                                                   |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
