@@ -372,9 +372,8 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     // being typed ends before its unfinished directive: the finished part
     // keeps its PCH — the key of the one before, when the directive goes at
     // the end of the block — and the unfinished one parses with the body,
-    // which reports its own error. A global module fragment declaring
-    // anything itself is not cut so: the module declaration would follow a
-    // declaration of the body.
+    // which reports its own error; cut there, a global module fragment may
+    // have no preamble at all (preamble_bound).
     auto bound = preamble_bound(text);
     bool partial = false;
     if(point) {
@@ -382,9 +381,12 @@ PreamblePCH Project::preamble_pch(Fid path_id,
         partial = before < bound;
         bound = before;
     }
-    auto finished = finished_preamble_bound(text, bound);
-    bool cut_fragment = finished < bound && preamble_declares(text, bound);
-    bound = (synthesized && !synthesized->open.empty()) || cut_fragment ? 0 : finished;
+    if(auto finished = finished_preamble_bound(text, bound); finished < bound) {
+        bound = preamble_bound(text, finished);
+    }
+    if(synthesized && !synthesized->open.empty()) {
+        bound = 0;
+    }
     if(bound == 0 && !synthesized && !forced) {
         // No preamble directives and no injected -include — PCH would be
         // empty. Self-contained header contexts end up here too: they borrow

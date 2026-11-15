@@ -105,8 +105,13 @@ struct RenamePlan {
     /// stands.
     std::vector<std::string> stale;
 
+    /// Files the rename edits that the index holds no shard of yet: an open
+    /// file's compile named them before the background index reached them.
+    /// Nothing is written while any stands.
+    std::vector<std::string> unindexed;
+
     bool blocked() const {
-        return !conflicts.empty() || !stale.empty();
+        return !conflicts.empty() || !stale.empty() || !unindexed.empty();
     }
 };
 

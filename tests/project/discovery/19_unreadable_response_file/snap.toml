@@ -13,7 +13,7 @@ exit = 0
 stdout = '''
 ${WS}/compile_commands.json:
   directory: ${WS}
-  command:   ${WS}/missing-cc @absent.rsp -DKEPT=0 -c main.cpp
+  command:   ${WS}/missing-cc @absent.rsp @CMakeFiles/main.dir/main.cpp.o.modmap -DKEPT=0 -c main.cpp
   resolved:  ${WS}/missing-cc --no-default-config -fno-delayed-template-parsing -resource-dir ${RESOURCE} -D KEPT=0 ${WS}/main.cpp
   error:     the compiler could not be queried: the compiler ${WS}/missing-cc does not exist or cannot run; install it, or regenerate compile_commands.json if it was written on another machine
 

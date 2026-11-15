@@ -136,6 +136,9 @@ export interface StartOptions {
     /// Whether the server runs under the harness's checks (serverEnv); a
     /// perf run switches them off to time what users run.
     checked?: boolean | undefined;
+    /// The environment the server starts from in place of this process's:
+    /// an editor's, as the compat scenarios start it.
+    baseEnv?: NodeJS.ProcessEnv | undefined;
 }
 
 export interface InitializeOptions {
@@ -376,7 +379,12 @@ export class CliceClient {
         const child = spawn(executable, options.args ?? ["serve"], {
             stdio: ["pipe", "pipe", "pipe"],
             cwd: options.cwd,
-            env: { ...(options.checked === false ? process.env : serverEnv()), ...options.env },
+            env: {
+                ...(options.checked === false
+                    ? (options.baseEnv ?? process.env)
+                    : serverEnv(options.baseEnv)),
+                ...options.env,
+            },
         });
         const client = new CliceClient(child);
         client.stderrDrainedFromStart = options.drainStderr !== false;

@@ -1,0 +1,4 @@
+[test.errors]
+errors = [
+    { at = "#include <vec⟦⟧", severity = "error", message = "expected '>'", source = "clang", code = "err_expected" },
+]

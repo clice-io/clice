@@ -575,6 +575,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     };
 
     llvm::StringSet<> stale;
+    llvm::StringSet<> unindexed;
     llvm::DenseSet<Fid> outside;
     auto refuse_outside = [&](Fid file, llvm::StringRef path) {
         if(outside.insert(file).second) {
@@ -642,11 +643,11 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     auto spelled_at = [&](const index::Site& site) -> llvm::SmallVector<std::uint32_t, 1> {
         auto& text = text_of(site.file);
         if(!text.text) {
-            if(scope.editable(files.resolve(site.file))) {
-                stale.insert(site.path);
-            } else {
+            if(!scope.editable(files.resolve(site.file))) {
                 refuse_outside(site.file, site.path);
+                return {};
             }
+            (query.project().shard(site.file) ? stale : unindexed).insert(site.path);
             return {};
         }
         auto offsets = spellings(*text.text, site.range.begin, site.range.end, old_name);
@@ -1008,6 +1009,10 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         plan.stale.push_back(entry.getKey().str());
     }
     ranges::sort(plan.stale);
+    for(auto& entry: unindexed) {
+        plan.unindexed.push_back(entry.getKey().str());
+    }
+    ranges::sort(plan.unindexed);
     return plan;
 }
 
@@ -1135,6 +1140,10 @@ std::string refusal(const RenamePlan& plan) {
     if(!plan.stale.empty()) {
         reasons.push_back(std::format("these files changed since they were indexed: {}",
                                       llvm::join(plan.stale, ", ")));
+    }
+    if(!plan.unindexed.empty()) {
+        reasons.push_back(
+            std::format("these files are not indexed yet: {}", llvm::join(plan.unindexed, ", ")));
     }
     return std::format("cannot rename `{}`: {}", plan.old_name, llvm::join(reasons, "; "));
 }

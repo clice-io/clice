@@ -1,0 +1,2 @@
+# The tests write the database they need.
+databases = {}

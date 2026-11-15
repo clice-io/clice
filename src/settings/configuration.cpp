@@ -102,13 +102,9 @@ std::string choose_configuration(const Settings& settings,
                 fallback),
         });
     }
-    if(settings.default_configuration.empty()) {
-        LOG_WARN("Rules declare configurations {} but default_configuration is unset; using {}",
-                 llvm::join(tags, ", "),
-                 fallback);
-    } else {
-        LOG_INFO("Active configuration: {} (default)", fallback);
-    }
+    LOG_INFO("Active configuration: {} ({})",
+             fallback,
+             settings.default_configuration.empty() ? "the first declared" : "default");
     return fallback.str();
 }
 

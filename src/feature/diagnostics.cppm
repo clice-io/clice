@@ -118,7 +118,9 @@ auto skipped_diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic>;
 
 /// How many errors the compiler raised in any of its files, those of an
 /// includer's context it compiles a header in among them, which its focus
-/// file's diagnostics leave out; clang-tidy's findings, whatever their
+/// file's diagnostics leave out — but for the warnings -Werror raises
+/// there: the includer's code stops at the header, so what it uses only
+/// past it warns as unused; clang-tidy's findings, whatever their
 /// level, are no part of whether code compiles. The warning that a struct a prototype
 /// names first is visible in that prototype alone counts as one: the
 /// includer declares the struct, and C compiles the header without it, its
@@ -228,13 +230,15 @@ struct ModuleFailure {
 /// clang reports the import of a module whose build failed as not found:
 /// `message`, when it is that report for one of `failures`, says instead
 /// which module did not build, why, and through which imports. The failure
-/// it names, none for any other message.
+/// it names, none for any other message. An import of `std` or
+/// `std.compat` that no unit provides, the build system's to list, says to
+/// check it.
 const ModuleFailure* explain_failed_import(std::string& message,
                                            llvm::ArrayRef<ModuleFailure> failures);
 
 /// explain_failed_import over the diagnostics of a compile, each then
-/// clice's (`module-not-built`, `module-cycle`), with the place of the
-/// error the module failed on.
+/// clice's (`module-not-built`, `module-cycle`, `module-std-missing`), with
+/// the place of the error the module failed on.
 void explain_failed_imports(std::vector<FileDiagnostic>& diagnostics,
                             llvm::ArrayRef<ModuleFailure> failures);
 

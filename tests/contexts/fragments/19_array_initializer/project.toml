@@ -1,0 +1,3 @@
+# The kernel builds with -Werror -Wall.
+[units]
+"cpu/common.c" = ["-std=gnu11", "-Wall", "-Werror"]

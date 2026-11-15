@@ -19,3 +19,6 @@ export constexpr bool checked = false
 **Value:** `false`
 '''
 range = "return ⟦checked⟧;"
+
+[test."release definition"]
+definition = ["m.cppm │ export constexpr bool ⟦checked⟧ = false;", "m.cppm │ export constexpr bool ⟦checked⟧ = true;"]

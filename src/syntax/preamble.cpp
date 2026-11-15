@@ -17,6 +17,21 @@ struct Cut {
     bool include_past_limit = false;
 };
 
+/// Whether a header-name directive's argument names a file: a half-typed
+/// `<vec` includes nothing.
+bool header_name_complete(llvm::StringRef argument) {
+    // A filename token's spelling may begin with line splices; skip them
+    // before inspecting the delimiter.
+    argument = argument.ltrim("\\\r\n \t");
+    if(argument.starts_with("\"")) {
+        return argument.size() >= 2 && argument.ends_with("\"");
+    }
+    if(argument.starts_with("<")) {
+        return argument.ends_with(">");
+    }
+    return true;
+}
+
 /// preamble_bound, the pragma stacks aside.
 Cut directive_bound(llvm::StringRef content, std::uint32_t limit) {
     Lexer lexer(content, dialect_of());
@@ -49,8 +64,12 @@ Cut directive_bound(llvm::StringRef content, std::uint32_t limit) {
         std::uint32_t end = 0;
         if(token.kind == clang::tok::hash) {
             auto name = lexer.next();
-            includes = spelled(name, "include") || spelled(name, "include_next") ||
-                       spelled(name, "import");
+            if(spelled(name, "include") || spelled(name, "include_next") ||
+               spelled(name, "import")) {
+                lexer.advance();
+                auto argument = lexer.next();
+                includes = !argument.is_eod() && header_name_complete(argument.text(content));
+            }
             /// For preprocessor directive, consume the whole directive: the
             /// bound is the end of the token before the eod.
             lexer.advance_until(clang::tok::eod);
@@ -174,13 +193,15 @@ std::uint32_t preamble_bound(llvm::StringRef content, std::uint32_t limit) {
     // clang keeps none of these stacks in a PCH: a push the preamble ends
     // with is lost to the body, whose pop then finds nothing (the min/max
     // macros Windows code pushes around its includes). The preamble ends
-    // before it; in a global module fragment, before an include of its own,
-    // not at all: the include would declare ahead of the module declaration.
+    // before it. A global module fragment cut before an include of its own,
+    // there or at `limit`, has none: the include would declare ahead of the
+    // module declaration.
     // LIMITATION: a push in a header the preamble includes, popped in the
     // file (pshpack1.h included directly), is not seen: the pop warns.
-    auto bound = directive_bound(content, limit).bound;
+    auto cut = directive_bound(content, limit);
+    auto bound = cut.include_past_limit ? 0 : cut.bound;
     while(auto push = open_push(content, bound)) {
-        auto cut = directive_bound(content, *push);
+        cut = directive_bound(content, *push);
         bound = cut.include_past_limit ? 0 : cut.bound;
     }
     return bound;
@@ -205,16 +226,7 @@ std::uint32_t finished_preamble_bound(llvm::StringRef content, std::uint32_t bou
         if(line.size() < 3) {
             return false;
         }
-        // A filename token's spelling may begin with line splices; skip
-        // them before inspecting the delimiter.
-        auto argument = line[2].text(content).ltrim("\\\r\n \t");
-        if(argument.starts_with("\"")) {
-            return argument.size() >= 2 && argument.ends_with("\"");
-        }
-        if(argument.starts_with("<")) {
-            return argument.ends_with(">");
-        }
-        return true;
+        return header_name_complete(line[2].text(content));
     };
 
     std::uint32_t complete = 0;

@@ -683,7 +683,7 @@ ZEST_CASE(MembersFollowCommands) {
                   {tmp.root, tmp.path("kept.cpp"), {"-DCHANGED"}}
     }));
     auto epoch = project.commands_epoch;
-    ZEXPECT(!project.update_members({.changed = {kept}, .removed = {gone}}).commands.empty());
+    ZEXPECT(!project.update_members({.removed = {gone}, .changed = {kept}}).commands.empty());
     ZEXPECT(project.commands_epoch == epoch + 1);
     ZEXPECT(!project.index.indexed(gone));
     ZEXPECT(!f.queue.pending_reason(gone).has_value());

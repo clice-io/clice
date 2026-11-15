@@ -145,14 +145,15 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
         count += 1;
     }
     if(first) {
-        LOG_GUIDANCE("Configuration problem in {}: {}{}{}",
-                     place(project.file_table.display_identity(first->file), *first),
-                     first->message,
-                     count == 1 ? std::string()
-                                : std::format(" (and {} more, listed as its problems)", count - 1),
-                     first->severity == SettingsIssue::Severity::Error
-                         ? std::format(". {} is served until it is fixed and saved", unserved)
-                         : std::string());
+        LOG_GUIDANCE(
+            "Configuration problem in {}: {}{}{}",
+            place(project.file_table.display_identity(first->file), *first),
+            first->message,
+            count == 1 ? std::string()
+                       : std::format(" (and {} more, listed as its problems)", count - 1),
+            first->severity == SettingsIssue::Severity::Error
+                ? std::format(". {} is served until it is fixed and clice restarts", unserved)
+                : std::string());
     }
 }
 
