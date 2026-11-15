@@ -786,8 +786,11 @@ static bool counts_as_error(DiagnosticSource source, std::uint32_t id, Diagnosti
 }
 
 std::size_t count_errors(CompilationUnit& unit) {
-    return ranges::count_if(unit.diagnostics(), [](const Diagnostic& diagnostic) {
-        return counts_as_error(diagnostic.id.source, diagnostic.id.value, diagnostic.id.level);
+    return ranges::count_if(unit.diagnostics(), [&](const Diagnostic& diagnostic) {
+        bool raised_warning =
+            diagnostic.id.level == DiagnosticLevel::Error && !diagnostic.error_by_default;
+        return counts_as_error(diagnostic.id.source, diagnostic.id.value, diagnostic.id.level) &&
+               !(raised_warning && unit.from_context(diagnostic.fid));
     });
 }
 

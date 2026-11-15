@@ -216,6 +216,11 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     // other starting work (over 5 on CI runners); a compiler or wrapper that
     // never exits (one reading its input, a hung network mount) would block
     // the query's caller for good. The cancel kills it with what it started.
+    // LIMITATION: a driver's first start on a machine, scanned by an
+    // antivirus beside other starting work, can pass the bound (2.6 s idle
+    // on a fresh Windows runner, past 10 s under a test run's load): the
+    // files it was asked for compile with clang's own reading of the command
+    // until the query's cooldown passes.
     auto asked = co_await async::with_timeout(ask_compiler(std::move(args),
                                                            command,
                                                            std::string(input->path()),
