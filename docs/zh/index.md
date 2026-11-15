@@ -15,9 +15,6 @@ hero:
     - theme: alt
       text: 从源码构建
       link: ./guide/build
-  image:
-    src: /mascot/hero-working.webp
-    alt: clice
 
 features:
   - icon:
