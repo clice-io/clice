@@ -22,7 +22,7 @@ See [build from source](./build.md) for detailed instructions.
 
 For clice to correctly understand your code (e.g., find header file locations), you need to provide a `compile_commands.json` file, also known as a [compilation database](https://clang.llvm.org/docs/JSONCompilationDatabase.html). The compilation database provides compilation options for each source file.
 
-By default, clice loads every `compile_commands.json` in the project's root directory and its immediate subdirectories (e.g. `build/`), and those in the directories between a file you open and the root, so a database deeper in the tree loads the first time one of its files is opened. A subdirectory with a `clice.toml` or `.clice/config.toml` of its own is a separate project, whose databases the outer one never loads. This discovery turns off as soon as any rule sets `compile_commands` or `default_command`. You can name the databases explicitly with the `compile_commands` option in [clice.toml](./configuration.md), and describe files that have no database entry with a rule's `default_command`.
+By default, clice loads every `compile_commands.json` in the project's root directory and its immediate subdirectories (e.g. `build/`), and those in the directories between a file you open and the root, so a database deeper in the tree loads the first time one of its files is opened. A subdirectory with a `clice.toml` or `.clice/config.toml` of its own is a separate project, whose databases the outer one never loads. This discovery turns off as soon as any rule sets `compile_commands` or `default_command`. The [Configuration Guide](./config-guide.md#compile-commands) shows how to name the databases in `clice.toml`, and how to compile files that have no database entry.
 
 ### CMake
 
@@ -126,4 +126,4 @@ clice index --workspace /path/to/project
 
 The run is resumable — interrupting it with Ctrl-C saves progress, and the
 next invocation continues where it left off instead of starting over.
-`clice index stats --workspace /path/to/project` prints what the persisted index contains.
+`clice index stats --workspace /path/to/project` prints what the persisted index contains. [A Faster First Index](./config-guide.md#a-faster-first-index) says how to make the first one take less time.

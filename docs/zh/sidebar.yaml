@@ -4,9 +4,8 @@ guide:
     - what-is-clice
     - quick-start
     - editors
+    - config-guide
     - configuration
-    - indexing
-    - from-clangd
     - build
 
 features:

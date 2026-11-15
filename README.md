@@ -61,7 +61,7 @@ clice reads a [compilation database](https://clang.llvm.org/docs/JSONCompilation
 cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 ```
 
-By default clice searches the workspace root and its immediate subdirectories (e.g. `build/`) for `compile_commands.json`. See [configuration](https://docs.clice.io/clice/guide/configuration) for custom paths and other build systems.
+By default clice loads every `compile_commands.json` in the project root and its immediate subdirectories (e.g. `build/`). See [project setup](https://docs.clice.io/clice/guide/quick-start#project-setup) for other build systems, and the [configuration guide](https://docs.clice.io/clice/guide/config-guide) for databases elsewhere and files without one.
 
 > [!NOTE]
 > clice is in beta on the road to its first stable release: nightlies are ready to try today. Bug reports via [issues](https://github.com/clice-io/clice/issues) are welcome.

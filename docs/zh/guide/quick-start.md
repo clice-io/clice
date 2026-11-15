@@ -22,7 +22,7 @@ clice 实现了[语言服务器协议](https://microsoft.github.io/language-serv
 
 要让 clice 正确理解代码（例如定位头文件），需要提供 `compile_commands.json` 文件，即[编译数据库](https://clang.llvm.org/docs/JSONCompilationDatabase.html)。编译数据库记录每个源文件的编译选项。
 
-默认情况下，clice 会加载项目根目录及其直接子目录（如 `build/`）中的每一份 `compile_commands.json`，并在打开某个文件时加载该文件到项目根目录之间各级目录中的编译数据库，因此目录树深处的数据库会在其所属文件首次打开时加载。带有独立 `clice.toml` 或 `.clice/config.toml` 的子目录视为独立项目，外层项目绝不会加载它的数据库。只要任意规则设置了 `compile_commands` 或 `default_command`，这项自动发现就会关闭。你可以在 [clice.toml](./configuration.md) 中用 `compile_commands` 选项显式指定编译数据库，并用规则的 `default_command` 描述没有数据库条目的文件。
+默认情况下，clice 会加载项目根目录及其直接子目录（如 `build/`）中的每一份 `compile_commands.json`，并在打开某个文件时加载该文件到项目根目录之间各级目录中的编译数据库，因此目录树深处的数据库会在其所属文件首次打开时加载。带有独立 `clice.toml` 或 `.clice/config.toml` 的子目录视为独立项目，外层项目绝不会加载它的数据库。只要任意规则设置了 `compile_commands` 或 `default_command`，这项自动发现就会关闭。如何在 `clice.toml` 中指定编译数据库、如何编译没有数据库条目的文件，参见[配置指南](./config-guide.md#compile-commands)。
 
 ### CMake
 
@@ -122,4 +122,4 @@ xmake project -k compile_commands --lsp=clangd build
 clice index --workspace /path/to/project
 ```
 
-构建过程支持断点续跑——按 Ctrl-C 中断时会保存当前进度，下次运行将从中断处继续，而无需重新开始。运行 `clice index stats --workspace /path/to/project` 可查看持久化索引的统计内容。
+构建过程支持断点续跑——按 Ctrl-C 中断时会保存当前进度，下次运行将从中断处继续，而无需重新开始。运行 `clice index stats --workspace /path/to/project` 可查看持久化索引的统计内容。如何缩短首次索引的时间，参见[加快首次索引](./config-guide.md#a-faster-first-index)。
