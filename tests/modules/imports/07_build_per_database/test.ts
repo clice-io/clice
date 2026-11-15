@@ -20,4 +20,7 @@ test(async (t) => {
     expect(switched.success).toBe(true);
     expect(await s.errors("user.cpp")).toEqual([]);
     await t.show("release", s.hover(use));
+    // The module's release build indexes nothing, the debug entry being its
+    // own: the importer's compile places the declaration it reads.
+    await t.show("release definition", s.definition(use));
 });

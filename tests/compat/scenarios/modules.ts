@@ -17,13 +17,13 @@ const CMAKE_45 = path.join(
 
 /// What the editor answers in the units importing `std`, under every
 /// standard library: a name of the library leads into its headers, the
-/// project's own into its module's interface and partition, from another
-/// target.
+/// project's own into its module's partition and implementation unit, from
+/// another target.
 const STD_ANSWERS: Record<string, Answer[]> = {
     "std/use_shapes.cpp": [
         { at: "vector<compat", definition: "vector" },
         { at: "Circle>", definition: "std/geometry.cppm" },
-        { at: "grow(", definition: "std/shapes.cppm" },
+        { at: "grow(", definition: "std/shapes.cpp" },
         { at: "describe(", hover: "compat" },
     ],
     "std/shapes.cpp": [
@@ -40,9 +40,8 @@ const STD_ANSWERS: Record<string, Answer[]> = {
 
 /// A CMake 4.5 build of the project with its units importing `std`, and
 /// the units `options` add: clice builds the standard library's module
-/// from its database entries. The units are left to the lint and the
-/// editor's answers: they include no library header, so they have no
-/// version macros to compare.
+/// from its database entries. The units are checked by the lint and the
+/// editor's answers alone.
 function importStd(
     name: string,
     platforms: NodeJS.Platform[],

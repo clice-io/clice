@@ -34,6 +34,10 @@ import {
 
 const PROJECT_DIR = path.join(REPO_ROOT, "tests", "compat", "project");
 
+/// The standard library's module sources: libc++'s `std/*.inc`,
+/// libstdc++'s `std.cc`, MSVC's `std.ixx`, and their `std.compat` twins.
+const STD_MODULE_SOURCE = /\/std(\.compat)?(\/[^/]+\.inc|\.cc|\.ixx|\.cppm)$/;
+
 async function build(scenario: Scenario, root: string, env: NodeJS.ProcessEnv): Promise<void> {
     for (const [tool, ...args] of scenario.build) {
         const step = await runProcess(tool, args, { cwd: root, env, timeout: STEP_MS });
@@ -137,8 +141,21 @@ function hoverText(hover: proto.Hover | null): string {
     return parts.map((part) => (typeof part === "string" ? part : part.value)).join("\n");
 }
 
+/// Whether a definition's `/`-separated path holds `part` up to a word's
+/// end: `shapes.cpp` is not `shapes.cppm`, while `format` is libc++'s
+/// `__format/` directory.
+function holdsPart(found: string, part: string): boolean {
+    for (let at = found.indexOf(part); at !== -1; at = found.indexOf(part, at + 1)) {
+        if (!/\w/.test(found.charAt(at + part.length))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// What is wrong with the editor's answers in the scenario's files, empty
-/// when nothing is.
+/// when nothing is. They are asked once the server is idle: a declaration's
+/// definition in another unit is the background index's to find.
 async function answerProblems(
     clice: string,
     ws: Workspace,
@@ -149,8 +166,10 @@ async function answerProblems(
     const client = CliceClient.start(clice, { cwd: ws.root, baseEnv: env });
     try {
         await client.initialize(ws);
-        for (const [file, wanted] of Object.entries(answers)) {
+        const opened: [string, string, string][] = [];
+        for (const file of Object.keys(answers)) {
             const [uri, text] = await client.openAndWait(file, STEP_MS);
+            opened.push([file, uri, text]);
             for (const diagnostic of client.diagnostics.get(client.normalizeUri(uri)) ?? []) {
                 if (diagnostic.severity === proto.DiagnosticSeverity.Error) {
                     const message =
@@ -160,13 +179,24 @@ async function answerProblems(
                     problems.push(`${file}:${diagnostic.range.start.line + 1}: ${message}`);
                 }
             }
-            for (const answer of wanted) {
+        }
+        const { pending } = await client.sync({ deadlineMs: STEP_MS });
+        if (pending.length > 0) {
+            problems.push(`the server is still busy: ${pending.join("; ")}`);
+        }
+        for (const [file, uri, text] of opened) {
+            for (const answer of answers[file] ?? []) {
                 const { line, character } = placeOf(text, answer);
                 const where = `${file}:${line + 1}:${character + 1} (${answer.at})`;
                 const { definition } = answer;
                 if (definition !== undefined) {
                     const paths = definitionPaths(await client.definitionAt(uri, line, character));
-                    if (!paths.some((found) => found.includes(definition))) {
+                    if (
+                        !paths.some(
+                            (found) =>
+                                holdsPart(found, definition) && !STD_MODULE_SOURCE.test(found),
+                        )
+                    ) {
                         problems.push(
                             `${where}: go to definition answers ${paths.join(", ") || "nothing"}, ` +
                                 `no path holding ${definition}`,

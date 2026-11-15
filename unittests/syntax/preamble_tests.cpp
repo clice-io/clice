@@ -127,6 +127,14 @@ export module foo;
 )";
     ZEXPECT(preamble_bound(src, src.find("#include <b>")) == 0u);
     ZEXPECT(preamble_bound(src, src.find("export")) == src.find("<b>") + 3);
+
+    llvm::StringRef typing = R"(
+module;
+#include <a>
+#include <vec
+export module foo;
+)";
+    ZEXPECT(preamble_bound(typing, typing.find("#include <vec")) == typing.find("<a>") + 3);
 }
 
 ZEST_CASE(BoundBeforeLimit) {

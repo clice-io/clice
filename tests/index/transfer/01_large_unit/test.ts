@@ -25,3 +25,21 @@ test("oversized index without store", { errors: ["Cannot create the log"] }, asy
     await t.show("diagnostics", s.diagnostics("big.cpp"));
     await t.show("hover", s.hover(t.at("big.cpp", "int |function_000()")));
 });
+
+// With no PCH, an open file's index covers its headers too; too large for
+// one message without a store, it covers the file alone, which keeps the
+// file's own answers.
+test("headers left out without store", { errors: ["Cannot create the log"] }, async (t) => {
+    t.disk.write("big.h", generate.functions(200));
+    t.disk.write(
+        "main.cpp",
+        '#include "big.h"\nint use() { return function_000(); }\nint again() { return use(); }\n',
+    );
+    t.disk.write(".clice", "not a directory\n");
+    const s = await t.start({
+        env: { CLICE_TEST_MAX_INDEX_BYTES: "4096" },
+        lastRule: { background_index: false },
+    });
+    await t.show("diagnostics", s.diagnostics("main.cpp"));
+    await t.show("references", s.references(t.at("main.cpp", "int |use()")));
+});

@@ -30,8 +30,10 @@ export interface Answer {
     at: string;
     offset?: number;
 
-    /// Go to definition lands in a file whose path, `/`-separated, contains
-    /// this.
+    /// Go to definition lands in a file whose path, `/`-separated, holds
+    /// this up to a word's end, and that is no source of the standard
+    /// library's module, whose `export using` lines only name what the
+    /// headers declare.
     definition?: string;
 
     /// The hover card shows this.

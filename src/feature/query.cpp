@@ -613,7 +613,6 @@ PlannedRename rename(Context& ctx,
         entry.conflicts = plan.conflicts;
         entry.warnings = plan.warnings;
         stale.insert(plan.stale.begin(), plan.stale.end());
-        stale.insert(plan.unindexed.begin(), plan.unindexed.end());
         for(auto& note: plan.unconfirmed) {
             if(!noted.insert({note.site.path, note.site.range.begin, plan.old_name}).second) {
                 continue;

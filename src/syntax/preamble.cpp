@@ -17,6 +17,21 @@ struct Cut {
     bool include_past_limit = false;
 };
 
+/// Whether a header-name directive's argument names a file: a half-typed
+/// `<vec` includes nothing.
+bool header_name_complete(llvm::StringRef argument) {
+    // A filename token's spelling may begin with line splices; skip them
+    // before inspecting the delimiter.
+    argument = argument.ltrim("\\\r\n \t");
+    if(argument.starts_with("\"")) {
+        return argument.size() >= 2 && argument.ends_with("\"");
+    }
+    if(argument.starts_with("<")) {
+        return argument.ends_with(">");
+    }
+    return true;
+}
+
 /// preamble_bound, the pragma stacks aside.
 Cut directive_bound(llvm::StringRef content, std::uint32_t limit) {
     Lexer lexer(content, dialect_of());
@@ -49,8 +64,12 @@ Cut directive_bound(llvm::StringRef content, std::uint32_t limit) {
         std::uint32_t end = 0;
         if(token.kind == clang::tok::hash) {
             auto name = lexer.next();
-            includes = spelled(name, "include") || spelled(name, "include_next") ||
-                       spelled(name, "import");
+            if(spelled(name, "include") || spelled(name, "include_next") ||
+               spelled(name, "import")) {
+                lexer.advance();
+                auto argument = lexer.next();
+                includes = !argument.is_eod() && header_name_complete(argument.text(content));
+            }
             /// For preprocessor directive, consume the whole directive: the
             /// bound is the end of the token before the eod.
             lexer.advance_until(clang::tok::eod);
@@ -207,16 +226,7 @@ std::uint32_t finished_preamble_bound(llvm::StringRef content, std::uint32_t bou
         if(line.size() < 3) {
             return false;
         }
-        // A filename token's spelling may begin with line splices; skip
-        // them before inspecting the delimiter.
-        auto argument = line[2].text(content).ltrim("\\\r\n \t");
-        if(argument.starts_with("\"")) {
-            return argument.size() >= 2 && argument.ends_with("\"");
-        }
-        if(argument.starts_with("<")) {
-            return argument.ends_with(">");
-        }
-        return true;
+        return header_name_complete(line[2].text(content));
     };
 
     std::uint32_t complete = 0;

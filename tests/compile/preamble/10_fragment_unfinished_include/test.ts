@@ -5,7 +5,7 @@ import { test } from "@clice/tools/testing";
 // the first declaration the compile parses.
 test(async (t) => {
     const s = await t.start({ lastRule: { background_index: false } });
-    await s.errors("m.cppm");
-    s.edit("m.cppm", { after: '#include "a.h"\n', insert: "#include <vec\n" });
-    await t.show("errors", s.errors("m.cppm"));
+    await s.errors("main.cppm");
+    s.edit("main.cppm", { after: '#include "a.h"\n', insert: "#include <vec\n" });
+    await t.show("errors", s.errors("main.cppm"));
 });

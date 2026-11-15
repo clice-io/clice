@@ -298,14 +298,23 @@ RequestResult<worker::CompileParams>
                 result.started_at = unit->started_at().count();
                 result.deps = unit->deps();
 
-                index_error =
-                    send_index(index::build_tu_index(
-                                   *unit,
-                                   {.all_files = params.pch.first.empty(),
-                                    .known_variants = params.indexing.known_variants,
-                                    .known_instantiations = params.indexing.known_instantiations}),
-                               params.indexing.output_path,
-                               result);
+                auto build = [&](bool all_files) {
+                    return index::build_tu_index(
+                        *unit,
+                        {.all_files = all_files,
+                         .known_variants = params.indexing.known_variants,
+                         .known_instantiations = params.indexing.known_instantiations});
+                };
+                // With no PCH, no preamble's index holds the headers: the
+                // file's own covers them, unless that is more than the master
+                // takes with no transfer file to receive it (no cache store).
+                bool all_files = params.pch.first.empty();
+                auto blob = build(all_files);
+                if(all_files && params.indexing.output_path.empty() &&
+                   blob.size() > max_index_bytes()) {
+                    blob = build(false);
+                }
+                index_error = send_index(std::move(blob), params.indexing.output_path, result);
             }
 
             if(unit->completed()) {
