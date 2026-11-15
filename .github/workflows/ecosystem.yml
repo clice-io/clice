@@ -67,17 +67,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           COMMIT: ${{ steps.commit.outputs.commit }}
-        run: |
-          for TAG in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 40 \
-            --json tagName,isPrerelease,isDraft \
-            --jq '.[] | select(.isPrerelease and (.isDraft | not)) | .tagName'); do
-            if [ "$(gh api "repos/$GITHUB_REPOSITORY/compare/$TAG...$COMMIT" --jq .status)" = ahead ]; then
-              echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          done
-          echo "::error::no published nightly that $COMMIT descends from to measure against"
-          exit 1
+        # TEMPORARY: one round against the last nightly before 1.0's layout.
+        run: echo "tag=v0.1.2026111303" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         uses: actions/checkout@v7

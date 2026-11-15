@@ -223,6 +223,16 @@ export class Session {
                 rules: [{ compile_commands: [database] }],
                 // Logs where finish() reads them.
                 logging_dir: loggingDir(workspace),
+                // TEMPORARY, for one round against v0.1.2026111303: that
+                // baseline reads both under [project].
+                ...(this.server === "baseline"
+                    ? {
+                          project: {
+                              cache_dir: cliceDir(workspace, this.server),
+                              logging_dir: loggingDir(workspace),
+                          },
+                      }
+                    : {}),
             },
             cacheDir: cliceDir(workspace, this.server),
             testDefaults: false,
