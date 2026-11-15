@@ -6,15 +6,29 @@ ground up:
 
 - **Crash-proof**: compiles run in isolated worker processes; a compile that
   crashes on half-typed code costs one worker, not the server.
+
+  ![crash-vs-clangd](https://github.com/user-attachments/assets/284ba36e-b941-4657-a5ac-b11f783f5e53)
+
 - **C++20 modules**: built on demand from your compilation database, whatever
   the build system, with completion, highlighting, navigation and hover; PCHs
   and PCMs are cached on disk across sessions.
+
+  ![modules-vs-clangd](https://github.com/user-attachments/assets/fd526ad2-76a5-487b-bbad-da3f9276e5a8)
+
 - **Compilation contexts**: non-self-contained headers work out of the box;
   switch the file a header compiles in, the command a source compiles with,
   or the build configuration.
+
+  ![contexts-vs-clangd](https://github.com/user-attachments/assets/84e9296f-24b7-4a11-a152-a72d110a31bc)
+
 - **Templates**: completion and navigation on dependent names inside generic
   code; go to implementation on a dependent call lists what each
   instantiation calls.
+
+  ![templates](https://github.com/user-attachments/assets/51bb44a1-41cd-4cf7-aaa0-e9045024715f)
+
+  ![implementations](https://github.com/user-attachments/assets/1b927e3f-c63b-4f9c-b8a0-f4e8423d36db)
+
 - **Out of the box**: a `compile_commands.json` is all most projects need;
   clice asks each compiler for its own settings, nvcc, MSYS2, Cygwin and
   zig cc included.
