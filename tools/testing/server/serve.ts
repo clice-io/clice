@@ -299,12 +299,15 @@ export class Serve extends Client {
     /// The folders the server serves, as `folders` in ServerOptions: those
     /// it started with, moved by `changeFolders`; a restart starts on them.
     private folders: string[] | null | undefined;
+    /// The system temporary directory the server is given, when its owner
+    /// gives one: the files outside every folder keep their cache there.
+    readonly temp: string | undefined;
     /// Server actions over a copy the caller owns, whose case has `marks`;
     /// nothing starts yet.
     constructor(
         workspace: Workspace,
         options: ServerOptions,
-        owner: { marks: readonly MarkerAnchor[]; steps: StepRecord; disk: Disk },
+        owner: { marks: readonly MarkerAnchor[]; steps: StepRecord; disk: Disk; temp?: string },
     ) {
         super(owner.marks);
         this.workspace = workspace;
@@ -312,6 +315,7 @@ export class Serve extends Client {
         this.steps = owner.steps;
         this.options = options;
         this.folders = options.folders;
+        this.temp = owner.temp;
     }
 
     /// Each process this server ran, its restarts' too, for the log gate.
@@ -1215,7 +1219,9 @@ export class Serve extends Client {
     }
 
     private launch(): CliceClient {
-        const env: Record<string, string> = { ...this.options.env };
+        const temp =
+            this.temp === undefined ? {} : { TMPDIR: this.temp, TMP: this.temp, TEMP: this.temp };
+        const env: Record<string, string> = { ...temp, ...this.options.env };
         if (
             this.options.anomalies === true ||
             this.options.crash !== undefined ||

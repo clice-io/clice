@@ -138,6 +138,10 @@ void load_members(Project& project,
     opened.scan = std::move(scan);
 }
 
+/// What a run that cannot write its cache directory is told to do.
+constexpr std::string_view writable_cache_dir =
+    "give clice write access to it, or set `cache_dir` in clice.toml to a directory it can write";
+
 /// Why the index cache at `where` cannot be read, as `result` says; empty
 /// for one that loaded.
 std::string unreadable_index(index::LoadResult result, std::string_view where) {
@@ -157,9 +161,8 @@ std::string unreadable_index(index::LoadResult result, std::string_view where) {
 }
 
 /// Open the index database as its writer under `lock`, recording the
-/// project as the cache directory's owner; why the index is not persisted
-/// when another project owns the directory or no database opens, else
-/// empty.
+/// project as the cache directory's owner; why it cannot when another
+/// project owns the directory or no database opens, else empty.
 std::string open_writer(Project& project, index::WriterLock lock) {
     auto& cache_dir = project.settings.cache_dir;
     // The owner is recorded, and checked again, under the lock: another
@@ -168,16 +171,16 @@ std::string open_writer(Project& project, index::WriterLock lock) {
     CanonicalRef root = project.root;
     auto shown = project.file_table.display(root);
     if(owned_elsewhere(cache_dir, root)) {
-        auto why = std::format("Cache directory {} serves the project at {}",
-                               std::string_view(cache_dir),
-                               cache_dir_owner(cache_dir));
-        LOG_GUIDANCE("{}; {} keeps no index", why, shown);
-        return why;
+        return std::format(
+            "Cache directory {} serves the project at {}; set `cache_dir` in the clice.toml of "
+            "{} to a directory of its own",
+            std::string_view(cache_dir),
+            cache_dir_owner(cache_dir),
+            shown);
     }
     set_cache_dir_owner(cache_dir, root, shown);
     auto database = index::open_database(*project.store, project.database_key);
     if(!database) {
-        LOG_GUIDANCE("{}; the index is not saved", database.error());
         return std::move(database.error());
     }
     project.database = std::move(*database);
@@ -186,12 +189,12 @@ std::string open_writer(Project& project, index::WriterLock lock) {
 }
 
 /// Open the cache store and the index database as `options` say; why the
-/// index cannot be read, for a run that reads it, or kept, for its writer,
-/// in `opened`.
+/// index cannot be read, for a run that reads it, or the cache cannot be
+/// used, for a run building into it, in `opened`.
 void open_store(Project& project, const Project::OpenOptions& options, Project::Opened& opened) {
     using Cache = Project::OpenOptions::Cache;
     auto& cache_dir = project.settings.cache_dir;
-    if(options.cache == Cache::None || cache_dir.empty()) {
+    if(options.cache == Cache::None) {
         return;
     }
     bool read_only = options.cache == Cache::Read;
@@ -213,19 +216,17 @@ void open_store(Project& project, const Project::OpenOptions& options, Project::
                                store.error().message());
         if(read_only) {
             opened.unreadable = std::move(why);
-            return;
-        }
-        LOG_GUIDANCE("{}; no preamble or module is precompiled, and the index is not saved", why);
-        if(options.cache == Cache::Write) {
-            opened.unwritable = std::move(why);
+        } else {
+            opened.unwritable = std::format("{}; {}", why, writable_cache_dir);
         }
         return;
     }
-    // Only a run loading the build's members compiles them; registering
-    // scans the whole namespace, which a run reading the index alone
-    // does not pay for. Size budgets are deliberately generous: eviction
-    // exists to bound disk usage, not to keep the working set tight.
-    if(options.load == Project::OpenOptions::Load::Members) {
+    // Only a run loading the build's members, or building into the store,
+    // compiles them; registering scans the whole namespace, which a run
+    // reading the index alone does not pay for. Size budgets are
+    // deliberately generous: eviction exists to bound disk usage, not to
+    // keep the working set tight.
+    if(options.load == Project::OpenOptions::Load::Members || options.cache == Cache::Build) {
         constexpr std::uint64_t GiB = 1ull << 30;
         store->register_namespace({.name = "pch",
                                    .extension = ".pch",
@@ -268,8 +269,9 @@ void open_store(Project& project, const Project::OpenOptions& options, Project::
         if(lock.error() == index::WriterLock::Refused::Held) {
             project.index_waits = true;
         } else {
-            opened.unwritable = std::format("Cannot open the index writer lock under {}",
-                                            std::string_view(cache_dir));
+            opened.unwritable = std::format("Cannot open the index writer lock under {}; {}",
+                                            std::string_view(cache_dir),
+                                            writable_cache_dir);
         }
         return;
     }
@@ -279,7 +281,7 @@ void open_store(Project& project, const Project::OpenOptions& options, Project::
 /// Load the saved state — the index, the precompiled records, the context
 /// choices — `reconcile`d with the build when it is loaded, and mark the
 /// units deleted while no run wrote the index missing; why a run that
-/// `reads` the index cannot, or why its writer keeps it in memory, in
+/// `reads` the index cannot, or why its writer has no database, in
 /// `opened`.
 void load_saved_state(Project& project, bool reconcile, bool reads, Project::Opened& opened) {
     auto& cache_dir = project.settings.cache_dir;
@@ -296,8 +298,11 @@ void load_saved_state(Project& project, bool reconcile, bool reads, Project::Ope
             opened.unreadable = unreadable_index(index::LoadResult::Unreadable, cache_dir);
             return;
         }
-        opened.unwritable =
-            "the header of its index database cannot be read; the database is left untouched";
+        opened.unwritable = std::format(
+            "The index database in {} cannot be used (the log above says why); delete its "
+            "`index` directory, or set `cache_dir` in clice.toml to another directory",
+            std::string_view(cache_dir));
+        return;
     }
     // A unit deleted while no server ran keeps its index until a look finds
     // it missing (see FreshnessGate).

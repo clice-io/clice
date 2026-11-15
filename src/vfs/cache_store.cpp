@@ -266,25 +266,10 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     // The only crash residue are in-flight tmp files; committed blobs are
     // complete by construction (atomic rename).  Remove tmp directories of
     // instances that no longer exist.
-    auto self_pid = sys::pid();
     auto tmp_parent = path::join(state->base, "tmp");
-    if(auto entries = fs::Directory::open(tmp_parent)) {
-        for(auto& entry: *entries) {
-            if(!entry) {
-                break;
-            }
-            int pid = 0;
-            if(llvm::StringRef(entry->name).getAsInteger(10, pid) || pid == self_pid ||
-               sys::process_alive(pid)) {
-                continue;
-            }
-            auto dead = path::join(tmp_parent, entry->name);
-            fs::remove_all(dead);
-            LOG_DEBUG("Removed {}, left by a clice that exited", dead);
-        }
-    }
+    remove_left_by_exited(tmp_parent);
 
-    state->tmp_dir = path::join(tmp_parent, std::to_string(self_pid));
+    state->tmp_dir = path::join(tmp_parent, std::to_string(sys::pid()));
     fs::remove_all(state->tmp_dir);
     if(auto made = fs::create_directories(state->tmp_dir); !made) {
         return std::unexpected(made.error());

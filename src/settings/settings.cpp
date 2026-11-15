@@ -735,7 +735,8 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
     // A cache directory serves one project (see owned_elsewhere), and one at
     // a time: its writer lock is the process's, so a second project of the
     // server would take it too. The merged configuration's falls back to the
-    // file's own, then the default, then none.
+    // file's own, then the default; with those taken too the project runs
+    // nothing.
     loaded.settings = layered;
     auto problems = loaded.settings.finalize(root);
     auto& cache_dir = loaded.settings.cache_dir;
@@ -759,17 +760,27 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
                 break;
             }
         }
+        auto shown = options.root_name.empty() ? llvm::StringRef(root) : options.root_name;
         if(taken()) {
             cache_dir.clear();
             loaded.settings.cache_dir_defaulted = false;
             loaded.settings.cache_identity = {};
+            issues.push_back({
+                .severity = Severity::Error,
+                .message = std::format(
+                    "Cache directory {} {}, and the other ones {} can use are taken too; set "
+                    "`cache_dir` in its clice.toml to a directory of its own",
+                    requested,
+                    reason,
+                    shown),
+            });
+        } else {
+            LOG_GUIDANCE("Cache directory {} {}; {} keeps its cache in {}",
+                         requested,
+                         reason,
+                         shown,
+                         cache_dir);
         }
-        LOG_GUIDANCE("Cache directory {} {}; {} {}",
-                     requested,
-                     reason,
-                     options.root_name.empty() ? llvm::StringRef(root) : options.root_name,
-                     cache_dir.empty() ? std::string("keeps no cache")
-                                       : std::format("keeps its cache in {}", cache_dir));
     }
     for(auto& problem: problems) {
         if(options.overlay && sets(*options.overlay, problem.path)) {

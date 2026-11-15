@@ -95,28 +95,6 @@ static index::TUIndexOptions index_options(const worker::IndexRequest& request) 
             .known_instantiations = request.known_instantiations};
 }
 
-/// Where a PCH or PCM build writes: the master's tmp path when it provided
-/// one (already allocated by its CacheStore — the master commits with
-/// fsync + atomic rename after we report success), else a temporary file
-/// of our own.
-static std::expected<std::string, std::string> precompiled_output(llvm::StringRef label,
-                                                                  llvm::StringRef output_path,
-                                                                  llvm::StringRef prefix,
-                                                                  llvm::StringRef extension) {
-    if(!output_path.empty()) {
-        return output_path.str();
-    }
-    std::string dir;
-    sys::temp_dir(dir);
-    std::string path;
-    if(!fs::create_temp_file(path, dir, prefix.str() + "-", "." + extension.str())) {
-        auto message = std::format("Cannot create a temporary {} file in {}", label, dir);
-        LOG_ERROR("{}", message);
-        return std::unexpected(std::move(message));
-    }
-    return path;
-}
-
 /// The errors a unit reports, each at the start of the range clang marks.
 /// One no file on disk holds (the command line's, the built-in buffer's)
 /// has no place.
@@ -205,10 +183,7 @@ static worker::PrecompiledBuildResult
                      const std::shared_ptr<std::atomic_bool>& stop) {
     Timer timer;
 
-    auto output = precompiled_output("PCH", params.output_path, "clice-pch", "pch");
-    if(!output) {
-        return {false, output.error()};
-    }
+    auto& output = params.output_path;
 
     CompilationParams cp{
         .kind = params.whole_file ? CompilationKind::PrecompiledHeader : CompilationKind::Preamble,
@@ -216,7 +191,7 @@ static worker::PrecompiledBuildResult
                   .directory = params.directory,
                   .project_root = params.project_root,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
-        .output_file = *output,
+        .output_file = output,
         .modular = params.modular,
         .skip_bodies = params.skip_bodies,
         .function_bodies = params.indexing.function_bodies,
@@ -283,7 +258,7 @@ static worker::PrecompiledBuildResult
                  "kind=pch file={} output={} compile_ms={} index_ms={} flush_ms={} "
                  "state_write_ms={} total_ms={}",
                  params.file,
-                 *output,
+                 output,
                  compile_ms,
                  index_ms,
                  flush_ms,
@@ -298,7 +273,7 @@ static worker::PrecompiledBuildResult
     return finish_precompiled(std::move(result),
                               "PCH",
                               success,
-                              *output,
+                              output,
                               started_at,
                               deps,
                               errors,
@@ -310,10 +285,7 @@ static worker::PrecompiledBuildResult
                      const std::shared_ptr<std::atomic_bool>& stop) {
     Timer timer;
 
-    auto output = precompiled_output("PCM", params.output_path, "clice-pcm", "pcm");
-    if(!output) {
-        return {false, output.error()};
-    }
+    auto& output = params.output_path;
 
     CompilationParams cp{
         .kind = CompilationKind::ModuleInterface,
@@ -321,7 +293,7 @@ static worker::PrecompiledBuildResult
                   .directory = params.directory,
                   .project_root = params.project_root,
                   .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(params.hidden)},
-        .output_file = *output,
+        .output_file = output,
         .function_bodies = params.indexing.function_bodies,
         .stop = stop,
     };
@@ -374,7 +346,7 @@ static worker::PrecompiledBuildResult
     return finish_precompiled(std::move(result),
                               "PCM",
                               success,
-                              *output,
+                              output,
                               started_at,
                               deps,
                               errors,

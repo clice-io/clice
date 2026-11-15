@@ -157,11 +157,11 @@ std::expected<IndexResult, AskError> request_index(const index::ServerEndpoint& 
 
 std::expected<Listener, std::string> listen(llvm::StringRef cache_dir, async::event_loop& loop) {
     std::string name;
-    std::optional<fs::TempDirectory> directory;
-#ifdef _WIN32
-    // One name per project: a server serves several. The default DACL of a
-    // pipe lets other users read it alone, never write a request.
+    // One name per project: a server serves several.
     static unsigned serial = 0;
+#ifdef _WIN32
+    // The default DACL of a pipe lets other users read it alone, never
+    // write a request.
     name = std::format(R"(\\.\pipe\clice-{}-{})", sys::pid(), serial);
     serial += 1;
 #else
@@ -169,16 +169,13 @@ std::expected<Listener, std::string> listen(llvm::StringRef cache_dir, async::ev
     constexpr std::size_t socket_path_max = 100;
     name = path::join(cache_dir, "server.sock");
     if(name.size() >= socket_path_max) {
-        std::string temp;
-        sys::temp_dir(temp);
-        auto made = fs::TempDirectory::create(temp, "clice-");
-        if(!made) {
-            return std::unexpected(std::format("cannot make a directory for its socket in {}: {}",
-                                               temp,
-                                               made.error().message()));
+        // The temporary directory is the user's alone, as the socket must be.
+        auto temp = temp_root();
+        if(!temp) {
+            return std::unexpected(std::format("no place for its socket: {}", temp.error()));
         }
-        name = path::join(made->path(), "server.sock");
-        directory = std::move(*made);
+        name = path::join(*temp, std::format("{}-{}.sock", sys::pid(), serial));
+        serial += 1;
     }
     // A server that died left its socket: the writer lock this one holds
     // says nothing listens there.
@@ -193,9 +190,7 @@ std::expected<Listener, std::string> listen(llvm::StringRef cache_dir, async::ev
     // Connecting takes writing the socket: its user's alone.
     fs::set_permissions(name, 0600);
 #endif
-    return Listener{.acceptor = std::move(*acceptor),
-                    .name = std::move(name),
-                    .directory = std::move(directory)};
+    return Listener{.acceptor = std::move(*acceptor), .name = std::move(name)};
 }
 
 async::task<> serve(ServedProject& project, async::pipe::acceptor acceptor) {

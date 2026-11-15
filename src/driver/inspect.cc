@@ -32,6 +32,7 @@ import :semantic.semantics;
 import :semantic.symbol;
 import :semantic.template_resolver;
 import :settings.settings;
+import :support.process;
 import :support.text;
 import :syntax.source_text;
 import :syntax.token;
@@ -857,10 +858,13 @@ std::string build_pch(Project& project,
                       const CommandRef& writer,
                       llvm::StringRef file,
                       llvm::StringRef project_root) {
-    std::string dir;
-    sys::temp_dir(dir);
+    auto temp = temp_root();
+    if(!temp) {
+        LOG_WARN("cannot create a temporary PCH: {}", temp.error());
+        return {};
+    }
     std::string output;
-    if(auto created = fs::create_temp_file(output, dir, "clice-inspect-", ".pch"); !created) {
+    if(auto created = fs::create_temp_file(output, *temp, "inspect-", ".pch"); !created) {
         LOG_WARN("cannot create a temporary PCH: {}", created.error().message());
         return {};
     }

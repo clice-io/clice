@@ -416,12 +416,7 @@ inline async::task<std::string> writes_index(Project& project, Project::Opened& 
         }
         project.open_index(std::move(*lock), opened);
     }
-    if(!project.database) {
-        co_return std::format("Cannot persist the index at {}: {}",
-                              std::string_view(cache_dir),
-                              opened.unwritable);
-    }
-    co_return std::string();
+    co_return opened.unwritable;
 }
 
 /// The shared tail of contract 2, then the pool.

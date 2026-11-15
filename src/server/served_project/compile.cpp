@@ -795,10 +795,8 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
             served.compile_interrupts.erase(it);
         }
     });
-    if(project.store) {
-        transfer = project.store->begin_transfer();
-        params.indexing.output_path = transfer->tmp_path;
-    }
+    transfer = project.store->begin_transfer();
+    params.indexing.output_path = transfer->tmp_path;
     auto& pool = served.server.pool;
     auto result = co_await deliver(
         pool,

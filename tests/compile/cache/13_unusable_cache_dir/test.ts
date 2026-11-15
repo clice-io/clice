@@ -1,11 +1,22 @@
+import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-// The cache directory cannot be created (a file sits where it goes): no
-// preamble or module is precompiled. The server tells the user, naming the
-// directory, and the import says why its module did not build.
-test({ errors: ["Cannot create the log directory"] }, async (t) => {
+// The cache directory cannot be created (a file sits where it goes): the
+// project serves nothing, and the server tells the user which directory and
+// what to do.
+test("server", { errors: ["Cannot create the log directory"] }, async (t) => {
     t.disk.write(".clice", "not a directory\n");
     const s = await t.start();
-    await t.show("diagnostics", s.diagnostics("main.cpp"));
+    expect(await s.errors("main.cpp")).toEqual([]);
     await t.show("guidance", await s.guidance());
 });
+
+// A lint run builds its preambles into the cache too: it stops at once.
+test(
+    "lint",
+    { errors: ["Cannot create the log directory", "Cannot use the cache directory"] },
+    async (t) => {
+        t.disk.write(".clice", "not a directory\n");
+        await t.cli("lint");
+    },
+);

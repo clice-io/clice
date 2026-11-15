@@ -1062,9 +1062,9 @@ std::expected<std::unique_ptr<BlobDatabase>, std::string>
 std::expected<std::unique_ptr<BlobDatabase>, std::string> open_database(CacheStore& store,
                                                                         const DatabaseKey& key,
                                                                         bool read_only) {
-    // FIXME: no index persistence on remote filesystems (NFS, SMB, WSL drvfs):
+    // FIXME: no index database on remote filesystems (NFS, SMB, WSL drvfs):
     // their locking and cache coherence differ too much to trust LMDB or one
-    // untested fallback there, so such sessions keep the index in memory.
+    // untested fallback there, so a cache directory there serves no project.
     switch(filesystem_locality(store.base_dir())) {
         case FsLocality::Local: break;
         case FsLocality::Remote: {

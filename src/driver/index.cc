@@ -159,10 +159,9 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
     });
 
     // The command's whole product is the persisted index: without a database
-    // (cache failed to open, another process keeps the index writer lock,
-    // or an unreadable header disabled persistence) the run would
-    // only warm this process's memory and a rerun would start from
-    // nothing — fail instead of pretending.
+    // (the cache cannot be used, another process keeps the index writer
+    // lock) the run would only warm this process's memory and a rerun would
+    // start from nothing — fail instead of pretending.
     if(auto unwritable = co_await writes_index(project, opened); !unwritable.empty()) {
         result.error = std::move(unwritable);
     } else if(opened.members.empty()) {

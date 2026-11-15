@@ -142,7 +142,7 @@ llvm::StringRef revalidate(Project& project, NodeId module, llvm::StringRef pcm_
     } else {
         return {};
     }
-    entry.retire(&*project.store, "pcm");
+    entry.retire(*project.store, "pcm");
     entry.key.clear();
     entry.pch.clear();
     return miss;
@@ -338,7 +338,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
                 co_return Result::Failed;
             }
             auto& entry = project.pcms[node];
-            entry.retire(project.store ? &*project.store : nullptr, "pcm");
+            entry.retire(*project.store, "pcm");
             entry.key.clear();
             entry.pch.clear();
             entry.failure = {{.import = failed_import}, std::move(imports.inputs)};
@@ -357,15 +357,6 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
     }
     auto file_path = std::string(project.file_table.resolve(path_id));
     bp.file = file_path;
-
-    if(!project.store) {
-        auto& cache_dir = project.settings.cache_dir;
-        auto cause = cache_dir.empty()
-                         ? std::string("no cache directory to store its module file in")
-                         : std::format("the cache directory {} cannot be used", cache_dir);
-        project.pcms[node].failure = {{.record = {.cause = std::move(cause)}}, {}};
-        co_return Result::Failed;
-    }
 
     // The PCH as the build starts, like the imports.
     std::string pch_blob;
@@ -471,7 +462,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
         });
     if(!built) {
         if(built.error() == Result::Failed) {
-            project.pcms[node].retire(&*project.store, "pcm");
+            project.pcms[node].retire(*project.store, "pcm");
         }
         co_return built.error();
     }
@@ -484,11 +475,11 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
         co_await async::queue([&] { return project.store->commit(std::move(pending)); });
     auto& entry = project.pcms[node];
     if(!committed.has_value()) {
-        entry.retire(&*project.store, "pcm");
+        entry.retire(*project.store, "pcm");
         LOG_WARN("Cannot store the PCM of module {}", module_name);
         co_return Result::Failed;
     }
-    entry.publish(&*project.store,
+    entry.publish(*project.store,
                   "pcm",
                   std::move(blob),
                   std::move(committed.value()),

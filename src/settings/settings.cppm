@@ -413,8 +413,8 @@ struct SettingsIssue {
 
     Severity severity;
     /// Absolute path of the configuration file; empty for a problem of the
-    /// overlay, whose message names it, or of the `--configuration` asked
-    /// for.
+    /// overlay, whose message names it, of the `--configuration` asked for,
+    /// or of the cache directory.
     std::string file;
     std::string message;
     /// 1-based position in the file; 0 when unknown.
@@ -459,9 +459,13 @@ struct Settings {
                   "`.clice/config.toml` stays visible to Git; backup tools "
                   "honoring CACHEDIR.TAG skip the whole directory); an "
                   "explicitly configured directory is never marked. It "
-                  "must be on a local disk: on a network file system "
-                  "(NFS, SMB, a Windows drive under WSL) the index is not "
-                  "saved. The resolved path is printed at startup.")
+                  "must be a directory clice can write on a local disk: a "
+                  "project whose cache directory cannot be written or is "
+                  "on a network file system (NFS, SMB, a Windows drive "
+                  "under WSL) serves nothing, and clice says why. Files "
+                  "outside every workspace folder keep theirs in clice's "
+                  "temporary directory, removed when the server exits. "
+                  "The resolved path is printed at startup.")
     std::string cache_dir;
 
     /// Whether finalize() derived cache_dir rather than the user setting

@@ -1,0 +1,9 @@
+[units]
+"a/main.cpp" = []
+"b/main.cpp" = []
+"c/main.cpp" = []
+
+[databases]
+a = ["a/main.cpp"]
+b = ["b/main.cpp"]
+c = ["c/main.cpp"]

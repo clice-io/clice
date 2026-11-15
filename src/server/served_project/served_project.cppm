@@ -335,7 +335,8 @@ Value empty_value() {
 class ServedProject final : public std::enable_shared_from_this<ServedProject> {
 public:
     /// `root` is the project's directory; empty for the rootless project a
-    /// server without folders runs, which loads nothing. What the project
+    /// server without folders runs, which loads no build: it opens only a
+    /// store of its own, removed with it. What the project
     /// tells of its index reaches the documents: an index attempt ending
     /// (the index_first in decide_compiling promised the index would serve
     /// the cold document, and one that finishes without a servable shard ends
@@ -372,11 +373,11 @@ public:
     /// index stops, the final state is persisted and the store closes.
     async::task<> shutdown();
 
-    /// The settings have errors, or another process keeps the project's
-    /// index: the project starts nothing, and the files under its root
-    /// answer every request at once with nothing.
+    /// The settings have errors, or the project's cache cannot be used:
+    /// the project starts nothing, and the files under its root answer
+    /// every request at once with nothing.
     bool broken() const {
-        return has_error(settings_issues) || index_kept_elsewhere;
+        return has_error(settings_issues) || cache_unusable;
     }
 
     /// Whether the project's root holds `path`; the rootless project's
@@ -823,8 +824,9 @@ private:
     void start_control_listener();
 
     /// Schedule a save carrying dirty precompiled records or context choices; no-op
-    /// when one is already scheduled or the server is shutting down (the
-    /// final shutdown save covers it).
+    /// when one is already scheduled, the server is shutting down (the
+    /// final shutdown save covers it) or the project is the rootless one,
+    /// which saves nothing.
     void schedule_metadata_flush();
 
     async::task<> metadata_flush_task();
@@ -835,8 +837,12 @@ private:
     /// What open() leaves while another process holds the writer lock: the
     /// index, opened once the lock comes free (Project::wait_for_writer),
     /// then serve(). The documents wait meanwhile; a lock still held when
-    /// the wait ends leaves the project unserved (index_kept_elsewhere).
+    /// the wait ends leaves the project unserved (cache_unusable).
     async::task<> open_index_task();
+
+    /// The project's cache cannot be used, as `why` says: it serves
+    /// nothing, and the user is told so.
+    void refuse_cache(llvm::StringRef why);
 
     /// The default-sources loop, poll_sources on the workspace poll's pace,
     /// asking the compilers that could not be asked again: the documents
@@ -965,9 +971,10 @@ private:
     /// whether they compile.
     bool started = false;
 
-    /// Another process kept the writer lock of the project's index through
-    /// the wait (open_index_task): the project serves nothing (broken).
-    bool index_kept_elsewhere = false;
+    /// The project's cache cannot be used: its directory cannot be written,
+    /// or another process kept the writer lock of its index through the wait
+    /// (open_index_task). The project serves nothing (broken).
+    bool cache_unusable = false;
 
     /// start() found nothing to open the project for: no database and no
     /// document.
@@ -994,10 +1001,6 @@ private:
     /// The control channel's socket (start_control_listener), removed at
     /// shutdown; empty while there is none.
     std::string control_socket;
-
-    /// The directory made for the socket when the cache directory's path is
-    /// too long for one, removed with the project.
-    std::optional<fs::TempDirectory> control_directory;
 
     bool metadata_flush_scheduled = false;
 

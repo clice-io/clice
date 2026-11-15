@@ -1,9 +1,80 @@
+module;
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
+
 module clice;
 
 import :support.logging;
 import :support.process;
 
 namespace clice {
+
+std::expected<std::string, std::string> temp_root() {
+    std::string dir;
+    if(auto error = sys::temp_dir(dir)) {
+        return std::unexpected(std::format("no temporary directory: {}", error.message()));
+    }
+#ifdef _WIN32
+    fs::path::push(dir, "clice");
+#else
+    fs::path::push(dir, std::format("clice-{}", getuid()));
+#endif
+    auto unusable = [&](std::error_code error) {
+        return std::unexpected(std::format("{} cannot hold clice's temporary files: {}{}",
+                                           dir,
+                                           error.message(),
+#ifdef _WIN32
+                                           ""
+#else
+                                           "; another user may own it: point TMPDIR at a "
+                                           "directory of your own"
+#endif
+                                           ));
+    };
+    if(auto made = fs::create_directory(dir); !made) {
+        return unusable(made.error());
+    }
+#ifndef _WIN32
+    // Its own, a directory: not another user's, which root may still chmod,
+    // nor a link planted at its name.
+    struct ::stat entry{};
+    if(::lstat(dir.c_str(), &entry) != 0) {
+        return unusable(std::error_code(errno, std::generic_category()));
+    }
+    if(!S_ISDIR(entry.st_mode) || entry.st_uid != getuid()) {
+        return unusable(std::make_error_code(std::errc::permission_denied));
+    }
+    if(auto error = fs::set_permissions(dir, 0700)) {
+        return unusable(error);
+    }
+#endif
+    return dir;
+}
+
+void remove_left_by_exited(llvm::StringRef parent) {
+    auto entries = fs::Directory::open(parent);
+    if(!entries) {
+        return;
+    }
+    auto self = sys::pid();
+    for(auto& entry: *entries) {
+        if(!entry) {
+            break;
+        }
+        int pid = 0;
+        if(llvm::StringRef(entry->name).getAsInteger(10, pid) || pid == self ||
+           sys::process_alive(pid)) {
+            continue;
+        }
+        std::string dead = parent.str();
+        fs::path::push(dead, entry->name);
+        fs::remove_all(dead);
+        LOG_DEBUG("Removed {}, left by a clice that exited", dead);
+    }
+}
 
 async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
                                                                std::string cwd,

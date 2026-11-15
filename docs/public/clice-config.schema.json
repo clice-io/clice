@@ -9,7 +9,7 @@
         },
         "cache_dir": {
             "type": "string",
-            "description": "Directory for the unified on-disk cache (PCHs, PCMs and the index), relative to the project root. Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. It must be on a local disk: on a network file system (NFS, SMB, a Windows drive under WSL) the index is not saved. The resolved path is printed at startup.",
+            "description": "Directory for the unified on-disk cache (PCHs, PCMs and the index), relative to the project root. Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. It must be a directory clice can write on a local disk: a project whose cache directory cannot be written or is on a network file system (NFS, SMB, a Windows drive under WSL) serves nothing, and clice says why. Files outside every workspace folder keep theirs in clice's temporary directory, removed when the server exits. The resolved path is printed at startup.",
             "default": ""
         },
         "logging_dir": {

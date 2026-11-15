@@ -159,10 +159,11 @@ struct Project {
     ProvisionalMembers provisional;
 
     /// Unified on-disk blob store for PCH, PCM and index blobs.  Opened by
-    /// open() when cache_dir is configured; absent means caching
-    /// is disabled.  Owns blob lifecycle (atomic writes, LRU, crash
-    /// recovery); validity metadata (deps snapshots) lives in the index
-    /// database, written by write_database.
+    /// open(): a run that builds has it — one whose store does not open
+    /// runs nothing (Opened::unwritable) — and a run reading the index has
+    /// it once an index was built.  Owns blob lifecycle (atomic writes, LRU,
+    /// crash recovery); validity metadata (deps snapshots) lives in the
+    /// index database, written by write_database.
     std::optional<CacheStore> store;
 
     /// The cache directory's writer lock, taken by a session that persists
@@ -405,9 +406,9 @@ struct Project {
         /// with none then. Empty when it was read.
         std::string unreadable;
 
-        /// Why the index is not persisted, for the run writing it: no
-        /// database could be opened or owned, and it keeps the index in
-        /// memory. Empty when it persists.
+        /// Why the cache cannot be used, for a run building into it: the
+        /// store does not open, or, for the index's writer, no database
+        /// opens or is its own. Empty when it can.
         std::string unwritable;
     };
 
@@ -433,7 +434,7 @@ struct Project {
     /// `lock`. What the index remembers of the build joins first — the
     /// databases of earlier sessions, the provisional members — then the
     /// saved state loads as open() loads it, completing `opened` as open()
-    /// would have: its members, and why the index is not persisted. Returns
+    /// would have: its members, and why the cache cannot be used. Returns
     /// what the joined members changed, for the owner to follow.
     CDBDiff open_index(index::WriterLock lock, Opened& opened);
 

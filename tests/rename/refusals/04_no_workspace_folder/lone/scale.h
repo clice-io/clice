@@ -1,0 +1,1 @@
+int scale(int x);

@@ -611,6 +611,7 @@ PlannedRename rename(Context& ctx,
         auto& entry = result.renames[entries[i]];
         entry.edits = static_cast<int>(plan.edits.size());
         entry.conflicts = plan.conflicts;
+        entry.conflicts.insert(entry.conflicts.end(), plan.outside.begin(), plan.outside.end());
         entry.warnings = plan.warnings;
         stale.insert(plan.stale.begin(), plan.stale.end());
         for(auto& note: plan.unconfirmed) {

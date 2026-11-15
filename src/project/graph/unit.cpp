@@ -375,10 +375,8 @@ IndexTransfer Project::request_index(Fid unit, worker::IndexRequest& request) {
     }
     request.function_bodies = rules.function_body_rules();
     IndexTransfer transfer;
-    if(store) {
-        transfer.file = store->begin_transfer();
-        request.output_path = transfer.file->tmp_path;
-    }
+    transfer.file = store->begin_transfer();
+    request.output_path = transfer.file->tmp_path;
     return transfer;
 }
 

@@ -36,16 +36,6 @@ ZEST_CASE(LargeIndexToFile) {
     ZEXPECT(*written == as_chars(blob));
 }
 
-ZEST_CASE(LargeIndexWithoutPath) {
-    Reply reply;
-    auto error =
-        send_index(std::vector<std::byte>(max_index_bytes() + 1, std::byte{'x'}), "", reply);
-    ZASSERT(error);
-    ZEXPECT(error->contains("too large to send between clice processes"));
-    ZEXPECT(!reply.index_in_file);
-    ZEXPECT(reply.tu_index_data.empty());
-}
-
 ZEST_CASE(FailedWriteReported) {
     TempDir tmp;
     tmp.touch("file");

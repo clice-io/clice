@@ -74,10 +74,10 @@ struct Precompiled {
     /// The product no longer describes the entry: it moves to `previous`,
     /// the one before leaving the store's namespace `ns`, and the entry names
     /// no product.
-    void retire(CacheStore* store, llvm::StringRef ns) {
+    void retire(CacheStore& store, llvm::StringRef ns) {
         if(!blob.empty()) {
-            if(!previous.empty() && store) {
-                store->invalidate(ns, previous);
+            if(!previous.empty()) {
+                store.invalidate(ns, previous);
             }
             previous = std::exchange(blob, {});
         }
@@ -86,7 +86,7 @@ struct Precompiled {
     }
 
     /// A new build committed at `path` under `blob`, built from `inputs`.
-    void publish(CacheStore* store,
+    void publish(CacheStore& store,
                  llvm::StringRef ns,
                  std::string blob,
                  std::string path,
@@ -99,10 +99,10 @@ struct Precompiled {
     }
 
     /// Both products leave the store's namespace `ns`; the failure stays.
-    void discard(CacheStore* store, llvm::StringRef ns) {
+    void discard(CacheStore& store, llvm::StringRef ns) {
         for(auto* name: {&blob, &previous}) {
-            if(!name->empty() && store) {
-                store->invalidate(ns, *name);
+            if(!name->empty()) {
+                store.invalidate(ns, *name);
             }
             name->clear();
         }

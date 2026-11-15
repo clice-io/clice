@@ -34,7 +34,7 @@ void forget_pairs(Project& project, llvm::StringRef pch_key) {
         return;
     }
     auto& entry = it->second;
-    entry.discard(project.store ? &*project.store : nullptr, "pch");
+    entry.discard(*project.store, "pch");
     entry.index_path.clear();
     entry.index_verified = false;
     entry.index.reset();
@@ -62,7 +62,7 @@ std::pair<Check, llvm::StringRef> pair_state(Project& project, llvm::StringRef p
         return {Check::ProductGone, "none is built yet for its command and preamble"};
     }
     auto& entry = it->second;
-    if(!project.store || !project.store->lookup("pch", entry.blob) ||
+    if(!project.store->lookup("pch", entry.blob) ||
        (!entry.whole_file && !project.store->lookup_aux("pch", entry.blob)) ||
        !fs::exists(entry.path)) {
         return {Check::ProductGone, evicted};
@@ -133,9 +133,6 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         forget_pairs(project, pch_key);
     }
 
-    if(!project.store) {
-        co_return Result::Failed;
-    }
     if(refused(project, pch_key, request.params.file)) {
         co_return Result::Failed;
     }
@@ -262,7 +259,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     }
 
     auto& entry = project.pchs[pch_key];
-    entry.publish(&*project.store,
+    entry.publish(*project.store,
                   "pch",
                   std::move(blob),
                   std::move(*pch_path),
@@ -628,7 +625,7 @@ void Project::discard_pch(llvm::StringRef pch_key) {
     // a header created after the build looked for it.
     if(!graph.is_compiling(pch_node(pch_key))) {
         forget_pairs(*this, pch_key);
-    } else if(store) {
+    } else {
         store->invalidate("pch", it->second.blob);
     }
 }
@@ -645,8 +642,8 @@ bool Project::forget_pch_failure(llvm::StringRef pch_key) {
 }
 
 void Project::pch_consume_failed(llvm::StringRef pch_key) {
-    if(auto it = pchs.find(pch_key); it != pchs.end() && !it->second.blob.empty() &&
-                                     (!store || store->lookup("pch", it->second.blob))) {
+    if(auto it = pchs.find(pch_key);
+       it != pchs.end() && !it->second.blob.empty() && store->lookup("pch", it->second.blob)) {
         auto& consumes = it->second.consumes;
         if(!consumes) {
             consumes.emplace();
@@ -671,7 +668,7 @@ std::shared_ptr<worker::PreambleIndex> Project::preamble_index(llvm::StringRef p
     auto& entry = it->second;
     bool had_blob = !entry.index_path.empty();
     auto loaded = entry.load_index();
-    if(!loaded && had_blob && store) {
+    if(!loaded && had_blob) {
         // The blob was just found unreadable (load_index cleared the
         // path): a pair that looks complete on disk but cannot be opened
         // would be served to every session for the rest of the store's
@@ -684,9 +681,6 @@ std::shared_ptr<worker::PreambleIndex> Project::preamble_index(llvm::StringRef p
 }
 
 void Project::forget_evicted_pchs() {
-    if(!store) {
-        return;
-    }
     // An entry mid-rebuild keeps its slot — its commit publishes a fresh
     // pair. A key rebuilt after the eviction was recorded names another
     // blob by now.

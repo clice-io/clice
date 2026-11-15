@@ -60,7 +60,7 @@ struct IndexTransfer {
                                                         bool in_file);
 
     /// The store's file the worker writes an index too large for a message
-    /// to, removed with this; none without a store.
+    /// to, removed with this; none for a build sending no index.
     std::optional<CacheStore::PendingEntry> file;
 
     /// The file, mapped once received. Declared after `file`: the mapping

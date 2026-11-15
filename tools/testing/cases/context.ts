@@ -1,6 +1,7 @@
 /// What a scenario is handed, `t`, and how one registered test runs and
 /// leaves its output.
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { running } from "../../client/process.ts";
 import { Workspace } from "../../client/workspace.ts";
@@ -60,6 +61,10 @@ export interface TestContext {
 
 class TestRun implements TestContext {
     readonly root: string;
+    /// The servers' system temporary directory, a root of its own past
+    /// ASCII as the copy's is, its name short: a socket clice makes there
+    /// holds about a hundred bytes of path, on macOS under a long TMPDIR.
+    private readonly temp: string;
     readonly output = new Output();
     readonly disk: Disk;
     private readonly case: Case;
@@ -78,6 +83,7 @@ class TestRun implements TestContext {
     constructor(c: Case, options: TestOptions) {
         this.case = c;
         this.root = copyRoot("clice-case-");
+        this.temp = copyRoot("t");
         this.workspace = new Workspace(this.root);
         this.disk = new Disk(this.root, c.project, this.steps);
         this.errors = (options.errors ?? []).map((source) => new RegExp(source));
@@ -98,6 +104,7 @@ class TestRun implements TestContext {
             marks: this.case.markers,
             steps: this.steps,
             disk: this.disk,
+            temp: this.temp,
         });
         this.serves.push(s);
         return s;
@@ -236,8 +243,9 @@ class TestRun implements TestContext {
         keepLogs(this.case.id, this.root);
         if (process.env["CLICE_KEEP_WORKSPACE"] === undefined) {
             this.workspace.remove();
+            fs.rmSync(this.temp, { recursive: true, force: true });
         } else {
-            console.log(`workspace kept at ${this.root}`);
+            console.log(`workspace kept at ${this.root}, temporary directory at ${this.temp}`);
         }
         return errors;
     }
