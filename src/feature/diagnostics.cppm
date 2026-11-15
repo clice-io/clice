@@ -228,13 +228,15 @@ struct ModuleFailure {
 /// clang reports the import of a module whose build failed as not found:
 /// `message`, when it is that report for one of `failures`, says instead
 /// which module did not build, why, and through which imports. The failure
-/// it names, none for any other message.
+/// it names, none for any other message. An import of `std` or
+/// `std.compat` that no unit provides, the build system's to list, says to
+/// check it.
 const ModuleFailure* explain_failed_import(std::string& message,
                                            llvm::ArrayRef<ModuleFailure> failures);
 
 /// explain_failed_import over the diagnostics of a compile, each then
-/// clice's (`module-not-built`, `module-cycle`), with the place of the
-/// error the module failed on.
+/// clice's (`module-not-built`, `module-cycle`, `module-std-missing`), with
+/// the place of the error the module failed on.
 void explain_failed_imports(std::vector<FileDiagnostic>& diagnostics,
                             llvm::ArrayRef<ModuleFailure> failures);
 

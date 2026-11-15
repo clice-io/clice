@@ -1,0 +1,10 @@
+[test.errors]
+errors = [
+    {
+        at = "import ⟦std;⟧",
+        severity = "error",
+        message = "module 'std' not found: check whether your build system writes the command building it into the compilation database",
+        source = "clice",
+        code = "module-std-missing",
+    },
+]

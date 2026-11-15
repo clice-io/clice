@@ -524,12 +524,28 @@ auto confirmed_skipped(llvm::ArrayRef<FileDiagnostic> skipped, const CompileDiag
     return result;
 }
 
+/// clang's report of an import of the standard library's module that no
+/// unit provides.
+static bool names_missing_std(llvm::StringRef message) {
+    return message == "module 'std' not found" || message == "module 'std.compat' not found";
+}
+
+static std::string with_std_hint(llvm::StringRef message) {
+    return std::format(
+        "{}: check whether your build system writes the command building it "
+        "into the compilation database",
+        message);
+}
+
 const ModuleFailure* explain_failed_import(std::string& message,
                                            llvm::ArrayRef<ModuleFailure> failures) {
     auto failure = ranges::find_if(failures, [&](const ModuleFailure& failure) {
         return message == std::format("module '{}' not found", failure.chain.front());
     });
     if(failure == failures.end()) {
+        if(names_missing_std(message)) {
+            message = with_std_hint(message);
+        }
         return nullptr;
     }
     llvm::ArrayRef<std::string> chain = failure->chain;
@@ -545,7 +561,10 @@ const ModuleFailure* explain_failed_import(std::string& message,
                               path(cycle),
                               cycle.front());
     } else {
-        message = std::format("module '{}' does not build: {}", chain.back(), failure->error);
+        auto& error = failure->error;
+        message = std::format("module '{}' does not build: {}",
+                              chain.back(),
+                              names_missing_std(error) ? with_std_hint(error) : error);
         if(failure->more_errors != 0) {
             message += std::format(" (and {})",
                                    counted(failure->more_errors, "more error", "more errors"));
@@ -563,13 +582,18 @@ void explain_failed_imports(std::vector<FileDiagnostic>& diagnostics,
         if(diagnostic.id != clang::diag::err_module_not_found) {
             continue;
         }
-        if(auto* failure = explain_failed_import(diagnostic.message, failures)) {
-            diagnostic.source = DiagnosticSource::Clice;
-            diagnostic.id = 0;
-            diagnostic.code = failure->cycle ? "module-cycle" : "module-not-built";
-            if(failure->error_at) {
-                diagnostic.notes.push_back(*failure->error_at);
-            }
+        bool missing_std = names_missing_std(diagnostic.message);
+        auto* failure = explain_failed_import(diagnostic.message, failures);
+        if(!failure && !missing_std) {
+            continue;
+        }
+        diagnostic.source = DiagnosticSource::Clice;
+        diagnostic.id = 0;
+        diagnostic.code = !failure         ? "module-std-missing"
+                          : failure->cycle ? "module-cycle"
+                                           : "module-not-built";
+        if(failure && failure->error_at) {
+            diagnostic.notes.push_back(*failure->error_at);
         }
     }
 }
