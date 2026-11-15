@@ -428,7 +428,7 @@ async function sweepFile(
                 config: { diagnostics: { clang_tidy: false }, ...config },
             });
         const atPoints = inspect(places.points);
-        const atMembers = inspect(places.members, { code_completion: { limit: 0 } });
+        const atMembers = inspect(places.members, { code_completion: { limit: "unlimited" } });
         const atCalls = inspect(places.calls);
         const clientOf = (ask: Ask) =>
             ask.request === "completion"

@@ -186,16 +186,6 @@ export function cacheBytes(
     return { disk, index };
 }
 
-export function cacheMB(
-    workspace: string,
-    database: string,
-    server: ServerName,
-): { diskMB: number; indexMB: number } {
-    const { disk, index } = cacheBytes(workspace, database, server);
-    const mb = (bytes: number): number => Math.round(bytes / 1024 / 1024);
-    return { diskMB: mb(disk), indexMB: mb(index) };
-}
-
 /// Drop the OS file cache, so that a cold run reads the project, the
 /// system headers and the server itself from disk. Windows has no command
 /// for it: its runs stay on a warm file cache.

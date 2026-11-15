@@ -25,7 +25,7 @@ import {
     type Probe,
 } from "../script.ts";
 import { SERVERS, type RunResult, type ServerName } from "./results.ts";
-import { cacheMB, dropFileCache, indexToken, isClice, wipeCache } from "./servers.ts";
+import { cacheBytes, cliceDir, dropFileCache, indexToken, isClice, wipeCache } from "./servers.ts";
 import {
     bounded,
     median,
@@ -377,9 +377,19 @@ export class Perf {
             // Sized once the server is down: clice saves its index after the
             // round ends, and again at exit.
             await s.finish();
-            const { diskMB, indexMB } = cacheMB(workspace, database, s.server);
-            s.result.values["index MB on disk"] = indexMB;
-            s.result.values["cache MB on disk"] = diskMB;
+            const { disk, index } = cacheBytes(workspace, database, s.server);
+            // A clice ignoring the cache_dir it is given, as one of another
+            // configuration layout does, shares the other's cache: each
+            // then discards the other's index at every start.
+            if (isClice(s.server) && files > 0 && index === 0) {
+                throw new RunFailure(
+                    "server",
+                    `${s.server} indexed ${String(files)} files and kept no index in ${cliceDir(workspace, s.server)}: it ignored the cache_dir it was given`,
+                );
+            }
+            const mb = (bytes: number): number => Math.round(bytes / 1024 / 1024);
+            s.result.values["index MB on disk"] = mb(index);
+            s.result.values["cache MB on disk"] = mb(disk);
         });
     }
 

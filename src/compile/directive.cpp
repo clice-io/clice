@@ -91,9 +91,7 @@ private:
 
     clang::MacroInfo* definition(llvm::StringRef name) {
         auto& pp = unit.instance->getPreprocessor();
-        auto& identifiers = pp.getIdentifierTable();
-        auto known = identifiers.find(name);
-        return known == identifiers.end() ? nullptr : pp.getMacroInfo(known->getValue());
+        return pp.getMacroInfo(pp.getIdentifierInfo(name));
     }
 
     /// A system header's directives test what its platform and the user
