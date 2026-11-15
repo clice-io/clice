@@ -49,7 +49,7 @@ Switching configurations restarts the server, on purpose: a server holds one con
 
 Most headers are, and synthesizing a prefix for them is wasted work. clice tries first: it compiles the header alone under its host's command. Without errors, the header is self-contained. With errors, it compiles the header once more with the host's prefix, and the compile with fewer errors stands: fewer in the host's context makes the header not self-contained, a tie keeps it self-contained. No list of what an includer provides is needed — whatever the context fixes counts. Fragment extensions by convention (`.def`, `.inc`, `.inl`, `.tpp`, …) skip the check.
 
-The verdict is kept with the files the check read and holds while they do not change. A change of one of them runs the check again, and so does saving the header while its compile has errors; typing never does, or a half-typed name would keep switching it.
+The verdict is kept with the files the check read and holds while they do not change. A change of another file it read runs the check again. The header's own edits keep it — typing never checks again, or a half-typed name would keep switching it — except that saving a header judged self-contained while its compile has errors checks it again.
 
 ## Compiling a Header in Its Host's Context
 

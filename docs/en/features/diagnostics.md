@@ -8,7 +8,7 @@ Diagnostics are clang's errors and warnings on an open file, clang-tidy's findin
 - Every missing `#include` is reported, not just the first, and the code after it is still checked.
 - Warnings raised by directives in the preamble (`#warning`, `#pragma message`, macro redefinitions) show like any other.
 - A compile command clang rejects before parsing (an unknown target) shows clang's reason at the top of the file.
-- Errors of template instantiations inside headers show once the background index has compiled the file ([clangd#137](https://github.com/clangd/clangd/issues/137)).
+- Errors of template instantiations inside headers show once the background index has compiled the file, and at once in a module unit or a file importing a module ([clangd#137](https://github.com/clangd/clangd/issues/137)).
 
 ## Errors in Included Headers
 
@@ -120,7 +120,7 @@ tests/diagnostics/guidance/01_no_database
 ## Publishing
 
 - A client that takes only pushed diagnostics gets them when a compile of the file finishes, and anew when it saves an edited file; closing the file clears them.
-- A saved header, or an edited `.clang-tidy`, recompiles the open files it affects: a client that pulls diagnostics is asked to pull them again, the others get them pushed. Diagnostics follow headers as saved, not their unsaved buffers, as in clangd.
+- A saved header, or an edited `.clang-tidy`, brings the open files it affects up to date: a client that pulls diagnostics is asked to pull them again — Neovim 0.10 and 0.11 take no such request and show them at their next pull, after an edit — and the others get them recompiled and pushed. Diagnostics follow headers as saved, not their unsaved buffers, as in clangd.
 - In VS Code, Problems lists a file's diagnostics only while an editor or a tab shows the file, even when another extension keeps the file open after it is closed.
 - Each diagnostic carries a `code` — a warning's option (`-Wunused-variable`), clang's name for any other diagnostic, the clang-tidy check, or a name of clice's own (`module-not-built`, `inferred-compile-command`) — and its `source`: clang, clang-tidy or clice. A clang-tidy finding links to its check's documentation, a worker crash to clice's issue tracker.
 
