@@ -49,7 +49,7 @@ Each release also ships `*.symbols` packages: if clice crashes, attach the newes
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | **VS Code**                    | Install the [clice extension](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) from the Marketplace |
 | **Cursor, VSCodium, Windsurf** | Install the [clice extension](https://open-vsx.org/extension/clice-io/clice) from Open VSX                             |
-| **Neovim**                     | Add `editors/nvim` to your runtime path: `vim.opt.rtp:append("/path/to/clice/editors/nvim")`                           |
+| **Neovim**                     | With [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) on Neovim 0.11 or later: `vim.lsp.enable('clice')`     |
 | **Zed**                        | Load `editors/zed` as a local extension                                                                                |
 | **Other**                      | Any LSP client works — point it at `clice serve`                                                                       |
 

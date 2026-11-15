@@ -45,7 +45,7 @@ nvim-lspconfig 收录了 [`editors/nvim`](https://github.com/clice-io/clice/tree
 
 ### Zed
 
-Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。若设置了 `lsp.clice.binary.path` 则运行它，否则运行 `clice`（从 `PATH` 查找），若也没有则下载最新发布版本；将 `lsp.clice.settings.release_channel` 设为 `"pre-release"` 则改为跟随每日构建。
+Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。若设置了 `lsp.clice.binary.path` 则运行它，参数取自 `lsp.clice.binary.arguments`，其中必须包含 `serve`；否则运行 `clice`（从 `PATH` 查找），若也没有则下载最新发布版本；将 `lsp.clice.settings.release_channel` 设为 `"pre-release"` 则改为跟随每日构建。
 
 Zed 还会为 C 和 C++ 运行内置的 clangd，导致代码补全和诊断重复出现；若只使用 clice：
 

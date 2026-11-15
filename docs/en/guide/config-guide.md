@@ -55,7 +55,7 @@ compile_commands = ["out/release"]
 
 Several databases rank in the order given: a file listed in more than one compiles under the first by default, and can be switched to the others.
 
-Files no database lists compile with a rule's `default_command`, written as on a command line without the source file; the sources it matches on disk join the background index:
+Sources no database lists compile with a rule's `default_command`, written as on a command line without the source file, and those it matches on disk join the background index. A header takes the command of a source including it, and the `default_command` only when none does:
 
 ```toml
 [[rules]]
