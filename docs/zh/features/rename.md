@@ -1,6 +1,6 @@
 # 重命名
 
-重命名符号（`textDocument/rename`，在 VS Code 中按 `F2`）会根据项目索引，修改整个工作区中所有使用该符号名称的位置。[`clice refactor rename`](../cli/refactor.md) 在命令行中使用同一套引擎；其文档页面详细说明了重命名的关联范围，以及哪些情况会被拒绝。
+重命名符号（`textDocument/rename`，在 VS Code 中按 `F2`）会依据项目索引和编辑器中打开的文件，修改整个项目中所有写出该符号名称的位置。[`clice refactor rename`](../cli/refactor.md) 在命令行中运行同一套引擎；其文档页面详细说明了重命名的关联范围，以及哪些情况会被拒绝。
 
 <!-- The cards in the sections below are generated from the documented cases
      in tests/rename/. Do not edit the regions between the
@@ -9,7 +9,7 @@
 
 ## 修改内容
 
-重命名会修改符号的声明、定义和所有使用位置，并重命名必须与它保持同名的符号。
+重命名会修改符号的声明、定义和所有使用位置，并一并重命名必须与它保持同名的符号。
 
 <!-- BEGIN GENERATED ITEMS: rename/edits -->
 
@@ -17,7 +17,7 @@
 
 **跨文件重命名**
 
-重命名函数会修改工作区中该函数的声明、定义和所有调用；宏内出现的名称保持不变，并会在消息中指出
+重命名函数会修改项目中该函数的声明、定义和每一处调用；宏内写出的名称保持不变，并在消息中指出
 
 ```case
 tests/rename/edits/01_across_files
@@ -29,7 +29,7 @@ tests/rename/edits/01_across_files
 
 **重命名的关联范围**
 
-重命名类会同时重命名其构造函数和析构函数；重命名模板会同时重命名其特化；重命名虚函数会同时重命名覆盖它的函数
+重命名类会同时重命名其构造函数和析构函数，重命名模板会同时重命名其特化，重命名虚函数会同时重命名覆盖它的函数
 
 ```case
 tests/rename/edits/03_followers
@@ -41,7 +41,7 @@ tests/rename/edits/03_followers
 
 **重命名宏**
 
-重命名宏会修改它在所定义的 `#if` 各个分支中的 `#define`、保护默认定义的 `#ifndef`，以及它的每一处使用——无论是作为另一个宏的实参写出，还是写在另一个宏的宏体中；用 `##` 拼接而成的使用保持不变，并会在消息中指出
+重命名宏会修改定义它的 `#if` 各分支中的 `#define`、保护默认定义的 `#ifndef`，以及它的每一处使用（无论是作为另一个宏的实参，还是写在另一个宏的宏体中）；由 `##` 拼接而成的使用保持不变，并在消息中指出
 
 ```case
 tests/rename/edits/12_macros
@@ -53,7 +53,7 @@ tests/rename/edits/12_macros
 
 **重命名模板中的依赖名称**
 
-在模板中，依赖于模板参数的调用，若已索引的实例化将其解析到被重命名的方法，就会被重命名；若另一个实例化将其解析到另一个同名方法，重命名就此停止；若没有任何实例化解析它，则保持不变，并会在消息中指出
+在模板中，依赖模板参数的调用若被已索引的实例化解析到被重命名的方法，就会一并重命名；若被另一个实例化解析到另一个同名方法，重命名会中止；若没有任何实例化解析它，则保持不变并在消息中指出
 
 ```case
 tests/rename/edits/13_templates
@@ -65,7 +65,7 @@ tests/rename/edits/13_templates
 
 **Objective-C 名称**
 
-重命名 Objective-C 的类、协议、分类（category）或实例变量时，会修改所有写到它的地方
+重命名 Objective-C 的类、协议、分类（category）或实例变量会修改每一处写出该名称的位置
 
 ```case
 tests/rename/edits/14_objective_c
@@ -77,7 +77,7 @@ tests/rename/edits/14_objective_c
 
 ## 拒绝重命名的情况
 
-如果符号无法重命名，或新名称不合适，重命名会被拒绝并说明原因。
+无法重命名的符号或不合适的新名称都会被拒绝，并说明原因。
 
 <!-- BEGIN GENERATED ITEMS: rename/refusals -->
 
@@ -85,7 +85,7 @@ tests/rename/edits/14_objective_c
 
 **不允许重命名的名称**
 
-在运算符、系统头文件中的符号或宏、编译命令定义的宏、被各个实例化解析到多个符号的名称，或构造函数调用的括号上触发重命名时，会提示无法重命名的原因；光标不在任何名称上时，不会执行任何操作
+在运算符、系统头文件中的符号或宏、编译命令定义的宏、各次实例化解析到多个符号的名称，或构造函数调用的括号上触发重命名时，会提示无法重命名的原因；光标不在任何名称上时，不执行任何操作
 
 ```case
 tests/rename/refusals/01_unrenamable_symbols
@@ -97,7 +97,7 @@ tests/rename/refusals/01_unrenamable_symbols
 
 **不允许使用的新名称**
 
-如果新名称不是合法标识符、属于关键字、在同一作用域内已被占用，或是宏名，重命名会被拒绝并说明原因；如果会形成函数重载或使用保留名称，则会执行重命名并发出警告；成员也可以改成与同级派生类的成员同名
+若新名称不是合法标识符、是关键字、在同一作用域内已被占用，或是宏名，重命名会被拒绝并说明原因；形成函数重载或使用保留名称时会执行重命名并发出警告；成员可以使用同级派生类成员的名称
 
 ```case
 tests/rename/refusals/02_rejected_names
@@ -109,7 +109,7 @@ tests/rename/refusals/02_rejected_names
 
 **不允许使用的新宏名**
 
-宏没有作用域：新名称若已被项目中的某个符号、宏或 `#ifdef` 写出，就会被拒绝，`defined` 同样会被拒绝；使用保留名称时会执行重命名并发出警告
+宏没有作用域：已被项目中的符号、宏或 `#ifdef` 使用的新名称会被拒绝，`defined` 同样会被拒绝；使用保留名称时会执行重命名并发出警告
 
 ```case
 tests/rename/refusals/05_macro_names
@@ -123,7 +123,7 @@ tests/rename/refusals/05_macro_names
 
 重命名 Objective-C 的方法或属性会被拒绝并说明原因
 
-方法的选择器（selector）指代其消息可能到达的所有方法，属性则指代它的存取方法以及它合成的实例变量；由属性合成的实例变量没有可供重命名的声明。
+方法的选择器（selector）对应其消息可能发往的所有同名方法，属性则对应其存取方法以及它合成的实例变量；由属性合成的实例变量没有可供重命名的声明。
 
 ```case
 tests/rename/refusals/07_objective_c

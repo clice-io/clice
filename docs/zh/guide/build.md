@@ -1,77 +1,44 @@
 # 从源码构建
 
-clice 依赖 C++23 特性，需要使用现代 C++ 工具链。同时还需要链接 LLVM/Clang 以解析 AST。两者都来自 clice-io 的 clang 工具链 [xclang](https://github.com/clice-io/xclang)：[Bazel](https://bazel.build) 使用 xclang 的工具链构建 clice，并链接同一 xclang 版本预编译的 LLVM/Clang 库，工具链和库都由 Bazel 自行下载。二者必须匹配：这些库里是 ThinLTO bitcode，只有该版本的工具链能读取。
+clice 仅用 [Bazel](https://bazel.build) 即可构建。构建所需的一切均由 Bazel 自行下载：clice-io 的 clang 工具链 [xclang](https://github.com/clice-io/xclang) 同一发布版本中的 C++ 工具链与预编译 LLVM/Clang 库，以及 clice 链接的其余库。仓库中的 pixi 和 npm 用于配置测试和文档所需的工具，构建 clice 本身两者都不需要。
 
-为了简化环境配置并确保构建可复现，我们**强烈推荐**使用 [pixi](https://pixi.prefix.dev/latest) 管理开发环境。依赖版本固定在 `pixi.toml` 中；Bazel 的依赖版本固定在 `MODULE.bazel` 中。
+## 环境要求
 
-## 快速开始
+- Bazel，经由 [bazelisk](https://github.com/bazelbuild/bazelisk) 运行，后者会拉取 `.bazelversion` 指定的版本。
+- `PATH` 中需有 git 和 [Node.js](https://nodejs.org)：构建会调用 Node 脚本，把 `git describe` 得出的版本号写入 clice。
+- Windows 上还需要 Bash（[Git for Windows](https://gitforwindows.org) 自带）以及较短的 Bazel 输出根目录，因为 Bazel 默认的输出根目录层级过深，会超出 Windows 路径长度限制。将其写入 `%USERPROFILE%\.bazelrc`：
 
-请按照[官方指南](https://pixi.prefix.dev/latest/installation)安装 pixi。
+  ```
+  startup --output_user_root=C:/b
+  ```
 
-我们提供了多项任务；以下命令会构建并运行测试：
-
-```shell
-# build (default RelWithDebInfo) into build/RelWithDebInfo
-pixi run build
-
-# unit tests + cases
-pixi run test
-```
-
-如需使用粒度更细的任务（第一个参数用于指定构建类型）：
+## 构建
 
 ```shell
-pixi run build Debug
-pixi run unit-test Debug
-pixi run cases-test Debug
+bazel build //:bin/clice
 ```
 
-`pixi run build` 用 Bazel 构建 `//:dist`。每种构建类型都有自己的目录 `build/<type>`，其中的 `bin` 就是 Bazel 为该类型生成的输出树：clice 位于 `build/<type>/bin/bin/clice`，与之并列的是资源目录 `build/<type>/bin/lib/clang`，clice 从中读取 clang 的头文件；测试和编辑器都从这里运行它。
+构建出的 clice 位于 `build/RelWithDebInfo/bin/bin/clice`，同级还有资源目录 `build/RelWithDebInfo/bin/lib/clang`，clice 从中读取 clang 的头文件。
 
-> [!TIP]
-> 运行 `pixi shell` 可进入已配置好所有环境变量的 shell，在其中用 `npx bazel` 直接调用 Bazel。
+各构建类型对应不同的配置，每种配置各有独立目录 `build/<type>`：
 
-## Bazel
+| 配置                      | 作用                                                                        |
+| ------------------------- | --------------------------------------------------------------------------- |
+| `--config=RelWithDebInfo` | 默认配置：开启优化，附带调试信息                                            |
+| `--config=Debug`          | 轻度优化（`-O1`）并启用 Address Sanitizer，支持 x86_64 Linux 和 arm64 macOS |
 
-Bazel 通过 [bazelisk](https://github.com/bazelbuild/bazelisk) 运行。bazelisk 是仓库中的一个 npm 包（由 `npm install` 安装），它会下载 `.bazelversion` 指定的 Bazel 版本：
+`--platforms=@xclang//platforms:<triple>` 可为其他目标平台构建：在 x86_64 Linux 上可构建其余所有目标平台，例如 `--platforms=@xclang//platforms:aarch64-apple-darwin`。
 
-```shell
-npx bazel build //:bin/clice //:bin/unittests
-```
+LLVM/Clang 库中存放的是 ThinLTO bitcode，每次链接程序都会重新执行其代码生成，单个程序耗时数分钟。lld 会将生成结果缓存在 `/var/tmp/xclang-thinlto`（Windows 上为 `C:/xclang-thinlto`），后续链接只需数秒。
 
-构建类型即 `bazel/clice.bazelrc` 中定义的配置：
+`bazel build //:package //:symbols` 会构建发布归档包与符号包（其中包含供 `scripts/symbolize.py` 读取的 `clice.gsym`），产物为 `build/<type>/bin` 下的 `clice.tar.gz` 和 `clice-symbol.tar.xz`（Windows 上为 `.zip`）。
 
-| 配置                      | 作用                                      |
-| ------------------------- | ----------------------------------------- |
-| `--config=RelWithDebInfo` | 默认配置：开启优化，带调试信息            |
-| `--config=Debug`          | 轻度优化（`-O1`），启用 Address Sanitizer |
+## 开发 clice
 
-`--` 之后的选项会经由 `pixi run build` 传给 Bazel，例如 `pixi run build RelWithDebInfo -- //:package`。
+`bazel run @compdb//:refresh -- --output_groups=+compilation_prerequisites_INTERNAL_` 会在仓库根目录生成 clice 自身源码的 `compile_commands.json`，以便用 clice 开发其自身代码；该输出组会一并构建各编译命令读取的生成头文件。
 
-`--platforms=@xclang//platforms:<triple>` 可以为宿主操作系统的另一种架构构建，例如在 x86_64 Linux 上使用 `--platforms=@xclang//platforms:aarch64-unknown-linux-gnu`。
+运行测试需要 pixi 安装的工具。`bazel build //:dist` 会构建 clice 及单元测试，随后 `pixi run test` 会运行单元测试与测试用例（Debug 构建使用 `--config=Debug` 和 `pixi run test Debug`）；测试用例的编写方法见 [`tests/README.md`](https://github.com/clice-io/clice/blob/main/tests/README.md)。
 
-LLVM/Clang 库是 ThinLTO bitcode，每次链接程序都要重做它们的代码生成，每个程序要花几分钟。lld 会把生成的结果存进缓存 `/var/tmp/xclang-thinlto`（Windows 上是 `C:/xclang-thinlto`），之后的链接只需几秒。
+## 使用其他 LLVM 构建
 
-`npx bazel build //:package //:symbols` 会构建发布归档和符号包（即供 `scripts/symbolize.py` 使用的 clice GSYM）：`build/<type>/bin` 中的 `clice.tar.gz` 和 `clice-symbol.tar.xz`（Windows 上为 `.zip`）。
-
-`npx bazel run @compdb//:refresh` 会在仓库根目录写出 clice 自身源码的 `compile_commands.json`，这样 clice 也能用于开发它自己的代码。
-
-在 Windows 上，Bazel 默认的输出根目录层级过深，超出了 Windows 路径的限制；请在 `%USERPROFILE%\.bazelrc` 中指定一个较短的路径：
-
-```
-startup --output_user_root=C:/b
-```
-
-在 Windows 上，Bazel 还需要 Bash，可由 [Git for Windows](https://gitforwindows.org) 提供。
-
-## 关于 LLVM
-
-clice 调用 Clang API 解析 C++ 代码，因此必须链接 LLVM/Clang，而且必须是 clice 所针对的那个版本，因此无法直接使用系统提供的 LLVM 软件包。
-
-每个 [xclang](https://github.com/clice-io/xclang/releases) 版本都会为全部六个目标发布预编译的 LLVM/Clang 库（`libclang-*` 压缩包），由该版本自己的工具链构建；xclang 的 Bazel 模块把这些库声明为仓库（repository），Bazel 会连同工具链一起下载它们。
-
-> [!IMPORTANT]
->
-> 调试构建会启用 Address Sanitizer，并链接 xclang 为 x86_64 Linux 和 arm64 macOS 发布的 ASan 插桩库；其他目标没有这类库，也没有调试构建：`modules/` 中第三方库的模块没有为这些目标提供调试配置，这些目标上不带 `NDEBUG` 的编译会停在该模块的 `#error` 处。
-
-自行构建的 LLVM/Clang 可通过 `--repo_env=XCLANG_LIBCLANG_ROOT=<directory>` 替换发布版的库（ASan 版本用 `XCLANG_LIBCLANG_ASAN_ROOT`）；它必须按 xclang 的方式构建，即使用 xclang 的 `scripts/toolchain.ts`；参见 [xclang](https://github.com/clice-io/xclang)。
+clice 链接其开发时所针对的确切版本的 LLVM/Clang 库，不能使用系统自带的版本。若要换用自行构建的库来替代发布版本，可传入 `--repo_env=XCLANG_LIBCLANG_ROOT=<directory>`（ASan 版本使用 `XCLANG_LIBCLANG_ASAN_ROOT`）；该库必须采用与 xclang 相同的方式构建，即运行 xclang 的 `scripts/toolchain.ts`。

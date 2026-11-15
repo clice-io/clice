@@ -2,36 +2,27 @@
 
 ## 核心
 
-- [x] Clang 诊断（错误、警告、备注）
-- [x] 严重程度映射（错误、警告）
-- [x] 带源位置的诊断范围
-- [x] Preamble 中的预处理指令所产生的警告（`#warning`、`#pragma message`、宏重定义）
-- [x] 跨文件诊断的文件 URI 转换
-- [x] 拉取式诊断模型（`textDocument/diagnostic`），用于声明支持它的客户端；其他客户端的诊断仍由服务端推送
-- [x] 每个缺失的 `#include` 都会报告，而不只是第一个，其后的代码也照常检查
-- [x] clang 在解析之前就拒绝的编译命令（例如未知的目标平台），会在文件顶部显示 clang 给出的原因
-- [ ] 显示源自头文件的诊断的完整包含链（[clangd#1392](https://github.com/clangd/clangd/issues/1392)）
+诊断包含已打开文件上 clang 报告的错误与警告、clang-tidy 的检查结果，以及 clice 自身关于项目配置的提示消息。
 
-  ```
-  // current:  "In included file: expected ';'"
-  // expected: "In main.cpp → utils.h → detail/impl.h: expected ';'"
-  ```
+- 支持拉取诊断（`textDocument/diagnostic`）的客户端按需主动请求；其余客户端则在每次编译完成时由服务端推送。
+- 每个缺失的 `#include` 都会报告，而不只是第一个，其后的代码仍照常检查。
+- Preamble 中的预处理指令产生的警告（`#warning`、`#pragma message`、宏重定义）与其他警告一样正常显示。
+- clang 在解析之前就拒绝的编译命令（例如未知的目标平台），会在文件顶部显示 clang 给出的原因。
+- 头文件内部的模板实例化错误，会在后台索引编译过该文件后显示（[clangd#137](https://github.com/clangd/clangd/issues/137)）。
 
-- [x] Preamble 头文件中的模板实例化错误诊断，在后台索引编译过该文件后显示（[clangd#137](https://github.com/clangd/clangd/issues/137)）
+## 所包含头文件中的错误
 
-## 所包含的头文件中的错误
-
-头文件中的错误会在引入该头文件的 `#include` 处报告，因此会显示在你正在编辑的文件中。
+头文件内部的错误会报告在引入它的 `#include` 处，从而直接显示在你正在编辑的文件中。
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/headers -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**所包含的头文件中的错误**
+**所包含头文件中的错误**
 
-所包含的头文件中的错误会显示在包含该头文件的那一行
+所包含头文件内部的错误显示在包含它的那一行
 
-每个被包含的头文件的第一个错误会报告在对应的 `#include` 行，并在头文件中的出错位置附上一条备注。头文件中的其他错误归属于头文件本身，会在打开该头文件时显示。
+每个被包含头文件的首个错误会报告在对应的 `#include` 行上，并在头文件内的出错位置附上一条备注。该头文件的其余错误归属头文件自身，打开该头文件时才会显示。
 
 ```case
 tests/diagnostics/headers/01_errors_on_include
@@ -43,9 +34,9 @@ tests/diagnostics/headers/01_errors_on_include
 
 **头文件函数体中的错误**
 
-头文件某个函数体中的错误，会在后台索引按保存后的内容编译过该文件后显示
+头文件函数体内部的错误会在后台索引按已保存内容编译该文件后显示
 
-与 clangd 一样，编辑器编译文件时会跳过文件顶部所包含的头文件中的函数体：文件打开以及编辑后的重建因此快上数倍。后台索引会编译这些函数体，它在其中发现的错误——内联函数的错误、模板以文件给出的实参实例化时的错误，或这类模板调用的、文件自身的泛型 Lambda 中的错误——只要文件中仍是它编译过的文本，就会显示在该文件上：编辑会让它们消失，直到文件保存并再次编译。规则为某个头文件设置 `skip_function_body = false` 时，编辑器也会解析它的函数体；为第三方代码设置 `skip_function_body = true` 的规则，则让后台索引同样跳过这些函数体，其中出现的问题永远不会显示。
+与 clangd 一样，编辑器编译文件时会跳过文件顶部所包含头文件中的函数体，使文件打开与编辑后重新编译快上数倍。后台索引会编译这些函数体，它在其中发现的问题——内联函数的错误、模板以该文件给出的实参实例化时的错误，或这类模板所调用的该文件自身泛型 Lambda 中的错误——在文件内容仍与索引编译时一致的期间会显示在该文件上；一旦编辑文件，这些诊断就会撤下，待文件保存并重新编译后再恢复。为某个头文件设置 `skip_function_body = false` 的规则会让编辑器也解析其函数体；为第三方代码设置 `skip_function_body = true` 的规则则会让后台索引同样跳过这些函数体，其中出现的问题不再显示。
 
 ```case
 tests/diagnostics/headers/09_skipped_bodies
@@ -57,7 +48,7 @@ tests/diagnostics/headers/09_skipped_bodies
 
 ## 模板实例化
 
-模板内部的错误或警告会报告在实例化该模板的代码处。
+模板内部的错误或警告会报告在触发实例化的代码处。
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/templates -->
 
@@ -65,9 +56,9 @@ tests/diagnostics/headers/09_skipped_bodies
 
 **模板实例化中的错误**
 
-模板内部的错误会显示在代码触发实例化的位置
+模板内部的错误显示在代码请求实例化的位置
 
-如果模板使用给定实参实例化时出错，错误会报告在触发实例化的代码处，而非模板内部。错误附带的备注会沿实例化链指向模板中的出错位置。文件顶部所包含的头文件中的模板由后台索引实例化，而不是由编辑器的编译实例化，因为后者会跳过该头文件中的函数体：这类模板的错误要等索引按保存后的内容编译过该文件后才会显示。
+模板以给定实参实例化出错时，错误会报告在请求实例化的代码处，而非模板内部。附带的备注会沿着实例化链一路指向模板内出错的具体位置。文件顶部所包含头文件中的模板由后台索引实例化，编辑器自身的编译则会跳过这些头文件的函数体，因此这类错误会在后台索引按已保存内容编译该文件后显示。
 
 ```case
 tests/diagnostics/templates/01_instantiation_errors
@@ -79,7 +70,7 @@ tests/diagnostics/templates/01_instantiation_errors
 
 ## 备注
 
-clang 为错误附加的备注会作为相关信息随错误一同提供；不接收相关信息的客户端会在诊断消息中看到这些备注。
+clang 附在错误上的备注会作为相关信息随错误一并传递；不支持相关信息的客户端则会在诊断消息正文中看到这些备注。
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/notes -->
 
@@ -87,9 +78,9 @@ clang 为错误附加的备注会作为相关信息随错误一同提供；不�
 
 **作为相关信息的备注**
 
-clang 为错误附加的备注会指向其中提到的位置
+clang 附在错误上的备注指向其中提及的源码位置
 
-错误会附带解释该错误的备注，例如某个名称首次定义的位置，或某次调用无法使用的候选项。每条备注都是该错误的相关信息，因此编辑器会将其显示在错误旁，并支持跳转到对应位置。
+错误会附带解释原因的备注，例如某个名称首次定义的位置，或某次调用无法选用的候选函数。每条备注都作为该错误的相关信息提供，编辑器会将其显示在错误旁边，并支持跳转到对应位置。
 
 ```case
 tests/diagnostics/notes/01_related_information
@@ -101,7 +92,7 @@ tests/diagnostics/notes/01_related_information
 
 ## 没有编译数据库的文件
 
-即使编译数据库中未列出某个文件，clice 仍会使用推测的命令编译它。
+编译数据库未列出的文件仍可使用 clice 推测的编译命令参与编译。
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/guidance -->
 
@@ -109,9 +100,9 @@ tests/diagnostics/notes/01_related_information
 
 **没有编译数据库**
 
-未在任何编译数据库中列出的文件会使用推测的命令编译，并给出相应提示
+未在任何编译数据库中列出的文件使用推测的命令编译，并给出相应提示
 
-即使 `compile_commands.json` 中没有对应条目，clice 仍会使用推测的命令编译文件。工作区里完全没有编译数据库时，编辑器会显示一条消息说明这一点；如果推测的命令导致找不到某个被包含的文件，文件顶部会显示一条警告，说明原因并提供配置指南的链接。一旦编译数据库中列出了该文件，警告就会消失，剩下的就是代码本身的错误。
+即使没有对应的 `compile_commands.json` 条目，文件仍会使用 clice 推测的命令编译。项目没有任何编译数据库时，编辑器会显示消息提示；若推测的命令导致某个头文件无法解析，文件顶部会显示警告说明原因，并附上配置指南链接。一旦编译数据库列出了该文件，警告便会消失，只留下代码本身的错误。
 
 ```case
 tests/diagnostics/guidance/01_no_database
@@ -123,26 +114,19 @@ tests/diagnostics/guidance/01_no_database
 
 ## 标签
 
-- [x] `-Wdeprecated` 诊断和涉及已弃用头文件与别名的 clang-tidy 检查结果的 `Deprecated` 标签
-- [x] 未使用变量/参数警告和 `misc-unused-*` clang-tidy 检查结果的 `Unnecessary` 标签
+- `Deprecated` 标记 `-Wdeprecated` 诊断以及涉及已弃用头文件和别名的 clang-tidy 检查结果。
+- `Unnecessary` 标记未使用的变量和参数警告以及 `misc-unused-*` 检查结果。
 
 ## 发布
 
-- [x] 编译完成时推送诊断；只接收推送诊断的客户端保存编辑过的文件时，会重新收到它的诊断
-- [x] 文件关闭时清除诊断
-- [x] 在 VS Code 中，“问题”面板只在有编辑器或标签页显示某个文件时列出该文件的诊断，即使文件关闭后另一个扩展仍让它保持打开也是如此
-- [x] 保存头文件或修改 `.clang-tidy` 后，clice 会让客户端重新请求包含它的已打开文件，这些文件随之重新编译——拉取诊断的客户端收到诊断刷新请求，其他客户端收到语义高亮刷新请求，前提是客户端支持该请求；与 clangd 一样，诊断以头文件保存后的内容为准，而不是它未保存的缓冲区
-- [x] 按文件对诊断分组（打开的文件和头文件）
-- [x] 诊断 `code` 字段：警告对应的选项（`-Wunused-variable`）、其他诊断在 clang 中的名称、clang-tidy 检查名，以及 clice 为自己报告的问题所起的名称（`module-not-built`、`inferred-compile-command`）
-- [x] `codeDescription` 将 clang-tidy 检查结果链接到该检查的文档，将 worker 崩溃链接到 clice 的问题跟踪器
-- [ ] `codeDescription` 中提供指向 Clang 文档的链接
-- [x] 诊断 `source` 字段区分 clang、clang-tidy 与 clice
-- [ ] 可配置计算诊断前的防抖延迟（[clangd#1471](https://github.com/clangd/clangd/issues/1471)）
-- [ ] 后台索引完成后重新计算已打开文件的诊断（[clangd#2604](https://github.com/clangd/clangd/issues/2604)）
+- 只接收推送诊断的客户端会在文件编译完成时收到诊断，保存编辑过的文件时还会重新收到一份；关闭文件即清除诊断。
+- 保存头文件或修改 `.clang-tidy` 会触发受影响的已打开文件重新编译：拉取诊断的客户端会收到重新拉取的请求，其余客户端则会收到新推送的诊断。与 clangd 一样，诊断以头文件已保存的内容为准，而非未保存的缓冲区。
+- 在 VS Code 中，“问题”面板仅在有编辑器或标签页展示某个文件时列出其诊断，即使关闭标签页后仍有其他扩展保持该文件处于打开状态也是如此。
+- 每条诊断都带有 `code`——编译器警告对应的选项（如 `-Wunused-variable`）、其他诊断在 clang 中的内部名称、clang-tidy 检查项名称，或 clice 自有的诊断名称（如 `module-not-built`、`inferred-compile-command`）——以及标明来源的 `source`：clang、clang-tidy 或 clice。clang-tidy 检查结果会链接到对应检查项的文档，worker 崩溃则会链接到 clice 的问题跟踪器。
 
 ## 诊断抑制
 
-clang 误报的诊断可以在配置中按诊断代码隐藏，注释则能屏蔽所在行的诊断。
+clang 误报的诊断可在配置中按诊断代码隐藏，行内注释则可屏蔽所在行的诊断。
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/suppression -->
 
@@ -152,7 +136,7 @@ clang 误报的诊断可以在配置中按诊断代码隐藏，注释则能屏�
 
 `suppress` 按诊断代码隐藏诊断
 
-clang 在某些代码上误报的诊断，可以按它显示的诊断代码隐藏：编译器警告的选项、其他诊断在 clang 中的名称，或 clang-tidy 检查名。文件的其他功能照常工作，`clice lint` 也仍会报告这条诊断。
+clang 在某些代码上误报的诊断可按其显示的诊断代码隐藏：编译器警告选项、其他诊断在 clang 中的名称，或 clang-tidy 检查项名称。文件的其余功能照常工作，`clice lint` 也仍会报告该诊断。
 
 ```case
 tests/diagnostics/suppression/01_by_code
@@ -162,38 +146,22 @@ tests/diagnostics/suppression/01_by_code
 
 <!-- END GENERATED ITEMS -->
 
-- [x] 使用 `// NOLINT` 注释抑制诊断
-- [x] 使用 `// NOLINTNEXTLINE` 注释抑制诊断
-- [x] `// NOLINTBEGIN` / `// NOLINTEND` 块级抑制
-- [ ] include-cleaner 诊断支持 `NOLINT`（[clangd#1982](https://github.com/clangd/clangd/issues/1982)）
-- [ ] 配置文件中可按诊断类别配置严重程度（[clangd#1937](https://github.com/clangd/clangd/issues/1937)）
-- [ ] 根据版本控制 diff 过滤诊断——仅显示变更行附近的警告（[clangd#822](https://github.com/clangd/clangd/issues/822)）
+`// NOLINT`、`// NOLINTNEXTLINE` 以及 `// NOLINTBEGIN` / `// NOLINTEND` 注释会屏蔽对应行上的 clang-tidy 检查结果；当 clang-tidy 在该文件上运行时，还会一并屏蔽这些行上的编译器警告。
 
 ## 诊断操作
 
-- [x] 编译器和 clang-tidy 附在诊断上的修复，作为快速修复提供
-- [x] clang-tidy 的修复会像 `clang-tidy --fix` 那样做清理：删掉内容后不会留下悬空的 `,` 或 `:`
-- [x] 修复向模块单元添加的 include 放进其全局模块片段，片段只开一次
+- 编译器与 clang-tidy 附在诊断上的修复建议会作为快速修复提供。
+- clang-tidy 的修复会按 `clang-tidy --fix` 的方式做清理：移除代码后不会留下悬空的 `,` 或 `:`。
+- 修复向模块单元新增的 include 会放入其全局模块片段，且该片段只开启一次。
 
 ## 头文件诊断
 
-- [ ] 针对未使用或缺少的 `#include` 指令提供 include-cleaner 诊断
-- [x] 抑制头文件中的 static inline 函数所触发的 `-Wunused-function` 误报（[clangd#1211](https://github.com/clangd/clangd/issues/1211)）
-
-  ```cpp
-  // utils.h
-  static inline int helper() { return 42; }
-  // should NOT warn "unused function" when checking header standalone
-  ```
-
-- [x] 声明只在头文件的函数体中用到时，不会误报 `-Wunused-function` 或 `-Wunused-member-function`——编辑器会跳过这些函数体；确实未使用的声明由后台索引报告（[clangd#363](https://github.com/clangd/clangd/issues/363)、[clangd#636](https://github.com/clangd/clangd/issues/636)）
-- [ ] 传递来自头文件的 `-Wpadded` 等布局警告（[clangd#1429](https://github.com/clangd/clangd/issues/1429)）
-- [ ] 抑制 Preamble 优化导致的 `-Wempty-translation-unit` 误报（[clangd#2358](https://github.com/clangd/clangd/issues/2358)）
-- [ ] 跨头文件边界的线程安全分析（[clangd#2386](https://github.com/clangd/clangd/issues/2386)）
+- 头文件中定义但当前文件未调用的 `static inline` 函数不会触发 `-Wunused-function` 警告（[clangd#1211](https://github.com/clangd/clangd/issues/1211)）。
+- 仅在头文件函数体内部用到（而编辑器跳过了这些函数体）的声明，不会误报 `-Wunused-function` 或 `-Wunused-member-function`：真正未使用的声明由后台索引报告（[clangd#363](https://github.com/clangd/clangd/issues/363)、[clangd#636](https://github.com/clangd/clangd/issues/636)）。
 
 ## clang-tidy 集成
 
-clang-tidy 对已打开的文件执行项目 `.clang-tidy` 中启用的检查，检查结果与编译器的诊断一同显示。
+clang-tidy 会按项目 `.clang-tidy` 启用的检查项在已打开文件上运行，检查结果与编译器诊断一同显示。
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/clang_tidy -->
 
@@ -201,9 +169,9 @@ clang-tidy 对已打开的文件执行项目 `.clang-tidy` 中启用的检查，
 
 **clang-tidy 检查结果**
 
-clang-tidy 对已打开的文件执行最近的 `.clang-tidy` 中启用的检查
+clang-tidy 按最近的 `.clang-tidy` 启用的检查项在已打开文件上运行
 
-每条检查结果都会标明对应的检查，并提供指向该检查文档的链接。检查配置来自从文件所在目录向上查找到的最近的 `.clang-tidy`，与 `clang-tidy` 自身读取配置的方式一致。
+每条检查结果都会标明对应的检查项，并链接到该检查项的文档。检查配置取自文件上层目录中最近的 `.clang-tidy`，读取方式与 `clang-tidy` 自身一致。
 
 ```case
 tests/diagnostics/clang_tidy/01_findings
@@ -215,9 +183,9 @@ tests/diagnostics/clang_tidy/01_findings
 
 **没有配置文件时**
 
-没有 `.clang-tidy` 时，会运行少量检查
+没有 `.clang-tidy` 时仍会运行少量默认检查
 
-项目即使没有 `.clang-tidy`，仍会运行几项不易误报的检查，例如未使用的声明检查，编辑器会将这些声明淡化显示。
+没有 `.clang-tidy` 的项目仍会运行几项极少误报的检查，例如未使用的声明，编辑器会将其淡化显示。
 
 ```case
 tests/diagnostics/clang_tidy/02_default_checks
@@ -227,11 +195,11 @@ tests/diagnostics/clang_tidy/02_default_checks
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**不运行的检查**
+**略过的检查项**
 
-对编辑器来说过慢的检查会点名告知，不会被悄悄略过
+对编辑器而言过慢的检查项会点名告知，不会悄然略过
 
-已打开的文件既不运行对编辑器来说过慢的检查，也不运行在编辑中的代码上不可靠的检查。对于 `.clang-tidy` 启用的过慢检查，clice 会列出一次它们的名字，并说明如何运行；`clice lint` 两类都会运行。
+已打开的文件既不运行对编辑器而言过慢的检查项，也不运行在编辑中的代码上不可靠的检查项。对于 `.clang-tidy` 启用的慢速检查项，clice 会提示一次其名称及运行方法；`clice lint` 则会将两类检查项一并运行。
 
 ```case
 tests/diagnostics/clang_tidy/03_editor_exclusions
@@ -241,11 +209,11 @@ tests/diagnostics/clang_tidy/03_editor_exclusions
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**使用 NOLINT 抑制诊断**
+**使用 NOLINT 屏蔽**
 
-`NOLINT` 注释会抑制所在行的检查结果，也会抑制编译器警告
+`NOLINT` 注释屏蔽所在行的检查结果，同时也会屏蔽编译器警告
 
-`// NOLINT` 抑制所在行的检查结果，`// NOLINTNEXTLINE` 则抑制下一行的检查结果；两者都可针对所有检查或括号中指定的检查。clang-tidy 在文件上运行时，这些注释也会抑制相应行的编译器警告。
+`// NOLINT` 屏蔽自身所在行，`// NOLINTNEXTLINE` 屏蔽下一行，可针对全部检查项或仅针对括号中列出的检查项。当 clang-tidy 在文件上运行时，它们也会一并屏蔽对应行上的编译器警告。
 
 ```case
 tests/diagnostics/clang_tidy/04_nolint
@@ -255,11 +223,11 @@ tests/diagnostics/clang_tidy/04_nolint
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**修复以快速修复的形式提供**
+**修复建议转为快速修复**
 
-检查结果附带的修复会以快速修复的形式提供
+附带修复建议的检查结果会提供快速修复操作
 
-检查随结果附带的修复会出现在该结果所在位置的快速修复选项中；应用修复后，该检查结果就会消失。
+检查项附在检查结果上的修复会出现在该位置的快速修复列表中；应用修复后该检查结果即会清除。
 
 ```case
 tests/diagnostics/clang_tidy/05_quick_fix
@@ -271,9 +239,9 @@ tests/diagnostics/clang_tidy/05_quick_fix
 
 **关闭 clang-tidy**
 
-设置 `clang_tidy = false` 后，clang-tidy 不会在已打开的文件上运行
+`clang_tidy = false` 让已打开文件不再运行 clang-tidy
 
-关闭 clang-tidy 后，无论 `.clang-tidy` 中启用了哪些检查，已打开的文件都只显示编译器的诊断。
+关闭 clang-tidy 后，无论 `.clang-tidy` 启用了哪些检查项，已打开的文件都只显示编译器自身的诊断。
 
 ```case
 tests/diagnostics/clang_tidy/09_turned_off
@@ -283,11 +251,11 @@ tests/diagnostics/clang_tidy/09_turned_off
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**运行过慢的检查**
+**运行慢速检查项**
 
-设置 `slow_clang_tidy_checks = true` 后，对编辑器来说过慢的检查也会运行
+`slow_clang_tidy_checks = true` 也会运行对编辑器而言过慢的检查项
 
-对编辑器来说过慢的检查（例如 `misc-const-correctness`）只有在明确要求时才会在已打开的文件上运行：文件的每次编译都要等它们完成。
+对编辑器而言过慢的检查项（如 `misc-const-correctness`）只有在显式启用时才会在已打开文件上运行，届时该文件的每次编译都要等待它们完成。
 
 ```case
 tests/diagnostics/clang_tidy/20_slow_checks
@@ -297,39 +265,10 @@ tests/diagnostics/clang_tidy/20_slow_checks
 
 <!-- END GENERATED ITEMS -->
 
-- [x] 对编辑器来说过慢的检查，只有在 `slow_clang_tidy_checks` 要求时才会在已打开的文件上运行，clice 会列出它略过的检查；在编辑中的代码上不可靠的检查始终不运行；`clice lint` 会运行所有这些检查
-- [x] `performance-use-std-move` 既不在编辑器中运行，也不在 `clice lint` 中运行：在 clice 所基于的 LLVM 中，它处理从 PCH 或模块中读取的类时会崩溃
-- [x] 对 `.clang-tidy` 的修改会在已打开文件下次编译时生效
-- [x] 某个 clang-tidy 检查崩溃时，只暂停该文件的 clang-tidy，不影响它的其他功能
-- [x] 抑制源自系统头文件中宏的 clang-tidy 警告（[clangd#1587](https://github.com/clangd/clangd/issues/1587)、[clangd#2000](https://github.com/clangd/clangd/issues/2000)）
-- [ ] Clang 静态分析器支持（[clangd#905](https://github.com/clangd/clangd/issues/905)）
-- [ ] 特定版本的 clang-tidy 文档链接（[clangd#2136](https://github.com/clangd/clangd/issues/2136)）
-- [ ] 对位于代码之前的预处理指令进行诊断（[clangd#2501](https://github.com/clangd/clangd/issues/2501)）
-
-## 诊断显示
-
-- [ ] 限定类型名的正确诊断范围——为完整名称标注下划线，而不只是基名（[clangd#1035](https://github.com/clangd/clangd/issues/1035)）
-
-  ```cpp
-  ns::Inner obj(42);
-  //  ^^^^^ only base name underlined
-  // should underline "ns::Inner"
-  ```
-
-- [ ] 将优化备注（`-Rpass`）显示为诊断（[clangd#2519](https://github.com/clangd/clangd/issues/2519)）
-- [x] 列出整个项目的警告：`clice lint`（[clangd#1973](https://github.com/clangd/clangd/issues/1973)）
-
-## 配置文件诊断
-
-- [x] 格式错误的 `.clang-tidy` 会在它所配置的文件顶部报告，并且不运行任何检查（[clangd#2313](https://github.com/clangd/clangd/issues/2313)）
-- [ ] 为格式错误的 `.clang-format` 文件报告诊断（[clangd#2591](https://github.com/clangd/clangd/issues/2591)）
-
-## 诊断正确性
-
-应正确处理的已知问题：
-
-- [ ] 宏重定义警告指向同一位置（[clangd#2479](https://github.com/clangd/clangd/issues/2479)）
-- [ ] 针对嵌套数组初始化给出错误的 `-Wmissing-braces` 修复建议（[clangd#2434](https://github.com/clangd/clangd/issues/2434)）
-- [ ] Preamble 失效导致诊断消息混杂时出现无效的严重级别 0（[clangd#2124](https://github.com/clangd/clangd/issues/2124)）
-- [ ] 未声明标识符诊断被与更正相关的诊断隐藏（[clangd#547](https://github.com/clangd/clangd/issues/547)）
-- [ ] `--include` 文件缺失时产生误导性的后续诊断（[clangd#2229](https://github.com/clangd/clangd/issues/2229)）
+- 对编辑器而言过慢的检查项仅在 `[diagnostics] slow_clang_tidy_checks` 显式开启时才在已打开文件上运行，且除非显式设为 `false`，否则 clice 会列出被略过的检查项；在编辑中的代码上不可靠的检查项始终略过；`clice lint` 则会运行全部检查项。
+- `performance-use-std-move` 在编辑器与 `clice lint` 中均被排除：在 clice 所基于的 LLVM 版本中，该检查处理从 PCH 或模块读取的类时会崩溃。
+- 对 `.clang-tidy` 的修改会在已打开文件下次编译时生效。
+- 某个 clang-tidy 检查项崩溃时，只会暂停该文件上的 clang-tidy，不影响文件的其他功能。
+- 源自系统头文件中宏的 clang-tidy 警告会被过滤（[clangd#1587](https://github.com/clangd/clangd/issues/1587)、[clangd#2000](https://github.com/clangd/clangd/issues/2000)）。
+- 格式有误的 `.clang-tidy` 会在受其配置的文件顶部报错，且不运行任何检查（[clangd#2313](https://github.com/clangd/clangd/issues/2313)）。
+- `clice lint` 列出整个项目的警告（[clangd#1973](https://github.com/clangd/clangd/issues/1973)）。
