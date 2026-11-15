@@ -1,6 +1,6 @@
 # clice zed
 
-This is the [Zed](https://zed.dev) extension for [clice](https://github.com/clice-io/clice).
+This is the [Zed](https://zed.dev) extension for [clice](https://github.com/clice-io/clice), a C/C++ language server written in modern C++ on LLVM/Clang: compiles in isolated worker processes, C++20 modules, compilation contexts for headers, and completion and navigation inside templates.
 
 ## Server binary
 
