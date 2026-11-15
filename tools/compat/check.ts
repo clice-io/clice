@@ -11,6 +11,7 @@ import { URI } from "vscode-uri";
 import { CliceClient } from "../client/client.ts";
 import { ending, runProcess } from "../client/process.ts";
 import { Workspace } from "../client/workspace.ts";
+import { withTimeout } from "../promise.ts";
 import { REPO_ROOT } from "../repo.ts";
 import { fileCommands, lint } from "./clice.ts";
 import {
@@ -162,70 +163,77 @@ async function answerProblems(
     answers: Record<string, Answer[]>,
     env: NodeJS.ProcessEnv,
 ): Promise<string[]> {
-    const problems: string[] = [];
     const client = CliceClient.start(clice, { cwd: ws.root, baseEnv: env });
     try {
-        await client.initialize(ws);
-        const opened: [string, string, string][] = [];
-        for (const file of Object.keys(answers)) {
-            const [uri, text] = await client.openAndWait(file, STEP_MS);
-            opened.push([file, uri, text]);
-            for (const diagnostic of client.diagnostics.get(client.normalizeUri(uri)) ?? []) {
-                if (diagnostic.severity === proto.DiagnosticSeverity.Error) {
-                    const message =
-                        typeof diagnostic.message === "string"
-                            ? diagnostic.message
-                            : diagnostic.message.value;
-                    problems.push(`${file}:${diagnostic.range.start.line + 1}: ${message}`);
-                }
-            }
-        }
-        const { pending } = await client.sync({ deadlineMs: STEP_MS });
-        if (pending.length > 0) {
-            problems.push(`the server is still busy: ${pending.join("; ")}`);
-        }
-        for (const [file, uri, text] of opened) {
-            for (const answer of answers[file] ?? []) {
-                const { line, character } = placeOf(text, answer);
-                const where = `${file}:${line + 1}:${character + 1} (${answer.at})`;
-                const { definition } = answer;
-                if (definition !== undefined) {
-                    const paths = definitionPaths(await client.definitionAt(uri, line, character));
-                    if (
-                        !paths.some(
-                            (found) =>
-                                holdsPart(found, definition) && !STD_MODULE_SOURCE.test(found),
-                        )
-                    ) {
-                        problems.push(
-                            `${where}: go to definition answers ${paths.join(", ") || "nothing"}, ` +
-                                `no path holding ${definition}`,
-                        );
-                    }
-                }
-                if (answer.hover !== undefined) {
-                    const card = hoverText(await client.hoverAt(uri, line, character));
-                    if (!card.includes(answer.hover)) {
-                        problems.push(`${where}: the hover lacks ${answer.hover}: ${card}`);
-                    }
-                }
-                if (answer.completion !== undefined) {
-                    const list = await client.completionAt(uri, line, character);
-                    const items = list === null ? [] : Array.isArray(list) ? list : list.items;
-                    if (!items.some((item) => item.label === answer.completion)) {
-                        problems.push(
-                            `${where}: completion lacks ${answer.completion}: ` +
-                                items
-                                    .slice(0, 20)
-                                    .map((item) => item.label)
-                                    .join(", "),
-                        );
-                    }
-                }
-            }
-        }
+        return await withTimeout(ask(client, ws, answers), STEP_MS, "the editor's answers");
     } finally {
         await client.shutdown();
+    }
+}
+
+async function ask(
+    client: CliceClient,
+    ws: Workspace,
+    answers: Record<string, Answer[]>,
+): Promise<string[]> {
+    const problems: string[] = [];
+    await client.initialize(ws);
+    const opened: [string, string, string][] = [];
+    for (const file of Object.keys(answers)) {
+        const [uri, text] = await client.openAndWait(file, STEP_MS);
+        opened.push([file, uri, text]);
+        for (const diagnostic of client.diagnostics.get(client.normalizeUri(uri)) ?? []) {
+            if (diagnostic.severity === proto.DiagnosticSeverity.Error) {
+                const message =
+                    typeof diagnostic.message === "string"
+                        ? diagnostic.message
+                        : diagnostic.message.value;
+                problems.push(`${file}:${diagnostic.range.start.line + 1}: ${message}`);
+            }
+        }
+    }
+    const { pending } = await client.sync();
+    if (pending.length > 0) {
+        problems.push(`the server is still busy: ${pending.join("; ")}`);
+    }
+    for (const [file, uri, text] of opened) {
+        for (const answer of answers[file] ?? []) {
+            const { line, character } = placeOf(text, answer);
+            const where = `${file}:${line + 1}:${character + 1} (${answer.at})`;
+            const { definition } = answer;
+            if (definition !== undefined) {
+                const paths = definitionPaths(await client.definitionAt(uri, line, character));
+                if (
+                    !paths.some(
+                        (found) => holdsPart(found, definition) && !STD_MODULE_SOURCE.test(found),
+                    )
+                ) {
+                    problems.push(
+                        `${where}: go to definition answers ${paths.join(", ") || "nothing"}, ` +
+                            `no path holding ${definition}`,
+                    );
+                }
+            }
+            if (answer.hover !== undefined) {
+                const card = hoverText(await client.hoverAt(uri, line, character));
+                if (!card.includes(answer.hover)) {
+                    problems.push(`${where}: the hover lacks ${answer.hover}: ${card}`);
+                }
+            }
+            if (answer.completion !== undefined) {
+                const list = await client.completionAt(uri, line, character);
+                const items = list === null ? [] : Array.isArray(list) ? list : list.items;
+                if (!items.some((item) => item.label === answer.completion)) {
+                    problems.push(
+                        `${where}: completion lacks ${answer.completion}: ` +
+                            items
+                                .slice(0, 20)
+                                .map((item) => item.label)
+                                .join(", "),
+                    );
+                }
+            }
+        }
     }
     return problems;
 }

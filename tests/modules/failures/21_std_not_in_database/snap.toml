@@ -1,5 +1,23 @@
-[test.errors]
+["database without std".errors]
 errors = [
+    {
+        at = "import ⟦std;⟧",
+        severity = "error",
+        message = "module 'std' not found: check whether your build system writes the command building it into the compilation database",
+        source = "clice",
+        code = "module-std-missing",
+    },
+]
+
+["no database".diagnostics]
+diagnostics = [
+    {
+        at = "⟦⟧import std;",
+        severity = "warning",
+        message = "compile_commands.json has no entry for this file, so clice compiles it with a default command, which may miss its include paths. Add the file to the build and regenerate compile_commands.json, or give it a command with a `default_command` rule in clice.toml.",
+        source = "clice",
+        code = "inferred-compile-command",
+    },
     {
         at = "import ⟦std;⟧",
         severity = "error",

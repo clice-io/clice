@@ -382,7 +382,8 @@ static bool is_file_not_found(const FileDiagnostic& diagnostic) {
     return diagnostic.origin != DiagnosticOrigin::IncluderContext &&
            (diagnostic.id == clang::diag::err_pp_file_not_found ||
             diagnostic.id == clang::diag::err_pp_error_opening_file ||
-            diagnostic.id == clang::diag::err_module_not_found);
+            diagnostic.id == clang::diag::err_module_not_found ||
+            diagnostic.code == "module-std-missing");
 }
 
 auto shown_diagnostics(const CompileDiagnostics& compiled, const DiagnosticsOptions& options)
