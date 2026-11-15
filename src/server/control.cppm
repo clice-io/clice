@@ -57,10 +57,6 @@ struct Listener {
 
     /// The socket's path, a named pipe's name on Windows.
     std::string name;
-
-    /// The directory of the user's own a socket is made in when its path
-    /// in the cache directory would not fit a socket's; removed with it.
-    std::optional<fs::TempDirectory> directory;
 };
 
 /// Listen for the control channel of the project whose cache directory is

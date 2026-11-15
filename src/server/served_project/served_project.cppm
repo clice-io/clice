@@ -336,7 +336,7 @@ class ServedProject final : public std::enable_shared_from_this<ServedProject> {
 public:
     /// `root` is the project's directory; empty for the rootless project a
     /// server without folders runs, which loads no build: it opens only a
-    /// store of its own, gone when it shuts down. What the project
+    /// store of its own, removed with it. What the project
     /// tells of its index reaches the documents: an index attempt ending
     /// (the index_first in decide_compiling promised the index would serve
     /// the cold document, and one that finishes without a servable shard ends
@@ -996,10 +996,6 @@ private:
     /// The control channel's socket (start_control_listener), removed at
     /// shutdown; empty while there is none.
     std::string control_socket;
-
-    /// The directory made for the socket when the cache directory's path is
-    /// too long for one, removed with the project.
-    std::optional<fs::TempDirectory> control_directory;
 
     bool metadata_flush_scheduled = false;
 

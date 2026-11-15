@@ -2,13 +2,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { expect } from "vitest";
-import { test, type Serve } from "@clice/tools/testing";
+import { generate, test, type Serve } from "@clice/tools/testing";
 
 /// The cache of the files outside every folder that `s` serves: its own
 /// directory under clice's temporary one.
 function cache(s: Serve): string {
     const user = process.platform === "win32" ? "clice" : `clice-${String(os.userInfo().uid)}`;
-    return path.join(os.tmpdir(), user, String(s.client.child.pid));
+    return path.join(s.temp ?? os.tmpdir(), user, String(s.client.child.pid));
 }
 
 // A file outside every folder precompiles what it includes, as a folder's
@@ -19,9 +19,13 @@ test("definition in an included header", async (t) => {
     await t.show("helper", s.definition(t.at("main.cpp", "return |helper()")));
 });
 
+// The preamble's index is large enough to be mapped, which Windows deletes
+// only once unmapped.
 test("cache gone with the server", async (t) => {
+    t.disk.write("big.h", generate.functions(3000));
+    t.disk.write("big.cpp", '#include "big.h"\n\nint use() { return function_0000(); }\n');
     const s = await t.start({ folders: [] });
-    expect(await s.errors("main.cpp")).toEqual([]);
+    expect(await s.errors("big.cpp")).toEqual([]);
     const dir = cache(s);
     expect((await s.stats()).pchCacheEntries).toBe(1);
     expect(fs.existsSync(dir)).toBe(true);

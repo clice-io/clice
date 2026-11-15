@@ -68,9 +68,8 @@ struct RenameScope {
     /// in it yet: what it names goes unrenamed, which a warning says.
     bool units_pending = false;
 
-    /// The rename starts in a file outside every workspace folder: what it
-    /// may not edit lies in no folder, rather than outside the project's
-    /// sources.
+    /// The rename starts in a file outside every workspace folder, which
+    /// is all it may edit.
     bool outside_folders = false;
 };
 

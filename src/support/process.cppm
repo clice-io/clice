@@ -50,8 +50,12 @@ inline chrono::milliseconds test_jitter() {
 /// when missing: `clice` on Windows, whose temporary directory is the
 /// user's own, `clice-<uid>` elsewhere, where /tmp is every user's, there
 /// the user's alone (0700). Another user's directory of that name is an
-/// error, never written into.
-std::expected<std::string, std::error_code> temp_root();
+/// error naming it, never written into.
+std::expected<std::string, std::string> temp_root();
+
+/// Remove the entries of `parent` named by the id of a process that has
+/// exited: what a clice killed or crashed left there.
+void remove_left_by_exited(llvm::StringRef parent);
 
 /// What a finished program wrote, and how it ended.
 struct ProgramOutput {

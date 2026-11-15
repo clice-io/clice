@@ -11,10 +11,10 @@ placeholder = "compute"
 '''
 
 ["a declaration beside the file".prepare.prepare_rename]
-error = "cannot rename `scale`: the rename would change ${WS}/lone/scale.h, which lies in no workspace folder"
+error = "cannot rename `scale`: the rename would change ${WS}/lone/scale.h, and one from a file outside every workspace folder changes that file alone"
 
 ["a declaration beside the file".rename.rename]
-error = "cannot rename `scale`: the rename would change ${WS}/lone/scale.h, which lies in no workspace folder"
+error = "cannot rename `scale`: the rename would change ${WS}/lone/scale.h, and one from a file outside every workspace folder changes that file alone"
 
 ["a project found for the file".rename.rename.edits]
 "main.cpp" = '''

@@ -858,11 +858,13 @@ std::string build_pch(Project& project,
                       const CommandRef& writer,
                       llvm::StringRef file,
                       llvm::StringRef project_root) {
+    auto temp = temp_root();
+    if(!temp) {
+        LOG_WARN("cannot create a temporary PCH: {}", temp.error());
+        return {};
+    }
     std::string output;
-    if(auto created = temp_root().and_then([&](const std::string& dir) {
-           return fs::create_temp_file(output, dir, "inspect-", ".pch");
-       });
-       !created) {
+    if(auto created = fs::create_temp_file(output, *temp, "inspect-", ".pch"); !created) {
         LOG_WARN("cannot create a temporary PCH: {}", created.error().message());
         return {};
     }

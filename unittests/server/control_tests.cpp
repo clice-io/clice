@@ -1,6 +1,7 @@
 module clice;
 
 import :server.control;
+import :support.process;
 import :unittests.utils;
 import :unittests.utils.temp_dir;
 import :vfs.path;
@@ -19,9 +20,11 @@ ZEST_CASE(SocketMovesToTemp) {
     auto cache_dir = tmp.path(std::string(120, 'c'));
     auto listener = control::listen(cache_dir, loop);
     ZASSERT(listener.has_value());
-    ZASSERT(listener->directory.has_value());
-    ZEXPECT(path::parent(listener->name) == listener->directory->path());
+    auto temp = temp_root();
+    ZASSERT(temp.has_value());
+    ZEXPECT(path::parent(listener->name) == *temp);
     ZEXPECT(!listener->name.starts_with(cache_dir));
+    zest::FatalHook cleanup{[&] { fs::remove(listener->name); }};
 
     auto accepted = [&]() -> async::task<> {
         auto connection = co_await listener->acceptor.accept();
@@ -32,6 +35,7 @@ ZEST_CASE(SocketMovesToTemp) {
         ZEXPECT(connection.has_value());
     };
     run(accepted(), connected());
+    fs::remove(listener->name);
 }
 
 ZEST_CASE(SocketOwnerOnly) {

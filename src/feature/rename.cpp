@@ -583,7 +583,9 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         }
         plan.outside.push_back(
             scope.outside_folders
-                ? std::format("the rename would change {}, which lies in no workspace folder", path)
+                ? std::format("the rename would change {}, and one from a file outside every "
+                              "workspace folder changes that file alone",
+                              path)
                 : std::format("the rename would change {}, which is not a source of the project "
                               "(a system header, a dependency or a generated file)",
                               path));

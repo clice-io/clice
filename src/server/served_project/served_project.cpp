@@ -104,18 +104,20 @@ bool has_build(const Project& project) {
 /// The cache of the files outside every folder, whatever the editor's
 /// settings name — theirs is the folders', and a cache directory serves one
 /// project of a server: this server's own directory under clice's temporary
-/// one, removed when the project shuts down.
+/// one, removed with the project (make_project) — those of servers killed
+/// before, when the next one makes its own.
 void use_temporary_cache(Settings& settings) {
     settings.cache_dir.clear();
     settings.cache_identity = {};
     auto temp = temp_root();
     if(!temp) {
         LOG_GUIDANCE(
-            "Cannot make clice's temporary directory: {}; no preamble or module is "
-            "precompiled for the files outside every folder",
-            temp.error().message());
+            "{}; no preamble or module is precompiled for the files outside every "
+            "folder",
+            temp.error());
         return;
     }
+    remove_left_by_exited(*temp);
     CanonicalPath cache(Spelling::absolute(path::join(*temp, std::to_string(sys::pid()))));
     settings.cache_dir = cache.str();
     settings.cache_identity = std::move(cache);
@@ -325,17 +327,6 @@ async::task<> ServedProject::shutdown() {
     // stops the background index and winds down the graph's attempts before
     // the persistence pass.
     co_await project.shutdown();
-    // LIMITATION: a server that crashes or is killed leaves the cache of the
-    // files outside every folder to the system's cleanup of its temporary
-    // directory.
-    auto& cache_dir = project.settings.cache_dir;
-    if(project.root.empty() && !cache_dir.empty()) {
-        if(auto removed = fs::remove_all(cache_dir); !removed) {
-            LOG_WARN("Cannot remove the cache directory {}: {}",
-                     cache_dir,
-                     removed.error().message());
-        }
-    }
 }
 
 ServedDocument* ServedProject::find_document(Fid path_id) {
@@ -575,7 +566,6 @@ void ServedProject::start_control_listener() {
     endpoint_recorded = true;
     LOG_INFO("Control channel listening on {}", listener->name);
     control_socket = std::move(listener->name);
-    control_directory = std::move(listener->directory);
     bg_tasks.spawn(control::serve(*this, std::move(listener->acceptor)));
 }
 

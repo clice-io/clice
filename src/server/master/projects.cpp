@@ -115,7 +115,22 @@ std::shared_ptr<ServedProject> MasterServer::make_project(CanonicalPath root) {
     // until its last reference — the stop, or a request still running in
     // it — goes: the project waiting for the directory starts then.
     auto released = [this](ServedProject* project) {
+        // The cache of the files outside every folder goes with their
+        // project, once it maps none of its files: Windows deletes no mapped
+        // file. One still waiting for its predecessor opened none: the
+        // directory is the predecessor's.
+        std::string temporary;
+        if(project->project.root.empty() && project->project.store) {
+            temporary = project->project.settings.cache_dir;
+        }
         delete project;
+        if(!temporary.empty()) {
+            if(auto removed = fs::remove_all(temporary); !removed) {
+                LOG_WARN("Cannot remove the cache directory {}: {}",
+                         temporary,
+                         removed.error().message());
+            }
+        }
         if(lifecycle == ServerLifecycle::Ready) {
             bg_tasks.spawn([](MasterServer& server) -> async::task<> {
                 server.serve_folders();
