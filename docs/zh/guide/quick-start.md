@@ -40,7 +40,7 @@ cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
 ### Bazel
 
-使用 clice 的 Bazel 仓库（registry）中的 `compdb` 模块。在项目中添加该仓库与模块：
+使用 clice 的 Bazel registry 中的 `compdb` 模块。在项目中添加该 registry 与模块：
 
 ```
 # .bazelrc

@@ -84,7 +84,7 @@ tests/signature_help/call_contexts/01_constructors
 
 **函数指针调用**
 
-经由函数指针发起的调用显示其函数类型写出的形参名
+通过函数指针发起的调用显示其函数类型写出的形参名
 
 ```case
 tests/signature_help/call_contexts/02_function_pointers
@@ -204,7 +204,7 @@ tests/signature_help/call_contexts/10_macros
 
 类模板的成员按对象所属类实例化后的具体类型显示
 
-`Vector<Point>::at` 的返回类型显示为 `Point &` 而非 `T &`；经由函数对象发起的调用则显示声明该对象时所用函数类型的形参。成员模板自身的模板参数保留其声明写法。标准库类型按常用别名展示：显示 `string`，而非 `basic_string<char>`。
+`Vector<Point>::at` 的返回类型显示为 `Point &` 而非 `T &`；通过函数对象发起的调用则显示声明该对象时所用函数类型的形参。成员模板自身的模板参数保留其声明写法。标准库类型按常用别名展示：显示 `string`，而非 `basic_string<char>`。
 
 ```case
 tests/signature_help/call_contexts/13_class_template_members
@@ -216,7 +216,7 @@ tests/signature_help/call_contexts/13_class_template_members
 
 **依赖成员调用**
 
-在模板内部，经由依赖类型对象发起的调用显示其类模板声明的重载
+在模板内部，通过依赖类型对象发起的调用显示其类模板声明的重载
 
 填过第一个实参后，只保留还能继续接受实参的重载。在模板实例化之前，Clang 本身无法为这类调用给出签名。
 
@@ -290,7 +290,7 @@ tests/signature_help/parameters/05_explicit_object_parameters
 
 将实参转发给构造函数的调用显示目标构造函数的形参
 
-在定义体中用末尾参数包构造类的函数模板——如 `new T(args...)`、`T(args...)`、`T{args...}`、以此方式初始化的变量，或 `std::make_unique<T>(args...)`——会展示目标类的各个构造函数，每个构造函数的形参接在该函数自身位于参数包之前的形参之后。若该函数本身是目标类的成员，私有构造函数也会一并列出。若参数包用于构造由各实参自身类型拼出的类型，则按原声明展示。
+在定义体中用末尾参数包构造类的函数模板——如 `new T(args...)`、`T(args...)`、`T{args...}`、以此方式初始化的变量，或 `std::make_unique<T>(args...)`——会展示目标类的各个构造函数，每个构造函数的形参接在该函数自身位于参数包之前的形参之后。若该函数本身是目标类的成员，私有构造函数也会列出。若参数包用于构造由各实参自身类型拼出的类型，则按原声明展示。
 
 ```case
 tests/signature_help/parameters/06_forwarding
@@ -314,9 +314,9 @@ tests/signature_help/parameters/07_standard_forwarding
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**经由依赖特化调用的成员**
+**通过依赖特化调用的成员**
 
-经由类模板的依赖特化调用成员时，按代码写出的模板实参展示类型
+通过类模板的依赖特化调用成员时，按代码写出的模板实参展示类型
 
 调用 `pts.assign(` 时，若接收方类型为 `lib::vector<Point<T>>`，形参会显示为 `const Point<T> &`，而非模板内部声明的 `const _Tp &`。
 

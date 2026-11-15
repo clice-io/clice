@@ -6,7 +6,7 @@ clice 提供一套基于 LLVM/Clang 构建的 C++ 开发工具。本节按功能
 
 clice 支持 C、C++、CUDA、HIP 和 OpenCL；对 Objective-C 和 Objective-C++，则支持代码阅读功能：语义 Token、悬停、代码导航与查找引用、调用层次结构与类型层次结构、大纲、折叠范围、工作区符号以及 `clice query` 均能识别其中的类、协议、分类（category）、方法、属性和实例变量，代码补全能写出消息的选择器（selector），重命名支持类、协议、分类和实例变量。不支持重命名方法或属性，也不支持 Clang 头文件模块（`-fmodules`、`@import`）：文件会在不启用头文件模块的情况下编译，clice 对此只提示一次。与其他项目一样，Objective-C 项目也需要编译数据库；CMake 的 Makefile 和 Ninja 生成器会生成它，而 Xcode 和 CMake 的 Xcode 生成器都不会。
 
-CUDA 和 HIP 文件编译的是设备端代码，因为 Clang 会先执行这一步。OpenCL C 和 C++ for OpenCL（`.cl`、`.clcpp`）直接按 Clang 的方式编译，内建函数一并可用；编译数据库未列出的文件采用规则的 `default_command`，例如 `clang -cl-std=CL3.0`。VS Code 本身没有内置这些语言，VS Code 扩展会为 `.hip` 提供 `hip` 语言，为各 OpenCL 扩展名提供 `opencl` 语言；`.cl` 同时也是 Common Lisp 的扩展名，可用 `files.associations` 改回。
+CUDA 和 HIP 文件编译的是设备端代码，因为 Clang 会先执行这一步。OpenCL C 和 C++ for OpenCL（`.cl`、`.clcpp`）直接按 Clang 的方式编译，内建函数也都可用；编译数据库未列出的文件采用规则的 `default_command`，例如 `clang -cl-std=CL3.0`。VS Code 本身没有内置这些语言，VS Code 扩展会为 `.hip` 提供 `hip` 语言，为各 OpenCL 扩展名提供 `opencl` 语言；`.cl` 同时也是 Common Lisp 的扩展名，可用 `files.associations` 改回。
 
 ## 功能
 

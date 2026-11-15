@@ -311,7 +311,7 @@ tests/folding_ranges/modules/01_module_blocks
 
 ## 宏
 
-经由宏展开拼出的代码，或写在宏实参中的代码，都在源码可见的位置折叠。
+通过宏展开拼出的代码，或写在宏实参中的代码，都在源码可见的位置折叠。
 
 <!-- BEGIN GENERATED ITEMS: folding_ranges/macros -->
 
@@ -319,7 +319,7 @@ tests/folding_ranges/modules/01_module_blocks
 
 **由宏拼出的代码块**
 
-经由宏展开拼出的大括号与访问说明符在宏调用处折叠
+通过宏展开拼出的大括号与访问说明符在宏调用处折叠
 
 由两次宏调用分别开启与闭合的代码块在这两处调用之间折叠，两处调用保持可见，占位文本为 `...`。
 
@@ -345,7 +345,7 @@ tests/folding_ranges/macros/02_macro_arguments
 
 ## 按整行折叠
 
-按整行折叠的客户端会把辨识声明所需的内容留在屏幕上：声明体从名称所在行开始折叠，支持显示折叠文本的客户端还会将结尾行一并折叠进去。
+按整行折叠的客户端会把辨识声明所需的内容留在屏幕上：声明体从名称所在行开始折叠，支持显示折叠文本的客户端还会把结尾行也折叠进去。
 
 <!-- BEGIN GENERATED ITEMS: folding_ranges/line_folding -->
 
@@ -357,7 +357,7 @@ tests/folding_ranges/macros/02_macro_arguments
 
 当左大括号位于名称下方——无论独占一行还是跟在跨越多行的签名之后——按整行折叠的客户端都会从名称所在行开始折叠，使折叠后的声明依然一目了然。按字符折叠的客户端则从左大括号处开始折叠，大括号之前的内容本就保持可见。
 
-> **客户端支持**：VS Code 会将右大括号 `}` 单独留在自身所在行，而不会合并到签名行（[vscode#3352](https://github.com/microsoft/vscode/issues/3352)）；Neovim 则会将其合并（见“结尾行一并折叠”）。
+> **客户端支持**：VS Code 会将右大括号 `}` 单独留在自身所在行，而不会合并到签名行（[vscode#3352](https://github.com/microsoft/vscode/issues/3352)）；Neovim 则会将其合并（见“连同结尾行折叠”）。
 
 ```case
 tests/folding_ranges/line_folding/01_declaration_lines
@@ -367,11 +367,11 @@ tests/folding_ranges/line_folding/01_declaration_lines
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**结尾行一并折叠**
+**连同结尾行折叠**
 
-支持显示折叠文本的客户端会将代码块的结尾行一并折叠，显示为 `int area(Point p) {...}`
+支持显示折叠文本的客户端会把代码块的结尾行也折叠起来，显示为 `int area(Point p) {...}`
 
-每处折叠显示首行后接 `...`；当右大括号、`#endif` 或 `*/` 独占一行时，该行会一并折叠，显示在 `...` 之后。同时开启下一代码块的结尾行（如 `} else {`）则保持可见。
+每处折叠显示首行后接 `...`；当右大括号、`#endif` 或 `*/` 独占一行时，该行也会折叠，显示在 `...` 之后。同时开启下一代码块的结尾行（如 `} else {`）则保持可见。
 
 > **客户端支持**：Neovim 通过 `vim.lsp.foldtext()` 显示折叠文本。VS Code 不显示折叠文本，因此结尾行在 VS Code 中保持可见（[vscode#3352](https://github.com/microsoft/vscode/issues/3352)）。
 
@@ -395,7 +395,7 @@ tests/folding_ranges/line_folding/07_collapsed_lines
 
 折叠后的范围显示占位文本（如函数体显示 `{...}`），起始行本身保持可见
 
-按字符折叠的客户端（如 Zed）在折叠范围处直接显示占位文本。按整行折叠的客户端（如 Neovim）会用折叠文本替换整行首行，因此收到的是首行后接 `...` 的文本（见“结尾行一并折叠”）。
+按字符折叠的客户端（如 Zed）在折叠范围处直接显示占位文本。按整行折叠的客户端（如 Neovim）会用折叠文本替换整行首行，因此收到的是首行后接 `...` 的文本（见“连同结尾行折叠”）。
 
 > **客户端支持**：VS Code 不显示 `collapsedText`（[vscode#70794](https://github.com/microsoft/vscode/issues/70794)）。忽略该字段的客户端仍可正常折叠，只是不显示占位文本。
 

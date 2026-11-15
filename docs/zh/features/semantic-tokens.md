@@ -32,7 +32,7 @@ clice 为文档中的每个 Token 着色：名称按其声明或指代的实体�
 | `enumMember`、`label`              | 枚举值；标签                                                                                                                                                                                                                |
 | `macro`、`macroParameter`          | 宏；函数式宏定义中的形参                                                                                                                                                                                                    |
 | `attribute`                        | 属性名：`nodiscard`、`gnu::packed`                                                                                                                                                                                          |
-| `unknown`                          | 只有实例化才能解析的待决名（dependent name）：`T::reset()`、`value.size()`                                                                                                                                                  |
+| `unknown`                          | 只有实例化才能解析的依赖名（dependent name）：`T::reset()`、`value.size()`                                                                                                                                                  |
 | `conflict`                         | 同时指代不同种类实体的名称                                                                                                                                                                                                  |
 | `plain`                            | 未命中分支中本身没有种类的 Token，或关闭词法 Token 后其中的任意 Token，为携带 `inactive` 而发送                                                                                                                             |
 
@@ -440,7 +440,7 @@ tests/semantic_tokens/declarations/09_structured_bindings
 
 ## 引用
 
-引用位置保留其解析到的声明的语义种类，经由语言特有的查找规则解析出的名称也不例外。
+引用位置保留其解析到的声明的语义种类，通过语言特有的查找规则解析出的名称也不例外。
 
 <!-- BEGIN GENERATED ITEMS: semantic_tokens/references -->
 
@@ -470,11 +470,11 @@ tests/semantic_tokens/references/02_using_declarations
 
 <!-- BEGIN CAPABILITY: supported clangd#154 clangd#297 -->
 
-**待决名**
+**依赖名**
 
-待决名通过已知的主模板解析
+依赖名通过已知的主模板解析
 
-已知模板（`Box<T>`）的待决成员会解析到主模板中的声明，并保留各自的种类。裸模板参数的成员没有候选声明：一般标为 `unknown`，跟在 `typename` 之后时标为类型。每个待决名均带有 `dependent`。
+已知模板（`Box<T>`）的依赖成员会解析到主模板中的声明，并保留各自的种类。裸模板参数的成员没有候选声明：一般标为 `unknown`，跟在 `typename` 之后时标为类型。每个依赖名均带有 `dependent`。
 
 ```case
 tests/semantic_tokens/references/05_dependent_names
@@ -994,5 +994,5 @@ tests/semantic_tokens/inactive/08_edited_condition
 
 ## 已知限制
 
-- 文件正在编译期间——首次打开时，或其包含的头文件发生更改后——其 Token 先由项目索引提供。这些 Token 能标出编译完成后所能标出的一切具名实体，但缺少只有完整编译才能得知的信息：待决名与 `unknown` 名称、声明符运算符、Lambda 模板形参两侧的尖括号、格式字符串占位符、未命中的分支，以及被宏丢弃的实参。编译完成后这些内容便会出现。
+- 文件正在编译期间——首次打开时，或其包含的头文件发生更改后——其 Token 先由项目索引提供。这些 Token 能标出编译完成后所能标出的一切具名实体，但缺少只有完整编译才能得知的信息：依赖名与 `unknown` 名称、声明符运算符、Lambda 模板形参两侧的尖括号、格式字符串占位符、未命中的分支，以及被宏丢弃的实参。编译完成后这些内容便会出现。
 - 控制流不可达的代码，以及 `if constexpr` 中在某次实例化时被丢弃的分支，均不会变暗显示：前者需要控制流分析，后者在不同实例化之间各不相同（[clangd#1828](https://github.com/clangd/clangd/issues/1828)）。

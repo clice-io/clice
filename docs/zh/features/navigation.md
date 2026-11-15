@@ -90,7 +90,7 @@ tests/navigation/definition/07_error_recovery
 
 在纯虚函数声明上执行“跳转到定义”会列出其所有重写函数
 
-纯虚函数本身没有定义：光标停在其声明上时，“跳转到定义”会跳往提供定义的各个重写函数。经由纯虚函数发起的调用则会跳转到该声明，与任何没有定义的函数一致。
+纯虚函数本身没有定义：光标停在其声明上时，“跳转到定义”会跳往提供定义的各个重写函数。通过纯虚函数发起的调用则会跳转到该声明，与任何没有定义的函数一致。
 
 ```case
 tests/navigation/definition/10_pure_virtual
@@ -154,7 +154,7 @@ tests/navigation/declaration/03_static_members
 
 外部变量的使用处会跳转到其声明
 
-在 `extern` 变量的使用处会一并给出 `extern` 声明与定义性声明，因此从使用处总能到达头文件中的声明。
+在 `extern` 变量的使用处会同时给出 `extern` 声明与定义性声明，因此从使用处总能到达头文件中的声明。
 
 ```case
 tests/navigation/declaration/04_extern_variables
@@ -194,7 +194,7 @@ tests/navigation/declaration/06_signature_spelling
 
 当定义因改动而不再匹配原有声明时，在定义上执行“跳转到声明”仍能找到与之脱节的声明
 
-只在一侧修改形参时，定义与头文件中的声明会变成两个不同的函数，该定义也就没有了对应的声明。此时在定义上执行“跳转到声明”，会回退到同一作用域内同名、同链接性且尚无定义的函数——即同样需要同步修改的那条声明（若是 `static` 函数则限于当前文件内）。已有自身定义的重载不会列为候选，链接性不同或属于其他匿名命名空间的函数也不会入选。在类内定义的方法本就没有独立声明，模板或系统头文件中的函数也是声明与定义合一，因此都不会触发这一回退。
+只在一侧修改形参时，定义与头文件中的声明会变成两个不同的函数，该定义也就没有了对应的声明。此时在定义上执行“跳转到声明”，会退而查找同一作用域内同名、链接方式相同且尚无定义的函数——即同样需要同步修改的那条声明（若是 `static` 函数则限于当前文件内）。已有自身定义的重载不算候选，链接方式不同或位于另一个匿名命名空间中的函数也不算。在类内定义的方法从来没有单独的声明；模板和系统头文件中的函数则不做处理：它们就声明在定义处。
 
 ```case
 tests/navigation/declaration/07_changed_signatures
@@ -366,7 +366,7 @@ tests/navigation/implementation/03_non_virtual
 
 基类会跳转到所有派生类
 
-在基类名上执行“跳转到实现”，会列出直接或经由其他派生类间接继承自它的所有类。
+在基类名上执行“跳转到实现”，会列出直接或通过其他派生类间接继承自它的所有类。
 
 ```case
 tests/navigation/implementation/04_derived_classes
@@ -392,7 +392,7 @@ tests/navigation/implementation/05_dependent_calls
 
 ## 查找引用
 
-“查找引用”会列出所有提及该符号的位置，包括其各处声明。方法的引用包含经由其所重写的基类方法发起、且可能动态分派到它的调用；类的引用包含其构造函数的名称。默认情况下编辑器最多收到 2000 条结果，并优先保留发起请求的文件内的引用（上限可在 [`[references]` 小节](../guide/configuration.md#references)中配置）；`clice query references` 则会列出全部结果。
+“查找引用”会列出所有提及该符号的位置，包括其各处声明。方法的引用包含通过它重写的基类方法发起、且可能动态分派到它的调用；类的引用包含其构造函数的名称。默认情况下编辑器最多收到 2000 条结果，并优先保留发起请求的文件内的引用（上限可在 [`[references]` 小节](../guide/configuration.md#references)中配置）；`clice query references` 则会列出全部结果。
 
 <!-- BEGIN GENERATED ITEMS: navigation/references -->
 
@@ -400,7 +400,7 @@ tests/navigation/implementation/05_dependent_calls
 
 **引用结果包含声明**
 
-引用查询会将声明、独立定义与所有使用处一并返回，从任意一处都能找全该符号出现的全部位置
+引用查询会将声明、独立定义与所有使用处全部返回，从任意一处都能找全该符号出现的全部位置
 
 ```case
 tests/navigation/references/01_declarations_included
@@ -438,7 +438,7 @@ tests/navigation/references/03_implicit_construction
 
 <!-- BEGIN CAPABILITY: unsupported clangd#716 -->
 
-**经由转发函数的引用**
+**通过转发函数的引用**
 
 在构造函数上执行“查找引用”会包含完美转发工厂函数内部的构造位置，但不包含调用该工厂函数的位置
 
@@ -490,7 +490,7 @@ tests/navigation/references/07_enclosing_functions
 
 **标签与 goto 引用**
 
-在标签上执行“查找引用”会一并列出标签本身与所有跳往它的 `goto` 语句
+在标签上执行“查找引用”会同时列出标签本身与所有跳往它的 `goto` 语句
 
 ```case
 tests/navigation/references/08_labels
@@ -500,11 +500,11 @@ tests/navigation/references/08_labels
 
 <!-- BEGIN CAPABILITY: supported clangd#1558 -->
 
-**经由基类方法的虚调用**
+**通过基类方法的虚调用**
 
-在重写方法上执行“查找引用”，结果包含经由其所重写的方法发起、可能分派到它的调用
+在重写方法上执行“查找引用”，结果包含通过它重写的方法发起、可能分派到它的调用
 
-在 `Shape&` 上调用 `shape.area()` 可能实际执行 `Circle::area`，因此会算在重写方法的引用中。经由 `Circle` 发起的调用绝不会执行 `Shape::area`，因此不算在基类被重写方法的引用中；重写方法体内的 `Shape::area()` 显式指名了被重写的基类方法，模板中的 `circle.Shape::scale(factor)` 也在实例化选定具体重载前就限定到了被重写的某个重载，这两处同样不算在重写方法的引用中。
+在 `Shape&` 上调用 `shape.area()` 可能实际执行 `Circle::area`，因此会算在重写方法的引用中。通过 `Circle` 发起的调用绝不会执行 `Shape::area`，因此不算在基类被重写方法的引用中；重写方法体内的 `Shape::area()` 显式指名了被重写的基类方法，模板中的 `circle.Shape::scale(factor)` 也在实例化选定具体重载前就限定到了被重写的某个重载，这两处同样不算在重写方法的引用中。
 
 ```case
 tests/navigation/references/13_override_calls
@@ -516,7 +516,7 @@ tests/navigation/references/13_override_calls
 
 **Objective-C 消息发送**
 
-方法的引用包含所有可能发往它的消息：发给所属类的对象、发给其所重写方法所属父类的对象、经由其实现的协议发送，或发给 `id`
+方法的引用包含所有可能发往它的消息：发给所属类的对象、发给其所重写方法所属父类的对象、通过其实现的协议发送，或发给 `id`
 
 发给 `id` 或 `Class` 的消息可能到达具有相同选择器（selector）的任意方法，因此会归入每个同名方法的引用；发给 `super` 的消息则只到达父类的方法。分多段写出选择器的消息只列出一次，位置落在第一段上。
 
@@ -576,7 +576,7 @@ tests/navigation/deduced_types/03_decltype
 
 **推导出的模板与别名**
 
-推导为模板特化的 `auto` 会跳往主模板，或所选中的显式特化与偏特化；经由类型别名推导出的 `auto` 则跳往该别名
+推导为模板特化的 `auto` 会跳往主模板，或所选中的显式特化与偏特化；通过类型别名推导出的 `auto` 则跳往该别名
 
 内置类型与 Lambda 闭包类型没有可跳往的声明，`new` 表达式中的 `auto` 也不会跳往任何位置。展开为 `auto` 的宏则会跳转到该宏本身。
 
@@ -618,7 +618,7 @@ tests/navigation/deduced_types/06_dependent_auto
 
 **库内部类型别名**
 
-经由库内部别名推导出的 `auto` 会跳往该别名所指的类型；经由公开别名推导出的 `auto` 则跳往公开别名本身
+通过库内部别名推导出的 `auto` 会跳往该别名所指的类型；通过公开别名推导出的 `auto` 则跳往公开别名本身
 
 像 `std::__detail::__unique_ptr_t` 这样仅供库自身保留的名称不是用户代码会写出的名字，因此 `auto` 会穿透它直达 `unique_ptr`。而像 `iterator` 这样的公开别名则是库面向用户提供的正式名称。
 
@@ -730,7 +730,7 @@ tests/navigation/macros/01_macro_arguments
 
 由宏生成的名称会跳转到生成它的那次宏调用
 
-经由记号粘贴（token paste）拼出的名称或直接写在宏体中的名称，在使用处都会跳转到生成它的宏调用处，而宏调用处的宏名本身则跳转到宏定义。宏体内部的记号在展开前没有确定的语义，在其上执行导航不返回任何结果。
+通过 Token 拼接（token paste）拼出的名称或直接写在宏体中的名称，在使用处都会跳转到生成它的宏调用处，而宏调用处的宏名本身则跳转到宏定义。宏体内部的 Token在展开前没有确定的语义，在其上执行导航不返回任何结果。
 
 ```case
 tests/navigation/macros/02_generated_names
@@ -1218,7 +1218,7 @@ tests/navigation/projects/09_instantiated_templates
 
 ## 调用层次结构
 
-调用层次结构列出调用某个函数的调用方以及该函数调用的其他函数；经由函数所重写的方法发起的调用也会计入其调用方。每个条目都会显示函数的形参以区分重载。函数的局部变量与形参不生成条目：唯一能使用它们的就是该函数自身。
+调用层次结构列出调用某个函数的调用方以及该函数调用的其他函数；通过该函数重写的方法发起的调用也会计入其调用方。每个条目都会显示函数的形参以区分重载。函数的局部变量与形参不生成条目：唯一能使用它们的就是该函数自身。
 
 <!-- BEGIN GENERATED ITEMS: navigation/call_hierarchy -->
 
@@ -1284,9 +1284,9 @@ tests/navigation/call_hierarchy/05_qualified_names
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**经由虚方法的调用**
+**通过虚方法的调用**
 
-经由虚方法发起的调用会到达所有可能分派到的重写方法，带作用域限定的调用则只到达它所指名的方法
+通过虚方法发起的调用会到达所有可能分派到的重写方法，带作用域限定的调用则只到达它所指名的方法
 
 在 `Base&` 上调用 `b.draw()` 可能执行 `Base::draw` 或 `Derived::draw`，因此两者的传入调用都会列出它。在 `Derived&` 上调用 `d.draw()` 只会执行 `Derived::draw` 或更下层的重写方法，绝不会执行 `Base::draw`，因此只有重写方法会列出它。`Base::draw()` 无论写在重写方法体内还是别处都只执行 `Base::draw`（而 `Group` 中的 `child->draw()` 则可能到达任一方法）；`Logged` 的重写方法中由宏展开出的 `Base::draw()` 同样只执行 `Base::draw`。
 
@@ -1324,7 +1324,7 @@ tests/navigation/call_hierarchy/08_lambda_bodies
 
 <!-- BEGIN CAPABILITY: unsupported clangd#716 -->
 
-**经由转发函数的构造函数调用**
+**通过转发函数的构造函数调用**
 
 构造函数的传入调用包含运行它的完美转发工厂函数，但不包含调用该工厂函数的位置
 
@@ -1398,7 +1398,7 @@ tests/navigation/type_hierarchy/03_subtypes
 
 **模板继承**
 
-基类的子类型包含经由类模板（如 CRTP 包装类）继承自它的类
+基类的子类型包含通过类模板（如 CRTP 包装类）继承自它的类
 
 ```case
 tests/navigation/type_hierarchy/04_template_bases
@@ -1504,7 +1504,7 @@ tests/document_highlights/access_kinds/03_reference_arguments
 
 **成员访问**
 
-经由 `object.member` 写入时，成员标为写入，对象标为读取
+通过 `object.member` 写入时，成员标为写入，对象标为读取
 
 指定初始化器（designated initializer）或构造函数的成员初始化器会将对应字段标为写入。匿名联合体的字段与普通字段一样支持高亮。
 
@@ -1718,7 +1718,7 @@ tests/workspace_symbols/projects/01_closed_files
 
 并排打开同一代码的两份检出目录时，每个符号只列出一次，取正在编辑的那个文件夹中的副本
 
-同一仓库的两个工作树（worktree）作为工作区文件夹同时打开时，相同文本的相同位置上会有完全相同的符号。搜索对每个符号只列出一次，取打开了文档的那个文件夹——也就是当前正在编辑的文件夹中的副本。若某个文件夹中的文件内容不同，它就持有独立的符号，也会一并列出。
+同一仓库的两个工作树（worktree）作为工作区文件夹同时打开时，相同文本的相同位置上会有完全相同的符号。搜索对每个符号只列出一次，取打开了文档的那个文件夹——也就是当前正在编辑的文件夹中的副本。若某个文件夹中的文件内容不同，它就持有独立的符号，也会列出。
 
 ```case
 tests/workspace_symbols/projects/03_worktree_copies

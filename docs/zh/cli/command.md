@@ -28,7 +28,7 @@ settings:  background_index = false (/home/me/project/clice.toml:6)
            the rest by default
 ```
 
-条目之后，`settings` 列出各条[规则](../guide/configuration.md#rules)为该文件决定的设置——`background_index`、`skip_function_body`、`readonly`、`lint` 等按文件生效的字段——每项都会标明决定它的规则及其所在文件和起始行号；没有任何规则设置的字段取默认值。`--json` 会在 `settings` 下列出所有字段，给出各自的 `value`，若由某条规则决定则一并给出该 `rule`。
+条目之后，`settings` 列出各条[规则](../guide/configuration.md#rules)为该文件决定的设置——`background_index`、`skip_function_body`、`readonly`、`lint` 等按文件生效的字段——每项都会标明决定它的规则及其所在文件和起始行号；没有任何规则设置的字段取默认值。`--json` 会在 `settings` 下列出所有字段，给出各自的 `value`，若由某条规则决定则还会给出该 `rule`。
 
 列出文件条目时退出码为 0；文件不存在或没有任何数据库列出该文件时为 1；读取期间数据库发生变化、参数无法解析，或项目及其配置无法加载时为 2。
 

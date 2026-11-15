@@ -133,7 +133,7 @@ tests/document_symbols/symbol_kinds/02_templates
 
 **模板特化与推导指引（deduction guides）**
 
-模板特化连同其模板实参和自身成员一并列出，推导指引则带上它推导出的签名
+模板特化连同其模板实参和自身成员一起列出，推导指引则带上它推导出的签名
 
 ```case
 tests/document_symbols/symbol_kinds/03_specializations
@@ -297,7 +297,7 @@ tests/document_symbols/symbol_detail/04_base_classes
 
 **带类作用域的类型**
 
-书写时带有类作用域的类型在详情中保留一次该作用域，待决名也不例外
+书写时带有类作用域的类型在详情中保留一次该作用域，依赖名也不例外
 
 ```case
 tests/document_symbols/symbol_detail/05_scoped_types

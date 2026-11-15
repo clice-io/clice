@@ -22,7 +22,7 @@
 
 所包含头文件内部的错误显示在包含它的那一行
 
-每个被包含头文件的首个错误会报告在对应的 `#include` 行上，并在头文件内的出错位置附上一条备注。该头文件的其余错误归属头文件自身，打开该头文件时才会显示。
+每个被包含头文件的首个错误会报告在对应的 `#include` 行上，并在头文件内的出错位置附上一条附注。该头文件的其余错误归属头文件自身，打开该头文件时才会显示。
 
 ```case
 tests/diagnostics/headers/01_errors_on_include
@@ -58,7 +58,7 @@ tests/diagnostics/headers/09_skipped_bodies
 
 模板内部的错误显示在代码请求实例化的位置
 
-模板以给定实参实例化出错时，错误会报告在请求实例化的代码处，而非模板内部。附带的备注会沿着实例化链一路指向模板内出错的具体位置。文件顶部所包含头文件中的模板由后台索引实例化，编辑器自身的编译则会跳过这些头文件的函数体，因此这类错误会在后台索引按已保存内容编译该文件后显示。
+模板以给定实参实例化出错时，错误会报告在请求实例化的代码处，而非模板内部。附带的附注会沿着实例化链一路指向模板内出错的具体位置。文件顶部所包含头文件中的模板由后台索引实例化，编辑器自身的编译则会跳过这些头文件的函数体，因此这类错误会在后台索引按已保存内容编译该文件后显示。
 
 ```case
 tests/diagnostics/templates/01_instantiation_errors
@@ -68,19 +68,19 @@ tests/diagnostics/templates/01_instantiation_errors
 
 <!-- END GENERATED ITEMS -->
 
-## 备注
+## 附注
 
-clang 附在错误上的备注会作为相关信息随错误一并传递；不支持相关信息的客户端则会在诊断消息正文中看到这些备注。
+clang 附在错误上的附注会作为相关信息随错误一起传递；不支持相关信息的客户端则会在诊断消息正文中看到这些附注。
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/notes -->
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**作为相关信息的备注**
+**作为相关信息的附注**
 
-clang 附在错误上的备注指向其中提及的源码位置
+clang 附在错误上的附注指向其中提及的源码位置
 
-错误会附带解释原因的备注，例如某个名称首次定义的位置，或某次调用无法选用的候选函数。每条备注都作为该错误的相关信息提供，编辑器会将其显示在错误旁边，并支持跳转到对应位置。
+错误会附带解释原因的附注，例如某个名称首次定义的位置，或某次调用无法选用的候选函数。每条附注都作为该错误的相关信息提供，编辑器会将其显示在错误旁边，并支持跳转到对应位置。
 
 ```case
 tests/diagnostics/notes/01_related_information
@@ -146,7 +146,7 @@ tests/diagnostics/suppression/01_by_code
 
 <!-- END GENERATED ITEMS -->
 
-`// NOLINT`、`// NOLINTNEXTLINE` 以及 `// NOLINTBEGIN` / `// NOLINTEND` 注释会屏蔽对应行上的 clang-tidy 检查结果；当 clang-tidy 在该文件上运行时，还会一并屏蔽这些行上的编译器警告。
+`// NOLINT`、`// NOLINTNEXTLINE` 以及 `// NOLINTBEGIN` / `// NOLINTEND` 注释会屏蔽对应行上的 clang-tidy 检查结果；当 clang-tidy 在该文件上运行时，还会屏蔽这些行上的编译器警告。
 
 ## 诊断操作
 
@@ -199,7 +199,7 @@ tests/diagnostics/clang_tidy/02_default_checks
 
 对编辑器而言过慢的检查项会点名告知，不会悄然略过
 
-已打开的文件既不运行对编辑器而言过慢的检查项，也不运行在编辑中的代码上不可靠的检查项。对于 `.clang-tidy` 启用的慢速检查项，clice 会提示一次其名称及运行方法；`clice lint` 则会将两类检查项一并运行。
+已打开的文件既不运行对编辑器而言过慢的检查项，也不运行在编辑中的代码上不可靠的检查项。对于 `.clang-tidy` 启用的慢速检查项，clice 会提示一次其名称及运行方法；`clice lint` 则两类检查项都运行。
 
 ```case
 tests/diagnostics/clang_tidy/03_editor_exclusions
@@ -213,7 +213,7 @@ tests/diagnostics/clang_tidy/03_editor_exclusions
 
 `NOLINT` 注释屏蔽所在行的检查结果，同时也会屏蔽编译器警告
 
-`// NOLINT` 屏蔽自身所在行，`// NOLINTNEXTLINE` 屏蔽下一行，可针对全部检查项或仅针对括号中列出的检查项。当 clang-tidy 在文件上运行时，它们也会一并屏蔽对应行上的编译器警告。
+`// NOLINT` 屏蔽自身所在行，`// NOLINTNEXTLINE` 屏蔽下一行，可针对全部检查项或仅针对括号中列出的检查项。当 clang-tidy 在文件上运行时，它们也会屏蔽对应行上的编译器警告。
 
 ```case
 tests/diagnostics/clang_tidy/04_nolint

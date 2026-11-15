@@ -4,7 +4,7 @@ clice 仅用 [Bazel](https://bazel.build) 即可构建。构建所需的一切�
 
 ## 环境要求
 
-- Bazel，经由 [bazelisk](https://github.com/bazelbuild/bazelisk) 运行，后者会拉取 `.bazelversion` 指定的版本。
+- Bazel，通过 [bazelisk](https://github.com/bazelbuild/bazelisk) 运行，后者会拉取 `.bazelversion` 指定的版本。
 - `PATH` 中需有 git 和 [Node.js](https://nodejs.org)：构建会调用 Node 脚本，把 `git describe` 得出的版本号写入 clice。
 - Windows 上还需要 Bash（[Git for Windows](https://gitforwindows.org) 自带）以及较短的 Bazel 输出根目录，因为 Bazel 默认的输出根目录层级过深，会超出 Windows 路径长度限制。将其写入 `%USERPROFILE%\.bazelrc`：
 
@@ -35,7 +35,7 @@ LLVM/Clang 库中存放的是 ThinLTO bitcode，每次链接程序都会重新�
 
 ## 开发 clice
 
-`bazel run @compdb//:refresh -- --output_groups=+compilation_prerequisites_INTERNAL_` 会在仓库根目录生成 clice 自身源码的 `compile_commands.json`，以便用 clice 开发其自身代码；该输出组会一并构建各编译命令读取的生成头文件。
+`bazel run @compdb//:refresh -- --output_groups=+compilation_prerequisites_INTERNAL_` 会在仓库根目录生成 clice 自身源码的 `compile_commands.json`，以便用 clice 开发其自身代码；该输出组还会构建各编译命令读取的生成头文件。
 
 运行测试需要 pixi 安装的工具。`bazel build //:dist` 会构建 clice 及单元测试，随后 `pixi run test` 会运行单元测试与测试用例（Debug 构建使用 `--config=Debug` 和 `pixi run test Debug`）；测试用例的编写方法见 [`tests/README.md`](https://github.com/clice-io/clice/blob/main/tests/README.md)。
 

@@ -41,7 +41,7 @@ tests/hover/symbols/02_scopes
 
 **访问权限**
 
-成员的访问权限为 `protected` 或 `private` 时，卡片标题会予以标明
+成员的访问权限为 `protected` 或 `private` 时，卡片标题会标明这一点
 
 ```case
 tests/hover/symbols/03_access
@@ -149,7 +149,7 @@ tests/hover/functions/01_signatures
 
 ## 变量
 
-变量的卡片按源码写法显示其类型；若其值在编译期已知，还会一并显示该值。
+变量的卡片按源码写法显示其类型；若其值在编译期已知，还会显示该值。
 
 <!-- BEGIN GENERATED ITEMS: hover/variables -->
 
@@ -403,7 +403,7 @@ tests/hover/templates/04_concept_constraints
 
 **依赖特化中的成员**
 
-经由类模板依赖特化访问的成员，按代码写出的模板实参显示
+通过类模板依赖特化访问的成员，按代码写出的模板实参显示
 
 在 `lib::vector<Point<T>>` 上，`push_back` 归属于 `lib::vector<Point<T>>`，其 `value_type` 为 `Point<T>`，而不是模板自身的 `_Tp`；而 `second`（属于 `pair<const int, T>`，由 `map<int, T>` 查找返回）的类型为 `T`。
 
@@ -441,7 +441,7 @@ tests/hover/templates/12_instantiation_patterns
 
 字段显示其偏移量、大小、对齐要求以及紧随其后的填充字节
 
-`layout` 默认开启；设为 `false` 时隐藏这些信息，类的大小也一并隐藏。
+`layout` 默认开启；设为 `false` 时隐藏这些信息，类的大小也会隐藏。
 
 ```case
 tests/hover/layout/01_field_layout
@@ -623,7 +623,7 @@ tests/hover/macros/05_nested_arguments
 
 **展开后的值**
 
-展开为表达式的宏在使用处会显示该表达式的类型；若为常量表达式，还会一并显示其值
+展开为表达式的宏在使用处会显示该表达式的类型；若为常量表达式，还会显示其值
 
 ```case
 tests/hover/macros/14_expansion_values

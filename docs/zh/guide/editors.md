@@ -31,7 +31,7 @@ clice 会向每条编译命令所用的编译器查询其编译配置（目标�
 
 从应用市场安装 [clice 扩展](https://marketplace.visualstudio.com/items?itemName=clice-io.clice)；Cursor、VSCodium、Windsurf 等 VS Code 衍生编辑器则从 [Open VSX](https://open-vsx.org/extension/clice-io/clice) 安装同一个扩展。发布的构建版本按平台区分，并在扩展内自带 clice 服务器，因此安装后无需再下载或访问网络；若要改用自行构建的版本，请设置 `clice.executable`。
 
-由 clice 提供服务的编辑器右键菜单中包含 clice 的命令，位于“转到定义”等命令下方：**Switch Header and Source (Module Interface and Implementation)**；文件有多个编译上下文时的 **Switch Compilation Context**（资源管理器的 Compilation Contexts 视图中也会列出）；规则声明了构建配置时的 **Switch Build Configuration**，它会以所选配置重启服务器；以及 **Show Compile Command**，它会打开文件完整的编译命令，并说明命令来源——编译数据库、包含该头文件的源文件、规则的 `default_command`、邻近的翻译单元，或 clice 自身的回退配置。耗时较长的编译会在状态栏显示进度，在所有支持进度显示的编辑器中都是如此。
+由 clice 提供服务的编辑器右键菜单中包含 clice 的命令，位于“跳转到定义”等命令下方：**Switch Header and Source (Module Interface and Implementation)**；文件有多个编译上下文时的 **Switch Compilation Context**（资源管理器的 Compilation Contexts 视图中也会列出）；规则声明了构建配置时的 **Switch Build Configuration**，它会以所选配置重启服务器；以及 **Show Compile Command**，它会打开文件完整的编译命令，并说明命令来源——编译数据库、包含该头文件的源文件、规则的 `default_command`、邻近的翻译单元，或 clice 自身的回退配置。耗时较长的编译会在状态栏显示进度，在所有支持进度显示的编辑器中都是如此。
 
 ### Neovim
 

@@ -123,7 +123,7 @@ tests/code_completion/scopes/01_other_namespaces
 
 **尚未包含的头文件**
 
-项目在当前文件尚未包含的头文件中声明的名称，补全时会一并插入引入它的 `#include`
+项目在当前文件尚未包含的头文件中声明的名称，补全时会同时插入引入它的 `#include`
 
 ```case
 tests/code_completion/scopes/02_include_insertion
@@ -135,7 +135,7 @@ tests/code_completion/scopes/02_include_insertion
 
 **尚未导入的模块**
 
-项目中某个模块导出的名称，补全时会一并插入引入它的 `import`；当前模块自身的分区则按分区名导入
+项目中某个模块导出的名称，补全时会同时插入引入它的 `import`；当前模块自身的分区则按分区名导入
 
 ```case
 tests/code_completion/scopes/03_import_insertion
@@ -149,7 +149,7 @@ tests/code_completion/scopes/03_import_insertion
 
 当前文件尚未包含的头文件中声明的名称，在写出前置命名空间后（如 `std::vec`）也会补全
 
-无论当前文件此前是否见过该命名空间，补全时都会一并插入引入它的 `#include`。在命名空间别名、宏或类名之后，则只提供当前文件已可见的名称。
+无论当前文件此前是否见过该命名空间，补全时都会同时插入引入它的 `#include`。在命名空间别名、宏或类名之后，则只提供当前文件已可见的名称。
 
 ```case
 tests/code_completion/scopes/20_written_qualifiers
@@ -277,7 +277,7 @@ tests/code_completion/functions_snippets/01_snippet_arguments
 
 **签名与返回类型**
 
-形参列表和返回类型随函数名一并显示
+形参列表和返回类型随函数名一起显示
 
 ```case
 tests/code_completion/functions_snippets/02_function_candidates
@@ -377,7 +377,7 @@ tests/code_completion/templates/01_dependent_member_type
 
 在模板内对下标运算或成员调用的返回值访问成员时，可补全其求值结果所属类的成员
 
-对 `rows[0].`（作用在 `Vec<Vec<T>>` 上）触发补全会列出 `Vec<T>` 的成员，其类型按标准容器的声明方式顺着容器的 `reference` 别名解析得出。若成员函数有 `const` 重载，会根据对象的常量性选出所调用的重载（经由 const 对象访问的数据成员同样视为 const）；对返回的迭代器使用 `->` 则能访问元素本身。
+对 `rows[0].`（作用在 `Vec<Vec<T>>` 上）触发补全会列出 `Vec<T>` 的成员，其类型按标准容器的声明方式顺着容器的 `reference` 别名解析得出。若成员函数有 `const` 重载，会根据对象的常量性选出所调用的重载（通过 const 对象访问的数据成员同样视为 const）；对返回的迭代器使用 `->` 则能访问元素本身。
 
 ```case
 tests/code_completion/templates/05_dependent_expression_results
@@ -419,7 +419,7 @@ tests/code_completion/templates/14_generic_lambda_parameters
 
 在受约束的模板内，输入点号后可补全 Concept 所要求的成员
 
-Concept 中调用的成员会补全为成员函数，形参类型取自调用时传入的实参类型；在 `T::` 之后，Concept 指明的嵌套类型也会一并补全。
+Concept 中调用的成员会补全为成员函数，形参类型取自调用时传入的实参类型；在 `T::` 之后，Concept 指明的嵌套类型也能补全。
 
 ```case
 tests/code_completion/templates/15_concept_requirements
@@ -535,7 +535,7 @@ tests/code_completion/include_path_completion/02_include_angled
 
 接受头文件补全项后会自动闭合整条指令，替换光标后已有的内容而不会重复插入
 
-原有的闭合定界符会被直接替换；若在路径较靠前的层级选中头文件，后面的剩余路径也会一并替换。含空格的名称会一直替换到闭合定界符为止；若无闭合定界符，则到第一个空格为止。
+原有的闭合定界符会被直接替换；若在路径较靠前的层级选中头文件，后面的剩余路径也会替换掉。含空格的名称会一直替换到闭合定界符为止；若无闭合定界符，则到第一个空格为止。
 
 ```case
 tests/code_completion/include_path_completion/03_closing_delimiter

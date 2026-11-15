@@ -371,7 +371,7 @@ tests/code_actions/deduced_type/02_auto_return
 
 **展开 decltype**
 
-`decltype` 说明符会展开为它所表示的类型，若该类型本身也是用 `decltype` 声明的则一并穿透展开
+`decltype` 说明符会展开为它所表示的类型，若该类型本身也是用 `decltype` 声明的则继续穿透展开
 
 ```case
 tests/code_actions/deduced_type/03_decltype
@@ -383,7 +383,7 @@ tests/code_actions/deduced_type/03_decltype
 
 **无法命名的类型保持 auto**
 
-Lambda、待决类型、结构化绑定（structured bindings）以及在声明处无法命名的类型不会展开
+Lambda、依赖类型、结构化绑定（structured bindings）以及在声明处无法命名的类型不会展开
 
 属于另一个函数局部的类型、当前声明无权访问的成员类型，以及尚未声明标准名称时 `sizeof` 的结果类型都无法命名（MSVC 兼容模式会隐式声明 `size_t`）。
 
@@ -599,9 +599,9 @@ tests/code_actions/fix/02_tidy_fix
 
 <!-- BEGIN CAPABILITY: supported -->
 
-**来自备注（note）的修复**
+**来自附注（note）的修复**
 
-每条附带修复的备注都会将其作为快速修复提供，标题取自该备注
+每条附带修复的附注都会将其作为快速修复提供，标题取自该附注
 
 ```case
 tests/code_actions/fix/03_note_fixes
@@ -637,5 +637,5 @@ tests/code_actions/formatting/01_project_style
 
 - 放入宿主源文件的定义会排在索引已知的、该文件中该类成员的最后一个定义之后；若文件中尚无任何成员定义，则放在文件末尾。哪个源文件充当头文件的宿主，取决于该头文件的编译上下文。
 - 已在另一个源文件中定义的成员，只有在项目索引记录了该定义时才会从“定义缺失的成员”操作中排除；只要索引尚未收录定义它们的文件，所有未定义的成员仍会全部列出。
-- 指代待决基类（dependent base class）成员的返回类型会按原样复制到类外定义中，在类外可能需要补上 `typename` 和基类限定符。
+- 指代依赖基类（dependent base class）成员的返回类型会按原样复制到类外定义中，在类外可能需要补上 `typename` 和基类限定符。
 - 缺失头文件的候选来自标准库映射以及项目索引见过的头文件；未被任何已索引源文件包含过的头文件不会出现在建议中。
