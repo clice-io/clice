@@ -177,9 +177,9 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
     /// A file of the kind's suffix stands in for the real input, which may
     /// not exist on disk (and a borrowed header must query as the host's
     /// language, not as its own extension).
-    std::string dir;
-    sys::temp_dir(dir);
-    auto input = fs::TempFile::create(dir, "query-toolchain-", "." + temp_suffix_for(spec.kind));
+    auto input = temp_root().and_then([&](const std::string& dir) {
+        return fs::TempFile::create(dir, "query-toolchain-", "." + temp_suffix_for(spec.kind));
+    });
     if(!input) {
         co_return std::unexpected(
             std::format("clice cannot create the file it asks the compiler about: {}",

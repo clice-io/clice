@@ -335,7 +335,8 @@ Value empty_value() {
 class ServedProject final : public std::enable_shared_from_this<ServedProject> {
 public:
     /// `root` is the project's directory; empty for the rootless project a
-    /// server without folders runs, which loads nothing. What the project
+    /// server without folders runs, which loads no build: it opens only a
+    /// store of its own, gone when it shuts down. What the project
     /// tells of its index reaches the documents: an index attempt ending
     /// (the index_first in decide_compiling promised the index would serve
     /// the cold document, and one that finishes without a servable shard ends
@@ -823,8 +824,9 @@ private:
     void start_control_listener();
 
     /// Schedule a save carrying dirty precompiled records or context choices; no-op
-    /// when one is already scheduled or the server is shutting down (the
-    /// final shutdown save covers it).
+    /// when one is already scheduled, the server is shutting down (the
+    /// final shutdown save covers it) or the project is the rootless one,
+    /// which saves nothing.
     void schedule_metadata_flush();
 
     async::task<> metadata_flush_task();

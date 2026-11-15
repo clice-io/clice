@@ -51,15 +51,12 @@ struct CursorRename {
 std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& query,
                                                    const index::IndexQuery::Cursor& cursor);
 
-/// Why no rename can be made in the project rooted at `root`: one
-/// without a folder has no sources to edit; nullopt when one can.
-std::optional<std::string> rename_refusal(llvm::StringRef root);
-
 /// Where a rename may change text, and how to read it.
 struct RenameScope {
     /// Whether the rename may edit a file: one in the project outside
     /// its build trees, hidden directories and cache directory, whatever
-    /// its suffix. An edit elsewhere is a conflict.
+    /// its suffix; from a file outside every workspace folder, that file
+    /// alone. An edit elsewhere refuses the rename.
     llvm::function_ref<bool(llvm::StringRef path)> editable;
 
     /// A file's current text — an open buffer's, else the disk's; nullopt
@@ -70,6 +67,11 @@ struct RenameScope {
     /// Whether some unit of the build the index is to hold has no record
     /// in it yet: what it names goes unrenamed, which a warning says.
     bool units_pending = false;
+
+    /// The rename starts in a file outside every workspace folder: what it
+    /// may not edit lies in no folder, rather than outside the project's
+    /// sources.
+    bool outside_folders = false;
 };
 
 /// One token the rename replaces.
@@ -98,6 +100,11 @@ struct RenamePlan {
     /// What makes the rename unsafe; nothing is written while any stands.
     std::vector<std::string> conflicts;
 
+    /// Why the rename may not change the files it would, one reason each:
+    /// they are not the scope's to edit. Nothing is written while any
+    /// stands.
+    std::vector<std::string> outside;
+
     std::vector<std::string> warnings;
 
     /// Files the rename edits, or that spell its old or new name, whose
@@ -111,7 +118,7 @@ struct RenamePlan {
     std::vector<std::string> unindexed;
 
     bool blocked() const {
-        return !conflicts.empty() || !stale.empty() || !unindexed.empty();
+        return !conflicts.empty() || !outside.empty() || !stale.empty() || !unindexed.empty();
     }
 };
 
@@ -129,6 +136,14 @@ RenamePlan plan_rename(const index::IndexQuery& query,
                        llvm::StringRef new_name,
                        const RenameScope& scope,
                        const RenameBatch& batch = RenameBatch());
+
+/// Why a rename of `target` cannot be made whatever its new name: it
+/// would change files `scope` does not let it edit (RenamePlan::outside);
+/// nullopt when it may edit every file it changes.
+std::optional<std::string> outside_refusal(const index::IndexQuery& query,
+                                           FileTable& files,
+                                           const RenameTarget& target,
+                                           const RenameScope& scope);
 
 /// One rename of a batch: the symbols it changes and the name they get.
 struct Renaming {
@@ -174,7 +189,7 @@ BatchPlan plan_renames(const index::IndexQuery& query,
 std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& batch, Fid file);
 
 /// Why a blocked plan (RenamePlan::blocked) cannot be made: its conflicts,
-/// then the files whose index is not current.
+/// the files it may not edit, then the files whose index is not current.
 std::string refusal(const RenamePlan& plan);
 
 /// The edits of a rename, each file's versioned against its open buffer,

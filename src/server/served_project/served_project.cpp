@@ -14,6 +14,7 @@ import :server.master;
 import :server.served_project;
 import :settings.settings;
 import :support.logging;
+import :support.process;
 import :support.text;
 import :support.version;
 import :vfs.cache_store;
@@ -100,6 +101,26 @@ bool has_build(const Project& project) {
     return store && index::database_exists(*store, project.database_key);
 }
 
+/// The cache of the files outside every folder, whatever the editor's
+/// settings name — theirs is the folders', and a cache directory serves one
+/// project of a server: this server's own directory under clice's temporary
+/// one, removed when the project shuts down.
+void use_temporary_cache(Settings& settings) {
+    settings.cache_dir.clear();
+    settings.cache_identity = {};
+    auto temp = temp_root();
+    if(!temp) {
+        LOG_GUIDANCE(
+            "Cannot make clice's temporary directory: {}; no preamble or module is "
+            "precompiled for the files outside every folder",
+            temp.error().message());
+        return;
+    }
+    CanonicalPath cache(Spelling::absolute(path::join(*temp, std::to_string(sys::pid()))));
+    settings.cache_dir = cache.str();
+    settings.cache_identity = std::move(cache);
+}
+
 }  // namespace
 
 void ServedProject::configure(const std::optional<codec::dyn::Value>& init_options,
@@ -117,6 +138,9 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
     configuration = std::move(loaded.configuration);
     settings_file = std::move(loaded.file);
     settings_issues = std::move(loaded.issues);
+    if(project.root.empty()) {
+        use_temporary_cache(project.settings);
+    }
 
     // The file's problems are listed as its diagnostics, with one message;
     // the editor settings' are told each, the client showing a message once
@@ -171,7 +195,13 @@ void ServedProject::start() {
 void ServedProject::open() {
     waiting = false;
     server.log_into(*this);
-    if(!broken() && !project.root.empty()) {
+    if(!broken() && project.root.empty()) {
+        project.open({
+            .configuration = configuration,
+            .load = Project::OpenOptions::Load::Rules,
+            .cache = Project::OpenOptions::Cache::Build,
+        });
+    } else if(!broken()) {
         llvm::SmallVector<CanonicalPath> open_files;
         for(auto& [path_id, document]: documents) {
             open_files.emplace_back(project.file_table.resolve(path_id));
@@ -295,6 +325,17 @@ async::task<> ServedProject::shutdown() {
     // stops the background index and winds down the graph's attempts before
     // the persistence pass.
     co_await project.shutdown();
+    // LIMITATION: a server that crashes or is killed leaves the cache of the
+    // files outside every folder to the system's cleanup of its temporary
+    // directory.
+    auto& cache_dir = project.settings.cache_dir;
+    if(project.root.empty() && !cache_dir.empty()) {
+        if(auto removed = fs::remove_all(cache_dir); !removed) {
+            LOG_WARN("Cannot remove the cache directory {}: {}",
+                     cache_dir,
+                     removed.error().message());
+        }
+    }
 }
 
 ServedDocument* ServedProject::find_document(Fid path_id) {
@@ -468,7 +509,7 @@ void ServedProject::record_saved(Fid path_id) {
 }
 
 void ServedProject::schedule_metadata_flush() {
-    if(metadata_flush_scheduled || server.shutting_down()) {
+    if(metadata_flush_scheduled || server.shutting_down() || project.root.empty()) {
         return;
     }
     metadata_flush_scheduled = true;

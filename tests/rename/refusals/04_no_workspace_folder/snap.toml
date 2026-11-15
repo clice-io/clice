@@ -1,8 +1,20 @@
 ["no project".prepare.prepare_rename]
-error = "a rename edits the sources of a workspace folder; open one"
+at = "int ⟦compute⟧();"
+placeholder = "compute"
 
-["no project".rename.rename]
-error = "a rename edits the sources of a workspace folder; open one"
+["no project".rename.rename.edits]
+"main.cpp" = '''
+-int compute();
+-int use() { return compute(); }
++int evaluate();
++int use() { return evaluate(); }
+'''
+
+["a declaration beside the file".prepare.prepare_rename]
+error = "cannot rename `scale`: the rename would change ${WS}/lone/scale.h, which lies in no workspace folder"
+
+["a declaration beside the file".rename.rename]
+error = "cannot rename `scale`: the rename would change ${WS}/lone/scale.h, which lies in no workspace folder"
 
 ["a project found for the file".rename.rename.edits]
 "main.cpp" = '''

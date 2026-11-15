@@ -46,6 +46,13 @@ inline chrono::milliseconds test_jitter() {
     return chrono::milliseconds(std::uniform_int_distribution<std::uint64_t>(0, *max)(random));
 }
 
+/// clice's directory for its temporary files, under the system's, made
+/// when missing: `clice` on Windows, whose temporary directory is the
+/// user's own, `clice-<uid>` elsewhere, where /tmp is every user's, there
+/// the user's alone (0700). Another user's directory of that name is an
+/// error, never written into.
+std::expected<std::string, std::error_code> temp_root();
+
 /// What a finished program wrote, and how it ended.
 struct ProgramOutput {
     std::string out;

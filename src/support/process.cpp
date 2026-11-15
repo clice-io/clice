@@ -1,9 +1,37 @@
+module;
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 module clice;
 
 import :support.logging;
 import :support.process;
 
 namespace clice {
+
+std::expected<std::string, std::error_code> temp_root() {
+    std::string dir;
+    if(auto error = sys::temp_dir(dir)) {
+        return std::unexpected(error);
+    }
+#ifdef _WIN32
+    fs::path::push(dir, "clice");
+#else
+    fs::path::push(dir, std::format("clice-{}", getuid()));
+#endif
+    if(auto made = fs::create_directory(dir); !made) {
+        return std::unexpected(made.error());
+    }
+#ifndef _WIN32
+    // Only its owner may change it: another user's directory fails here.
+    if(auto error = fs::set_permissions(dir, 0700)) {
+        return std::unexpected(error);
+    }
+#endif
+    return dir;
+}
 
 async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::string> arguments,
                                                                std::string cwd,

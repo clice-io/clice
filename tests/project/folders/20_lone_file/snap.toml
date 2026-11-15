@@ -1,0 +1,2 @@
+["definition in an included header".helper]
+definition = ["helper.h │ inline int ⟦helper⟧() {"]

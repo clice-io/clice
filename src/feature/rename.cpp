@@ -578,12 +578,15 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     llvm::StringSet<> unindexed;
     llvm::DenseSet<Fid> outside;
     auto refuse_outside = [&](Fid file, llvm::StringRef path) {
-        if(outside.insert(file).second) {
-            plan.conflicts.push_back(
-                std::format("the rename would change {}, which is not a source of the project "
-                            "(a system header, a dependency or a generated file)",
-                            path));
+        if(!outside.insert(file).second) {
+            return;
         }
+        plan.outside.push_back(
+            scope.outside_folders
+                ? std::format("the rename would change {}, which lies in no workspace folder", path)
+                : std::format("the rename would change {}, which is not a source of the project "
+                              "(a system header, a dependency or a generated file)",
+                              path));
     };
     std::map<std::pair<Fid, std::uint32_t>, RenameEdit> edits;
     std::set<std::pair<Fid, std::uint32_t>> held;
@@ -1034,6 +1037,26 @@ RenamePlan plan_rename(const index::IndexQuery& query,
                        outdated_files(query, files, scope, names));
 }
 
+std::optional<std::string> outside_refusal(const index::IndexQuery& query,
+                                           FileTable& files,
+                                           const RenameTarget& target,
+                                           const RenameScope& scope) {
+    // Which files a rename changes depends on its old name alone: any new
+    // name plans them.
+    auto plan = plan_rename(query,
+                            files,
+                            target,
+                            std::format("{}_", written_name(target.symbol.symbol)),
+                            scope,
+                            RenameBatch(),
+                            {});
+    if(plan.outside.empty()) {
+        return std::nullopt;
+    }
+    return refusal(
+        RenamePlan{.old_name = std::move(plan.old_name), .outside = std::move(plan.outside)});
+}
+
 BatchPlan plan_renames(const index::IndexQuery& query,
                        FileTable& files,
                        llvm::ArrayRef<Renaming> renamings,
@@ -1128,15 +1151,9 @@ std::optional<std::string> apply_renames(llvm::StringRef text, const BatchPlan& 
     return result;
 }
 
-std::optional<std::string> rename_refusal(llvm::StringRef root) {
-    if(root.empty()) {
-        return "a rename edits the sources of a workspace folder; open one";
-    }
-    return std::nullopt;
-}
-
 std::string refusal(const RenamePlan& plan) {
     auto reasons = plan.conflicts;
+    reasons.insert(reasons.end(), plan.outside.begin(), plan.outside.end());
     if(!plan.stale.empty()) {
         reasons.push_back(std::format("these files changed since they were indexed: {}",
                                       llvm::join(plan.stale, ", ")));

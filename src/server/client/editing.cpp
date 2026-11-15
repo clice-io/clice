@@ -122,6 +122,34 @@ static std::vector<protocol::CodeAction>
     return actions;
 }
 
+/// `use` handed the scope of a rename from `self`, a document of `served`
+/// (feature::RenameScope): the project's sources, or the document alone when
+/// no folder holds it; a file open in any project read as the editor holds
+/// it.
+template <typename Use>
+static auto with_rename_scope(MasterServer& server, ServedProject& served, Fid self, Use use) {
+    auto& project = served.project;
+    bool outside_folders = project.root.empty();
+    auto sources = project.editable_files();
+    llvm::StringRef self_path = project.file_table.resolve(self);
+    auto editable = [&](llvm::StringRef file) {
+        return outside_folders ? file == self_path : sources.editable(file);
+    };
+    auto read = [&](llvm::StringRef file) -> std::optional<std::string> {
+        auto id = project.file_table.find(Spelling::absolute(file));
+        if(auto open = id ? server.find_session(*id) : nullptr) {
+            return open->text().str();
+        }
+        auto text = vfs::read_text(file);
+        return text ? std::optional(std::move(*text)) : std::nullopt;
+    };
+    return use(feature::RenameScope{
+        .editable = editable,
+        .read = read,
+        .outside_folders = outside_folders,
+    });
+}
+
 void LSPClient::register_editing() {
     // Code completion. Serves preamble contexts (include/import) locally
     // from the include graph and module map; asks a stateless worker for
@@ -404,10 +432,6 @@ void LSPClient::register_editing() {
     on_document<protocol::PrepareRenameParams>(
         [this](RequestContext& ctx, const auto& params, ResolvedDoc document) -> RawResult {
             auto& project = *document.project;
-            // Refused up front, before the cursor costs a compile.
-            if(auto refused = feature::rename_refusal(project.project.root)) {
-                co_await async::fail(request_failed(std::move(*refused)));
-            }
             co_return co_await navigate(
                 project,
                 document.ticket,
@@ -418,6 +442,24 @@ void LSPClient::register_editing() {
                     auto renamed = feature::rename_at(project.query(), cursor);
                     if(!renamed) {
                         return std::unexpected(request_failed(std::move(renamed.error())));
+                    }
+                    // Outside every folder, a rename's plan is one file's:
+                    // a change it would make elsewhere refuses it before a
+                    // name is typed.
+                    if(project.project.root.empty()) {
+                        auto refused = with_rename_scope(server,
+                                                         project,
+                                                         document.path_id,
+                                                         [&](const feature::RenameScope& scope) {
+                                                             return feature::outside_refusal(
+                                                                 project.editing_query(),
+                                                                 project.project.file_table,
+                                                                 renamed->target,
+                                                                 scope);
+                                                         });
+                        if(refused) {
+                            return std::unexpected(request_failed(std::move(*refused)));
+                        }
                     }
                     return to_raw(protocol::PrepareRenamePlaceholder{
                         .range = feature::to_range(renamed->token, server.position_encoding),
@@ -439,10 +481,6 @@ void LSPClient::register_editing() {
             auto& project = served->project;
             auto& position = params.position;
             auto& new_name = params.new_name;
-            // Refused up front, before the cursor costs a compile.
-            if(auto refused = feature::rename_refusal(project.root)) {
-                co_await async::fail(request_failed(std::move(*refused)));
-            }
             if(session) {
                 if(auto stop = co_await served->navigation_gate(ticket)) {
                     co_return co_await stop_reply(std::move(*stop));
@@ -458,29 +496,18 @@ void LSPClient::register_editing() {
                 co_await async::fail(request_failed(std::move(at.error())));
             }
 
-            auto editable_files = project.editable_files();
-            auto editable = [&](llvm::StringRef file) {
-                return editable_files.editable(file);
-            };
-            // Open buffers are read as the editor holds them, whichever
-            // project serves them.
-            auto read = [&](llvm::StringRef file) -> std::optional<std::string> {
-                auto id = project.file_table.find(Spelling::absolute(file));
-                if(auto open = id ? server.find_session(*id) : nullptr) {
-                    return open->text().str();
-                }
-                auto text = vfs::read_text(file);
-                return text ? std::optional(std::move(*text)) : std::nullopt;
-            };
             // An open unit's own compile indexes its buffer.
             auto pending =
                 project.units_pending([&](Fid unit) { return query.serving(unit).has_value(); });
-            auto plan = feature::plan_rename(
-                query,
-                project.file_table,
-                at->target,
-                new_name,
-                {.editable = editable, .read = read, .units_pending = pending});
+            auto plan =
+                with_rename_scope(server, *served, path_id, [&](feature::RenameScope scope) {
+                    scope.units_pending = pending;
+                    return feature::plan_rename(query,
+                                                project.file_table,
+                                                at->target,
+                                                new_name,
+                                                scope);
+                });
             if(plan.blocked()) {
                 co_await async::fail(request_failed(feature::refusal(plan)));
             }

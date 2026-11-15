@@ -221,11 +221,12 @@ void open_store(Project& project, const Project::OpenOptions& options, Project::
         }
         return;
     }
-    // Only a run loading the build's members compiles them; registering
-    // scans the whole namespace, which a run reading the index alone
-    // does not pay for. Size budgets are deliberately generous: eviction
-    // exists to bound disk usage, not to keep the working set tight.
-    if(options.load == Project::OpenOptions::Load::Members) {
+    // Only a run loading the build's members, or building into the store,
+    // compiles them; registering scans the whole namespace, which a run
+    // reading the index alone does not pay for. Size budgets are
+    // deliberately generous: eviction exists to bound disk usage, not to
+    // keep the working set tight.
+    if(options.load == Project::OpenOptions::Load::Members || options.cache == Cache::Build) {
         constexpr std::uint64_t GiB = 1ull << 30;
         store->register_namespace({.name = "pch",
                                    .extension = ".pch",

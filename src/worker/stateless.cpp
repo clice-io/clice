@@ -101,16 +101,17 @@ static index::TUIndexOptions index_options(const worker::IndexRequest& request) 
 /// of our own.
 static std::expected<std::string, std::string> precompiled_output(llvm::StringRef label,
                                                                   llvm::StringRef output_path,
-                                                                  llvm::StringRef prefix,
                                                                   llvm::StringRef extension) {
     if(!output_path.empty()) {
         return output_path.str();
     }
-    std::string dir;
-    sys::temp_dir(dir);
     std::string path;
-    if(!fs::create_temp_file(path, dir, prefix.str() + "-", "." + extension.str())) {
-        auto message = std::format("Cannot create a temporary {} file in {}", label, dir);
+    if(auto created = temp_root().and_then([&](const std::string& dir) {
+           return fs::create_temp_file(path, dir, extension.str() + "-", "." + extension.str());
+       });
+       !created) {
+        auto message =
+            std::format("Cannot create a temporary {} file: {}", label, created.error().message());
         LOG_ERROR("{}", message);
         return std::unexpected(std::move(message));
     }
@@ -205,7 +206,7 @@ static worker::PrecompiledBuildResult
                      const std::shared_ptr<std::atomic_bool>& stop) {
     Timer timer;
 
-    auto output = precompiled_output("PCH", params.output_path, "clice-pch", "pch");
+    auto output = precompiled_output("PCH", params.output_path, "pch");
     if(!output) {
         return {false, output.error()};
     }
@@ -310,7 +311,7 @@ static worker::PrecompiledBuildResult
                      const std::shared_ptr<std::atomic_bool>& stop) {
     Timer timer;
 
-    auto output = precompiled_output("PCM", params.output_path, "clice-pcm", "pcm");
+    auto output = precompiled_output("PCM", params.output_path, "pcm");
     if(!output) {
         return {false, output.error()};
     }

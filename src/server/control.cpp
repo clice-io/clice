@@ -169,13 +169,11 @@ std::expected<Listener, std::string> listen(llvm::StringRef cache_dir, async::ev
     constexpr std::size_t socket_path_max = 100;
     name = path::join(cache_dir, "server.sock");
     if(name.size() >= socket_path_max) {
-        std::string temp;
-        sys::temp_dir(temp);
-        auto made = fs::TempDirectory::create(temp, "clice-");
+        auto made = temp_root().and_then(
+            [](const std::string& temp) { return fs::TempDirectory::create(temp, "socket-"); });
         if(!made) {
-            return std::unexpected(std::format("cannot make a directory for its socket in {}: {}",
-                                               temp,
-                                               made.error().message()));
+            return std::unexpected(
+                std::format("cannot make a directory for its socket: {}", made.error().message()));
         }
         name = path::join(made->path(), "server.sock");
         directory = std::move(*made);

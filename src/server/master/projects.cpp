@@ -90,7 +90,13 @@ ServedProject& MasterServer::document_owner(Fid path_id) {
     projects_generation += 1;
     project->configure(init_options, {});
     log_settings(*project);
-    if(lifecycle == ServerLifecycle::Ready) {
+    if(lifecycle != ServerLifecycle::Ready) {
+        return *project;
+    }
+    if(root_held(project->project.root)) {
+        project->loaded.reset();
+        waiting_projects.push_back(project.get());
+    } else {
         project->start();
     }
     return *project;
@@ -120,13 +126,18 @@ std::shared_ptr<ServedProject> MasterServer::make_project(CanonicalPath root) {
     return std::shared_ptr<ServedProject>(new ServedProject(*this, std::move(root)), released);
 }
 
+bool MasterServer::root_held(CanonicalRef root) const {
+    return ranges::any_of(removed_projects, [&](auto& weak) {
+        auto previous = weak.lock();
+        return previous && previous->project.root == root;
+    });
+}
+
 std::vector<CanonicalPath> MasterServer::taken_cache_dirs(CanonicalRef successor) const {
     std::vector<CanonicalPath> dirs;
     auto take = [&](const ServedProject& project) {
-        // The rootless project opens no store.
-        auto cache_dir = project.project.settings.cache_identity;
-        if(!project.project.root.empty() && !cache_dir.empty()) {
-            dirs.push_back(std::move(cache_dir));
+        if(auto& cache_dir = project.project.settings.cache_identity; !cache_dir.empty()) {
+            dirs.push_back(cache_dir);
         }
     };
     for(auto& project: projects) {
@@ -320,10 +331,7 @@ void MasterServer::serve_folders() {
     // taking its root over waits for that, holding the root's documents.
     llvm::SmallVector<ServedProject*> starting;
     std::erase_if(waiting_projects, [&](ServedProject* project) {
-        bool held = ranges::any_of(removed_projects, [&](auto& weak) {
-            auto previous = weak.lock();
-            return previous && previous->project.root == project->project.root;
-        });
+        bool held = root_held(project->project.root);
         if(!held) {
             starting.push_back(project);
         }

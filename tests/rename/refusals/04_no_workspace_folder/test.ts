@@ -1,14 +1,23 @@
 import { test } from "@clice/tools/testing";
 
-// A server started on no workspace folder edits no sources: with no
-// project found for the file either, a rename is refused before anything
-// is compiled.
+// A file outside every workspace folder, with no project found for it
+// either: a rename whose edits all lie in the file is made.
 test("no project", async (t) => {
     const s = await t.start({ folders: [] });
     s.open("main.cpp");
     const at = t.at("main.cpp", "int |compute();");
     await t.show("prepare", s.prepareRename(at));
     await t.show("rename", s.rename(at, "evaluate"));
+});
+
+// One that would change the header beside the file is refused: the header
+// lies in no folder either.
+test("a declaration beside the file", async (t) => {
+    const s = await t.start({ folders: [] });
+    s.open("lone/main.cpp");
+    const at = t.at("lone/main.cpp", "return |scale(2)");
+    await t.show("prepare", s.prepareRename(at));
+    await t.show("rename", s.rename(at, "resize"));
 });
 
 // A database beside the file makes its directory a project, whose sources

@@ -479,6 +479,10 @@ private:
     /// cache directory first.
     void serve_folders();
 
+    /// Whether a removed project over `root` is still alive, holding its
+    /// cache directory: a project made over the root waits for it to go.
+    bool root_held(CanonicalRef root) const;
+
     /// The cache directories in use: a cache directory belongs to one
     /// project at a time, a removed one's until it is gone — but for the
     /// project serving its root again, `successor`, which opens it then.
@@ -503,7 +507,8 @@ private:
 
     /// The project an open document belongs to now: pick_owner's, else the
     /// rootless project, made for it — a file outside every folder that no
-    /// project compiles borrows nothing of theirs.
+    /// project compiles borrows nothing of theirs — which starts once the
+    /// rootless project before it is gone (root_held).
     ServedProject& document_owner(Fid path_id);
 
     /// Move the document to `to`: its generation moves on, so what a
