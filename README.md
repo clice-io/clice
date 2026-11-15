@@ -4,9 +4,8 @@
 
 ![C++ Standard](https://img.shields.io/badge/C++-23-blue.svg)
 [![GitHub license](https://img.shields.io/github/license/clice-io/clice)](https://github.com/clice-io/clice/blob/main/LICENSE)
-[![Actions status](https://github.com/clice-io/clice/workflows/main/badge.svg)](https://github.com/clice-io/clice/actions)
+[![CI](https://github.com/clice-io/clice/actions/workflows/main.yml/badge.svg?branch=main)](https://github.com/clice-io/clice/actions/workflows/main.yml?query=branch%3Amain)
 [![Documentation](https://img.shields.io/badge/view-documentation-blue)](https://docs.clice.io/clice/)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/clice-io/clice)
 [![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?logo=discord&logoColor=white)](https://discord.gg/PA3UxW2VA3)
 
 A C/C++ language server written in modern C++, and more than a language server. Like clangd and ccls it is built on LLVM/Clang, but it is redesigned from the ground up to solve the problems their architecture has left unsolved for years. See [What is clice?](https://docs.clice.io/clice/guide/what-is-clice)
