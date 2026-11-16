@@ -135,7 +135,7 @@ ZEST_CASE(CurrentASTAnswers) {
     auto session = open(true);
     auto file = session->path_id;
     auto own = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(*index::build_tu_index(*unit))));
     fx.update_latest(file, [&](DocumentCompile& compiled) {
         compiled.index = std::make_shared<index::TUIndex>(std::move(own));
     });

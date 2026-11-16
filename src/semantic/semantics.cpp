@@ -231,6 +231,12 @@ public:
     //  - those without source range information, we don't record those
     //  - those that can't be stored in SemanticNode.
     bool TraverseDecl(clang::Decl* X) {
+        // Skipped, not ended: a traversal ending inside a statement leaves
+        // the nodes of the statements around it pushed.
+        if(options.all_files && unit.stopped()) {
+            return true;
+        }
+
         if(auto* tu = llvm::dyn_cast_if_present<clang::TranslationUnitDecl>(X)) {
             /// The TU decl is not stored; its children become roots.
             if(!options.all_files) {
@@ -526,6 +532,9 @@ private:
         // An implicit definition skips the head that flags its nodes.
         instantiation_depth += 1;
         for(const auto* decl: options.instantiations) {
+            if(unit.stopped()) {
+                break;
+            }
             visiting_root = decl;
             options.enter(decl);
             TraverseDecl(const_cast<clang::Decl*>(decl));

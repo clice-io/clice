@@ -298,13 +298,13 @@ RequestResult<worker::CompileParams>
                 result.started_at = unit->started_at().count();
                 result.deps = unit->deps();
 
-                index_error =
-                    send_index(index::build_tu_index(
-                                   *unit,
-                                   {.known_variants = params.indexing.known_variants,
-                                    .known_instantiations = params.indexing.known_instantiations}),
-                               params.indexing.output_path,
-                               result);
+                if(auto index = index::build_tu_index(
+                       *unit,
+                       {.known_variants = params.indexing.known_variants,
+                        .known_instantiations = params.indexing.known_instantiations})) {
+                    index_error =
+                        send_index(std::move(*index), params.indexing.output_path, result);
+                }
             }
 
             if(unit->completed()) {

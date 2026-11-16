@@ -280,8 +280,9 @@ std::vector<index::OpenBuffer> open_buffers(int buffers) {
         Tester document;
         document.add_focus(std::format("main{}.cpp", buffer), text);
         ZASSERT(document.compile());
-        auto table = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
-            llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*document.unit)))));
+        auto table = std::make_shared<index::TUIndex>(
+            index::TUIndex::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(
+                as_chars(*index::build_tu_index(*document.unit)))));
         open.push_back({
             .file = project.file_table.intern(Spelling::absolute(table->path(table->focus_file()))),
             .text = {},

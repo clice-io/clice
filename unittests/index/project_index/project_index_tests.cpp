@@ -24,7 +24,7 @@ std::vector<std::byte> serialized;
 /// Build the current unit's TU index and return the zero-copy reader the
 /// merge path consumes; `serialized` keeps the bytes alive.
 index::TUIndex build_view() {
-    serialized = index::build_tu_index(*unit);
+    serialized = *index::build_tu_index(*unit);
     return index::TUIndex::from_bytes(as_chars(serialized));
 }
 
@@ -135,7 +135,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     )");
     definer.kind = CompilationKind::Whole;
     ZASSERT(definer.compile());
-    auto definer_bytes = index::build_tu_index(*definer.unit);
+    auto definer_bytes = *index::build_tu_index(*definer.unit);
     auto definer_view = index::TUIndex::from_bytes(as_chars(definer_bytes));
     ZASSERT(definer_view.loaded());
     ZASSERT(project.merge(definer_view.bytes(), {}).has_value());
@@ -156,7 +156,7 @@ ZEST_CASE(MergeUnionsSymbolFacts) {
     emptied.add_focus("lib.cpp", "int unrelated = 0;\n");
     emptied.kind = CompilationKind::Whole;
     ZASSERT(emptied.compile());
-    auto emptied_bytes = index::build_tu_index(*emptied.unit);
+    auto emptied_bytes = *index::build_tu_index(*emptied.unit);
     ZASSERT(project.merge(as_chars(emptied_bytes), {}).has_value());
     auto declared_again = project.find_symbol(hash);
     ZASSERT(declared_again);
@@ -294,7 +294,7 @@ ZEST_CASE(DefinitionFilesFromShards) {
         tester.add_focus(name, text);
         tester.kind = CompilationKind::Whole;
         ZASSERT(tester.compile("-std=c17"));
-        return index::build_tu_index(*tester.unit);
+        return *index::build_tu_index(*tester.unit);
     };
     auto weak = unit_defining("weak.c", "__attribute__((weak)) void father(void) {}\n");
     auto strong = unit_defining("main.c", "void father(void) {}\n");
@@ -643,7 +643,7 @@ ZEST_CASE(LocalSymbolAcrossFiles) {
         tester.add_focus(name, text);
         tester.kind = CompilationKind::Whole;
         ZASSERT(tester.compile());
-        return index::build_tu_index(*tester.unit);
+        return *index::build_tu_index(*tester.unit);
     };
     llvm::StringRef caller = "#include \"util.h\"\nint call() { return helper(); }\n";
     auto a = unit_of("a.cpp", caller);
@@ -709,7 +709,7 @@ ZEST_CASE(LocalBehindPrecompiledHeader) {
             tester.kind = CompilationKind::Whole;
             ZASSERT(tester.compile());
         }
-        return index::build_tu_index(*tester.unit);
+        return *index::build_tu_index(*tester.unit);
     };
     auto consumer =
         unit_of("main.cpp", "#include \"util.h\"\nint call() { return helper(); }\n", true);
@@ -763,7 +763,7 @@ ZEST_CASE(SymbolMovesBetweenFiles) {
         tester.add_focus("main.cpp", "#include \"first.h\"\n#include \"second.h\"\n");
         tester.kind = CompilationKind::Whole;
         ZASSERT(tester.compile());
-        return index::build_tu_index(*tester.unit);
+        return *index::build_tu_index(*tester.unit);
     };
 
     clice::FileTable pool;

@@ -23,7 +23,7 @@ void build_index(llvm::StringRef code,
     add_focus("main.cpp", code);
     ZASSERT(compile());
     tu_index = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(*index::build_tu_index(*unit))));
     ZASSERT(tu_index.loaded());
 }
 
