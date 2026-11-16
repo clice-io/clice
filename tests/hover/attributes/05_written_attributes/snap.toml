@@ -173,6 +173,17 @@ static inline int twice(int x)
 '''
 range = "FORCE_INLINE int ⟦twice⟧(int x) {"
 
+[answers.nested_macro_with_specifiers.hover]
+markdown = '''
+**function** `thrice` · namespace `written_attributes`
+
+```cpp
+__attribute__((always_inline)) __attribute__((hot))
+static inline int thrice(int x)
+```
+'''
+range = "NESTED_INLINE int ⟦thrice⟧(int x) {"
+
 [answers.pragma_region.hover]
 markdown = '''
 **function** `rarely_called` · namespace `written_attributes`
