@@ -20,7 +20,20 @@ ZEST_SUITE(TUIndex, Tester) {
 index::TUIndex build() {
     ZASSERT(compile());
     return index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(*index::build_tu_index(*unit))));
+}
+
+ZEST_CASE(StoppedCompileBuildsNone) {
+    // A compile asked to stop once parsed gets no index: its walks of the
+    // unit stop short of what the index would hold.
+    kind = CompilationKind::Whole;
+    add_focus("main.cpp", "int value;\n");
+    prepare();
+    auto stop = params.stop;
+    ZASSERT(try_compile());
+    ZEXPECT(index::build_tu_index(*unit).has_value());
+    stop->store(true);
+    ZEXPECT(!index::build_tu_index(*unit).has_value());
 }
 
 ZEST_CASE(TUIndexSections) {

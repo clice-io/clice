@@ -1029,6 +1029,49 @@ ZEST_CASE(RecursiveValueUnknown) {
     ZEXPECT(audit.troubles[static_cast<std::size_t>(types::Trouble::Evaluation)] < 32);
 }
 
+ZEST_CASE(UndecidedConditionLayers) {
+    /// reflect-cpp's remove_fields over libstdc++: with the count unknown,
+    /// `remove_one` recurses on its primary down to the depth limit, each
+    /// layer holding the one before in both branches of a condition it
+    /// cannot decide. Its type doubles a layer as a tree, not as the parts
+    /// it shares: walked part by part the scan ends, path by path it does
+    /// not.
+    add_focus("main.cpp", R"code(
+        namespace std {
+        template <bool C, class T, class F> struct conditional { using type = T; };
+        template <class T, class F> struct conditional<false, T, F> { using type = F; };
+        }
+        template <class... Fields> struct List {};
+        template <class L> struct size;
+        template <int I, class L> struct element;
+        template <class L, class Field> struct append;
+        template <class Old, int Name, class New, int I>
+        struct remove_one {
+            static constexpr int count = size<Old>::value;
+            using Field = typename element<count - I, Old>::type;
+            using Next = typename std::conditional<Name == Field::name, New,
+                                                   typename append<New, Field>::type>::type;
+            using type = typename remove_one<Old, Name, Next, I - 1>::type;
+        };
+        template <class Old, int Name, class New>
+        struct remove_one<Old, Name, New, 0> { using type = New; };
+        template <class Old, int Head, int... Tail>
+        struct remove_all {
+            static constexpr int count = size<Old>::value;
+            using Next = typename remove_one<Old, Head, List<>, count>::type;
+            using type = typename remove_all<Next, Tail...>::type;
+        };
+        template <class Old, int Head>
+        struct remove_all<Old, Head> {
+            static constexpr int count = size<Old>::value;
+            using type = typename remove_one<Old, Head, List<>, count>::type;
+        };
+    )code");
+    ZASSERT(compile());
+
+    ZEXPECT(scan(*unit) > 0);
+}
+
 };  // ZEST_SUITE(TemplateResolver)
 
 }  // namespace

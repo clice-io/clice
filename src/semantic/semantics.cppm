@@ -270,9 +270,11 @@ struct SemanticsOptions {
     /// which holds that path alone — a whole unit's millions of nodes are
     /// never held at once, and the Semantics built holds the directives
     /// alone. It reads no tokens, so it builds on a compile that collected
-    /// none. Without it only the focus file's top-level decls are traversed
-    /// — the shape features consume, cached on the unit, owning the focus
-    /// file's spelled tokens.
+    /// none. Once its compile is asked to stop (CompilationUnit::stopped), it
+    /// enters no more declarations and no more instantiations: what it built
+    /// is to be dropped. Without it only the focus file's top-level decls are
+    /// traversed — the shape features consume, cached on the unit, owning the
+    /// focus file's spelled tokens, built whole whatever stops.
     bool all_files = false;
 
     /// With all_files, each AST node as the traversal reaches it.

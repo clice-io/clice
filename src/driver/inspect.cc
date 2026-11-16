@@ -198,7 +198,7 @@ struct UnitIndex {
     SourceText source;
 
     explicit UnitIndex(CompilationUnit& unit) :
-        bytes(index::build_tu_index(unit)), tu(index::TUIndex::from_bytes(as_chars(bytes))),
+        bytes(*index::build_tu_index(unit)), tu(index::TUIndex::from_bytes(as_chars(bytes))),
         source(unit.focus_file().content(), unit.lang_options()) {}
 
     auto entries() const -> index::FileEntries {
@@ -319,7 +319,7 @@ std::optional<codec::raw_value> run_inlay_hints(const FeatureParams& params) {
     index::TUIndex tu;
     auto place = [&](index::SymbolHash symbol) -> std::optional<RawLocation> {
         if(bytes.empty()) {
-            bytes = index::build_tu_index(unit, {.all_files = true});
+            bytes = *index::build_tu_index(unit, {.all_files = true});
             tu = index::TUIndex::from_bytes(as_chars(bytes));
         }
         auto focus = tu.focus_file();
@@ -662,7 +662,7 @@ std::optional<codec::raw_value> run_signature_help(const FeatureParams& params) 
 /// in for the server's file index, the cursor resolved by the same rule.
 std::optional<codec::raw_value> run_document_highlight(const FeatureParams& params) {
     auto offset = params.range.begin;
-    auto bytes = index::build_tu_index(params.unit);
+    auto bytes = *index::build_tu_index(params.unit);
     auto tu = index::TUIndex::from_bytes(as_chars(bytes));
     const index::Shard& shard = tu.shard_of(tu.focus_file());
     auto named = index::named_at(shard, offset, [&](index::SymbolHash hash) {

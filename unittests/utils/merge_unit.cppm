@@ -14,7 +14,7 @@ namespace clice::testing {
 /// Index a compiled unit and merge it into the project's index as the
 /// background index does. `focus` receives the unit's own file id.
 inline void merge_unit(Project& project, CompilationUnit& unit, Fid& focus) {
-    auto bytes = index::build_tu_index(unit);
+    auto bytes = *index::build_tu_index(unit);
     auto view = index::TUIndex::from_bytes(as_chars(bytes));
     ZASSERT(view.loaded());
     focus = project.file_table.intern(Spelling::absolute(view.path(view.focus_file())));

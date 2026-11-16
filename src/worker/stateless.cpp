@@ -45,12 +45,13 @@ static void hold_recent(std::shared_ptr<const llvm::MemoryBuffer> mapping) {
 }
 
 /// Serialize the preamble's index blob (full index + document links
-/// + inactive regions + diagnostics) into a string. Runs while the freshly parsed AST
+/// + inactive regions + diagnostics). Runs while the freshly parsed AST
 /// is still in memory — the only moment the preamble's index is
 /// obtainable without deserializing the whole PCH. The file write
-/// happens separately, after the PCH itself is flushed.
-static std::vector<std::byte> serialize_preamble_index(CompilationUnit& unit,
-                                                       std::uint32_t preamble_bound) {
+/// happens separately, after the PCH itself is flushed. None once the build
+/// is asked to stop.
+static std::optional<std::vector<std::byte>>
+    serialize_preamble_index(CompilationUnit& unit, std::uint32_t preamble_bound) {
     Timer links_timer;
     auto links = feature::document_links(unit);
     auto inactive = inactive_regions(unit, {}, 0, preamble_bound);
@@ -58,11 +59,15 @@ static std::vector<std::byte> serialize_preamble_index(CompilationUnit& unit,
     auto diagnostics = to_client_json(feature::diagnostics(unit), "[]");
 
     Timer blob_timer;
+    auto index = index::build_tu_index(unit);
+    if(!index) {
+        return std::nullopt;
+    }
     // The preamble compile remaps the buffer truncated at the bound, so the
     // focus file's content is exactly the preamble text the PCH is built
     // from.
     auto blob = worker::encode_preamble_index(unit.focus_file().content(),
-                                              index::build_tu_index(unit),
+                                              *index,
                                               links,
                                               inactive.regions,
                                               inactive.open_stack,
@@ -206,8 +211,8 @@ static worker::PrecompiledBuildResult
     Timer compile_timer;
     auto unit = compile(std::move(cp));
     auto compile_ms = compile_timer.ms();
-    // A cancelled parse has no output; the stop check catches a
-    // cancellation arriving between the parse and the serialization, whose
+    // A cancelled parse has no output, and a cancelled index build no index;
+    // the stop check catches a cancellation arriving between the two, whose
     // blob nobody will read. The tmp file is removed like any failed build.
     bool success = unit->has_output() && !stop->load(std::memory_order_relaxed);
     auto started_at = unit->started_at().count();
@@ -219,16 +224,19 @@ static worker::PrecompiledBuildResult
 
     worker::PrecompiledBuildResult result;
     bool internal_error = false;
-    std::vector<std::byte> blob;
+    std::optional<std::vector<std::byte>> blob;
     Timer index_timer;
     if(success && !params.whole_file) {
         blob = serialize_preamble_index(*unit, params.preamble_bound);
+        success = blob.has_value();
     } else if(success && params.index) {
-        // The PCH stands without the index, whose unit then compiles itself.
-        if(auto error = send_index(index::build_tu_index(*unit, index_options(params.indexing)),
-                                   params.indexing.output_path,
-                                   result)) {
-            LOG_WARN("The index of the PCH of {} is lost: {}", params.file, *error);
+        if(auto index = index::build_tu_index(*unit, index_options(params.indexing))) {
+            // The PCH stands without the index, whose unit then compiles itself.
+            if(auto error = send_index(std::move(*index), params.indexing.output_path, result)) {
+                LOG_WARN("The index of the PCH of {} is lost: {}", params.file, *error);
+            }
+        } else {
+            success = false;
         }
     }
     auto index_ms = index_timer.ms();
@@ -245,7 +253,7 @@ static worker::PrecompiledBuildResult
     // blob write failure fails the whole build.
     Timer state_write_timer;
     if(success && !params.whole_file) {
-        if(auto error = write_preamble_index(as_chars(blob), params.indexing.output_path)) {
+        if(auto error = write_preamble_index(as_chars(*blob), params.indexing.output_path)) {
             success = false;
             internal_error = true;
             errors = {worker::LocatedMessage{.message = std::move(*error)}};
@@ -314,11 +322,14 @@ static worker::PrecompiledBuildResult
     std::size_t index_bytes = 0;
     Timer index_timer;
     if(success && params.index) {
-        auto blob = index::build_tu_index(*unit, index_options(params.indexing));
-        index_bytes = blob.size();
-        // The PCM stands without the index, whose unit then compiles itself.
-        if(auto error = send_index(std::move(blob), params.indexing.output_path, result)) {
-            LOG_WARN("The index of module {} is lost: {}", params.module_name, *error);
+        if(auto blob = index::build_tu_index(*unit, index_options(params.indexing))) {
+            index_bytes = blob->size();
+            // The PCM stands without the index, whose unit then compiles itself.
+            if(auto error = send_index(std::move(*blob), params.indexing.output_path, result)) {
+                LOG_WARN("The index of module {} is lost: {}", params.module_name, *error);
+            }
+        } else {
+            success = false;
         }
     }
     auto index_ms = index_timer.ms();
@@ -498,8 +509,11 @@ static worker::CompileUnitResult
     std::size_t index_bytes = 0;
     if(params.index) {
         auto blob = index::build_tu_index(*unit, index_options(params.indexing));
-        index_bytes = blob.size();
-        if(auto error = send_index(std::move(blob), params.indexing.output_path, result)) {
+        if(!blob) {
+            return {false, "Unit compile cancelled"};
+        }
+        index_bytes = blob->size();
+        if(auto error = send_index(std::move(*blob), params.indexing.output_path, result)) {
             return {false, std::move(*error)};
         }
     }

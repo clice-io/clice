@@ -20,7 +20,7 @@ struct IndexEntriesTester : Tester {
     index::FileEntries entries;
 
     void extract_entries() {
-        bytes = index::build_tu_index(*unit);
+        bytes = *index::build_tu_index(*unit);
         tu = index::TUIndex::from_bytes(as_chars(bytes));
 
         auto focus_id = tu.focus_file();
