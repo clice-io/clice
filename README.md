@@ -10,6 +10,8 @@
 
 A C/C++ language server written in modern C++, and more than a language server. Like clangd and ccls it is built on LLVM/Clang, but it is redesigned from the ground up to solve the problems their architecture has left unsolved for years. See [What is clice?](https://docs.clice.io/clice/guide/what-is-clice)
 
+The story behind clice and how it was built: [clice v1.0 Released: Welcome to Modern C++](https://ykiko.me/en/articles/2105384023094834022/) ([中文](https://ykiko.me/zh-cn/articles/2105384023094834022/)).
+
 ## Language Server
 
 - **Multi-process compilation** — Compiles run in a pool of isolated worker processes, as in a modern browser. A compile that crashes or leaks on a corner case or on half-typed code costs one worker, not the server: navigation and highlighting keep working, and memory and compile priorities are managed across the pool.
