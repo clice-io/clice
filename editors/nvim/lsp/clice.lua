@@ -210,25 +210,25 @@ end
 -- was started on changed, a configuration file or the build.
 local restarts = vim.fn.exists(':lsp') == 2
 
-local root_markers = { 'clice.toml', 'compile_commands.json', '.git' }
-
 ---@type vim.lsp.Config
 return {
   cmd = { 'clice', 'serve' },
   cmd_env = { CLICE_LOG_LEVEL = 'warn' },
   filetypes = { 'c', 'cpp', 'cuda', 'objc', 'objcpp', 'opencl', 'hip' },
+  root_markers = { 'clice.toml', 'compile_commands.json', '.git' },
   -- A file below no root marker, such as an installed package's module that go
-  -- to definition opens, joins the clice of the buffer it was opened from: that
-  -- project's database may list it, and a clice started for the file alone
-  -- reads none.
-  root_dir = function(bufnr, on_dir)
-    local root = vim.fs.root(bufnr, root_markers)
-    local from = vim.fn.bufnr('#')
-    if not root and from > 0 then
-      local client = vim.lsp.get_clients({ bufnr = from, name = 'clice' })[1]
-      root = client and client.root_dir
+  -- to definition opens, joins a running clice: its project's database may
+  -- list the file, and a clice started for the file alone reads none.
+  -- LIMITATION: with several projects open, it joins the first one started.
+  reuse_client = function(client, config)
+    if client.name ~= config.name or client:is_stopped() then
+      return false
     end
-    on_dir(root)
+    local root = config.root_dir and vim.uri_from_fname(config.root_dir)
+    return not root
+      or vim.iter(client.workspace_folders or {}):any(function(folder)
+        return folder.uri == root
+      end)
   end,
   capabilities = restarts and { experimental = { restartServer = true } } or nil,
   handlers = restarts and {

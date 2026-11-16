@@ -1,8 +1,7 @@
 module;
 
-#include <cstdio>
-
 #include <compat_package/detail.h>
+#include <cstdio>
 
 #if __has_include("package.cppm.expect.h")
 #include "package.cppm.expect.h"

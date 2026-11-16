@@ -1,5 +1,5 @@
-/// C++20 modules: GCC's and MSVC's, and `import std` from each standard
-/// library.
+/// C++20 modules: GCC's and MSVC's, one a package installed for clang
+/// to import, and `import std` from each standard library.
 
 import * as os from "node:os";
 import * as path from "node:path";
