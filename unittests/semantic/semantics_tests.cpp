@@ -248,17 +248,20 @@ int use() { return twice(1); }
 }
 
 ZEST_CASE(StoppedWalkSkipsRest) {
-    /// Once its compile is asked to stop, a whole-unit walk enters no more
-    /// declarations nor instantiations; the focus file's map, which the
-    /// features share, is still built whole.
+    // Once its compile is asked to stop, a whole-unit walk enters no more
+    // declarations nor instantiations, yet leaves the statements it is in
+    // as it would have: asked to stop inside a body, it still pops every
+    // node it pushed. The focus file's map, which the features share, is
+    // built whole.
     add_focus("main.cpp", R"cpp(
-int first;
-namespace inner {
-int second;
+void body() {
+    int first = 0;
+    int second = first;
 }
+int third;
 template <typename T>
 T twice(T value) { return value + value; }
-int third = twice(1);
+int fourth = twice(1);
 )cpp");
     prepare();
     auto stop = params.stop;
@@ -274,25 +277,28 @@ int third = twice(1);
 
     std::uint32_t variables = 0;
     std::uint32_t entered = 0;
-    Semantics::build(*unit,
-                     {.all_files = true,
-                      .visit =
-                          [&](const Semantics& path, std::uint32_t index) {
-                              if(path.node(index).node.get<clang::VarDecl>()) {
-                                  variables += 1;
-                                  stop->store(true);
-                              }
-                          },
-                      .instantiations = roots,
-                      .enter = [&](const clang::Decl*) { entered += 1; },
-                      .leave = [](const clang::Decl*) {}});
+    auto walked = Semantics::build(*unit,
+                                   {.all_files = true,
+                                    .visit =
+                                        [&](const Semantics& path, std::uint32_t index) {
+                                            if(path.node(index).node.get<clang::VarDecl>()) {
+                                                variables += 1;
+                                                stop->store(true);
+                                            }
+                                        },
+                                    .instantiations = roots,
+                                    .enter = [&](const clang::Decl*) { entered += 1; },
+                                    .leave = [](const clang::Decl*) {}});
     ZEXPECT(variables == 1U);
     ZEXPECT(entered == 0U);
+    for(const auto& entry: walked.node_entries()) {
+        ZEXPECT(!entry.node.is_ast());
+    }
 
     bool last_mapped = false;
     for(const auto& entry: Semantics::build(*unit).node_entries()) {
         auto* variable = entry.node.get<clang::VarDecl>();
-        last_mapped = last_mapped || (variable && variable->getName() == "third");
+        last_mapped = last_mapped || (variable && variable->getName() == "fourth");
     }
     ZEXPECT(last_mapped);
 }

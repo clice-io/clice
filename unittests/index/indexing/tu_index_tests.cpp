@@ -24,8 +24,8 @@ index::TUIndex build() {
 }
 
 ZEST_CASE(StoppedCompileBuildsNone) {
-    /// A compile asked to stop once parsed gets no index: its walks of the
-    /// unit stop short of what the index would hold.
+    // A compile asked to stop once parsed gets no index: its walks of the
+    // unit stop short of what the index would hold.
     kind = CompilationKind::Whole;
     add_focus("main.cpp", "int value;\n");
     prepare();

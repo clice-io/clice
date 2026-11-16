@@ -41,9 +41,9 @@ struct TUIndexOptions {
 /// self-contained shard blob per file that received entries (stored or
 /// merged into the file's disk shard). Entries of a header entered several
 /// times are one union blob. The TU index blob travels worker→server over IPC
-/// and is dismantled into the three persistent layers on arrival. None once
-/// the compile is asked to stop (CompilationUnit::stopped): its walks of the
-/// unit stop short.
+/// and is dismantled into the three persistent layers on arrival. None when
+/// the compile is asked to stop (CompilationUnit::stopped) before the walks
+/// of the unit end: they stop short.
 std::optional<std::vector<std::byte>> build_tu_index(CompilationUnit& unit,
                                                      const TUIndexOptions& options = {});
 

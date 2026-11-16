@@ -45,7 +45,7 @@ static void hold_recent(std::shared_ptr<const llvm::MemoryBuffer> mapping) {
 }
 
 /// Serialize the preamble's index blob (full index + document links
-/// + inactive regions + diagnostics) into a string. Runs while the freshly parsed AST
+/// + inactive regions + diagnostics). Runs while the freshly parsed AST
 /// is still in memory — the only moment the preamble's index is
 /// obtainable without deserializing the whole PCH. The file write
 /// happens separately, after the PCH itself is flushed. None once the build
