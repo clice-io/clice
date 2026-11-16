@@ -1,0 +1,3 @@
+# The case ships the database CMake writes for app/, which lists the
+# installed module through the target building its BMI.
+databases = {}

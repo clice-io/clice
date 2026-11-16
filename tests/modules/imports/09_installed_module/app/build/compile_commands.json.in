@@ -1,0 +1,14 @@
+[
+  {
+    "directory": "${WS}/app/build",
+    "arguments": ["clang++", "-std=c++20", "@CMakeFiles/app.dir/main.cpp.o.modmap", "-o", "CMakeFiles/app.dir/main.cpp.o", "-c", "${WS}/app/main.cpp"],
+    "file": "${WS}/app/main.cpp",
+    "output": "${WS}/app/build/CMakeFiles/app.dir/main.cpp.o"
+  },
+  {
+    "directory": "${WS}/app/build",
+    "arguments": ["clang++", "-isystem", "${WS}/prefix/include", "-std=c++20", "@CMakeFiles/shapes__shapes@synth_0.dir/0a1b2c3d4e5f.bmi.modmap", "-o", "CMakeFiles/shapes__shapes@synth_0.dir/0a1b2c3d4e5f.bmi", "--precompile", "${WS}/prefix/modules/shapes.cppm"],
+    "file": "${WS}/prefix/modules/shapes.cppm",
+    "output": "${WS}/app/build/CMakeFiles/shapes__shapes@synth_0.dir/0a1b2c3d4e5f.bmi"
+  }
+]

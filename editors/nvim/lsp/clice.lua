@@ -210,12 +210,26 @@ end
 -- was started on changed, a configuration file or the build.
 local restarts = vim.fn.exists(':lsp') == 2
 
+local root_markers = { 'clice.toml', 'compile_commands.json', '.git' }
+
 ---@type vim.lsp.Config
 return {
   cmd = { 'clice', 'serve' },
   cmd_env = { CLICE_LOG_LEVEL = 'warn' },
   filetypes = { 'c', 'cpp', 'cuda', 'objc', 'objcpp', 'opencl', 'hip' },
-  root_markers = { 'clice.toml', 'compile_commands.json', '.git' },
+  -- A file below no root marker, such as an installed package's module that go
+  -- to definition opens, joins the clice of the buffer it was opened from: that
+  -- project's database may list it, and a clice started for the file alone
+  -- reads none.
+  root_dir = function(bufnr, on_dir)
+    local root = vim.fs.root(bufnr, root_markers)
+    local from = vim.fn.bufnr('#')
+    if not root and from > 0 then
+      local client = vim.lsp.get_clients({ bufnr = from, name = 'clice' })[1]
+      root = client and client.root_dir
+    end
+    on_dir(root)
+  end,
   capabilities = restarts and { experimental = { restartServer = true } } or nil,
   handlers = restarts and {
     ['clice/restartServer'] = function()

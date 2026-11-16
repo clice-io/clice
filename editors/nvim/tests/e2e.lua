@@ -251,6 +251,21 @@ if scenario.definition then
     end
 end
 
+-- A file below no root marker, such as an installed package's module that
+-- definition lands in, joins the clice of the buffer it was opened from.
+step 'open a file below no project'
+local outside = vim.fn.tempname() .. '.cpp'
+vim.fn.writefile({ 'int outside();' }, outside)
+vim.cmd.edit(vim.fn.fnameescape(outside))
+local outside_buf = vim.api.nvim_get_current_buf()
+wait(60000, function()
+    return client_of(outside_buf) ~= nil
+end, 'clice attached to ' .. outside)
+if client_of(outside_buf).id ~= client_of(buf).id then
+    fail(outside .. ' started a clice of its own')
+end
+vim.cmd.buffer(buf)
+
 step 'completion'
 local completion = request(buf, 'textDocument/completion', {
     textDocument = text_document,
