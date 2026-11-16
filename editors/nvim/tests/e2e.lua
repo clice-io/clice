@@ -251,6 +251,29 @@ if scenario.definition then
     end
 end
 
+-- A file below no root marker, such as an installed package's module that
+-- definition lands in or a preview loads, joins the running clice.
+step 'open files below no project'
+local function outside()
+    local name = vim.fn.tempname() .. '.cpp'
+    vim.fn.writefile({ 'int outside();' }, name)
+    return name
+end
+local previewed = vim.fn.bufadd(outside())
+vim.fn.bufload(previewed)
+vim.cmd.edit(vim.fn.fnameescape(outside()))
+local opened = vim.api.nvim_get_current_buf()
+vim.cmd.buffer(buf)
+for _, other in ipairs { previewed, opened } do
+    local name = vim.api.nvim_buf_get_name(other)
+    wait(60000, function()
+        return client_of(other) ~= nil
+    end, 'clice attached to ' .. name)
+    if client_of(other).id ~= client_of(buf).id then
+        fail(name .. ' started a clice of its own')
+    end
+end
+
 step 'completion'
 local completion = request(buf, 'textDocument/completion', {
     textDocument = text_document,

@@ -216,6 +216,20 @@ return {
   cmd_env = { CLICE_LOG_LEVEL = 'warn' },
   filetypes = { 'c', 'cpp', 'cuda', 'objc', 'objcpp', 'opencl', 'hip' },
   root_markers = { 'clice.toml', 'compile_commands.json', '.git' },
+  -- A file below no root marker, such as an installed package's module that go
+  -- to definition opens, joins a running clice: its project's database may
+  -- list the file, and a clice started for the file alone reads none.
+  -- LIMITATION: with several projects open, it joins the first one started.
+  reuse_client = function(client, config)
+    if client.name ~= config.name or client:is_stopped() then
+      return false
+    end
+    local root = config.root_dir and vim.uri_from_fname(config.root_dir)
+    return not root
+      or vim.iter(client.workspace_folders or {}):any(function(folder)
+        return folder.uri == root
+      end)
+  end,
   capabilities = restarts and { experimental = { restartServer = true } } or nil,
   handlers = restarts and {
     ['clice/restartServer'] = function()

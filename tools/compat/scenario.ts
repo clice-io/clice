@@ -76,17 +76,20 @@ export interface Scenario {
     /// and its env runs the compiler as the build did.
     posix?: string;
 
-    /// Build steps run in order in the project copy, each an argv.
+    /// Build steps run in order in the project copy, each an argv. What
+    /// one writes beside the copy (`../installed`) stays in the scenario's
+    /// own temporary directory.
     build: [string, ...string[]][];
 
     /// The project's clice.toml: rules a user writes on top of the build.
     config?: string;
 
-    /// The project's source files under check, project-relative.
+    /// The source files under check, relative to the project copy: the
+    /// project's, or one a build step wrote beside it.
     files: Record<string, FileExpectation>;
 
-    /// What a server started as an editor starts it answers in the
-    /// project's files, project-relative, each opening with no error.
+    /// What a server started as an editor starts it answers in files
+    /// named as `files` names them, each opening with no error.
     answers?: Record<string, Answer[]>;
 }
 

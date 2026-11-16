@@ -1,5 +1,5 @@
-/// C++20 modules: GCC's and MSVC's, and `import std` from each standard
-/// library.
+/// C++20 modules: GCC's and MSVC's, one a package installed for clang
+/// to import, and `import std` from each standard library.
 
 import * as os from "node:os";
 import * as path from "node:path";
@@ -143,6 +143,60 @@ export const SCENARIOS: Scenario[] = [
                 excludes: ["-interface", "-ifcOutput", "-reference", "/reference"],
             },
             "src/use_greeting.cpp": { excludes: ["-reference", "/reference"] },
+        },
+    },
+    {
+        // A module of a package installed outside the project and found by
+        // find_package: CMake builds its BMI in a target of its own, whose
+        // entry (`--precompile`, with the module's options in a modmap)
+        // CMake 4.5 is the first to write. That entry provides the module
+        // to its importer, and the installed source compiles under it, its
+        // include directory with it.
+        name: "cmake ninja clang installed module",
+        platforms: ["linux"],
+        requires: [CMAKE_45, "ninja", "/usr/bin/clang-18", "/usr/bin/clang++-18"],
+        build: [
+            [
+                CMAKE_45,
+                "-S",
+                "package",
+                "-B",
+                "../package-build",
+                "-G",
+                "Ninja",
+                "-DCMAKE_CXX_COMPILER=/usr/bin/clang++-18",
+            ],
+            [CMAKE_45, "--build", "../package-build"],
+            [CMAKE_45, "--install", "../package-build", "--prefix", "../installed"],
+            [
+                CMAKE_45,
+                "-S",
+                ".",
+                "-B",
+                "build",
+                "-G",
+                "Ninja",
+                "-DCMAKE_C_COMPILER=/usr/bin/clang-18",
+                "-DCMAKE_CXX_COMPILER=/usr/bin/clang++-18",
+                "-DCMAKE_PREFIX_PATH=../installed",
+                "-DCOMPAT_PACKAGE=ON",
+            ],
+            [CMAKE_45, "--build", "build"],
+        ],
+        files: {
+            ...BOTH,
+            "src/use_package.cpp": {},
+            "../installed/modules/package.cppm": { recorded: [["--precompile"]] },
+        },
+        answers: {
+            "src/use_package.cpp": [
+                { at: "packaged()", definition: "installed/modules/package.cppm" },
+            ],
+            "../installed/modules/package.cppm": [
+                { at: "base()", definition: "compat_package/detail.h" },
+                { at: "base()", hover: "compat::detail" },
+                { at: "detail::", offset: 8, completion: "base" },
+            ],
         },
     },
     // `import std` from GCC 15's libstdc++.
