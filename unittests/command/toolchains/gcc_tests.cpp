@@ -63,6 +63,23 @@ ZEST_CASE(GCCJob) {
     ZEXPECT(output.standard == "gnu++17");
 }
 
+ZEST_CASE(SplitMacroOptions) {
+    /// GCC hands its job the -D and -U of its own command line split from
+    /// their values: Nix's compiler wrapper adds some to every command.
+    constexpr llvm::StringRef err = R"(Target: x86_64-unknown-linux-gnu
+ /nix/store/8sjgd7q3mdks1rb7rbcv0sallhvrhai5-gcc-15.3.0/libexec/gcc/x86_64-unknown-linux-gnu/15.3.0/cc1plus -E -quiet -v -D_GNU_SOURCE -U _FORTIFY_SOURCE -D _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST -U _FORTIFY_SOURCE -D _FORTIFY_SOURCE=3 -idirafter /nix/store/lbjwxax9n0457lgd83rqwpd1l9lgfl7r-glibc-2.42-84-dev/include /dev/null -o /dev/null -mtune=generic -march=x86-64 -fstack-protector-strong -O2 -dM -dumpbase null)";
+    auto output = parse_gcc_style_output("#define __cplusplus 201703L", err);
+    std::vector<std::string> options = {"-D_GNU_SOURCE",
+                                        "-U_FORTIFY_SOURCE",
+                                        "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST",
+                                        "-U_FORTIFY_SOURCE",
+                                        "-D_FORTIFY_SOURCE=3",
+                                        "-mtune=generic",
+                                        "-march=x86-64",
+                                        "-fstack-protector-strong"};
+    ZEXPECT(output.gcc_options == options);
+}
+
 ZEST_CASE(MultilibPrivateDir) {
     /// A multilib variant's library directory comes first in LIBRARY_PATH;
     /// the private include directory sits beside GCC's own.
