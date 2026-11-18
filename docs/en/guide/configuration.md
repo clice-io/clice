@@ -93,6 +93,32 @@ Longest interval in seconds between two background looks at a project file: the 
 
 <!-- END GENERATED CONFIG -->
 
+## `[cache]`
+
+<!-- BEGIN GENERATED CONFIG: cache -->
+
+<div class="config-option">
+
+| Option             | Type     | Default      |
+| ------------------ | -------- | ------------ |
+| `pch_budget_bytes` | `uint64` | `8589934592` |
+
+Soft per-project disk-cache budget, in bytes, for PCHs and their paired preamble indexes (.pch.idx); at least 1. Least-recently-used entries are evicted, but a newly committed entry may exceed the budget. Independent of the PCM budget; excludes the project index and logs.
+
+</div>
+
+<div class="config-option">
+
+| Option             | Type     | Default      |
+| ------------------ | -------- | ------------ |
+| `pcm_budget_bytes` | `uint64` | `8589934592` |
+
+Soft per-project disk-cache budget, in bytes, for PCMs; at least 1. Least-recently-used entries are evicted, but a newly committed entry may exceed the budget. Independent of the PCH budget; excludes the project index and logs.
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
 ## `[workers]`
 
 clice compiles in worker processes. The foreground workers keep the open files compiled and answer the requests about them; the others take one-off work — the background index, completion, signature help, formatting, precompiled headers and modules — and start as work needs them: one waits at all times, the background index starts as many as it can use when its work queues, and those idle for 30 seconds stop. How many open files keep their compiled state follows the machine's memory. A worker the system kills for lack of memory is replaced; a systemd unit running clice needs `OOMPolicy=continue`, as the default stops the whole unit, the server included, when one of its processes is killed.

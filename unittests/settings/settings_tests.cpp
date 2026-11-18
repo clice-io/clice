@@ -152,6 +152,143 @@ ZEST_CASE(CacheDirFallbackChain) {
     ZEXPECT(fallback.issues.empty());
 }
 
+ZEST_CASE(CacheBudgetDefaults) {
+    Settings settings;
+    ZEXPECT(settings.cache.pch_budget_bytes == 8589934592ull);
+    ZEXPECT(settings.cache.pcm_budget_bytes == 8589934592ull);
+    ZEXPECT(settings.finalize(CanonicalPath()).empty());
+
+    for(auto text: {"", "[cache]\n", "[workers]\nforeground = 3\n"}) {
+        auto parsed = codec::toml::from_string<Settings>(text);
+        ZASSERT(parsed);
+        ZEXPECT(parsed->cache.pch_budget_bytes == 8589934592ull);
+        ZEXPECT(parsed->cache.pcm_budget_bytes == 8589934592ull);
+    }
+}
+
+ZEST_CASE(ParseCacheBudgets) {
+    TempDir tmp;
+    tmp.touch("clice.toml", R"([cache]
+pch_budget_bytes = 1
+pcm_budget_bytes = 9223372036854775807
+)");
+    auto loaded = load_settings(CanonicalPath(Spelling::absolute(tmp.root)));
+    ZEXPECT(loaded.issues.empty());
+    ZEXPECT(loaded.settings.cache.pch_budget_bytes == 1u);
+    ZEXPECT(loaded.settings.cache.pcm_budget_bytes == 9223372036854775807ull);
+
+    auto partial = codec::toml::from_string<CacheSettings>("pcm_budget_bytes = 4096");
+    ZASSERT(partial);
+    ZEXPECT(partial->pch_budget_bytes == 8589934592ull);
+    ZEXPECT(partial->pcm_budget_bytes == 4096u);
+}
+
+ZEST_CASE(CacheBudgetOverlay) {
+    TempDir tmp;
+    auto loaded =
+        load_settings(CanonicalPath(Spelling::absolute(tmp.root)),
+                      {.overlay = overlay(R"({ "cache": { "pch_budget_bytes": 17179869184 } })")});
+    ZEXPECT(loaded.issues.empty());
+    ZEXPECT(loaded.settings.cache.pch_budget_bytes == 17179869184ull);
+    ZEXPECT(loaded.settings.cache.pcm_budget_bytes == 8589934592ull);
+}
+
+ZEST_CASE(CacheBudgetDeepMerge) {
+    TempDir tmp;
+    tmp.touch("clice.toml", R"([cache]
+pch_budget_bytes = 17179869184
+pcm_budget_bytes = 34359738368
+)");
+    struct Case {
+        std::string_view text;
+        std::uint64_t pch;
+        std::uint64_t pcm;
+    };
+    for(auto [text, pch, pcm]: {
+            Case{R"({ "cache": {} })",                                               17179869184ull, 34359738368ull},
+            {R"({ "cache": { "pch_budget_bytes": 4096 } })",                     4096u,          34359738368ull},
+            {R"({ "cache": { "pcm_budget_bytes": 8192 } })",                     17179869184ull, 8192u         },
+            {R"({ "cache": { "pch_budget_bytes": 1, "pcm_budget_bytes": 2 } })", 1u,             2u            }
+    }) {
+        auto loaded =
+            load_settings(CanonicalPath(Spelling::absolute(tmp.root)), {.overlay = overlay(text)});
+        ZEXPECT(loaded.issues.empty());
+        ZEXPECT(loaded.settings.cache.pch_budget_bytes == pch);
+        ZEXPECT(loaded.settings.cache.pcm_budget_bytes == pcm);
+    }
+}
+
+ZEST_CASE(ZeroCacheBudgetsRejected) {
+    Settings settings;
+    settings.cache.pch_budget_bytes = 0;
+    settings.cache.pcm_budget_bytes = 0;
+    auto problems = settings.finalize(CanonicalPath());
+    ZASSERT(problems.size() == 2u);
+    ZEXPECT(problems[0].to_string() ==
+            "a cache budget must be at least 1 byte at cache.pch_budget_bytes");
+    ZEXPECT(problems[1].to_string() ==
+            "a cache budget must be at least 1 byte at cache.pcm_budget_bytes");
+    ZEXPECT(settings.cache.pch_budget_bytes == 8589934592ull);
+    ZEXPECT(settings.cache.pcm_budget_bytes == 8589934592ull);
+}
+
+ZEST_CASE(InvalidCacheBudgetsLocated) {
+    TempDir tmp;
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    for(auto field: {"pch_budget_bytes", "pcm_budget_bytes"}) {
+        for(auto value: {"0", "-1", "1.5", R"("unlimited")", "true"}) {
+            tmp.touch("clice.toml", std::format("[cache]\n{} = {}\n", field, value));
+            auto loaded = load_settings(root);
+            ZEXPECT(loaded.broken());
+            ZASSERT(loaded.issues.size() == 1u);
+            auto& issue = loaded.issues[0];
+            ZEXPECT(issue.severity == SettingsIssue::Severity::Error);
+            ZEXPECT(issue.file == path::join(root, "clice.toml"));
+            ZEXPECT(issue.message.find(std::format("cache.{}", field)) != std::string::npos);
+            ZEXPECT(issue.line == 2u);
+            ZEXPECT(issue.column == 20u);
+        }
+    }
+}
+
+ZEST_CASE(InvalidCacheBudgetsOverlay) {
+    TempDir tmp;
+    tmp.touch("clice.toml", R"([cache]
+pch_budget_bytes = 4096
+pcm_budget_bytes = 8192
+)");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    for(auto field: {"pch_budget_bytes", "pcm_budget_bytes"}) {
+        for(auto value: {"0", "-1", "1.5", R"("unlimited")", "true", "null"}) {
+            auto loaded =
+                load_settings(root,
+                              {.overlay = overlay(
+                                   std::format(R"({{ "cache": {{ "{}": {} }} }})", field, value))});
+            ZEXPECT(loaded.broken());
+            ZASSERT(loaded.issues.size() == 1u);
+            auto& issue = loaded.issues[0];
+            ZEXPECT(issue.severity == SettingsIssue::Severity::Error);
+            ZEXPECT(issue.file.empty());
+            ZEXPECT(issue.message.starts_with("initializationOptions: "));
+            ZEXPECT(issue.message.find(std::format("cache.{}", field)) != std::string::npos);
+        }
+    }
+}
+
+ZEST_CASE(CacheBudgetsRoundTrip) {
+    Settings settings;
+    settings.cache.pch_budget_bytes = std::numeric_limits<std::uint64_t>::max();
+    settings.cache.pcm_budget_bytes = std::numeric_limits<std::uint64_t>::max();
+    ZEXPECT(settings.finalize(CanonicalPath()).empty());
+    auto encoded = json::to_string(settings);
+    ZASSERT(encoded);
+    auto decoded = json::from_string<Settings>(*encoded);
+    ZASSERT(decoded);
+    ZEXPECT(decoded->cache.pch_budget_bytes == settings.cache.pch_budget_bytes);
+    ZEXPECT(decoded->cache.pcm_budget_bytes == settings.cache.pcm_budget_bytes);
+    ZEXPECT(decoded->finalize(CanonicalPath()).empty());
+}
+
 ZEST_CASE(ParsePartialWorkers) {
     // A partial decode only touches the fields it names; everything else
     // keeps the field-initializer defaults.
@@ -1412,6 +1549,39 @@ append = ["-DTOML_ONLY"]
     match_rules(settings, "/src/x.cc", append, remove);
     ZEXPECT(append.size() == 1u);
     ZEXPECT(append[0] == "-DFROM_JSON");
+}
+
+ZEST_CASE(CacheBudgetSchema) {
+    auto schema = Settings::json_schema();
+    ZASSERT(schema);
+    auto doc = json::from_string<codec::dyn::Value>(*schema);
+    ZASSERT(doc);
+    const auto* section = find_property(*doc, "cache");
+    ZASSERT(section != nullptr);
+    const auto* section_body = section->get_object();
+    ZASSERT(section_body != nullptr);
+    const auto* defaults = section_body->find("default");
+    ZASSERT(defaults != nullptr);
+    const auto* default_fields = defaults->get_object();
+    ZASSERT(default_fields != nullptr);
+    for(auto field: {"pch_budget_bytes", "pcm_budget_bytes"}) {
+        const auto* fallback = default_fields->find(field);
+        ZASSERT(fallback != nullptr);
+        ZEXPECT(fallback->get_uint().value_or(0) == 8589934592ull);
+        const auto* property = find_property(*doc, field);
+        ZASSERT(property != nullptr);
+        const auto* body = property->get_object();
+        ZASSERT(body != nullptr);
+        const auto* type = body->find("type");
+        ZASSERT(type != nullptr);
+        ZEXPECT(*type == codec::dyn::Value("integer"));
+        const auto* minimum = body->find("minimum");
+        ZASSERT(minimum != nullptr);
+        ZEXPECT(minimum->get_uint().value_or(0) == 1u);
+        const auto* maximum = body->find("maximum");
+        ZASSERT(maximum != nullptr);
+        ZEXPECT(maximum->get_uint().value_or(0) == std::numeric_limits<std::uint64_t>::max());
+    }
 }
 
 ZEST_CASE(JsonSchema) {

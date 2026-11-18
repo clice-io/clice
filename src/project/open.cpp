@@ -223,16 +223,20 @@ void open_store(Project& project, const Project::OpenOptions& options, Project::
     }
     // Only a run loading the build's members, or building into the store,
     // compiles them; registering scans the whole namespace, which a run
-    // reading the index alone does not pay for. Size budgets are
-    // deliberately generous: eviction exists to bound disk usage, not to
-    // keep the working set tight.
+    // reading the index alone does not pay for.
     if(options.load == Project::OpenOptions::Load::Members || options.cache == Cache::Build) {
-        constexpr std::uint64_t GiB = 1ull << 30;
+        const auto& cache = project.settings.cache;
         store->register_namespace({.name = "pch",
                                    .extension = ".pch",
                                    .aux_extension = ".pch.idx",
-                                   .max_bytes = 8 * GiB});
-        store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 8 * GiB});
+                                   .max_bytes = cache.pch_budget_bytes});
+        store->register_namespace(
+            {.name = "pcm", .extension = ".pcm", .max_bytes = cache.pcm_budget_bytes});
+        if(!read_only) {
+            LOG_INFO("Compilation cache budgets: PCH={} bytes, PCM={} bytes",
+                     cache.pch_budget_bytes,
+                     cache.pcm_budget_bytes);
+        }
     }
     project.store.emplace(std::move(*store));
     if(!read_only) {

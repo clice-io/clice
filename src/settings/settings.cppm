@@ -285,6 +285,29 @@ struct Rule {
     std::optional<bool> format;
 };
 
+KANNOTATE_TYPE(struct CacheSettings, presence_all = optional);
+struct CacheSettings {
+    KANNOTATE(&pch_budget_bytes,
+              minimum = 1,
+              description =
+                  "Soft per-project disk-cache budget, in bytes, for PCHs "
+                  "and their paired preamble indexes (.pch.idx); at least 1. "
+                  "Least-recently-used entries are evicted, but a newly "
+                  "committed entry may exceed the budget. Independent of "
+                  "the PCM budget; excludes the project index and logs.")
+    std::uint64_t pch_budget_bytes = 8589934592ull;
+
+    KANNOTATE(&pcm_budget_bytes,
+              minimum = 1,
+              description =
+                  "Soft per-project disk-cache budget, in bytes, for PCMs; "
+                  "at least 1. Least-recently-used entries are evicted, but "
+                  "a newly committed entry may exceed the budget. "
+                  "Independent of the PCH budget; excludes the project "
+                  "index and logs.")
+    std::uint64_t pcm_budget_bytes = 8589934592ull;
+};
+
 /// Corresponds to the `[workers]` section in clice.toml: the worker
 /// processes and when background work starts.
 KANNOTATE_TYPE(struct WorkersSettings, presence_all = optional);
@@ -496,6 +519,12 @@ struct Settings {
                   "included.")
     std::uint32_t poll_seconds = 30;
 
+    KANNOTATE(&cache,
+              description =
+                  "The [cache] section: disk-cache budgets for precompiled "
+                  "headers and modules.")
+    CacheSettings cache;
+
     KANNOTATE(&workers, description = "The [workers] section: the worker processes.")
     WorkersSettings workers;
 
@@ -561,8 +590,8 @@ struct Settings {
     /// overlaid. Returns the values clice cannot honor, each at its key: a
     /// glob that does not compile or holds a backslash, an environment
     /// variable that is not set, `default_configuration` naming no declared
-    /// tag, a zero worker count or limit (each falls back to its default
-    /// meanwhile, so the process-wide settings read from it stay runnable).
+    /// tag, a zero worker count, limit or cache budget (each falls back to
+    /// its default meanwhile, so the process-wide settings stay runnable).
     std::vector<codec::rich_error> finalize(CanonicalRef project_root);
 
     /// The distinct configuration tags, in first-appearance order.
