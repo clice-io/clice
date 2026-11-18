@@ -11,6 +11,16 @@ static std::uint64_t less(std::uint64_t a, std::uint64_t b) {
     return a > b ? a - b : 0;
 }
 
+/// How the log names where the headroom comes from.
+static std::string_view headroom_source(sys::MemorySource source) {
+    switch(source) {
+        case sys::MemorySource::System: return "the system's count";
+        case sys::MemorySource::Estimate: return "estimated: the system counts none";
+        case sys::MemorySource::Cgroup: return "clice's memory cgroup";
+    }
+    std::unreachable();
+}
+
 void WorkerScheduler::submit(RequestId id,
                              Priority priority,
                              RequestCost cost,
@@ -431,9 +441,10 @@ void WorkerScheduler::dispatch(SchedulerTime now) {
         if(!memory_logged || now - *memory_logged >= memory_log_interval) {
             memory_logged = now;
             LOG_INFO(
-                "Background work waits for memory: {} MiB headroom, {} MiB of the idle "
+                "Background work waits for memory: {} MiB headroom ({}), {} MiB of the idle "
                 "worker, {} MiB reserve, {} MiB growth due, {} MiB expected, {} running",
                 last_sample.headroom >> 20,
+                headroom_source(last_sample.source),
                 slot->memory >> 20,
                 last_sample.reserve >> 20,
                 growth_due() >> 20,

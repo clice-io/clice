@@ -61,6 +61,9 @@ struct SchedulerSample {
     /// can still give before reclaim starts to hurt (worker/resources).
     std::uint64_t headroom = 0;
 
+    /// Where `headroom` comes from.
+    sys::MemorySource source = sys::MemorySource::System;
+
     /// The headroom kept free: below it background work is killed, and no
     /// background request starts unless it leaves this much.
     std::uint64_t reserve = 0;

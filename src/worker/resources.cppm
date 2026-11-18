@@ -14,6 +14,9 @@ struct MemoryState {
 
     /// The physical memory, or the tightest limit clice runs under.
     std::uint64_t limit = 0;
+
+    /// Where `headroom` comes from.
+    sys::MemorySource source = sys::MemorySource::System;
 };
 
 /// The headroom kept free under `limit`: 5% of it, at least 512 MiB; on
