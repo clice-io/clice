@@ -24,6 +24,14 @@
             "description": "Longest interval in seconds between two background looks at a project file: the interval doubles at every look that finds the file unchanged, up to this. 0 disables background polling, compilation databases included.",
             "default": 30
         },
+        "cache": {
+            "$ref": "#/$defs/CacheSettings",
+            "description": "The [cache] section: disk-cache budgets for precompiled headers and modules.",
+            "default": {
+                "pch_budget_bytes": 8589934592,
+                "pcm_budget_bytes": 8589934592
+            }
+        },
         "workers": {
             "$ref": "#/$defs/WorkersSettings",
             "description": "The [workers] section: the worker processes.",
@@ -143,6 +151,26 @@
     },
     "additionalProperties": false,
     "$defs": {
+        "CacheSettings": {
+            "type": "object",
+            "properties": {
+                "pch_budget_bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 18446744073709551615,
+                    "description": "Soft per-project disk-cache budget, in bytes, for PCHs and their paired preamble indexes (.pch.idx); at least 1. Least-recently-used entries are evicted, but a newly committed entry may exceed the budget. Independent of the PCM budget; excludes the project index and logs.",
+                    "default": 8589934592
+                },
+                "pcm_budget_bytes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 18446744073709551615,
+                    "description": "Soft per-project disk-cache budget, in bytes, for PCMs; at least 1. Least-recently-used entries are evicted, but a newly committed entry may exceed the budget. Independent of the PCH budget; excludes the project index and logs.",
+                    "default": 8589934592
+                }
+            },
+            "additionalProperties": false
+        },
         "WorkersSettings": {
             "type": "object",
             "properties": {
