@@ -15,3 +15,24 @@ compiles = true
 
  static_assert(!__is_abstract(File));
 '''
+
+[[answers.file.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'File'"
+compiles = false
+errors = ["static assertion failed due to requirement '!__is_abstract(File)'"]
+
+[answers.file.code_actions.edits]
+"main.cpp" = '''
+ };
+
+-struct File : Reader, Writer {};
++struct File : Reader, Writer {
++    File(const File&) = default;
++    File(File&&) = default;
++    File& operator=(const File&) = default;
++    File& operator=(File&&) = default;
++};
+
+ static_assert(!__is_abstract(File));
+'''

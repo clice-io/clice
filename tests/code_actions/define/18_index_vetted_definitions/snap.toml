@@ -26,6 +26,22 @@ compiles = true
 +}
 '''
 
+[[index.cls.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Widget'"
+compiles = true
+
+[index.cls.code_actions.edits]
+"widget.h" = '''
+     void b();
+     void c();
++    Widget(const Widget&) = default;
++    Widget(Widget&&) = default;
++    Widget& operator=(const Widget&) = default;
++    Widget& operator=(Widget&&) = default;
+ };
+'''
+
 [index.defined_elsewhere]
 code_actions = []
 

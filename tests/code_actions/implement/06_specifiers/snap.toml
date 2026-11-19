@@ -20,5 +20,42 @@ compiles = true
  static_assert(!__is_abstract(Console));
 '''
 
-[answers.channel]
-code_actions = []
+[[answers.console.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Console'"
+compiles = false
+errors = ["static assertion failed due to requirement '!__is_abstract(Console)'"]
+
+[answers.console.code_actions.edits]
+"main.cpp" = '''
+ }
+
+-struct Console : io::Logger {};
++struct Console : io::Logger {
++    Console(const Console&) = default;
++    Console(Console&&) = default;
++    Console& operator=(const Console&) = default;
++    Console& operator=(Console&&) = default;
++};
+
+ static_assert(!__is_abstract(Console));
+'''
+
+[[answers.channel.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Pipe'"
+compiles = false
+errors = ["static assertion failed due to requirement '!__is_abstract(Console)'"]
+
+[answers.channel.code_actions.edits]
+"main.cpp" = '''
+ static_assert(!__is_abstract(Console));
+
+-struct Pipe : io::Channel<true> {};
++struct Pipe : io::Channel<true> {
++    Pipe(const Pipe&) = default;
++    Pipe(Pipe&&) = default;
++    Pipe& operator=(const Pipe&) = default;
++    Pipe& operator=(Pipe&&) = default;
++};
+'''

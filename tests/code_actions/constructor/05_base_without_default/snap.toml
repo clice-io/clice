@@ -1,2 +1,15 @@
-[answers.derived]
-code_actions = []
+[[answers.derived.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Derived'"
+compiles = true
+
+[answers.derived.code_actions.edits]
+"main.cpp" = '''
+ struct Derived : Base {
+     int x;
++    Derived(const Derived&) = default;
++    Derived(Derived&&) = default;
++    Derived& operator=(const Derived&) = default;
++    Derived& operator=(Derived&&) = default;
+ };
+'''

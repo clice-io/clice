@@ -12,6 +12,22 @@ compiles = true
  };
 '''
 
+[[answers.sink.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Sink'"
+compiles = true
+
+[answers.sink.code_actions.edits]
+"main.cpp" = '''
+
+ struct Sink : Source {
++    Sink(const Sink&) = default;
++    Sink(Sink&&) = default;
++    Sink& operator=(const Sink&) = default;
++    Sink& operator=(Sink&&) = default;
+ };
+'''
+
 [[answers.pointer_return.code_actions]]
 kind = "refactor.rewrite.implementPureVirtuals"
 title = "Implement pure virtual methods of 'Dispatcher'"
@@ -22,5 +38,21 @@ compiles = true
 
  struct Dispatcher : Handlers {
 +    Handlers::Result (*handler(int x) const)(int) override;
+ };
+'''
+
+[[answers.pointer_return.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Dispatcher'"
+compiles = true
+
+[answers.pointer_return.code_actions.edits]
+"main.cpp" = '''
+
+ struct Dispatcher : Handlers {
++    Dispatcher(const Dispatcher&) = default;
++    Dispatcher(Dispatcher&&) = default;
++    Dispatcher& operator=(const Dispatcher&) = default;
++    Dispatcher& operator=(Dispatcher&&) = default;
  };
 '''

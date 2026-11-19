@@ -11,3 +11,20 @@ compiles = true
 +    explicit Handle(int fd) : fd(fd) {}
  };
 '''
+
+[[answers.handle.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Handle'"
+compiles = true
+
+[answers.handle.code_actions.edits]
+"main.cpp" = '''
+ class Handle {
+     int fd;
++public:
++    Handle(const Handle&) = default;
++    Handle(Handle&&) = default;
++    Handle& operator=(const Handle&) = default;
++    Handle& operator=(Handle&&) = default;
+ };
+'''

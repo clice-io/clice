@@ -11,3 +11,19 @@ compiles = true
 +Point::Point(int x, int y) {
 +}
 '''
+
+[[answers.point.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Point'"
+compiles = true
+
+[answers.point.code_actions.edits]
+"main.cpp" = '''
+     int x;
+     int y;
++    Point(const Point&) = default;
++    Point(Point&&) = default;
++    Point& operator=(const Point&) = default;
++    Point& operator=(Point&&) = default;
+ };
+'''

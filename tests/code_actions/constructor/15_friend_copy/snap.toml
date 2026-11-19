@@ -11,6 +11,22 @@ compiles = true
  };
 '''
 
+[[answers.friend_class.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Door'"
+compiles = true
+
+[answers.friend_class.code_actions.edits]
+"main.cpp" = '''
+     Key key;
+     int turns;
++    Door(const Door&) = default;
++    Door(Door&&) = default;
++    Door& operator=(const Door&) = default;
++    Door& operator=(Door&&) = default;
+ };
+'''
+
 [[answers.friend_template.code_actions]]
 kind = "refactor.rewrite.generateMemberwiseConstructor"
 title = "Generate a memberwise constructor for 'Keeper'"
@@ -21,5 +37,21 @@ compiles = true
      Token token;
      T value;
 +    Keeper(const Token& token, T value) : token(token), value(std::move(value)) {}
+ };
+'''
+
+[[answers.friend_template.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Keeper'"
+compiles = true
+
+[answers.friend_template.code_actions.edits]
+"main.cpp" = '''
+     Token token;
+     T value;
++    Keeper(const Keeper&) = delete;
++    Keeper(Keeper&&) = delete;
++    Keeper& operator=(const Keeper&) = delete;
++    Keeper& operator=(Keeper&&) = delete;
  };
 '''

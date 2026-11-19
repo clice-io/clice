@@ -11,8 +11,50 @@ compiles = true
  };
 '''
 
-[answers.constrained_move]
-code_actions = []
+[[answers.templated.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Templated'"
+compiles = true
 
-[answers.undeducible_move]
-code_actions = []
+[answers.templated.code_actions.edits]
+"main.cpp" = '''
+     Unique<int> unique;
+     int count;
++    Templated(const Templated&) = delete;
++    Templated(Templated&&) = default;
++    Templated& operator=(const Templated&) = default;
++    Templated& operator=(Templated&&) = default;
+ };
+'''
+
+[[answers.constrained_move.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'OnPinned'"
+compiles = true
+
+[answers.constrained_move.code_actions.edits]
+"main.cpp" = '''
+     Pinned pinned;
+     int count;
++    OnPinned(const OnPinned&) = delete;
++    OnPinned(OnPinned&&) = delete;
++    OnPinned& operator=(const OnPinned&) = default;
++    OnPinned& operator=(OnPinned&&) = default;
+ };
+'''
+
+[[answers.undeducible_move.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'OnStuck'"
+compiles = true
+
+[answers.undeducible_move.code_actions.edits]
+"main.cpp" = '''
+     Stuck stuck;
+     int count;
++    OnStuck(const OnStuck&) = delete;
++    OnStuck(OnStuck&&) = delete;
++    OnStuck& operator=(const OnStuck&) = default;
++    OnStuck& operator=(OnStuck&&) = default;
+ };
+'''
