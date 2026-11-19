@@ -1,0 +1,17 @@
+[editor."main.cpp"]
+diagnostics = [
+    {
+        at = "auto value = ⟦12345⟧;",
+        severity = "warning",
+        message = "12345 is a magic number; consider replacing it with a named constant",
+        source = "clang-tidy",
+        code = "cppcoreguidelines-avoid-magic-numbers",
+    },
+]
+
+[lint."$ clice lint --jobs 1"]
+stdout = '''
+${WS}/main.cpp:2:18: warning: 12345 is a magic number; consider replacing it with a named constant [cppcoreguidelines-avoid-magic-numbers]
+Linted 1 translation unit in #s: 1 finding.
+'''
+exit = 1

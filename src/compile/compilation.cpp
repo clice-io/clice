@@ -84,14 +84,18 @@ std::unique_ptr<clang::CompilerInvocation>
     auto opened = invocation->getFrontendOpts().Inputs[0].getFile();
     for(auto& [file, text]: input.buffers) {
         auto& buffer = remapped_buffers.emplace_back();
+        auto name = file == input.focus ? opened : file;
         if(file == input.focus && !input.suffix.empty()) {
             std::string suffixed = text;
             append_include(suffixed, input.suffix);
-            buffer = llvm::MemoryBuffer::getMemBufferCopy(suffixed);
+            buffer = llvm::MemoryBuffer::getMemBufferCopy(suffixed, name);
         } else {
-            buffer = llvm::MemoryBuffer::getMemBuffer(text);
+            // Checks can tell an unnamed buffer from a file's, as
+            // readability-magic-numbers does; name the remapped text as the
+            // compile knows the file.
+            buffer = llvm::MemoryBuffer::getMemBuffer(text, name);
         }
-        pp_opts.addRemappedFile(file == input.focus ? opened : file, buffer.get());
+        pp_opts.addRemappedFile(name, buffer.get());
     }
     if(params.kind != CompilationKind::Preamble) {
         pp_opts.Includes.append_range(input.forced_includes);
