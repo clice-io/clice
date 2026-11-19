@@ -330,8 +330,6 @@ tests/code_actions/special_members/03_partial
 
 The generated declarations go under a `public:` label when the class body ends in another section
 
-A class whose body ends in `private:` or `protected:` gains the label before the declarations, so they are not private.
-
 ```case
 tests/code_actions/special_members/04_access
 ```
