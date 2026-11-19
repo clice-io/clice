@@ -1739,8 +1739,10 @@ void stmt_references(const clang::Stmt* S,
         // An accessor clang declares for a property is written nowhere: the
         // message names the property.
         if(method && method->isImplicit()) {
-            refer(out, method->findPropertyDecl(), kind, pieces.front());
-            return;
+            if(const auto* property = decls::objc_accessor_property(*method)) {
+                refer(out, property, kind, pieces.front());
+                return;
+            }
         }
         refer_selector(out, method, kind, pieces);
         return;
@@ -1765,7 +1767,7 @@ void stmt_references(const clang::Stmt* S,
             const auto* accessor = OPRE->isMessagingGetter() ? OPRE->getImplicitPropertyGetter()
                                                              : OPRE->getImplicitPropertySetter();
             const clang::ObjCPropertyDecl* property =
-                accessor ? accessor->findPropertyDecl() : nullptr;
+                accessor ? decls::objc_accessor_property(*accessor) : nullptr;
             target = property ? static_cast<const clang::NamedDecl*>(property) : accessor;
         }
         refer(out, target, RelationKind::Reference, OPRE->getLocation());

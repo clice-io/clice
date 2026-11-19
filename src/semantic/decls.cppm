@@ -132,6 +132,12 @@ auto objc_untyped(const clang::ObjCMessageExpr& message) -> bool;
 /// class tells (objc_dispatched).
 auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::ObjCMethodDecl*;
 
+/// The property an Objective-C method implements as an accessor. A synthesized
+/// accessor stub belongs to an @implementation, but its property can belong to
+/// a superclass; null when no property matches.
+auto objc_accessor_property(const clang::ObjCMethodDecl& method)
+    -> const clang::ObjCPropertyDecl*;
+
 /// The property an Objective-C instance variable stores when it
 /// synthesizes the variable with no @synthesize written; null otherwise.
 auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::ObjCPropertyDecl*;

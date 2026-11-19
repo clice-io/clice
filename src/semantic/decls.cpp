@@ -645,6 +645,23 @@ auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::
     return objc_dispatched(receiver, *method, method->isInstanceMethod());
 }
 
+auto objc_accessor_property(const clang::ObjCMethodDecl& method)
+    -> const clang::ObjCPropertyDecl* {
+    if(method.isSynthesizedAccessorStub()) {
+        if(const auto* implementation =
+               llvm::dyn_cast<clang::ObjCImplDecl>(method.getDeclContext())) {
+            for(const auto* property: implementation->property_impls()) {
+                if(property->getGetterMethodDecl() == &method ||
+                   property->getSetterMethodDecl() == &method) {
+                    return property->getPropertyDecl();
+                }
+            }
+        }
+        return nullptr;
+    }
+    return method.findPropertyDecl();
+}
+
 auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::ObjCPropertyDecl* {
     const auto* implementation =
         llvm::dyn_cast<clang::ObjCImplementationDecl>(ivar.getDeclContext());

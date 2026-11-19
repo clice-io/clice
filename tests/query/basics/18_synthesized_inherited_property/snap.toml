@@ -1,0 +1,40 @@
+[test."$ clice index"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 5 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+[test."$ clice query references value --include-declaration"]
+stdout = '''
+{
+  "result": {
+    "name": "value",
+    "kind": "Property",
+    "symbol": "#65f29564671ca2d6",
+    "references": [
+      {
+        "file": "${WS}/main.m",
+        "line": 3,
+        "context": "@property int value;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.m",
+        "line": 10,
+        "context": "@synthesize value;",
+        "function": null
+      },
+      {
+        "file": "${WS}/main.m",
+        "line": 14,
+        "context": "    return [thing value];",
+        "function": "read"
+      }
+    ],
+    "total": 3
+  },
+  "stale": []
+}
+'''
+exit = 0
