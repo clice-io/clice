@@ -282,7 +282,7 @@ When a user-defined constructor is defined, explicit special members are needed.
 
 <!-- BEGIN GENERATED ITEMS: code_actions/special_members -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
 
 **Members made explicit**
 
@@ -296,7 +296,7 @@ tests/code_actions/special_members/01_defaulted
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
 
 **Impossible operations deleted**
 
@@ -310,7 +310,7 @@ tests/code_actions/special_members/02_deleted
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
 
 **Only the missing members**
 
@@ -324,7 +324,7 @@ tests/code_actions/special_members/03_partial
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
 
 **Declarations are public**
 
