@@ -934,6 +934,20 @@ ZEST_CASE(CorruptBlobRejected) {
     ZASSERT(!index::Shard::from_bytes(as_chars(bytes).take_front(bytes.size() / 2)).loaded());
 }
 
+ZEST_CASE(PreviousFormatVersionRejected) {
+    // Version 64 stored using-declaration targets as candidates and folded
+    // candidate instantiation records into written references. The relation
+    // semantics changed, so an old blob must not be served by this build.
+    index::ShardBlob blob;
+    blob.format_version = 64;
+    fill_content(blob, "aaaa");
+    blob.variants = {1};
+    blob.symbol_hashes = {111};
+    blob.relation_offsets = {0, 0};
+
+    ZEXPECT(!make_shard(index::encode(blob)).loaded());
+}
+
 ZEST_CASE(ReservedLocalParentRejected) {
     // A local symbol's parent becomes a DenseSet key in a query's
     // container walk, so a sentinel value marks a corrupt blob.

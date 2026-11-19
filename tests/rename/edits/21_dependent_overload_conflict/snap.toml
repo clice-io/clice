@@ -1,0 +1,2 @@
+[answers.rename.rename]
+error = "cannot rename `start`: the name at ${WS}/main.cpp:3 also refers to `start`; rename both to `launch` in one list of renames"

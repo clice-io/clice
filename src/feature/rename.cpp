@@ -546,10 +546,35 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     auto shared_with = [&](const index::Site& site, std::uint32_t offset) -> std::optional<Shared> {
         auto file = site.file;
         if(auto instantiated = serving.instantiated_at(file, offset)) {
+            bool names_group = false;
+            std::optional<Shared> other;
             for(auto symbol: instantiated->symbols) {
-                if(other_of_old_name(symbol, file)) {
-                    return Shared{.symbol = symbol, .certain = true};
+                if(group.contains(symbol) || renamed_alike(symbol)) {
+                    names_group = true;
+                } else if(other_of_old_name(symbol, file)) {
+                    other = Shared{.symbol = symbol, .certain = true};
                 }
+            }
+            if(names_group) {
+                // The instantiation resolves the name to this rename's
+                // group, unless another symbol shares the spelling. A
+                // written candidate set is only what the template saw
+                // before overload resolution.
+                if(other) {
+                    return other;
+                }
+                if(auto cursor = query.symbol_at(file, offset)) {
+                    for(auto symbol: cursor->symbols) {
+                        if(!other_of_old_name(symbol, file)) {
+                            continue;
+                        }
+                        auto renamed = batch.renamed.find(symbol);
+                        if(renamed != batch.renamed.end()) {
+                            return Shared{.symbol = symbol, .certain = true};
+                        }
+                    }
+                }
+                return std::nullopt;
             }
         }
         if(site.origin != index::SiteOrigin::Written) {
@@ -628,9 +653,8 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                                   where(token),
                                   name,
                                   renamed->second)
-                    : std::format("the name at {} also refers to `{}` in another instantiation "
-                                  "or build configuration: rename both to `{}` in one list of "
-                                  "renames",
+                    : std::format("the name at {} also refers to `{}`; rename both to `{}` in "
+                                  "one list of renames",
                                   where(token),
                                   name,
                                   new_name));

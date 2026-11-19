@@ -1,0 +1,12 @@
+[answers.rename.rename]
+compiles = true
+
+[answers.rename.rename.edits]
+"main.cpp" = '''
+-int start(struct Engine*) { return 1; }
++int launch(struct Engine*) { return 1; }
+ int start(struct Motor*) { return 2; }
+-template <typename T> int run(T* t) { return start(t); }
++template <typename T> int run(T* t) { return launch(t); }
+ int use() { return run((Engine*)nullptr); }
+'''

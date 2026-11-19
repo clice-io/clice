@@ -15,7 +15,7 @@
 '''
 
 [answers.shared.rename]
-error = "cannot rename `area`: the name at ${WS}/main.cpp:17 also refers to `Triangle::area` in another instantiation or build configuration: rename both to `side` in one list of renames"
+error = "cannot rename `area`: the name at ${WS}/main.cpp:17 also refers to `Triangle::area`; rename both to `side` in one list of renames"
 
 [answers.uninstantiated.rename]
 notice = '''

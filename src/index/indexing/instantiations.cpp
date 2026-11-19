@@ -141,14 +141,12 @@ std::vector<const clang::Decl*> Builder::expanding_decls() {
 }
 
 Builder::WrittenKey Builder::written_key(SymbolHash symbol, const Relation& relation) {
-    // A candidate already names what an instantiation's reference
-    // would; a guess does not, and the instantiation confirming it is
-    // recorded.
+    // A candidate names a set the instantiation chooses from. What the
+    // instantiation resolves is more precise, so it is recorded beside the
+    // written candidate. A guess is open in the same way.
     RelationKind kind = relation.kind;
-    auto kind_class =
-        kind.is_one_of(RelationKind::Candidate) ? RelationKind::Reference : kind.value();
     return {symbol,
-            kind_class,
+            kind.value(),
             relation.range.begin,
             relation.range.end,
             kind.carries_extent() ? 0 : relation.target};

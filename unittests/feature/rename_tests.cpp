@@ -338,6 +338,26 @@ ZEST_CASE(BatchSharedDependentCall) {
     ZEXPECT(together.edits.size() == 4U);
 }
 
+ZEST_CASE(BatchUsingOverloadSet) {
+    add_focus(file("a.cpp"), R"(
+        namespace ns {
+            int §(first)foo(int);
+            int §(second)foo(double);
+        }
+        using ns::foo;
+        int a = foo(1);
+    )");
+    merge();
+
+    // The using-declaration names both overloads, so both must change with it.
+    auto renamed = batch({
+        {.target = cursor("first")->target,  .new_name = "bar"},
+        {.target = cursor("second")->target, .new_name = "bar"},
+    });
+    ZEXPECT(!renamed.blocked());
+    ZEXPECT(renamed.edits.size() == 4U);
+}
+
 /// The text moving on between a plan and its writing is a race no case
 /// stages.
 ZEST_CASE(ApplyRefusesMovedText) {

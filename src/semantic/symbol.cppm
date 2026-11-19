@@ -119,10 +119,10 @@ struct RelationKind {
         /// Keyed by a class template, the target a deduction guide of it;
         /// the guide's TypeDefinition is the template.
         Guide,
-        /// At a name that certainly stands for a set of declarations — a
-        /// using-declaration's targets, the overloads a dependent call's
-        /// definition finds — each of them: which one a use runs is left to
-        /// overload resolution or instantiation.
+        /// At a name that certainly stands for a set of declarations — the
+        /// overloads a dependent call's definition finds, or the methods an
+        /// untyped Objective-C message may reach — each of them: which one a
+        /// use runs is left to overload resolution or instantiation.
         Candidate,
     };
 

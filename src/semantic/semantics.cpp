@@ -1375,7 +1375,7 @@ void decl_references(const clang::Decl* D, References& out, types::TemplateResol
             if(constructor && constructor->isCopyOrMoveConstructor()) {
                 continue;
             }
-            refer_name(out, shadow->getTargetDecl(), RelationKind::Candidate, UD->getNameInfo());
+            refer_name(out, shadow->getTargetDecl(), RelationKind::Reference, UD->getNameInfo());
         }
         return;
     }

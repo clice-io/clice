@@ -293,11 +293,10 @@ private:
                     declared.insert({*token, decl->getCanonicalDecl()});
                 }
             } else if(token) {
-                // A using-declaration's targets are candidates too, and
-                // depend on nothing. The instantiations resolving a
-                // dependent name keep it dependent.
+                // The instantiations resolving a dependent name keep it
+                // dependent.
                 if(occurrence.kind.is_one_of(RelationKind::Candidate, RelationKind::Guess) &&
-                   !index_known && !entry.node.get<clang::UsingDecl>()) {
+                   !index_known) {
                     usage[semantics.spelled_tokens()[*token].range.begin] |=
                         mask(Modifier::Dependent);
                 }

@@ -684,7 +684,7 @@ ZEST_CASE(UsingRelationKey) {
 
     bool found_use = false;
     for(auto& r: it->second) {
-        if(r.kind == RelationKind::Candidate && r.range == range("use")) {
+        if(r.kind == RelationKind::Reference && r.range == range("use")) {
             found_use = true;
             break;
         }

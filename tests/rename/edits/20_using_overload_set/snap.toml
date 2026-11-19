@@ -1,0 +1,2 @@
+[answers.partial.rename]
+error = "cannot rename `foo`: the name at ${WS}/main.cpp:2 also refers to `ns::foo`; rename both to `bar` in one list of renames"
