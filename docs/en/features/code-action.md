@@ -288,7 +288,7 @@ When a user-defined constructor is defined, explicit special members are needed.
 
 A class whose members copy and move gains explicit `= default` declarations of all four operations
 
-The declarations are appended to the end of the class body, in the order copy constructor, move constructor, copy assignment, move assignment.
+The declarations are appended to the end of the class body, in the order of copy constructor, move constructor, copy assignment and move assignment.
 
 ```case
 tests/code_actions/special_members/01_defaulted
@@ -302,7 +302,7 @@ tests/code_actions/special_members/01_defaulted
 
 An operation a member makes impossible is declared `= delete` instead of `= default`
 
-A reference member and a `const` member make the assignment operators impossible; a member class that only moves makes the copy operations impossible.
+For example, a reference member or a `const` member makes the assignment operators impossible; a member class that only moves makes the copy operations impossible.
 
 ```case
 tests/code_actions/special_members/02_deleted
@@ -314,9 +314,9 @@ tests/code_actions/special_members/02_deleted
 
 **Only the missing members**
 
-A class that already declares some operations gains only the declarations it lacks
+A class that already declares some operations gains gets the declarations it lacks
 
-A class declaring only its copy constructor and copy assignment gains the two move declarations, both `= delete`; one declaring only the move operations gains the two copy declarations, both `= delete`.
+Notably, class declaring only its copy constructor and copy assignment gets two `= delete` move declarations; one declaring only the move operations gets two `= delete` copy declarations.
 
 ```case
 tests/code_actions/special_members/03_partial
@@ -329,6 +329,8 @@ tests/code_actions/special_members/03_partial
 **Declarations are public**
 
 The generated declarations go under a `public:` label when the class body ends in another section
+
+A class whose body ends in `private:` or `protected:` gains the label before the declarations, so they are not private.
 
 ```case
 tests/code_actions/special_members/04_access

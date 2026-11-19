@@ -278,7 +278,7 @@ tests/code_actions/constructor/07_move_only_fields
 
 ## 特殊成员
 
-类可以把自身的拷贝和移动操作显式声明为默认化或删除，以保持编译器原本的行为。
+声明了用户自定义构造函数后，需要显式声明移动/拷贝成员
 
 <!-- BEGIN GENERATED ITEMS: code_actions/special_members -->
 
@@ -300,9 +300,9 @@ tests/code_actions/special_members/01_defaulted
 
 **不可行的操作声明为 delete**
 
-某个成员使其无法实现的操作会声明为 `= delete`，而非 `= default`
+某个成员使其无法实现的操作会声明为 `= delete`，而非 `= default`。
 
-引用成员和 `const` 成员使赋值运算符无法实现；只能移动的成员类使拷贝操作无法实现。
+例如，引用成员或`const`成员使赋值运算符无法实现；只能移动的成员类使拷贝操作无法实现。
 
 ```case
 tests/code_actions/special_members/02_deleted
@@ -312,11 +312,11 @@ tests/code_actions/special_members/02_deleted
 
 <!-- BEGIN CAPABILITY: supported clice#1111 -->
 
-**只补缺失的成员**
+**只生成缺失的成员**
 
-已经声明了部分操作的类只会获得所缺的声明
+已经声明了部分操作的类只会生成所缺的声明
 
-只声明了拷贝构造函数和拷贝赋值的类会获得两条移动声明，均为 `= delete`；只声明了移动操作的类会获得两条拷贝声明，均为 `= delete`。
+只声明了拷贝构造函数和拷贝赋值的类会生成两条均为`= delete`的移动声明；只声明了移动操作的类会获得两条均为`= delete`的拷贝声明。
 
 ```case
 tests/code_actions/special_members/03_partial
@@ -329,8 +329,6 @@ tests/code_actions/special_members/03_partial
 **声明为 public**
 
 当类体结束于其他访问段时，生成的声明放在 `public:` 标签之下
-
-类体结束于 `private:` 或 `protected:` 的类会在声明之前补上该标签，使这些声明不成为私有成员。
 
 ```case
 tests/code_actions/special_members/04_access
