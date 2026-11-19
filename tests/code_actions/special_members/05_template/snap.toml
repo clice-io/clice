@@ -1,0 +1,15 @@
+[[answers.box.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Box'"
+compiles = true
+
+[answers.box.code_actions.edits]
+"main.cpp" = '''
+
+     T value;
++    Box(const Box&) = delete;
++    Box(Box&&) = delete;
++    Box& operator=(const Box&) = delete;
++    Box& operator=(Box&&) = delete;
+ };
+'''

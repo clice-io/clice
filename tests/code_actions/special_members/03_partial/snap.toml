@@ -1,0 +1,27 @@
+[[answers.copy_declared.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit move members of 'CopyDeclared'"
+compiles = true
+
+[answers.copy_declared.code_actions.edits]
+"main.cpp" = '''
+
+     int value;
++    CopyDeclared(CopyDeclared&&) = delete;
++    CopyDeclared& operator=(CopyDeclared&&) = delete;
+ };
+'''
+
+[[answers.move_declared.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy members of 'MoveDeclared'"
+compiles = true
+
+[answers.move_declared.code_actions.edits]
+"main.cpp" = '''
+
+     int value;
++    MoveDeclared(const MoveDeclared&) = delete;
++    MoveDeclared& operator=(const MoveDeclared&) = delete;
+ };
+'''

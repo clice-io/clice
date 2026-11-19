@@ -22,6 +22,7 @@ clice 针对选区提供代码操作：依据编译器掌握的信息生成或�
 | 定义类中缺失的成员                   | `refactor.rewrite.define.missing`                |
 | 实现纯虚方法                         | `refactor.rewrite.implementPureVirtuals`         |
 | 生成逐成员构造函数                   | `refactor.rewrite.generateMemberwiseConstructor` |
+| 声明隐式的拷贝和移动成员             | `refactor.rewrite.declareSpecialMembers`         |
 | 为 switch 补全缺失的枚举分支         | `refactor.rewrite.populateSwitch`                |
 | 展开推导类型                         | `refactor.rewrite.expandDeducedType`             |
 | 按声明顺序重排定义                   | `refactor.rewrite.reorderDefinitions`            |
@@ -269,6 +270,68 @@ tests/code_actions/constructor/05_base_without_default
 
 ```case
 tests/code_actions/constructor/07_move_only_fields
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 特殊成员
+
+声明了用户自定义构造函数后，需要显式声明移动/拷贝成员
+
+<!-- BEGIN GENERATED ITEMS: code_actions/special_members -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**成员显式声明**
+
+类的成员可拷贝、可移动时，全部四个操作都会获得显式的 `= default` 声明
+
+这些声明附加在类体末尾，顺序依次为拷贝构造函数、移动构造函数、拷贝赋值运算符、移动赋值运算符。
+
+```case
+tests/code_actions/special_members/01_defaulted
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**不可行的操作声明为 delete**
+
+某个成员使其无法实现的操作会声明为 `= delete`，而非 `= default`。
+
+例如，引用成员或`const`成员使赋值运算符无法实现；只能移动的成员类使拷贝操作无法实现。
+
+```case
+tests/code_actions/special_members/02_deleted
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**只生成缺失的成员**
+
+已经声明了部分操作的类只会生成所缺的声明
+
+只声明了拷贝构造函数和拷贝赋值的类会生成两条均为`= delete`的移动声明；只声明了移动操作的类会获得两条均为`= delete`的拷贝声明。
+
+```case
+tests/code_actions/special_members/03_partial
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**声明为 public**
+
+当类体结束于其他访问段时，生成的声明放在 `public:` 标签之下
+
+```case
+tests/code_actions/special_members/04_access
 ```
 
 <!-- END CAPABILITY -->

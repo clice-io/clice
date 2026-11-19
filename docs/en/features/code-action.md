@@ -22,6 +22,7 @@ Each refactoring has its own code action kind, so an editor can ask for one alon
 | Define the missing members of a class                | `refactor.rewrite.define.missing`                |
 | Implement pure virtual methods                       | `refactor.rewrite.implementPureVirtuals`         |
 | Generate a memberwise constructor                    | `refactor.rewrite.generateMemberwiseConstructor` |
+| Declare the implicit copy and move members           | `refactor.rewrite.declareSpecialMembers`         |
 | Add the missing enum cases to a switch               | `refactor.rewrite.populateSwitch`                |
 | Expand a deduced type                                | `refactor.rewrite.expandDeducedType`             |
 | Reorder definitions by declaration order             | `refactor.rewrite.reorderDefinitions`            |
@@ -269,6 +270,68 @@ The file gains `#include <utility>` when nothing declares `std::move` before the
 
 ```case
 tests/code_actions/constructor/07_move_only_fields
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Special Members
+
+When a user-defined constructor is defined, explicit special members are needed.
+
+<!-- BEGIN GENERATED ITEMS: code_actions/special_members -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**Members made explicit**
+
+A class whose members copy and move gains explicit `= default` declarations of all four operations
+
+The declarations are appended to the end of the class body, in the order of copy constructor, move constructor, copy assignment and move assignment.
+
+```case
+tests/code_actions/special_members/01_defaulted
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**Impossible operations deleted**
+
+An operation a member makes impossible is declared `= delete` instead of `= default`
+
+For example, a reference member or a `const` member makes the assignment operators impossible; a member class that only moves makes the copy operations impossible.
+
+```case
+tests/code_actions/special_members/02_deleted
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**Only the missing members**
+
+A class that already declares some operations gains gets the declarations it lacks
+
+Notably, class declaring only its copy constructor and copy assignment gets two `= delete` move declarations; one declaring only the move operations gets two `= delete` copy declarations.
+
+```case
+tests/code_actions/special_members/03_partial
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**Declarations are public**
+
+The generated declarations go under a `public:` label when the class body ends in another section
+
+```case
+tests/code_actions/special_members/04_access
 ```
 
 <!-- END CAPABILITY -->

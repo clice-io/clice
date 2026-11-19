@@ -1,0 +1,33 @@
+[[answers.file.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'File'"
+compiles = true
+
+[answers.file.code_actions.edits]
+"main.cpp" = '''
+ private:
+     int fd;
++public:
++    File(const File&) = default;
++    File(File&&) = default;
++    File& operator=(const File&) = default;
++    File& operator=(File&&) = default;
+ };
+'''
+
+[[answers.handle.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Handle'"
+compiles = true
+
+[answers.handle.code_actions.edits]
+"main.cpp" = '''
+ protected:
+     int kind;
++public:
++    Handle(const Handle&) = default;
++    Handle(Handle&&) = default;
++    Handle& operator=(const Handle&) = default;
++    Handle& operator=(Handle&&) = default;
+ };
+'''

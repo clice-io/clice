@@ -23,6 +23,8 @@ constexpr inline std::string_view implement_pure_virtuals =
     "refactor.rewrite.implementPureVirtuals";
 constexpr inline std::string_view memberwise_constructor =
     "refactor.rewrite.generateMemberwiseConstructor";
+constexpr inline std::string_view declare_special_members =
+    "refactor.rewrite.declareSpecialMembers";
 constexpr inline std::string_view populate_switch = "refactor.rewrite.populateSwitch";
 constexpr inline std::string_view expand_deduced_type = "refactor.rewrite.expandDeducedType";
 constexpr inline std::string_view reorder_definitions = "refactor.rewrite.reorderDefinitions";
@@ -39,6 +41,7 @@ constexpr inline std::array code_action_kinds = {
     action_kind::define_missing,
     action_kind::implement_pure_virtuals,
     action_kind::memberwise_constructor,
+    action_kind::declare_special_members,
     action_kind::populate_switch,
     action_kind::expand_deduced_type,
     action_kind::reorder_definitions,

@@ -1,0 +1,47 @@
+[[answers.reference.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Reference'"
+compiles = true
+
+[answers.reference.code_actions.edits]
+"main.cpp" = '''
+
+     int& ref;
++    Reference(const Reference&) = default;
++    Reference(Reference&&) = default;
++    Reference& operator=(const Reference&) = delete;
++    Reference& operator=(Reference&&) = delete;
+ };
+'''
+
+[[answers.constant.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Constant'"
+compiles = true
+
+[answers.constant.code_actions.edits]
+"main.cpp" = '''
+
+     const int limit;
++    Constant(const Constant&) = default;
++    Constant(Constant&&) = default;
++    Constant& operator=(const Constant&) = delete;
++    Constant& operator=(Constant&&) = delete;
+ };
+'''
+
+[[answers.holder.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Holder'"
+compiles = true
+
+[answers.holder.code_actions.edits]
+"main.cpp" = '''
+
+     Handle handle;
++    Holder(const Holder&) = delete;
++    Holder(Holder&&) = default;
++    Holder& operator=(const Holder&) = delete;
++    Holder& operator=(Holder&&) = default;
+ };
+'''

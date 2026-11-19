@@ -10,5 +10,7 @@ public:
     unique_ptr() = default;
     unique_ptr(unique_ptr&&) = default;
     unique_ptr(const unique_ptr&) = delete;
+    unique_ptr& operator=(unique_ptr&&) = default;
+    unique_ptr& operator=(const unique_ptr&) = delete;
 };
 }

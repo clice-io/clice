@@ -1,0 +1,15 @@
+[[answers.record.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Record'"
+compiles = true
+
+[answers.record.code_actions.edits]
+"main.cpp" = '''
+     Point point;
+     const char* label;
++    Record(const Record&) = default;
++    Record(Record&&) = default;
++    Record& operator=(const Record&) = default;
++    Record& operator=(Record&&) = default;
+ };
+'''

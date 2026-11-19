@@ -26,7 +26,7 @@ CUDA 和 HIP 文件编译的是设备端代码，因为 Clang 会先执行这一
 | [代码导航](./navigation.md)          | 支持 117 项 · 部分支持 1 项 · 不支持 6 项 |
 | [重命名](./rename.md)                | 支持 9 项                                 |
 | [诊断](./diagnostics.md)             | 支持 12 项 · 部分支持 1 项                |
-| [代码操作](./code-action.md)         | 支持 38 项                                |
+| [代码操作](./code-action.md)         | 支持 42 项                                |
 | [语义 Token](./semantic-tokens.md)   | 支持 61 项                                |
 | [内联提示](./inlay-hints.md)         | 支持 40 项                                |
 | [文档链接](./document-links.md)      | 支持 5 项 · 部分支持 1 项                 |

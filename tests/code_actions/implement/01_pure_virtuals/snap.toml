@@ -24,3 +24,19 @@ compiles = true
 +    explicit Circle(double radius) : radius(radius) {}
  };
 '''
+
+[[answers.circle.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit copy/move members of 'Circle'"
+compiles = true
+
+[answers.circle.code_actions.edits]
+"main.cpp" = '''
+ struct Circle : Shape {
+     double radius;
++    Circle(const Circle&) = default;
++    Circle(Circle&&) = default;
++    Circle& operator=(const Circle&) = default;
++    Circle& operator=(Circle&&) = default;
+ };
+'''
