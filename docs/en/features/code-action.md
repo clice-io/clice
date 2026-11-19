@@ -278,11 +278,11 @@ tests/code_actions/constructor/07_move_only_fields
 
 ## Special Members
 
-A class can make its copy and move operations explicit, defaulted or deleted to keep what the compiler would do.
+When a user-defined constructor is defined, explicit special members are needed.
 
 <!-- BEGIN GENERATED ITEMS: code_actions/special_members -->
 
-<!-- BEGIN CAPABILITY: supported clice#1111 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Members made explicit**
 
@@ -296,7 +296,7 @@ tests/code_actions/special_members/01_defaulted
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clice#1111 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Impossible operations deleted**
 
@@ -310,7 +310,7 @@ tests/code_actions/special_members/02_deleted
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clice#1111 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Only the missing members**
 
@@ -324,13 +324,11 @@ tests/code_actions/special_members/03_partial
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported clice#1111 -->
+<!-- BEGIN CAPABILITY: supported -->
 
 **Declarations are public**
 
 The generated declarations go under a `public:` label when the class body ends in another section
-
-A class whose body ends in `private:` or `protected:` gains the label before the declarations, so they are not private.
 
 ```case
 tests/code_actions/special_members/04_access
