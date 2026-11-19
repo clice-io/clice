@@ -136,6 +136,10 @@ auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::
 /// synthesizes the variable with no @synthesize written; null otherwise.
 auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::ObjCPropertyDecl*;
 
+/// The property an Objective-C method is an accessor of, or overrides an
+/// accessor of; null for any other method.
+auto objc_accessor_property(const clang::ObjCMethodDecl& method) -> const clang::ObjCPropertyDecl*;
+
 /// Where `@compatibility_alias Quill Pen;` writes the alias and the class:
 /// clang locates the declaration at its `@` alone. Invalid when a macro
 /// writes them.

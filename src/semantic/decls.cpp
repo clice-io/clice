@@ -656,6 +656,24 @@ auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::Ob
                                                              : nullptr;
 }
 
+auto objc_accessor_property(const clang::ObjCMethodDecl& method) -> const clang::ObjCPropertyDecl* {
+    // clang's findPropertyDecl looks for the property of an accessor a
+    // @synthesize declares in the class, its extensions and categories
+    // alone, and crashes when it is a protocol's or a superclass's: the
+    // @synthesize names it.
+    if(!method.isSynthesizedAccessorStub()) {
+        return method.findPropertyDecl();
+    }
+    const auto* implementation = llvm::cast<clang::ObjCImplDecl>(method.getDeclContext());
+    for(const auto* synthesis: implementation->property_impls()) {
+        if(synthesis->getGetterMethodDecl() == &method ||
+           synthesis->getSetterMethodDecl() == &method) {
+            return synthesis->getPropertyDecl();
+        }
+    }
+    std::unreachable();
+}
+
 auto objc_alias_names(const clang::ObjCCompatibleAliasDecl& alias)
     -> std::pair<clang::SourceLocation, clang::SourceLocation> {
     auto& context = alias.getASTContext();

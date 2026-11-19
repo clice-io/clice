@@ -1,0 +1,17 @@
+[answers.setter]
+definition = ["@property int ⟦count⟧;"]
+
+[answers.protocol]
+definition = ["@property int ⟦count⟧;"]
+
+[answers.extension_protocol]
+definition = ["@property int ⟦size⟧;"]
+
+[answers.category_protocol]
+definition = ["@property int ⟦tag⟧;"]
+
+[answers.superclass]
+definition = ["@property int ⟦width⟧;"]
+
+[answers.subclass]
+definition = ["@property int ⟦count⟧;"]
