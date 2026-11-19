@@ -189,7 +189,6 @@ exit = 0
 +export namespace kt = ::kit;
 +
 +export namespace kit {
-+using ::kit::Gizmo;
 +using ::kit::Thing;
 +}
 +

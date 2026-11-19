@@ -58,12 +58,6 @@ stdout = '''
         "form": 2
       },
       {
-        "name": "alpha::fake_abs",
-        "file": "third/alpha/alpha/alpha.h",
-        "used": false,
-        "form": 0
-      },
-      {
         "name": "alpha::make",
         "file": "third/alpha/alpha/alpha.h",
         "used": false,
@@ -519,7 +513,6 @@ exit = 0
 +export namespace alpha {
 +using ::alpha::Color;
 +using ::alpha::Thing;
-+using ::alpha::fake_abs;
 +using ::alpha::make;
 +using enum ::alpha::Color;
 +using enum unnamed_enum<decltype(::alpha::alpha_high)>;
@@ -754,7 +747,6 @@ exit = 0
 +export namespace alpha {
 +using ::alpha::Color;
 +using ::alpha::Thing;
-+using ::alpha::fake_abs;
 +using ::alpha::make;
 +using enum ::alpha::Color;
 +using enum unnamed_enum<decltype(::alpha::alpha_high)>;
@@ -1019,7 +1011,6 @@ exit = 0
 +export namespace alpha {
 +using ::alpha::Color;
 +using ::alpha::Thing;
-+using ::alpha::fake_abs;
 +using ::alpha::make;
 +using enum ::alpha::Color;
 +using enum unnamed_enum<decltype(::alpha::alpha_high)>;
@@ -1205,7 +1196,6 @@ exit = 0
 +export namespace alpha {
 +using ::alpha::Color;
 +using ::alpha::Thing;
-+using ::alpha::fake_abs;
 +using ::alpha::make;
 +using enum unnamed_enum<decltype(::alpha::alpha_high)>;
 +}
@@ -1501,7 +1491,6 @@ exit = 0
 +export namespace alpha {
 +using ::alpha::Color;
 +using ::alpha::Thing;
-+using ::alpha::fake_abs;
 +using ::alpha::make;
 +using enum unnamed_enum<decltype(::alpha::alpha_high)>;
 +}
@@ -2019,7 +2008,6 @@ exit = 0
 +export namespace alpha {
 +using ::alpha::Color;
 +using ::alpha::Thing;
-+using ::alpha::fake_abs;
 +using ::alpha::make;
 +using enum unnamed_enum<decltype(::alpha::alpha_high)>;
 +}

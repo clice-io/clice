@@ -354,7 +354,6 @@ exit = 0
 +export namespace alpha {
 +using ::alpha::Color;
 +using ::alpha::Thing;
-+using ::alpha::fake_abs;
 +using ::alpha::make;
 +using enum ::alpha::Color;
 +using enum unnamed_enum<decltype(::alpha::alpha_high)>;
