@@ -96,7 +96,7 @@ bool ServedProject::attribute_crash(const std::shared_ptr<Session>& session,
     suspects.tidy.reset();
     // A death while reading a prebuilt pair may be the pair's fault: deep
     // corruption aborts the AST reader (report_fatal_error in the bitstream
-    // reader) before any diagnostic can anchor, so the pch_failure gate
+    // reader) before any diagnostic can anchor, so the pch_consume_failure gate
     // never gets a say. The first such death retracts the pair and the
     // attempt runs again on a rebuilt one; a death on the rebuilt pair is the
     // document's own.
@@ -846,7 +846,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
     reply = std::move(*result);
 
     // The PCH quality gate: a failed parse whose diagnostics name the
-    // consumed PCH (worker-side pch_failure — setup failure and fatal error
+    // consumed PCH (worker-side pch_consume_failure — setup failure and fatal error
     // alike). The PCH attempt validated the pair fresh via its deps, yet the
     // frontend could not read it — the bytes on disk are the suspect.
     // Retract the pair (store + cache) and send once more; the PCH's next
@@ -857,18 +857,18 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
     // through to the non-Done path below: retracting a healthy shared PCH
     // over someone else's failure would rebuild it on every request for as
     // long as that failure persists.
-    if(!reply.pch_failure.empty() && built.loaded) {
+    if(!reply.pch_consume_failure.empty() && built.loaded) {
         LOG_WARN("Compile could not read PCH pair {} for {}, retracting it: {}",
                  *built.loaded,
                  file_path,
-                 reply.pch_failure);
+                 reply.pch_consume_failure);
         // Retract unconditionally — an unreadable pair never survives, even
         // when its consumption is stopped — but resend only once. The
         // consumption's record bounds the cross-attempt shape: this attempt
         // finishes Stale (waiting on the retracted key again finds it
         // changed, which overtakes this attempt), the waiter starts another,
         // and without the stopped key each would rebuild and fail forever.
-        project.pch_consume_failed(*built.loaded, std::move(reply.pch_failure));
+        project.pch_consume_failed(*built.loaded, reply.pch_consume_failure);
         if(!pch_resent) {
             pch_resent = true;
             resend = true;
@@ -961,7 +961,7 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
     // nothing: what overtook it may BE another consumer's fresh failure to
     // read the shared key, and clearing here would reset the count it just
     // paid for.
-    if(still_current && built.loaded && reply.pch_failure.empty()) {
+    if(still_current && built.loaded && reply.pch_consume_failure.empty()) {
         project.pch_consume_succeeded(*built.loaded);
     }
 

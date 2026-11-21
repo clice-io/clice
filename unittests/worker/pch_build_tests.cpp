@@ -106,7 +106,7 @@ ZEST_CASE(BuildPCHThenCompile) {
         auto result = co_await sf.peer->send_request(params);
         ZASSERT(result);
         ZEXPECT(result.value().status == worker::CompileStatus::Done);
-        ZEXPECT(result.value().pch_failure.empty());
+        ZEXPECT(result.value().pch_consume_failure.empty());
         ZEXPECT(result.value().diagnostics.empty());
 
         phase2_done = true;
@@ -170,7 +170,7 @@ ZEST_CASE(FatalErrorSparesPCH) {
         auto result = co_await sf.peer->send_request(params);
         ZASSERT(result);
         ZEXPECT(result.value().status == worker::CompileStatus::Done);
-        ZEXPECT(result.value().pch_failure.empty());
+        ZEXPECT(result.value().pch_consume_failure.empty());
         ZEXPECT(ranges::any_of(result.value().diagnostics, [](auto& diagnostic) {
             return llvm::StringRef(diagnostic.message).contains("module 'missing' not found");
         }));
@@ -231,7 +231,7 @@ ZEST_CASE(RefusedPCHReported) {
         auto result = co_await sf.peer->send_request(params);
         ZASSERT(result);
         ZEXPECT(result.value().status == worker::CompileStatus::SetupFail);
-        llvm::StringRef failure = result.value().pch_failure;
+        llvm::StringRef failure = result.value().pch_consume_failure;
         ZEXPECT(failure.contains("common.h' has been modified since the precompiled file"));
         ZEXPECT(failure.contains("size changed from expected"));
         done = true;

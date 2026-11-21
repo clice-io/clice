@@ -195,7 +195,7 @@ enum class CompileStatus : uint8_t {
     Cancelled,
     /// The frontend failed before parsing began: bad invocation, or a
     /// prebuilt input (PCH/PCM) clang could not read. Whether the consumed
-    /// PCH is at fault is a separate signal (pch_failure).
+    /// PCH is at fault is a separate signal (pch_consume_failure).
     SetupFail,
 };
 
@@ -210,7 +210,7 @@ struct CompileResult {
     /// the PCH is at fault: the master retracts the pair and rebuilds it
     /// instead of trusting it until the preamble changes. Empty when the
     /// parse did not fail on the PCH.
-    std::string pch_failure;
+    std::string pch_consume_failure;
 
     int version;
     std::vector<feature::FileDiagnostic> diagnostics;

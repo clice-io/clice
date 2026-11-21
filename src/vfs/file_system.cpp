@@ -53,6 +53,17 @@ llvm::ErrorOr<std::shared_ptr<const llvm::MemoryBuffer>> load_text(const fs::Fil
     return std::make_shared<SharedBuffer>(std::move(bytes), text, true);
 }
 
+/// Whether what `file` reads from its start begins with the mark; none when
+/// it cannot be read.
+std::optional<bool> has_bom(fs::File& file) {
+    char head[3];
+    auto read = file.read(head);
+    if(!read) {
+        return std::nullopt;
+    }
+    return llvm::StringRef(head, *read) == byte_order_mark;
+}
+
 /// The size of the text of the file at `path` as reading it gives (see
 /// without_bom), from a handle open to read it; none when it cannot be read.
 std::optional<std::uint64_t> read_size(llvm::StringRef path) {
@@ -61,13 +72,11 @@ std::optional<std::uint64_t> read_size(llvm::StringRef path) {
         return std::nullopt;
     }
     auto status = file->status();
-    char head[3];
-    auto read = file->read(head);
-    if(!status || !read) {
+    auto bom = has_bom(*file);
+    if(!status || !bom) {
         return std::nullopt;
     }
-    bool bom = llvm::StringRef(head, *read) == byte_order_mark;
-    return status->size - (bom ? byte_order_mark.size() : 0);
+    return status->size - (*bom ? byte_order_mark.size() : 0);
 }
 
 /// The size of the text of the file a stamp describes, learned once per
@@ -474,12 +483,7 @@ std::expected<void, FileError> remove(llvm::StringRef path) {
 
 bool starts_with_bom(llvm::StringRef path) {
     auto file = fs::File::open(path);
-    if(!file) {
-        return false;
-    }
-    char head[3];
-    auto read = file->read(head);
-    return read && llvm::StringRef(head, *read) == byte_order_mark;
+    return file && has_bom(*file).value_or(false);
 }
 
 std::expected<void, FileError> write_text(llvm::StringRef path, llvm::StringRef text, bool bom) {
