@@ -252,6 +252,36 @@ ZEST_CASE(CompileFSDropsBom) {
     ZASSERT((*file)->status()->getSize() == 7u);
 }
 
+ZEST_CASE(HeldBomPeekedAgain, skip = !Windows) {
+    // Another program holding the file shut while a compile asks its size
+    // must not leave the size it reports 3 bytes off once the file is free.
+    TempDir tmp;
+    tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
+    auto path = tmp.path("bom.h");
+#ifdef _WIN32
+    std::wstring wide(path.size(), L'\0');
+    wide.resize(::MultiByteToWideChar(CP_UTF8,
+                                      0,
+                                      path.data(),
+                                      static_cast<int>(path.size()),
+                                      wide.data(),
+                                      static_cast<int>(wide.size())));
+    HANDLE held = ::CreateFileW(wide.c_str(),
+                                GENERIC_READ,
+                                0,
+                                nullptr,
+                                OPEN_EXISTING,
+                                FILE_ATTRIBUTE_NORMAL,
+                                nullptr);
+    ZASSERT(held != INVALID_HANDLE_VALUE);
+    ZASSERT(bool(vfs::View().status(path)));
+    ::CloseHandle(held);
+#endif
+    auto status = vfs::View().status(path);
+    ZASSERT(bool(status));
+    ZEXPECT(status->getSize() == 7u);
+}
+
 ZEST_CASE(BinaryReadKeepsBom) {
     // `#embed` data, PCH and PCM files are bytes, served as they are.
     TempDir tmp;

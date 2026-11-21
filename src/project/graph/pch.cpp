@@ -110,9 +110,10 @@ bool refused(Project& project, llvm::StringRef pch_key, llvm::StringRef file) {
         return true;
     }
     if(entry.consumes && entry.consumes->stops(pch_consume_policy, FailureRecord::Clock::now())) {
-        LOG_WARN("PCH build for {} refused: its consumers keep failing to read key {}",
+        LOG_WARN("PCH build for {} refused: its consumers keep failing to read key {}, last: {}",
                  file,
-                 pch_key);
+                 pch_key,
+                 entry.consumes->cause);
         return true;
     }
     return false;
@@ -641,14 +642,14 @@ bool Project::forget_pch_failure(llvm::StringRef pch_key) {
     return it != pchs.end() && std::exchange(it->second.failure, std::nullopt).has_value();
 }
 
-void Project::pch_consume_failed(llvm::StringRef pch_key) {
+void Project::pch_consume_failed(llvm::StringRef pch_key, std::string cause) {
     if(auto it = pchs.find(pch_key);
        it != pchs.end() && !it->second.blob.empty() && store->lookup("pch", it->second.blob)) {
         auto& consumes = it->second.consumes;
         if(!consumes) {
             consumes.emplace();
         }
-        consumes->fail(pch_consume_policy, {}, {}, FailureRecord::Clock::now());
+        consumes->fail(pch_consume_policy, {}, std::move(cause), FailureRecord::Clock::now());
     }
     discard_pch(pch_key);
 }

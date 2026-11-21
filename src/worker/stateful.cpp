@@ -270,9 +270,10 @@ RequestResult<worker::CompileParams>
             // "malformed or corrupted precompiled file: 'Blob ends too
             // soon'"). The reader rejects a blob at setup, or finds it
             // corrupt halfway through, which is fatal. User-code failures
-            // (missing include, modified header, bad flags) match neither,
-            // so the master never rebuilds an innocent shared PCH over a
-            // failure it did not cause. An anonymous read error with PCMs
+            // (missing include, bad flags) match neither, so the master never
+            // rebuilds an innocent shared PCH over a failure it did not cause;
+            // a header changed since the build names the blob, and the pair
+            // is stale then. An anonymous read error with PCMs
             // in play is ambiguous; suspecting the PCH costs at most one
             // retracted pair per attempt and self-corrects on the retry.
             if((!unit->completed() || unit->fatal_error()) && !params.pch.first.empty()) {
@@ -288,9 +289,16 @@ RequestResult<worker::CompileParams>
                         return message.contains(entry.second);
                     });
                 };
-                result.pch_suspect = ranges::any_of(unit->diagnostics(), [&](auto& diag) {
-                    return points_at_pch(diag) || ranges::any_of(diag.notes, points_at_pch);
-                });
+                llvm::SmallVector<llvm::StringRef> said;
+                for(auto& diag: unit->diagnostics()) {
+                    if(points_at_pch(diag) || ranges::any_of(diag.notes, points_at_pch)) {
+                        said.push_back(diag.message);
+                        for(auto& note: diag.notes) {
+                            said.push_back(note.message);
+                        }
+                    }
+                }
+                result.pch_consume_failure = llvm::join(said, "; ");
             }
 
             std::optional<std::string> index_error;
