@@ -582,28 +582,26 @@ std::expected<fs::Status, std::error_code> StatusBatch::status(llvm::StringRef p
             // `b2 headers`) cannot be answered from its listing.
             if(status && status->links > 1) {
                 directory.listed = true;
-            } else if(status) {
-                directory.taken.emplace_back(path::filename(path), *status);
             }
             return status;
         }
         directory.listed = true;
         directory.entries = list_statuses(dir);
+    }
+    if(auto it = directory.entries.find(path::filename(path)); it != directory.entries.end()) {
+        if(directory.checked || it->second.type != fs::FileType::Regular) {
+            return it->second;
+        }
         // A file system filter can list a file otherwise than a status of it
         // gives (transparent encryption: the size stored with its header).
         // Answered from such a listing, every check of a file would miss the
         // status its last read recorded, and read it again.
-        auto agrees = ranges::all_of(directory.taken, [&](const auto& taken) {
-            auto it = directory.entries.find(taken.first);
-            return it == directory.entries.end() ||
-                   Stamp::of(it->second) == Stamp::of(taken.second);
-        });
-        if(!agrees) {
+        directory.checked = true;
+        auto status = fs::status(path);
+        if(!status || Stamp::of(*status) != Stamp::of(it->second)) {
             directory.entries.clear();
         }
-    }
-    if(auto it = directory.entries.find(path::filename(path)); it != directory.entries.end()) {
-        return it->second;
+        return status;
     }
 #endif
     return fs::status(path);

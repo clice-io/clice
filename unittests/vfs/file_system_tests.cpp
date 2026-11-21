@@ -206,15 +206,16 @@ ZEST_CASE(BatchSeesLinkedEdits) {
 }
 
 ZEST_CASE(BatchDropsDisagreeingListing) {
-    // A listing that disagrees with a status taken by name answers nothing.
-    // NTFS lists h0 and h15 with the size they had before a write through a
-    // second link, removed since.
+    // A listing whose first answer disagrees with a status by name answers
+    // nothing. NTFS lists h7, the first file asked once the directory is
+    // listed, and h15 with the size they had before a write through a second
+    // link, removed since.
     TempDir tmp;
     for(int i = 0; i < 20; i += 1) {
         tmp.touch(std::format("dir/h{}.h", i), "x");
     }
     tmp.touch("other/keep");
-    for(auto name: {"h0.h", "h15.h"}) {
+    for(auto name: {"h7.h", "h15.h"}) {
         auto link = tmp.path(std::format("other/{}", name));
         ZASSERT(!fs::create_hard_link(tmp.path(std::format("dir/{}", name)), link));
         tmp.touch(std::format("other/{}", name), "a longer text");
