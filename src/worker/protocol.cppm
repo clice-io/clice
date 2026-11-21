@@ -195,21 +195,22 @@ enum class CompileStatus : uint8_t {
     Cancelled,
     /// The frontend failed before parsing began: bad invocation, or a
     /// prebuilt input (PCH/PCM) clang could not read. Whether the consumed
-    /// PCH is suspect is a separate signal (pch_suspect).
+    /// PCH is at fault is a separate signal (pch_failure).
     SetupFail,
 };
 
 struct CompileResult {
     CompileStatus status = CompileStatus::Done;
 
-    /// The parse failed and its diagnostics point at the consumed PCH — they
-    /// name the blob's path, or they are AST-deserialization errors naming
-    /// no other prebuilt input. Holds whether the reader rejected the blob
-    /// at setup or hit a fatal error past it (a Done status with real,
-    /// publishable diagnostics). Either way the PCH is at fault:
-    /// the master should retract the pair and rebuild instead of trusting
-    /// the corrupt bytes until the preamble changes.
-    bool pch_suspect = false;
+    /// What clang said of the consumed PCH when the parse failed on it: the
+    /// messages of the diagnostics pointing at it, which name the blob's path
+    /// or are AST-deserialization errors naming no other prebuilt input.
+    /// Set whether the reader rejected the blob at setup or hit a fatal error
+    /// past it (a Done status with real, publishable diagnostics). Either way
+    /// the PCH is at fault: the master retracts the pair and rebuilds it
+    /// instead of trusting it until the preamble changes. Empty when the
+    /// parse did not fail on the PCH.
+    std::string pch_failure;
 
     int version;
     std::vector<feature::FileDiagnostic> diagnostics;

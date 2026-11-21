@@ -288,9 +288,16 @@ RequestResult<worker::CompileParams>
                         return message.contains(entry.second);
                     });
                 };
-                result.pch_suspect = ranges::any_of(unit->diagnostics(), [&](auto& diag) {
-                    return points_at_pch(diag) || ranges::any_of(diag.notes, points_at_pch);
-                });
+                llvm::SmallVector<llvm::StringRef> said;
+                for(auto& diag: unit->diagnostics()) {
+                    if(points_at_pch(diag) || ranges::any_of(diag.notes, points_at_pch)) {
+                        said.push_back(diag.message);
+                        for(auto& note: diag.notes) {
+                            said.push_back(note.message);
+                        }
+                    }
+                }
+                result.pch_failure = llvm::join(said, "; ");
             }
 
             std::optional<std::string> index_error;

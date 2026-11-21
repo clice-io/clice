@@ -53,10 +53,32 @@ llvm::ErrorOr<std::shared_ptr<const llvm::MemoryBuffer>> load_text(const fs::Fil
     return std::make_shared<SharedBuffer>(std::move(bytes), text, true);
 }
 
-/// Whether the file a stamp describes starts with the mark, peeked once
-/// per stamp: adding or removing the mark changes the size, so a result
-/// holds as long as clang's own size-and-mtime check of what it read.
-bool starts_with_bom(const Stamp& stamp, llvm::StringRef path) {
+/// The size of the text of the file at `path` as reading it gives (see
+/// without_bom), from a handle open to read it; none when it cannot be read.
+std::optional<std::uint64_t> read_size(llvm::StringRef path) {
+    auto file = fs::File::open(path);
+    if(!file) {
+        return std::nullopt;
+    }
+    auto status = file->status();
+    char head[3];
+    auto read = file->read(head);
+    if(!status || !read) {
+        return std::nullopt;
+    }
+    bool bom = llvm::StringRef(head, *read) == byte_order_mark;
+    return status->size - (bom ? byte_order_mark.size() : 0);
+}
+
+/// The size of the text of the file a stamp describes, learned once per
+/// stamp through a handle open to read it, as every compile opening the file
+/// sees it. The stamp's own size can be another: it leaves the mark in, and
+/// a file system filter (transparent encryption) can give a status or a
+/// directory listing another size than the text reading gives.
+/// A file that cannot be read now gives the stamp's size and is asked again
+/// next time: another program holding it for a moment (a virus scanner) would
+/// otherwise leave the size off for the life of the process.
+std::uint64_t text_size(const Stamp& stamp, llvm::StringRef path) {
     using Key = std::tuple<std::uint64_t,
                            std::uint64_t,
                            std::uint64_t,
@@ -64,7 +86,7 @@ bool starts_with_bom(const Stamp& stamp, llvm::StringRef path) {
                            std::int64_t,
                            std::int64_t>;
     static std::mutex mutex;
-    static llvm::DenseMap<Key, bool> results;
+    static llvm::DenseMap<Key, std::uint64_t> results;
     Key key{stamp.id.device,
             stamp.id.file,
             stamp.id.file_high,
@@ -77,10 +99,13 @@ bool starts_with_bom(const Stamp& stamp, llvm::StringRef path) {
             return it->second;
         }
     }
-    auto has_bom = vfs::starts_with_bom(path);
+    auto size = read_size(path);
+    if(!size) {
+        return stamp.size;
+    }
     std::lock_guard lock(mutex);
-    results.try_emplace(key, has_bom);
-    return has_bom;
+    results.try_emplace(key, *size);
+    return *size;
 }
 
 #ifdef _WIN32
@@ -597,11 +622,10 @@ llvm::ErrorOr<llvm::vfs::Status> View::status(const llvm::Twine& path) {
         return status.error();
     }
     auto result = to_llvm(*status, path.str());
-    if(status->type != fs::FileType::Regular || status->size < 3 ||
-       !starts_with_bom(Stamp::of(*status), absolute)) {
+    if(status->type != fs::FileType::Regular) {
         return result;
     }
-    return llvm::vfs::Status::copyWithNewSize(result, status->size - 3);
+    return llvm::vfs::Status::copyWithNewSize(result, text_size(Stamp::of(*status), absolute));
 }
 
 llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::openFileForRead(const llvm::Twine& path) {

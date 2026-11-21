@@ -213,7 +213,9 @@ async::task<UnitResult>
         // The unit parses without the precompiled header it crashed over:
         // that header is what crashed it.
         if(!left_out_pch.empty()) {
-            project.pch_consume_failed(left_out_pch);
+            project.pch_consume_failed(
+                left_out_pch,
+                "a unit's compile crashed reading it and compiled without it");
         }
         history().crashed_over_pch.clear();
         auto run_ms = timer.ms();

@@ -106,7 +106,7 @@ ZEST_CASE(BuildPCHThenCompile) {
         auto result = co_await sf.peer->send_request(params);
         ZASSERT(result);
         ZEXPECT(result.value().status == worker::CompileStatus::Done);
-        ZEXPECT(!result.value().pch_suspect);
+        ZEXPECT(result.value().pch_failure.empty());
         ZEXPECT(result.value().diagnostics.empty());
 
         phase2_done = true;
@@ -170,10 +170,70 @@ ZEST_CASE(FatalErrorSparesPCH) {
         auto result = co_await sf.peer->send_request(params);
         ZASSERT(result);
         ZEXPECT(result.value().status == worker::CompileStatus::Done);
-        ZEXPECT(!result.value().pch_suspect);
+        ZEXPECT(result.value().pch_failure.empty());
         ZEXPECT(ranges::any_of(result.value().diagnostics, [](auto& diagnostic) {
             return llvm::StringRef(diagnostic.message).contains("module 'missing' not found");
         }));
+        done = true;
+        sf.peer->close_output();
+    });
+    ZASSERT(done);
+}
+
+ZEST_CASE(RefusedPCHReported) {
+    TempDir tmp;
+    tmp.touch("common.h", "struct Point { int x, y; };\n");
+    std::string main_text = "#include \"common.h\"\nPoint p{1, 2};\n";
+    tmp.touch("main.cpp", main_text);
+    auto main_path = tmp.path("main.cpp");
+    auto dir = std::string(tmp.root);
+    auto bound = preamble_bound(main_text);
+    std::vector<std::string> arguments =
+        {"clang++", "-resource-dir", std::string(resource_dir()), "-I", dir, main_path};
+
+    WorkerHandle sl;
+    ZASSERT(sl.spawn());
+    std::string pch_path;
+    sl.run([&]() -> async::task<> {
+        worker::BuildPCHParams params;
+        params.file = main_path;
+        params.directory = dir;
+        params.arguments = arguments;
+        params.content = main_text;
+        params.preamble_bound = bound;
+        params.output_path = tmp.path("preamble.pch");
+        params.indexing.output_path = tmp.path("preamble.pch.idx");
+
+        auto result = co_await sl.peer->send_request(params);
+        ZASSERT(result);
+        ZASSERT(result.value().success);
+        pch_path = result.value().output_path;
+        sl.peer->close_output();
+    });
+    ZASSERT(!pch_path.empty());
+
+    // The header grows past the size the PCH recorded: clang refuses the
+    // PCH at setup, and the worker reports why in clang's words.
+    tmp.touch("common.h", "struct Point { int x, y, z; };\n");
+
+    WorkerHandle sf;
+    ZASSERT(sf.spawn(true));
+    bool done = false;
+    sf.run([&]() -> async::task<> {
+        worker::CompileParams params;
+        params.path = main_path;
+        params.version = 1;
+        params.text = main_text;
+        params.directory = dir;
+        params.arguments = arguments;
+        params.pch = {pch_path, bound};
+
+        auto result = co_await sf.peer->send_request(params);
+        ZASSERT(result);
+        ZEXPECT(result.value().status == worker::CompileStatus::SetupFail);
+        llvm::StringRef failure = result.value().pch_failure;
+        ZEXPECT(failure.contains("common.h' has been modified since the precompiled file"));
+        ZEXPECT(failure.contains("size changed from expected"));
         done = true;
         sf.peer->close_output();
     });
