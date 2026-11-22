@@ -806,7 +806,7 @@ private:
            (is_setter(callee.decl, param_names) || decls::std_cast_form(callee.decl)))
             return;
 
-        for(size_t i = 0; i < param_names.size() && i < args.size(); ++i) {
+        for(size_t i = 0; i < param_names.size() && i < args.size(); i += 1) {
             // Pack expansion expressions cause the 1:1 mapping between arguments and
             // parameters to break down, so we don't add further inlay hints if we
             // encounter one.

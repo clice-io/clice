@@ -279,12 +279,12 @@ test("with three pairs or more, slower past 1.2× in so many pairs that chance i
 });
 
 test("runs that failed on either side pair with nothing", () => {
-    const start = (server: RunResult["server"], round: number, error?: string) =>
+    const start = (server: RunResult["server"], pair: number, error?: string) =>
         run(
             server,
             "coldStart",
             { initialize: [server === "clice" ? 200 : 100] },
-            { run: round, ...(error === undefined ? {} : { error }) },
+            { run: pair, ...(error === undefined ? {} : { error }) },
         );
     expect(
         slower(
@@ -299,15 +299,15 @@ test("runs that failed on either side pair with nothing", () => {
 });
 
 test("the pairs say which server ran first, and the order swaps run by run", () => {
-    const start = (server: RunResult["server"], ms: number, round: number) =>
-        run(server, "coldStart", { initialize: [ms] }, { run: round });
+    const start = (server: RunResult["server"], ms: number, pair: number) =>
+        run(server, "coldStart", { initialize: [ms] }, { run: pair });
     const order = (runs: RunResult[]) => slower(results(runs)).map((each) => each.order);
-    const rounds = [1, 2, 3].flatMap((round) =>
-        runOrder(["clice", "baseline"], round, 0).map((server) =>
-            start(server, server === "clice" ? 30 : 20, round),
+    const pairs = [1, 2, 3].flatMap((pair) =>
+        runOrder(["clice", "baseline"], pair, 0).map((server) =>
+            start(server, server === "clice" ? 30 : 20, pair),
         ),
     );
-    expect(rounds.map(({ server }) => server)).toEqual([
+    expect(pairs.map(({ server }) => server)).toEqual([
         "baseline",
         "clice",
         "clice",
@@ -315,11 +315,9 @@ test("the pairs say which server ran first, and the order swaps run by run", () 
         "baseline",
         "clice",
     ]);
-    expect(order(rounds)).toEqual(["both"]);
+    expect(order(pairs)).toEqual(["both"]);
     expect(
-        order(
-            [1, 2, 3].flatMap((round) => [start("clice", 30, round), start("baseline", 20, round)]),
-        ),
+        order([1, 2, 3].flatMap((pair) => [start("clice", 30, pair), start("baseline", 20, pair)])),
     ).toEqual(["clice first"]);
     expect(runOrder(["clice", "baseline"], 1, 1)).toEqual(["clice", "baseline"]);
 });

@@ -874,7 +874,7 @@ auto only_instantiation(clang::ParmVarDecl* decl) -> clang::ParmVarDecl* {
             return nullptr;
         if(Param == decl)
             break;
-        ++ParamIdx;
+        ParamIdx += 1;
     }
     if(ParamIdx >= InstantiatedFunction->getNumParams()) {
         return nullptr;

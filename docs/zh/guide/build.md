@@ -31,7 +31,7 @@ bazel build //:bin/clice
 
 LLVM/Clang 库中存放的是 ThinLTO bitcode，每次链接程序都会重新执行其代码生成，单个程序耗时数分钟。lld 会将生成结果缓存在 `/var/tmp/xclang-thinlto`（Windows 上为 `C:/xclang-thinlto`），后续链接只需数秒。
 
-`bazel build //:package //:symbols` 会构建发布归档包与符号包（其中包含供 `scripts/symbolize.py` 读取的 `clice.gsym`），产物为 `build/<type>/bin` 下的 `clice.tar.gz` 和 `clice-symbol.tar.xz`（Windows 上为 `.zip`）。
+`bazel build //:package //:symbols` 会构建发布归档包与符号包（其中包含供 `tools/release/symbolize.ts` 读取的 `clice.gsym`），产物为 `build/<type>/bin` 下的 `clice.tar.gz` 和 `clice-symbol.tar.xz`（Windows 上为 `.zip`）。
 
 ## 开发 clice
 

@@ -23,8 +23,12 @@
     "compat/**/*.ts",
     "docs/**/*.ts",
     "ecosystem/**/*.ts",
+    "github/**/*.ts",
     "lint/**/*.ts",
+    "modules/**/*.ts",
+    "precheck/**/*.ts",
     "protocol/**/*.ts",
+    "release/**/*.ts",
     "testing/**/*.ts",
     "*.ts"
   ]

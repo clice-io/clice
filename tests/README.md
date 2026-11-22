@@ -34,24 +34,14 @@ tests/<topic>/<subtopic>/NN_name/
 ### Topics
 
 - **Features**, what a feature answers on code and how its answers behave
-  over time: `hover`, `code_completion`, `signature_help`, `navigation`,
-  `document_highlights`, `document_symbols`, `workspace_symbols`,
-  `document_links`, `folding_ranges`, `selection_ranges`, `semantic_tokens`,
-  `inlay_hints`, `code_actions`, `counterparts`, `rename`,
-  `diagnostics`.
-- **Engine**, how the server behaves over time: `compile` (pch, preamble,
-  cache, staleness, flags, languages), `contexts` (header contexts, switching,
-  self containment, fragments), `project` (discovery, rules, configurations,
-  unlisted files, spellings, file tracking, folders, guidance), `index`
-  (background, staleness, transfer, freshness, read only, interruption,
-  delegation, batch), `modules`, `config`, `protocol` (basics, initialize,
-  edges, positions, cancellation, stale results), `lifecycle` (crashes,
-  workers, termination, memory, stderr, test hooks, logs).
-- **Commands**, what a command prints, writes and exits with: `query`,
-  `refactor`, `format`, `lint`, `index`, `analyze`, `modularize`, `inspect`,
-  `command`, `scan`, and `cli` for process behavior every command shares.
+  over time: `hover`, `navigation`, `semantic_tokens`, ….
+- **Engine**, how the server behaves over time: `compile`, `contexts`,
+  `index`, `lifecycle`, ….
+- **Commands**, what a command prints, writes and exits with: a topic per
+  command, and `cli` for the process behavior every command shares.
 
-`tools/testing/cases/topics.ts` lists them by family.
+`tools/testing/cases/topics.ts` lists every topic by family, and every other
+directory `tests/` may hold; any other is an error.
 
 Topics divide by product area, not by the boundary a case checks it through:
 `format` holds the command and the editor's formatting, `index` the
@@ -60,11 +50,8 @@ never the topic again or the way a case tests it. A feature topic's own
 `test.ts` asks its feature the usual way, at every marker or of the entry
 file, so most of its cases bring code and nothing else.
 
-Outside the topics: `editors/` and `compat/`, each below;
-`tools/testing/cases/topics.ts` lists every directory `tests/` may hold, and
-any other is an error. C++ unit tests are not cases: they live in
-`unittests/` at the repository root. Real projects are not cases either: no
-push runs them, `ecosystem/` at the repository root does
+C++ unit tests are not cases (Unit tests, below), and real projects are not
+either: no push runs them, `ecosystem/` at the repository root does
 (`ecosystem/README.md`).
 
 ## Inputs
@@ -399,8 +386,7 @@ written by hand that a case can show.
   reading `snap.toml`. Every run writes the cards of the documented cases it
   ran as `docs/cards/<id>.json`, which git ignores: CI hands those of its
   linux-x64 run to the docs site, and a pull request's docs check builds the
-  site with them. A case's sources are what the card shows: its maintainer
-  notes go in its `test.ts`.
+  site with them.
 - **Checks.** `pixi run docs-check` fails where pages and cases disagree: a
   stale region, a documented subtopic on no page; `pixi run docs-update`
   rewrites the regions.
@@ -488,11 +474,7 @@ boundary observes cheaply, built with the sources. Names of at most four words.
 
 ## Never
 
-- Pin every feature on every construct: breadth is the ecosystem round's.
-- Write product output by hand, or match it partially.
-- Wait on, or assert about, wall-clock time.
-- Retry, skip or weaken a failing test.
-- Share inputs between cases.
+- Pin every feature on every construct: breadth is the ecosystem run's.
 - Put agent-driven editor sessions in CI.
 - Gate on a coverage percentage.
 
@@ -517,19 +499,3 @@ npm test -w tools                  the tools' own tests, the framework's among t
 Commands run under the pixi environment. Repository formatting skips case
 inputs (`.fdignore`, `tombi.toml`): they are test data, formatted the way the
 case needs them, and `snap.toml` the way the framework writes it.
-
-## Framework
-
-```
-tools/testing/
-  cases/          discovery, project.toml, copies, scripts, answers tests, snap.toml
-  render/         the requests both clients answer, answers to text and back to ranges
-  server/         the server client and its actions over the test hooks
-  inspect/        the clice inspect client
-  cli/            command runs and transcripts
-  coverage/       surface and exercise records
-  logs/           failure reports and the error gate
-  docs/           pages from documented cases
-  runner/         the vitest entry points over tests/
-  **/*.test.ts    the framework's own tests, beside the code
-```

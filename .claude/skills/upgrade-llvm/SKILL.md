@@ -9,7 +9,7 @@ The compiler clice builds with and the LLVM/Clang libraries it links both come f
 
 **Read `toolchain-changelog.md` in this directory before touching `MODULE.bazel`, `.bazelrc`, `BUILD.bazel` or `bazel/`**: it records the platform pitfalls that still apply (symptom, cause, fix, how to check). Every new one is added there in the same shape; a toolchain change without an entry is not finished.
 
-The work happens on a branch `chore/upgrade-llvm-<major>`, created from fresh `origin/main` (CLAUDE.md) before Step 2, and runs on two boxes (the agent-box skill), leased once and kept for the whole upgrade: a Linux one, which regenerates `modules/` for every configuration and cross-builds arm64 Linux and both Windows targets as CI does, and a macOS one, which builds its own and x64 macOS.
+The work happens on a branch `chore/upgrade-llvm-<major>`, created from fresh `origin/main` (CLAUDE.md) before Step 2, and runs on Linux boxes (the agent-box skill): one, leased once and kept for the whole upgrade, regenerates `modules/` for every configuration; the builds and suites of Step 5 get a box each.
 
 ## Step 1: The xclang Release
 
@@ -44,18 +44,18 @@ Every file of the toolchain and of libclang is an input of the actions that read
 
 ## Step 4: Regenerate `modules/`
 
-`modules/demand.cpp` records what clice takes from the libraries; `scripts/modules.py` builds it for a configuration, indexes it with clice and wraps the libraries' headers with `clice modularize`, then merges the eight configurations into `modules/`. Push the pinned tree to the Linux box, then:
+`modules/demand.cpp` records what clice takes from the libraries; `tools/modules/modules.ts` builds it for a configuration, indexes it with clice and wraps the libraries' headers with `clice modularize`, then merges the eight configurations into `modules/`. Push the pinned tree to the Linux box, then:
 
 ```bash
-box run $linux 'pixi run python scripts/modules.py --clice ~/clice-bin/bin/clice generate'
-box run $linux 'pixi run python scripts/modules.py --clice ~/clice-bin/bin/clice merge'
+box run $linux 'pixi run node tools/modules/modules.ts --clice ~/clice-bin/bin/clice generate'
+box run $linux 'pixi run node tools/modules/modules.ts --clice ~/clice-bin/bin/clice merge'
 box cp $linux . modules
 ```
 
 Each configuration takes about half a minute. The macOS ones compile against Apple's SDK, which the first of them fetches (`MODULE.bazel` accepts its license). Nothing under `modules/` but `demand.cpp`, `BUILD.bazel` and `modules.bzl` is edited by hand; a wrong result is fixed in its inputs and regenerated:
 
 - `generate` compiles `demand.cpp` first, so a header that moved or went upstream stops it there: fix the include in `demand.cpp`, as the API adaptation of Step 5 would in clice's own files.
-- A warning from `clice modularize` stops it too: a header the partition leaves to the program means a library's include directory moved (the partition's globs are in `scripts/modules.py`).
+- A warning from `clice modularize` stops it too: a header the partition leaves to the program means a library's include directory moved (the partition's globs are in `tools/modules/modules.ts`).
 - What only some configurations export lands under their conditions in `third_party.cppm` and `libc.cppm`; what clice uses on one platform alone is written under that platform's `#ifdef` in `demand.cpp` (`llvm/Support/WindowsError.h` under `_WIN32`).
 
 The diff of `modules/` is part of the upgrade's review: names the libraries dropped or renamed, and macros that changed.
@@ -80,13 +80,13 @@ Strategy:
 2. Fix type system and signature changes (requires understanding semantics)
 3. Update the case outputs upstream changed: `UPDATE_SNAPSHOTS=1`, every changed block reviewed like code (the write-tests skill)
 4. Ensure `pixi run -e test-run unit-test RelWithDebInfo` passes
-5. Port `clang/lib/AST/StmtProfile.cpp` changes into `src/semantic/expr_hash.cpp` (a trimmed copy of `StmtProfiler` with clice's own leaves): do not diff the files — list the upstream commits with `git log llvmorg-<old>..llvmorg-<new> -- clang/lib/AST/StmtProfile.cpp`, and hand an Opus subagent that list with the instruction to apply each commit's C and C++ visitor changes to the port; `unittests --test-filter=expr_hash` (the bit-for-bit fidelity test against `Stmt::Profile`) must be green afterwards
+5. Port `clang/lib/AST/StmtProfile.cpp` changes into `src/semantic/expr_hash.cpp` (a trimmed copy of `StmtProfiler` with clice's own leaves): do not diff the files — list the upstream commits with `git log llvmorg-<old>..llvmorg-<new> -- clang/lib/AST/StmtProfile.cpp`, and hand an Opus subagent that list with the instruction to apply each commit's C and C++ visitor changes to the port; `pixi run -e test-run unit-test RelWithDebInfo -- --test-filter='expr_hash.*'` (the bit-for-bit fidelity test against `Stmt::Profile`) must be green afterwards
 6. Bump `index_format_version` in `src/index/format.cppm`: entity hashes (`src/semantic/identity.cpp`) follow clang's canonicalization rules, so they can change silently across versions and an old index would otherwise keep serving stale symbols
 7. A library clice starts using directly is added to `LLVM_LIBRARIES` in `bazel/BUILD.bazel`. xclang's libclang archives carry only the libraries clice uses: one they lack goes into xclang's `toolchain/cmake/caches/clang.cmake` (`LLVM_Development_DISTRIBUTION_COMPONENTS`) first, and needs a new xclang release
 
 When a fix is not obvious, read the LLVM source code to understand the new API. If `../llvm-project` exists locally, use it. Otherwise, look up the upstream commit/PR on GitHub.
 
-Then the unit tests and the cases on the Linux box, and a build of every other configuration on the box that builds it: `pixi run build Debug` on both boxes (the ASan libclang, built with assertions, declares more than the release one), `pixi run build RelWithDebInfo` on macOS, and `pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:<triple>` for the cross ones. CI runs them all, but a configuration that does not build is found faster here.
+Then the unit tests and the cases, and a build of every other configuration, each on a box of its own (the build-and-test skill): `pixi run build Debug` and `pixi run build Debug -- --platforms=@xclang//platforms:aarch64-apple-darwin` (the ASan libclang, built with assertions, declares more than the release one), and `pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:<triple>` for the other targets. CI runs them all, but a configuration that does not build is found faster here.
 
 ## Step 6: Write the Changelogs (REQUIRED)
 
@@ -115,10 +115,10 @@ The maintainer decides whether all changes are acceptable or if adjustments are 
 
 ## Step 8: The PR
 
-The pr skill takes over; the title is `chore: upgrade LLVM to <X.Y.Z>`.
+The pull-request skill takes over; the title is `chore: upgrade LLVM to <X.Y.Z>`.
 
 ## Notes
 
-- **Other libraries**: a version bump of kotatsu or any other library `modules/` wraps (its `bazel_dep` in `MODULE.bazel`) is Steps 2 and 4 alone, then the build; so is clice starting to use a header or macro `modules/` does not export yet. A new library is added to `LIBRARIES` in `modules/modules.bzl` and to the partition in `scripts/modules.py`.
+- **Other libraries**: a version bump of kotatsu or any other library `modules/` wraps (its `bazel_dep` in `MODULE.bazel`) is Steps 2 and 4 alone, then the build; so is clice starting to use a header or macro `modules/` does not export yet. A new library is added to `LIBRARIES` in `modules/modules.bzl` and to the partition in `tools/modules/modules.ts`.
 - **Private headers**: clice includes no private clang headers, and xclang's libclang archives carry none; one clice starts to need goes into xclang's libclang package (`toolchain/` in xclang) first.
 - **Debug builds**: ASan builds (`bazel/clice.bazelrc`'s Debug) link the ASan libclang, which xclang builds for x86_64 Linux and arm64 macOS (its `@libclang` follows `--features=asan`); the other targets have no Debug build.

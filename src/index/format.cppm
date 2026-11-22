@@ -82,9 +82,9 @@ inline bool rebind_buffer(std::unique_ptr<llvm::MemoryBuffer>& buffer,
     return true;
 }
 
-/// The two highest values of an id type are reserved: they were DenseMap's
-/// sentinel keys when the format was defined, so no writer has ever emitted
-/// them, and IPC or disk bytes carrying one are corrupt.
+/// The two highest values of an id type are reserved by the persisted
+/// format: no writer emits them, so IPC or disk bytes carrying one are
+/// corrupt.
 template <typename T>
 bool reserved_key(T value) {
     static_assert(std::is_unsigned_v<T>);

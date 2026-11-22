@@ -18,7 +18,7 @@ void LSPClient::forward_notify_messages() {
         return;
     }
     auto first_seq = server.notify_seq - server.notify_log.size();
-    for(auto seq = std::max(notify_cursor, first_seq); seq < server.notify_seq; ++seq) {
+    for(auto seq = std::max(notify_cursor, first_seq); seq < server.notify_seq; seq += 1) {
         auto& message = server.notify_log[static_cast<std::size_t>(seq - first_seq)];
         if(message.kind == logging::NotifyKind::Guidance) {
             // A problem found again, a database reloaded with it still

@@ -4,6 +4,7 @@ import :command.database;
 import :command.table;
 import :command.toolchain;
 import :compile.compilation;
+import :project.graph.pcm;
 import :project.graph.task_graph;
 import :syntax.dependency_graph;
 import :syntax.scan;
@@ -18,76 +19,12 @@ namespace {
 using DispatchFn = std::function<async::task<Result>(std::uint32_t path_id, bool foreground)>;
 using ResolveFn = std::function<llvm::SmallVector<std::uint32_t>(std::uint32_t path_id)>;
 
-constexpr NodeKind test_kind = NodeKind{1};
-
-NodeId nid(std::uint32_t path_id) {
-    return {test_kind, path_id};
-}
-
-/// Legacy-shaped adapter driving the generalized TaskGraph, so the case
-/// bodies keep the old CompileGraph vocabulary: one kind whose work waits
-/// on the resolver's edges via depend() and then dispatches.
-struct GraphShim {
-    TaskGraph graph;
-    DispatchFn dispatch;
-    ResolveFn resolve;
-
-    GraphShim(DispatchFn dispatch, ResolveFn resolve) :
-        dispatch(std::move(dispatch)), resolve(std::move(resolve)) {}
-
-    Work work() {
-        return {.run = [this](Attempt& attempt) { return build(attempt); }};
-    }
-
-    async::task<Result> build(Attempt& attempt) {
-        auto path_id = static_cast<std::uint32_t>(attempt.node().key);
-        for(auto dep: resolve(path_id)) {
-            switch(co_await attempt.depend(nid(dep), work())) {
-                case Result::Success: break;
-                case Result::Failed: co_return Result::Failed;
-                case Result::Stale: co_return Result::Stale;
-            }
-        }
-        co_return co_await dispatch(path_id, attempt.foreground());
-    }
-
-    async::task<bool> compile(std::uint32_t path_id, bool foreground = false) {
-        auto result = co_await graph.join(nid(path_id),
-                                          work(),
-                                          {.foreground = foreground, .retry = [] { return true; }});
-        co_return result == Result::Success;
-    }
-
-    llvm::SmallVector<std::uint32_t> update(std::uint32_t path_id) {
-        llvm::SmallVector<std::uint32_t> dirtied;
-        for(auto id: graph.invalidate(nid(path_id))) {
-            dirtied.push_back(static_cast<std::uint32_t>(id.key));
-        }
-        return dirtied;
-    }
-
-    bool is_dirty(std::uint32_t path_id) const {
-        return graph.is_dirty(nid(path_id));
-    }
-
-    bool is_compiling(std::uint32_t path_id) const {
-        return graph.is_compiling(nid(path_id));
-    }
-
-    std::uint32_t refcount(std::uint32_t path_id) const {
-        return graph.refcount(nid(path_id));
-    }
-
-    bool idle() const {
-        return graph.idle();
-    }
-
-    async::task<> shutdown() {
-        return graph.shutdown();
-    }
+/// The retry of a join that waits out every stale attempt.
+constexpr auto always = [] {
+    return true;
 };
 
-/// Build a dispatch_fn that compiles PCMs in-process (no workers).
+/// A dispatch that compiles PCMs in-process (no workers).
 /// Clang requires ALL transitive PCM deps (not just direct imports)
 /// in PrebuiltModuleFiles, so we pass every available PCM. Each build
 /// writes a PCM of its own under `tmp`, as the master names every build's
@@ -137,7 +74,7 @@ DispatchFn make_dispatch(CompilationDatabase& cdb,
     };
 }
 
-/// Build a resolve_fn that lazily scans module files for imports.
+/// A resolver that lazily scans module files for imports.
 ResolveFn make_resolver(CompilationDatabase& cdb, Toolchain& toolchain, DependencyGraph& graph) {
     return [&](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
         auto file_path = cdb.files().resolve(Fid{path_id});
@@ -189,7 +126,9 @@ struct ModuleTestEnv {
 ZEST_SUITE(PCMGraphIntegration, zest::LoopFixture) {
 
 ModuleTestEnv env;
-std::optional<GraphShim> cg;
+DispatchFn dispatch = default_dispatch();
+ResolveFn resolve = default_resolver();
+TaskGraph graph;
 
 DispatchFn default_dispatch() {
     return make_dispatch(env.cdb, env.toolchain, env.graph, env.tmp, env.pcm_builds, env.pcm_paths);
@@ -199,12 +138,22 @@ ResolveFn default_resolver() {
     return make_resolver(env.cdb, env.toolchain, env.graph);
 }
 
-void make_graph(DispatchFn dispatch, ResolveFn resolve) {
-    cg.emplace(std::move(dispatch), std::move(resolve));
+/// A module unit's work: wait on the PCMs of the modules `resolve` names,
+/// then build its own with `dispatch`.
+Work module_work() {
+    return {.run = [this](Attempt& attempt) { return build_module(attempt); }};
 }
 
-void make_graph() {
-    make_graph(default_dispatch(), default_resolver());
+async::task<Result> build_module(Attempt& attempt) {
+    auto path_id = attempt.node().file().raw;
+    for(auto dep: resolve(path_id)) {
+        switch(co_await attempt.depend(module_node(Fid{dep}), module_work())) {
+            case Result::Success: break;
+            case Result::Failed: co_return Result::Failed;
+            case Result::Stale: co_return Result::Stale;
+        }
+    }
+    co_return co_await dispatch(path_id, attempt.foreground());
 }
 
 /// Run the test body, then verify the shutdown protocol leaves the graph idle.
@@ -215,8 +164,8 @@ void execute(F&& fn) {
     watchdog = chrono::seconds(45);
     auto wrapper = [&]() -> async::task<> {
         co_await fn();
-        co_await cg->shutdown();
-        ZEXPECT(cg->idle());
+        co_await graph.shutdown();
+        ZEXPECT(graph.idle());
     };
     run(wrapper());
 }
@@ -244,25 +193,26 @@ ZEST_CASE(RecompileAfterUpdate) {
     ZASSERT(pid_leaf != UINT32_MAX);
     ZASSERT(pid_mid != UINT32_MAX);
 
-    make_graph();
     execute([&]() -> async::task<> {
         // First compile.
-        auto r1 = co_await cg->compile(pid_mid).catch_cancel();
-        ZEXPECT((r1.has_value() && *r1));
+        auto r1 = co_await graph.join(module_node(Fid{pid_mid}), module_work(), {.retry = always})
+                      .catch_cancel();
+        ZEXPECT((r1.has_value() && *r1 == Result::Success));
         ZEXPECT(env.pcm_paths.size() == 2u);
-        ZEXPECT(!cg->is_dirty(pid_leaf));
-        ZEXPECT(!cg->is_dirty(pid_mid));
+        ZEXPECT(!graph.is_dirty(module_node(Fid{pid_leaf})));
+        ZEXPECT(!graph.is_dirty(module_node(Fid{pid_mid})));
 
         // Simulate editing Leaf — should cascade to Mid.
-        cg->update(pid_leaf);
-        ZEXPECT(cg->is_dirty(pid_leaf));
-        ZEXPECT(cg->is_dirty(pid_mid));
+        graph.invalidate(module_node(Fid{pid_leaf}));
+        ZEXPECT(graph.is_dirty(module_node(Fid{pid_leaf})));
+        ZEXPECT(graph.is_dirty(module_node(Fid{pid_mid})));
 
         // Recompile.
-        auto r2 = co_await cg->compile(pid_mid).catch_cancel();
-        ZEXPECT((r2.has_value() && *r2));
-        ZEXPECT(!cg->is_dirty(pid_leaf));
-        ZEXPECT(!cg->is_dirty(pid_mid));
+        auto r2 = co_await graph.join(module_node(Fid{pid_mid}), module_work(), {.retry = always})
+                      .catch_cancel();
+        ZEXPECT((r2.has_value() && *r2 == Result::Success));
+        ZEXPECT(!graph.is_dirty(module_node(Fid{pid_leaf})));
+        ZEXPECT(!graph.is_dirty(module_node(Fid{pid_mid})));
     });
 }
 
@@ -302,32 +252,33 @@ ZEST_CASE(DiamondUpdateCascade) {
     ZASSERT(pid_base != UINT32_MAX);
     ZASSERT(pid_top != UINT32_MAX);
 
-    make_graph();
     execute([&]() -> async::task<> {
         // Initial compile.
-        auto r1 = co_await cg->compile(pid_top).catch_cancel();
-        ZEXPECT((r1.has_value() && *r1));
+        auto r1 = co_await graph.join(module_node(Fid{pid_top}), module_work(), {.retry = always})
+                      .catch_cancel();
+        ZEXPECT((r1.has_value() && *r1 == Result::Success));
         ZEXPECT(env.pcm_paths.size() == 4u);
 
         // Save old PCM paths.
         auto old_base_pcm = env.pcm_paths[pid_base];
 
-        // Update base: should cascade to Left, Right, Top.
-        auto dirtied = cg->update(pid_base);
-        ZEXPECT(cg->is_dirty(pid_base));
-        ZEXPECT(cg->is_dirty(pid_left));
-        ZEXPECT(cg->is_dirty(pid_right));
-        ZEXPECT(cg->is_dirty(pid_top));
+        // Invalidate base: should cascade to Left, Right, Top.
+        auto dirtied = graph.invalidate(module_node(Fid{pid_base}));
+        ZEXPECT(graph.is_dirty(module_node(Fid{pid_base})));
+        ZEXPECT(graph.is_dirty(module_node(Fid{pid_left})));
+        ZEXPECT(graph.is_dirty(module_node(Fid{pid_right})));
+        ZEXPECT(graph.is_dirty(module_node(Fid{pid_top})));
 
-        // Simulate MasterServer: erase stale PCMs for all dirtied nodes.
+        // Simulate the project: erase stale PCMs for all dirtied nodes.
         for(auto id: dirtied) {
-            env.pcm_paths.erase(id);
+            env.pcm_paths.erase(id.file().raw);
         }
         ZEXPECT(env.pcm_paths.size() == 0u);
 
         // Recompile.
-        auto r2 = co_await cg->compile(pid_top).catch_cancel();
-        ZEXPECT((r2.has_value() && *r2));
+        auto r2 = co_await graph.join(module_node(Fid{pid_top}), module_work(), {.retry = always})
+                      .catch_cancel();
+        ZEXPECT((r2.has_value() && *r2 == Result::Success));
         ZEXPECT(env.pcm_paths.size() == 4u);
         // PCM path should have changed (new temp file).
         ZEXPECT(env.pcm_paths[pid_base] != old_base_pcm);
@@ -335,7 +286,7 @@ ZEST_CASE(DiamondUpdateCascade) {
 }
 
 /// ============================================================================
-///        Verify resolve_fn is re-invoked after update (resolved=false)
+///          Verify the resolver runs again after an invalidation
 /// ============================================================================
 
 ZEST_CASE(ResolveAgainAfterUpdate) {
@@ -367,24 +318,26 @@ ZEST_CASE(ResolveAgainAfterUpdate) {
     auto counting_resolver =
         [&, inner = default_resolver()](std::uint32_t path_id) -> llvm::SmallVector<std::uint32_t> {
         if(path_id == pid_mid) {
-            resolve_count++;
+            resolve_count += 1;
         }
         return inner(path_id);
     };
 
-    make_graph(default_dispatch(), std::move(counting_resolver));
+    resolve = std::move(counting_resolver);
     execute([&]() -> async::task<> {
-        // First compile: resolve_fn called once for Mid.
-        auto r1 = co_await cg->compile(pid_mid).catch_cancel();
-        ZEXPECT((r1.has_value() && *r1));
+        // First compile: the resolver runs once for Mid.
+        auto r1 = co_await graph.join(module_node(Fid{pid_mid}), module_work(), {.retry = always})
+                      .catch_cancel();
+        ZEXPECT((r1.has_value() && *r1 == Result::Success));
         ZEXPECT(resolve_count == 1);
 
-        // Update Mid: resets resolved.
-        cg->update(pid_mid);
+        // Invalidate Mid: its next attempt resolves its imports again.
+        graph.invalidate(module_node(Fid{pid_mid}));
 
-        // Recompile: resolve_fn should be called again.
-        auto r2 = co_await cg->compile(pid_mid).catch_cancel();
-        ZEXPECT((r2.has_value() && *r2));
+        // Recompile: the resolver runs again.
+        auto r2 = co_await graph.join(module_node(Fid{pid_mid}), module_work(), {.retry = always})
+                      .catch_cancel();
+        ZEXPECT((r2.has_value() && *r2 == Result::Success));
         ZEXPECT(resolve_count == 2);
     });
 }
@@ -412,12 +365,13 @@ ZEST_CASE(CompileFailurePropagates) {
     auto pid_bad = env.lookup("Bad");
     ZASSERT(pid_bad != UINT32_MAX);
 
-    make_graph();
     execute([&]() -> async::task<> {
-        auto result = co_await cg->compile(pid_bad).catch_cancel();
+        auto result =
+            co_await graph.join(module_node(Fid{pid_bad}), module_work(), {.retry = always})
+                .catch_cancel();
         ZEXPECT(result);
         // Compilation should fail due to undefined symbol.
-        ZEXPECT(!*result);
+        ZEXPECT(*result != Result::Success);
         // Good module should still have been compiled successfully.
         auto pid_good = env.lookup("Good");
         ZEXPECT(env.pcm_paths.contains(pid_good));
@@ -462,7 +416,7 @@ ZEST_CASE(SharedDependencyImportSwitch) {
     async::event shared_proceed;
     int shared_calls = 0;
     auto inner = default_dispatch();
-    auto dispatch = [&](std::uint32_t pid, bool) -> async::task<Result> {
+    dispatch = [&](std::uint32_t pid, bool) -> async::task<Result> {
         if(pid == pid_shared) {
             shared_calls += 1;
             shared_started.set();
@@ -471,31 +425,32 @@ ZEST_CASE(SharedDependencyImportSwitch) {
         co_return co_await inner(pid, false);
     };
 
-    make_graph(std::move(dispatch), default_resolver());
-
     async::cancellation_source req_a;
     async::event start_c;
     std::optional<bool> result_a, result_c;
 
     auto request_a = [&]() -> async::task<> {
-        auto r = co_await async::with_token(cg->compile(pid_a), req_a.token());
+        auto r = co_await async::with_token(
+            graph.join(module_node(Fid{pid_a}), module_work(), {.retry = always}),
+            req_a.token());
         if(r.has_value()) {
-            result_a = *r;
+            result_a = *r == Result::Success;
         }
     };
 
     auto request_c = [&]() -> async::task<> {
         co_await start_c.wait();
-        auto r = co_await cg->compile(pid_c).catch_cancel();
+        auto r = co_await graph.join(module_node(Fid{pid_c}), module_work(), {.retry = always})
+                     .catch_cancel();
         if(r.has_value()) {
-            result_c = *r;
+            result_c = *r == Result::Success;
         }
     };
 
     execute([&]() -> async::task<> {
         auto driver = [&]() -> async::task<> {
             co_await shared_started.wait();
-            ZEXPECT(cg->refcount(pid_shared) == 1u);
+            ZEXPECT(graph.refcount(module_node(Fid{pid_shared})) == 1u);
             ZEXPECT(shared_calls == 1);
 
             // Simulate switching `import A` to `import C`: start the new
@@ -504,10 +459,10 @@ ZEST_CASE(SharedDependencyImportSwitch) {
             // shared module's interest never drops to zero.
             start_c.set();
             req_a.cancel();
-            co_await cg->graph.attempt_finished(nid(pid_a));
+            co_await graph.attempt_finished(module_node(Fid{pid_a}));
 
-            ZEXPECT(cg->is_compiling(pid_shared));
-            ZEXPECT(cg->refcount(pid_shared) == 1u);
+            ZEXPECT(graph.is_compiling(module_node(Fid{pid_shared})));
+            ZEXPECT(graph.refcount(module_node(Fid{pid_shared})) == 1u);
             ZEXPECT(shared_calls == 1);
 
             shared_proceed.set();
@@ -559,7 +514,7 @@ ZEST_CASE(SharedDependencyFailsBoth) {
     async::event shared_proceed;
     int shared_calls = 0;
     auto inner = default_dispatch();
-    auto dispatch = [&](std::uint32_t pid, bool) -> async::task<Result> {
+    dispatch = [&](std::uint32_t pid, bool) -> async::task<Result> {
         if(pid == pid_shared) {
             shared_calls += 1;
             shared_started.set();
@@ -571,26 +526,27 @@ ZEST_CASE(SharedDependencyFailsBoth) {
     // C's attempt waits on the shared module right after resolving its
     // imports, before anything else runs.
     async::event c_resolved;
-    auto resolver = [&, inner = default_resolver()](std::uint32_t pid) {
+    resolve = [&, inner = default_resolver()](std::uint32_t pid) {
         auto imports = inner(pid);
         if(pid == pid_c) {
             c_resolved.set();
         }
         return imports;
     };
-    make_graph(std::move(dispatch), std::move(resolver));
 
     std::optional<bool> result_a, result_c;
     auto request_a = [&]() -> async::task<> {
-        auto r = co_await cg->compile(pid_a).catch_cancel();
+        auto r = co_await graph.join(module_node(Fid{pid_a}), module_work(), {.retry = always})
+                     .catch_cancel();
         if(r.has_value()) {
-            result_a = *r;
+            result_a = *r == Result::Success;
         }
     };
     auto request_c = [&]() -> async::task<> {
-        auto r = co_await cg->compile(pid_c).catch_cancel();
+        auto r = co_await graph.join(module_node(Fid{pid_c}), module_work(), {.retry = always})
+                     .catch_cancel();
         if(r.has_value()) {
-            result_c = *r;
+            result_c = *r == Result::Success;
         }
     };
 
@@ -599,7 +555,7 @@ ZEST_CASE(SharedDependencyFailsBoth) {
             co_await shared_started.wait();
             co_await c_resolved.wait();
             // Both chains hold interest in the same attempt.
-            ZEXPECT(cg->refcount(pid_shared) == 2u);
+            ZEXPECT(graph.refcount(module_node(Fid{pid_shared})) == 2u);
             shared_proceed.set();
             co_return;
         };

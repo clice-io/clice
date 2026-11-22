@@ -5,39 +5,29 @@ description: Read before writing or modifying anything under tests/ or unittests
 
 # Writing clice tests
 
-Every test but the C++ unit tests is a **case**: a directory
-`tests/<topic>/<subtopic>/NN_name/` that is a small project of its own,
-with the `test.ts` that says what to check (its own or inherited from its
-subtopic or topic), a `README.md` when it belongs in the docs, and
-`snap.toml`, every output it pins. **`tests/README.md` is the
-contract**: topics, inputs and markers, the two kinds of test (`answers`,
-`test`), the clients, outputs and how they render, docs, waiting and
-teardown. Read it before writing a case; this skill adds only the workflow,
-the hard rules and the pitfalls. The framework is `tools/testing/`
-(`@clice/tools/testing`). `tests/` keeps the compat and Zed suites.
+Every test but the C++ unit tests is a case under `tests/`.
+**`tests/README.md` is the contract** — read it before writing a case; this
+skill adds the workflow, the hard rules and the pitfalls.
 
 ## Workflow
 
-1. Place the case by product area, not by the way it checks: the topic and
-   subtopic of the behavior (`tools/testing/cases/topics.ts` lists the
-   topics). Copy the shape of 2-3 neighboring cases; one project per case,
-   shared by several tests.
-2. Write the inputs, with `§` markers where the tests ask; a `test.ts` only
-   when the inherited script does not fit; a `README.md` only when the case
-   shows a capability a reader should see. A case that pins an edge or a
-   fixed bug has no README.
-3. Run it alone, on the box the build ran on (the test skill):
+1. Place the case in the topic and subtopic of the behavior (README,
+   "Topics") and copy the shape of 2-3 neighboring cases; one project per
+   case, shared by several tests.
+2. Write the inputs, a `test.ts` only when the inherited script does not
+   fit, a `README.md` only for a capability a reader should see (README,
+   "Docs").
+3. Run it alone, where the build ran (the build-and-test skill):
    `CLICE_CASES=<topic>/<subtopic>/NN_name pixi run -e test-run cases-test`.
    `UPDATE_SNAPSHOTS=1` writes its `snap.toml` and prints what changed:
-   review every block like code. It is written on the box:
+   review every block like code. On a box it is written there:
    `box cp $id . <case dir>` brings it back before the next `box push`
-   overwrites it. Every run also writes a documented case's card under
-   `docs/cards/`, which git ignores: CI makes the cards the site draws. What clice gets wrong stays in the output, with
-   `wrong = "<reason>"` on the block.
+   overwrites it. What clice gets wrong stays in the output, flagged
+   known wrong (README, "Output").
 4. Gate: `pixi run npm run check` at the repo root (strict tsc + ESLint,
    zero tolerance). Page regions and translations are synced, and
-   `docs-check` run, once at the end of the branch (the docs skill's
-   "Syncing docs at the end of a branch").
+   `docs-check` run, once at the end of the branch (the write-docs skill's
+   `sync.md`).
 
 ## Hard rules
 
@@ -51,12 +41,10 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
   (`tools/testing/render/paths.ts`). Do not "normalize away" a malformed
   URI; a raw path or unencoded space is a server bug.
 - Comments: `///` for doc comments, `//` inline; explain constraints the
-  code can't show, nothing else. A documented case's sources are what its
-  card shows: its maintainer notes go in its `test.ts`. An undocumented
-  case keeps them in its sources, never in a `test.ts` that only copies the
-  inherited script to hold them.
-- Every test runs on a fresh copy of its case. Probes and experiments work
-  on a copy too (`CLICE_KEEP_WORKSPACE=1` keeps a test's copy and prints
+  code can't show, nothing else. An undocumented case keeps its notes in
+  its sources, never in a `test.ts` that only copies the inherited script
+  to hold them.
+- Probes and experiments work on a copy of the case too (`CLICE_KEEP_WORKSPACE=1` keeps a test's copy and prints
   where); never point a server at a case directory itself.
 - Tear down servers by the PIDs you recorded (and their subtree) — never
   `pkill` by name. A pattern sweep kills a sibling run's servers, and those
@@ -104,8 +92,8 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
   A debugger attached to `unittests` sees only the runner — take a
   backtrace with `--no-isolation --test-filter=Suite.Case`, which runs the
   test in-process (`lldb --batch -o run -k "bt 40" -- ...`).
-- The Tester's driver is the `clang++` on PATH: the cross-built platforms
-  (arm64 Linux, x64 macOS, both Windows; `build_os` in `test.yml`) run
+- The Tester's driver is the `clang++` on PATH: the platforms built on
+  Linux x64 (every one but Linux x64 itself; `build_os` in `test.yml`) run
   their suites with only the `test-run` env active, so on arm64 Linux they compile against the
   runner's system libstdc++, not conda's, and on Windows with the
   runner's clang, which targets MSVC. A wrapper script named `clang++` that execs the
@@ -113,25 +101,19 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
 
 ## Answers the index serves
 
-Until a file's AST is current, the server answers its semantic tokens,
-outline, folding ranges and document links from the index, and what the
-editor shows must not change when the AST arrives. Every answers case checks
-it on inspect (`tests/README.md`, "answers"): what the index's entries give
-must be what the AST gives; it may leave things out, and what the lexer alone
-gives where it has no entry does not count. A difference is a bug of one answer
-or the other, fixed, never declared away. `clice
-inspect <feature> <file> --index` answers from the file's own TU index as the
-server does; when a change touches these features or the index facts they
-read, also compare it with the plain answer over real code — the
-repository's sources, the libc++ and libstdc++ headers, LLVM's (a header
-outside every project takes its command from a `clice.toml` above it whose
-rule sets `default_command`) — and pin each difference that matters in a
-case.
+What the index answers must be what the AST answers (`tests/README.md`,
+"answers"); a difference is a bug of one answer or the other, fixed, never
+declared away. When a change touches those features or the index facts they
+read, also compare `clice inspect <feature> <file> --index` with the plain
+answer over real code — the repository's sources, the libc++ and libstdc++
+headers, LLVM's (a header outside every project takes its command from a
+`clice.toml` above it whose rule sets `default_command`) — and pin each
+difference that matters in a case.
 
 ## C++ unit tests (zest)
 
-- Names of at most four words; what belongs in a unit test rather than a
-  case is in `tests/README.md`, "Unit tests".
+- What belongs in a unit test rather than a case, and their names, are in
+  `tests/README.md`, "Unit tests".
 - zest constructs a fresh suite object for every `ZEST_CASE`: no `reset()`
   / `clear()` helpers, shared initialization goes in the suite's
   constructor (`ZEST_SUITE(Name)` declares `struct NameTEST`). A
@@ -155,7 +137,7 @@ case.
 ## Tooling code (`tools/`)
 
 - Framework > mature library > handwritten: vitest's own concurrency
-  (`test.concurrent`, `maxConcurrency`) over a custom pool, `jsdiff` over a
+  (`test.concurrent`, `maxConcurrency`) over a custom pool, `diff` (jsdiff) over a
   hand-rolled diff, `util.parseArgs` over a custom argv parser; say why a
   library is trustworthy (downloads, maintenance, already in the tree). The
   one exception is byte-level twin code — the C++/TS annotation parsers —
@@ -165,7 +147,7 @@ case.
 - Naming: no abbreviated file names, no decorative section comments. New
   modules join the subsystem directory they belong to (`tools/testing`,
   `tools/client`, `tools/docs`, `tools/protocol`, `tools/compat`,
-  `tools/ecosystem`); a new directory needs a new subsystem, not a new file.
+  `tools/ecosystem`, `tools/github`, `tools/lint`); a new directory needs a new subsystem, not a new file.
   Framework and domain logic live in `tools/`; test directories keep only
   what must be there (package.json, tsconfig, thin vitest glue).
 - The tools' own tests sit beside the code they test as `*.test.ts`;
