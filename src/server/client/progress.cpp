@@ -4,6 +4,7 @@ import :feature.protocol;
 import :project.background;
 import :server.client;
 import :server.master;
+import :support.text;
 import :vfs.path;
 
 namespace clice {
@@ -89,7 +90,9 @@ void LSPClient::report_index_progress() {
         case Stage::End: {
             st.pass_active = false;
             if(st.token_active) {
-                st.reporter->end(std::format("Indexed {} files", p.dispatched));
+                auto failed = p.failed == 0 ? std::string() : std::format(", {} failed", p.failed);
+                st.reporter->end(
+                    std::format("Indexed {}{}", counted(p.indexed, "file", "files"), failed));
                 st.reporter.reset();
                 st.token_active = false;
             }

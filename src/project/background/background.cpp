@@ -74,6 +74,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                                         .diagnostics = std::move(result->skipped_diagnostics)};
                 }
                 indexed_units += 1;
+                current.indexed += 1;
                 LOG_INFO("[{}/{}] Indexed {} in {} ms", index, total, file_path, timer.ms());
                 LOG_PERF("index",
                          "progress={}/{} file={} bytes={} index_ms={} merge_ms={}",
@@ -284,6 +285,9 @@ async::task<> BackgroundIndex::feed(async::task_group<>& workers,
 }
 
 void BackgroundIndex::record(Fid file, LastAttempt attempt) {
+    if(attempt.failed) {
+        current.failed += 1;
+    }
     if(!attempt.failed && attempt.errors.empty()) {
         attempts.erase(file);
     } else {
@@ -362,7 +366,6 @@ async::task<> BackgroundIndex::run_pass() {
         [&](async::task_group<>& workers) { return feed(workers, pass, total, dispatched); });
 
     current.stage = Progress::Stage::End;
-    current.dispatched = dispatched;
     on_progress_changed.emit();
 
     // No dispatch loop takes from the queue any more.

@@ -303,8 +303,9 @@ ZEST_CASE(PassSnapshotBoundary) {
 
     ZASSERT(grew);
     ZASSERT(first_end.total == 2u);
-    ZASSERT(first_end.dispatched == 2u);
     ZASSERT(first_end.completed == 2u);
+    ZASSERT(first_end.indexed == 0u);
+    ZASSERT(first_end.failed == 2u);
     ZASSERT(f.queue.queued() == 1u);
 
     f.run_pass();
