@@ -9,5 +9,8 @@ __attribute__((objc_root_class))
 @interface Shape : Object <Named>
 @end
 
+@interface Mid : Shape
+@end
+
 @interface Pen : Object <Named>
 @end

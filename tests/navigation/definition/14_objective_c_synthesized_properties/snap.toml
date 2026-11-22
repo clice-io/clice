@@ -7,5 +7,9 @@ definition = ["@property int ⟦count⟧;"]
 [answers.superclass]
 definition = ["@property int ⟦width⟧;"]
 
+[answers.selector]
+wrong = "should reach the property, as a message to the accessor does: the accessor clang declares for it has no declaration of its own"
+definition = []
+
 [answers.subclass]
 definition = ["@property int ⟦count⟧;"]

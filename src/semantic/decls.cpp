@@ -777,8 +777,9 @@ auto objc_overridden(const clang::ObjCMethodDecl& method) -> llvm::SmallVector<O
         base && base->hasDefinition();
         base = base->getSuperClass()) {
         const auto* own = own_method(*base, method.getSelector(), method.isInstanceMethod());
-        overridden.push_back({base, own});
-        if(own && !own->isSynthesizedAccessorStub()) {
+        overridden.push_back({.objc_class = base, .method = own});
+        if(const auto* declared = own ? own->getCanonicalDecl() : nullptr;
+           declared && !declared->isImplicit() && !declared->isSynthesizedAccessorStub()) {
             break;
         }
     }

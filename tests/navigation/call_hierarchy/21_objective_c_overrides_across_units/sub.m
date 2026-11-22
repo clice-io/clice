@@ -9,6 +9,15 @@
 }
 @end
 
+@interface Deep : Mid
+@end
+
+@implementation Deep
+- (int)§(deep)count {
+    return 2;
+}
+@end
+
 @interface Nib : Pen
 @end
 

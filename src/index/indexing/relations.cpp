@@ -359,12 +359,25 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         return;
     }
 
+    // An accessor a property synthesizes in an @implementation has no place
+    // of its own: a call to it calls too the declaration of it a protocol or
+    // a superclass writes (decls::objc_declared), which a message to it
+    // names in the semantic map; that declaration's other implementations
+    // it never runs.
+    auto call_declared = [&](const clang::ObjCMethodDecl& called, clang::SourceRange name) {
+        const auto& declared = decls::objc_declared(called);
+        if(!declared.isImplicit() && decls::normalize(&declared) != decls::normalize(&called)) {
+            call(&declared, name);
+            add_self_relation(&declared, RelationKind::Direct, name);
+        }
+    };
+
     // A property's accessor clang declares is one symbol with the method
     // an @implementation, maybe in another unit, writes for it: a call
     // to one nothing writes finds no callee. A message naming one, or one
-    // an @synthesize declares, refers in the semantic map to what declares
-    // it (decls::objc_declared), and to the accessor here, where that
-    // method, and the other methods of its selector, find it.
+    // a property synthesizes, refers in the semantic map to what declares
+    // it, and to the accessor here, where that method, and the other
+    // methods of its selector, find it.
     if(auto* OME = node.get<clang::ObjCMessageExpr>()) {
         const auto* method = decls::objc_message_target(*OME);
         if(!method) {
@@ -372,6 +385,7 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         }
         auto name = decls::objc_message_name(*OME);
         call(method, name);
+        call_declared(*method, name);
         if(method->isImplicit() || method->isSynthesizedAccessorStub()) {
             add_self_relation(method,
                               decls::objc_untyped(*OME) ? RelationKind::Candidate
@@ -402,6 +416,7 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
             const auto* called =
                 decls::objc_dispatched(receiver, *method, method->isInstanceMethod());
             call(called, OPRE->getLocation());
+            call_declared(*called, OPRE->getLocation());
             add_self_relation(called, RelationKind::Reference, OPRE->getLocation());
             if(OPRE->isSuperReceiver()) {
                 add_self_relation(called, RelationKind::Direct, OPRE->getLocation());
