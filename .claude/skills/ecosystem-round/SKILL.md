@@ -125,6 +125,6 @@ the row's reproduce command in the job's `report.md` does, both orders.
 
 ## Then
 
-A real regression gets a fix with a regression test, a PR of its own (the pr
-skill). An old bug gets a board issue and a `known` entry. A false alarm of
+A real regression gets a fix with a regression test, a PR of its own (the
+pull-request skill). An old bug gets a board issue and a `known` entry. A false alarm of
 the framework gets fixed in `tools/ecosystem/`.

@@ -60,7 +60,8 @@ here. What clice adds on top:
   capability's status row and its section.
 - The formatter of step 4 in RULES.md's workflow is `pixi run format`
   (table padding, emphasis style). The spacing between Chinese and Latin
-  text is the writer's: CI's lint docs job checks it (autocorrect).
+  text is the writer's: nothing fixes it, and CI's autocorrect step only
+  reports it, without failing.
 - The workflow applies to generated regions too: after
   `docs-update` changes an en page, the zh page must
   receive the translated equivalent in the same PR — batched at the end of

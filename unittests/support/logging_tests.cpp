@@ -29,8 +29,8 @@ namespace {
 ZEST_SUITE(Logging) {
 
 ZEST_CASE(VersionInfoSet) {
-    // Guards the Bazel stamping (bazel/BUILD.bazel, `version_cpp`): an empty
-    // stamp would otherwise only show in crash logs.
+    // Guards the version Bazel writes into the binary (bazel/BUILD.bazel,
+    // `version_cpp`): an empty one would otherwise only show in crash logs.
     ZEXPECT(!clice::version.empty());
     ZEXPECT(!clice::target.empty());
 }

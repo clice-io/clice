@@ -17,10 +17,10 @@ skill adds the workflow, the hard rules and the pitfalls.
 2. Write the inputs, a `test.ts` only when the inherited script does not
    fit, a `README.md` only for a capability a reader should see (README,
    "Docs").
-3. Run it alone, on the box the build ran on (the build-and-test skill):
+3. Run it alone, where the build ran (the build-and-test skill):
    `CLICE_CASES=<topic>/<subtopic>/NN_name pixi run -e test-run cases-test`.
    `UPDATE_SNAPSHOTS=1` writes its `snap.toml` and prints what changed:
-   review every block like code. It is written on the box:
+   review every block like code. On a box it is written there:
    `box cp $id . <case dir>` brings it back before the next `box push`
    overwrites it. What clice gets wrong stays in the output, flagged
    known wrong (README, "Output").
