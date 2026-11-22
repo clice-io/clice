@@ -84,6 +84,23 @@ let pendingSocket: net.Socket | undefined;
 /// client mid-session and the successor must still wait for this exit.
 let child: cp.ChildProcess | undefined;
 
+/// Resolves once the server spawned last has exited. The LSP exit already
+/// told it to quit; the library tracks and kills only processes it spawned
+/// itself.
+async function retireChild(log: (line: string) => void): Promise<void> {
+    if (!child) {
+        return;
+    }
+    const previous = child;
+    await window.withProgress(
+        {
+            location: vscode.ProgressLocation.Window,
+            title: "clice: waiting for the previous server to exit",
+        },
+        () => retire(previous, { exit: 10_000, term: 5_000 }, log),
+    );
+}
+
 /// Set by deactivate: the extension host is going away, and a server
 /// started now would outlive it.
 let deactivating = false;
@@ -121,21 +138,9 @@ function makeServerOptions(
         if (!executable) {
             throw new Error("no clice executable available");
         }
-        if (child) {
-            // The LSP exit already told the old server to quit; the
-            // library tracks and kills only processes it spawned itself.
-            const previous = child;
-            await window.withProgress(
-                {
-                    location: vscode.ProgressLocation.Window,
-                    title: "clice: waiting for the previous server to exit",
-                },
-                () =>
-                    retire(previous, { exit: 10_000, term: 5_000 }, (line) => {
-                        channel.appendLine(line);
-                    }),
-            );
-        }
+        await retireChild((line) => {
+            channel.appendLine(line);
+        });
         refuseWhenDeactivating();
         child = cp.spawn(executable, ["serve"], { cwd: workspaceDirectory(), env: setting.env });
         child.on("error", (error) => {
@@ -260,6 +265,11 @@ async function startServer(context: ExtensionContext): Promise<void> {
                 // Stopping a hung server times out; start fresh regardless.
             }
             if (!enabled()) {
+                // No successor's spawn retires one that ignored the stop.
+                const channel = client.current.outputChannel;
+                await retireChild((line) => {
+                    channel.appendLine(line);
+                });
                 continue;
             }
             const problem = await validateSettings(context);
@@ -305,6 +315,10 @@ const restartFeature: StaticFeature = {
     clear: () => undefined,
 };
 
+/// The value of clice.enable the server follows. VS Code also reports a change
+/// in a scope another outranks, which changes nothing.
+let following = true;
+
 /// Set while a restart is offered: a change before the user answers joins
 /// the offer instead of stacking another one, as saving on every pause would.
 let offering = false;
@@ -328,11 +342,10 @@ async function onSettingsChanged(
     event: vscode.ConfigurationChangeEvent,
     context: ExtensionContext,
 ) {
-    if (event.affectsConfiguration("clice.enable")) {
-        // Also reported for a scope another outranks, which changes nothing.
-        if (enabled() !== client?.current.needsStop()) {
-            await startServer(context);
-        }
+    if (event.affectsConfiguration("clice.enable") && enabled() !== following) {
+        following = enabled();
+        // Restarted on the settings as they are now, the launch settings too.
+        await startServer(context);
         return;
     }
     if (!enabled()) {
@@ -441,6 +454,7 @@ export async function activate(context: ExtensionContext) {
     registerAliasRedirect(context);
     registerRefactorCommands(context);
 
+    following = enabled();
     await startServer(context);
 
     // Exposed for E2E tests to exercise custom requests directly.

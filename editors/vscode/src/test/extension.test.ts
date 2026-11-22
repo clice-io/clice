@@ -391,13 +391,18 @@ suite("conflicting extensions", function () {
         assert.deepStrictEqual(warnings, [conflictWarning("clangd")]);
     });
 
-    test("a dismissed warning stays dismissed as clice restarts", async function () {
+    test("a dismissed warning stays dismissed in the window", async function () {
         this.timeout(120 * 1000);
         installed = [clangd];
         extensionsChanged.fire();
         await warned(1);
         await vscode.commands.executeCommand("clice.restart");
         assert.ok(client().isRunning(), "clice runs");
+        const user = vscode.ConfigurationTarget.Global;
+        await vscode.workspace.getConfiguration("clangd").update("enable", false, user);
+        extensionsChanged.fire();
+        await vscode.workspace.getConfiguration("clangd").update("enable", true, user);
+        extensionsChanged.fire();
         assert.deepStrictEqual(warnings, [conflictWarning("clangd")]);
 
         // Another one is news.
@@ -429,8 +434,7 @@ suite("conflicting extensions", function () {
     });
 });
 
-// After the suite above, which starts clice; the suites below find it running
-// again.
+// The suites below find clice running again.
 suite("enable setting", function () {
     const settings = () => vscode.workspace.getConfiguration("clice");
     const disabled: Message = {
@@ -457,13 +461,14 @@ suite("enable setting", function () {
         await changed;
     }
 
-    suiteSetup(function () {
+    suiteSetup(async function () {
         if (!executable) {
             if (process.env.CI) {
                 throw new Error("CLICE_EXECUTABLE must be set in CI");
             }
             this.skip();
         }
+        await vscode.extensions.getExtension("clice-io.clice")?.activate();
         assert.ok(client().isRunning(), "clice runs");
     });
 
@@ -483,12 +488,15 @@ suite("enable setting", function () {
 
     teardown(async function () {
         this.timeout(120 * 1000);
-        for (const each of restore.splice(0)) {
-            each();
-        }
+        // The offer to restart that clearing clice.executable makes is
+        // answered while the messages are still the test's.
+        await settings().update("executable", undefined, vscode.ConfigurationTarget.Workspace);
         await settings().update("enable", undefined, vscode.ConfigurationTarget.Global);
         await settings().update("enable", undefined, vscode.ConfigurationTarget.Workspace);
         await until([client().onDidChangeState], () => client().isRunning(), "clice running again");
+        for (const each of restore.splice(0)) {
+            each();
+        }
     });
 
     test("a value another scope outranks changes nothing", async function () {
@@ -498,17 +506,41 @@ suite("enable setting", function () {
         assert.strictEqual(client().current.state, State.Running);
     });
 
+    test("a launch setting saved with an outranked clice.enable still offers a restart", async function () {
+        const folder = vscode.workspace.workspaceFolders?.[0];
+        assert.ok(folder, "the suite runs in a folder");
+        const file = path.join(folder.uri.fsPath, ".vscode", "settings.json");
+        const saved = fs.existsSync(file)
+            ? (JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>)
+            : {};
+        const executable = settings().get<string>("executable");
+        await change(async () => {
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            await fs.promises.writeFile(
+                file,
+                JSON.stringify({ ...saved, "clice.enable": true, "clice.executable": executable }),
+            );
+        });
+        assert.deepStrictEqual(notes, [
+            { text: "clice server settings changed.", actions: ["Restart Server"] },
+        ]);
+        assert.strictEqual(client().current.state, State.Running);
+    });
+
     test("off, the server stops and the commands say so; Enable turns it on", async function () {
         this.timeout(120 * 1000);
         const handle = client();
         await change(() =>
             settings().update("enable", false, vscode.ConfigurationTarget.Workspace),
         );
+        // The client says Stopped as soon as it starts stopping; the stop's
+        // own promise is its end.
         await until(
             [handle.onDidChangeState],
             () => handle.current.state === State.Stopped,
-            "the server stopped",
+            "the server stopping",
         );
+        await handle.current.stop();
         await vscode.commands.executeCommand("clice.restart");
         await vscode.commands.executeCommand("clice.switchSourceHeader");
         assert.deepStrictEqual(notes, [disabled, disabled]);
