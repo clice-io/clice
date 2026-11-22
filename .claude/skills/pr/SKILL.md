@@ -5,12 +5,13 @@ description: Read before committing, opening a PR, or checking on an open one �
 
 # PR Pipeline
 
-Branch (CLAUDE.md) → code → commit → self-review and fixes → checks, with the push and opening beside the build and tests → watch CI and threads until settled → report ready. Merging needs the maintainer's explicit authorization for this PR.
+Branch (CLAUDE.md) → code → commit → self-review and fixes → checks, with the push and opening beside the build and tests → watch CI and threads until settled → report ready → merge once the maintainer authorizes this PR.
 
 ## Commits and titles
 
-- Conventional commits, checked by CI: `<type>(<scope>): <short description>`, subject under 70 characters. Types: `feat`, `fix`, `refactor`, `chore`, `build`, `ci`, `docs`, `test`, `perf`, `style`, `revert`. Scopes: `src/` subdirectories or feature names, e.g. `completion`, `server`, `index`, `tests`, `document links`.
-- CI checks the head commit message on pushes and the PR title on pull requests. PRs are squash-merged with the title as the commit message, so the title is what lands in `main`.
+- Conventional commits, checked by CI: `<type>(<scope>): <short description>`, the scope optional, under 70 characters. Types: `feat`, `fix`, `refactor`, `chore`, `build`, `ci`, `docs`, `test`, `perf`, `style`, `revert`. Scopes: `src/` subdirectories or feature names, e.g. `completion`, `server`, `index`, `tests`, `document links`.
+- A title names one thing: no `;` or `,`. A PR whose changes seem to need a list is titled by what they share, and the parts go in the body.
+- CI checks the head commit message on pushes and the PR title on pull requests. A PR lands in `main` as one squash commit: the title is its subject, and its message is the PR body unless the merge writes its own (Merging).
 - An unpublished branch stacked on a predecessor that has since been squash-merged is rebased first, after `git fetch origin`, with `git rebase --onto origin/main <predecessor-tip>` — a plain `git rebase origin/main` replays the predecessor's commits one at a time and stops wherever their intermediate states differ from the squashed result. Never start a build or a suite on a tree with unresolved conflicts.
 
 ## Checks (every push, not just the first)
@@ -43,9 +44,10 @@ Commit all work first (`git status` clean): the reviewers read `git diff origin/
 
 - One PR is one complete, user-perceivable capability. Implementation stages order the work and isolate risk; they are commit layering, not PR boundaries.
 - The title follows the commit format above.
-- The body follows `.github/pull_request_template.md`. Never reference local file paths, private notes, internal stage names or ledger numbers ("PR 2", "batch C", bug-list ids), or other material a reader without this machine cannot see.
+- The body follows `.github/pull_request_template.md`. "Tests" holds only what CI does not show — the platforms and builds run outside it, an ecosystem round, measured numbers; what CI runs on every push, the unit tests and the cases, goes unsaid. Each push rewrites the body to the branch's final state; it never accumulates what each round fixed.
+- Never reference local file paths, private notes, internal stage names or ledger numbers ("PR 2", "batch C", bug-list ids), or other material a reader without this machine cannot see.
 - After `gh pr edit --body-file`, read the body back and check its length: an API timeout in a `gh pr view | gh pr edit` chain writes an empty body. Never pipe the two in one command.
-- An external contributor's PR gets its title and body rewritten before merge — the title is the squash commit, and the body must describe the post-review state, including fixes made on their behalf.
+- An external contributor's PR gets its title and body rewritten before merge — the title is the squash commit's subject, and the body must describe the post-review state, including fixes made on their behalf.
 
 ## Watching
 
@@ -61,3 +63,12 @@ A sustained loop, not a single check — a PR typically needs 5-6 rounds of chec
 
 - CI fully green, zero unresolved review threads, and every finding bots posted in review bodies handled → report to the maintainer that the PR is ready to merge: a one-paragraph summary of what review found and how it was addressed, plus every design decision taken while resolving threads (chosen vs. alternative), so the maintainer can accept or overturn them in one pass. Then stop.
 - The default bar stays high: elegant code, edge cases considered. "Merge now, clean up in a dedicated refactor PR later" is a real move in this project, but that trade-off is the maintainer's call, made case by case — never the agent's default.
+
+## Merging (only with the maintainer's authorization for this PR)
+
+```bash
+gh pr merge <N> --squash --match-head-commit <the head you verified> --body-file /tmp/merge-body-<N>.md
+```
+
+- The commit message is written for `git log`, not copied from the PR: 3–6 lines of plain prose, wrapped at 72 columns — what changes for the user, and why. No headings, lists, tables or test results; `(#N)` leads to the rest. Without `--body-file`, the message is the whole PR body.
+- Without `--subject`, the subject is the PR title with ` (#N)`. A `--subject` replaces it whole and has to end in ` (#N)` itself.

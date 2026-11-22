@@ -8,4 +8,4 @@
 
 ## Tests
 
-<!-- Which tests did you run locally? Did you add new tests for the change? -->
+<!-- Which tests does the change add? What did you verify that CI does not show (other platforms, real projects, measurements)? -->

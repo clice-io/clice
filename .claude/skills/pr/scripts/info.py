@@ -80,11 +80,18 @@ def main():
         print(f"  pending  {', '.join(check['name'] for check in pending)}")
 
     unresolved = sum(1 for thread in threads if not thread["isResolved"])
-    findings = sum(
-        1 for review in reviews if is_finding(review, clean(review["body"])[1])
+    findings = [
+        review for review in reviews if is_finding(review, clean(review["body"])[1])
+    ]
+    on_head = sum(
+        1
+        for review in findings
+        if review["commit"]
+        and view["headRefOid"].startswith(review["commit"]["abbreviatedOid"])
     )
     print(
-        f"review threads: {unresolved} unresolved of {len(threads)} · findings in review bodies: {findings}"
+        f"review threads: {unresolved} unresolved of {len(threads)} · findings in review bodies:"
+        f" {len(findings)}, {on_head} on the head commit"
     )
 
     print("last commits:")
