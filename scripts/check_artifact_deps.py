@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """Assert a packaged clice binary only depends on system dynamic libraries.
 
-macOS artifacts once silently linked conda's ``@rpath/libc++.1.dylib``; the
-binary loaded fine on the build machine (where the conda env was present) but
-would die anywhere else. Every test job passed because they all ran inside that
-same env — only the editor smoke test, by accident, exercised the binary in a
-fresh environment and failed with a 20-minute hang. This script turns that
-accidental sentinel into an explicit gate: it inspects the shipped binary's
-dynamic dependencies and rejects anything that resolves into a conda/pixi env
-instead of the OS.
+It inspects the shipped binary's dynamic dependencies and rejects anything
+that resolves into a conda/pixi env instead of the OS: such a binary loads on
+the build machine and in every test job, which run inside that env, and fails
+anywhere else.
 
 Windows (MinGW) binaries must not import a toolchain's runtime DLLs:
 libc++, libunwind, winpthreads (xclang links them statically) or the MSVC
@@ -27,11 +23,8 @@ from pathlib import Path
 
 # Linux NEEDED whitelist, derived from the real packaged x86_64-unknown-linux-gnu binary.
 # clice links the LLVM package's libc++ and libgcc statically, so a portable
-# build only pulls in the glibc runtime pieces. Notably libstdc++.so.6 /
-# libc++.so are absent: if either
-# ever appears it would resolve from the conda RUNPATH (see check_elf), which is
-# exactly the shape of the macOS libc++ incident. Keeping them out of the
-# whitelist makes that regression a hard failure.
+# build only pulls in the glibc runtime pieces. libstdc++.so.6 / libc++.so are
+# left out: either would resolve from the conda RUNPATH (see check_elf).
 LINUX_NEEDED_WHITELIST = {
     "libpthread.so.0",
     "librt.so.1",

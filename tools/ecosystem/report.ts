@@ -172,7 +172,7 @@ function knownSections(
     return lines;
 }
 
-function verdict(fresh: number, known: number): string {
+function summary(fresh: number, known: number): string {
     const failures = fresh === 0 ? "green" : `${String(fresh)} new failures`;
     return known === 0 ? failures : `${failures}, ${String(known)} known`;
 }
@@ -180,7 +180,7 @@ function verdict(fresh: number, known: number): string {
 export function regressionReport(now: Results, before?: Results): string {
     const old = before === undefined ? new Map<string, string>() : numbers(before);
     const lines = [
-        `# regression ${now.job} on ${now.platform}: ${verdict(now.failures.length, now.known.length)}`,
+        `# regression ${now.job} on ${now.platform}: ${summary(now.failures.length, now.known.length)}`,
         "",
         `${now.about}, commit \`${now.commit}\`; clice \`${now.clice}\`; sample seed \`${now.seed}\`.`,
         "",
@@ -263,7 +263,7 @@ function slowerSection(slower: PerfResults["slower"]): string[] {
 export function perfReport(now: PerfResults): string {
     const slower = now.slower.length === 0 ? "" : `, ${String(now.slower.length)} slower`;
     const lines = [
-        `# perf ${now.job} on ${now.platform}: ${verdict(now.failures.length, now.known.length)}${slower}`,
+        `# perf ${now.job} on ${now.platform}: ${summary(now.failures.length, now.known.length)}${slower}`,
         "",
         `${now.about}, commit \`${now.commit}\`; clice \`${now.clice}\`.`,
         ...failureSections(now.failures, PERF_KINDS),

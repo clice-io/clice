@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-// The verdict was made on the buffer, which a save does not change: the
+// The decision was made on the buffer, which a save does not change: the
 // header that gains its own include keeps the includer's context rather than
 // compiling twice for the save.
 test(async (t) => {

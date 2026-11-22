@@ -47,9 +47,8 @@ xclang = "==23.1.5.2"
 
 # nodejs bundles npm on every platform including win-arm64. Floor 24: the tools
 # run as bare .ts (type stripping, default since node 23.6) and the
-# cache tests use JSON.rawJSON (21+). python remains only for
-# scripts/symbolize.py; the scripts/ tools are not part of the TS
-# migration.
+# cache tests use JSON.rawJSON (21+). python runs
+# scripts/check_crash_symbols.py and the scripts/symbolize.py it drives.
 [feature.test.dependencies]
 python = ">=3.13"
 nodejs = ">=24"
@@ -353,7 +352,7 @@ format-markdown = "fd -H -e md -X prettier --write"
 format-json = "fd -H -e json -E package-lock.json -E clice-config.schema.json -X prettier --write"
 format-toml = "fd -H -e toml -X tombi format"
 format-yaml = """
-fd -H -e yaml -e yml -E '*.snap.yml' -X prettier --write && \
+fd -H -e yaml -e yml -X prettier --write && \
 fd -H "^\\.clang-(format|tidy)$" -X prettier --write --parser yaml
 """
 format = {
@@ -376,7 +375,7 @@ format-web = "fd -H -e js -e mjs -e ts -e css -X prettier.bat --write"
 format-markdown = "fd -H -e md -X prettier.bat --write"
 format-json = "fd -H -e json -E package-lock.json -E clice-config.schema.json -X prettier.bat --write"
 format-yaml = """
-fd -H -e yaml -e yml -E '*.snap.yml' -X prettier.bat --write && \
+fd -H -e yaml -e yml -X prettier.bat --write && \
 fd -H "^\\.clang-(format|tidy)$" -X prettier.bat --write --parser yaml
 """
 

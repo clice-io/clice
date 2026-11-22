@@ -34,7 +34,6 @@
 # Build & Toolchain
 *build*/
 !/src/**/*build*/
-!/.claude/skills/*build*/
 temp/
 .cache/
 
@@ -63,8 +62,6 @@ node_modules/
 # Python & Testing
 __pycache__/
 /docs/cards/
-.pytest_cache/
-unittests/Local/
 
 # IDEs & Editors
 /.vscode/*
@@ -83,6 +80,6 @@ unittests/Local/
 .claude/*
 !.claude/CLAUDE.md
 !.claude/skills/
-!.claude/skills/build/
+!.claude/skills/build-and-test/
 /user.bazelrc
 MODULE.bazel.lock
