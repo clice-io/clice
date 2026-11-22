@@ -271,14 +271,14 @@ std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
     };
 
     std::vector<Candidate> candidates;
-    auto add = [&](llvm::StringRef name, bool system, bool past_quoted) {
-        bool angled = delimiters.angled_for(name).value_or(system);
+    auto add = [&](llvm::StringRef name, bool system, bool past_quoted, bool toolchain) {
+        bool angled = toolchain || delimiters.angled_for(name).value_or(system);
         bool internal = past_quoted && internal_header(name);
         candidates.push_back({name.str(), angled, false, internal});
         candidates.push_back({name.str(), !angled, true, internal});
     };
     if(auto relative = below(resolved_directory)) {
-        add(*relative, false, false);
+        add(*relative, false, false, false);
     }
     for(auto [index, dir]: views::enumerate(resolved_dirs)) {
         auto relative = below(dir);
@@ -287,8 +287,9 @@ std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
         }
         bool past_quoted = static_cast<std::size_t>(index) >= search.angled_start_idx;
         bool system = static_cast<std::size_t>(index) >= search.system_start_idx;
-        if(!search.dirs[index].framework) {
-            add(*relative, system, past_quoted);
+        auto& searched = search.dirs[index];
+        if(!searched.framework) {
+            add(*relative, system, past_quoted, searched.driver);
             continue;
         }
         auto [bundle, inside] = relative->split('/');
@@ -300,7 +301,7 @@ std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
         auto [headers, rest] = inside.split('/');
         if(bundle.consume_back(".framework") && !rest.empty() &&
            (headers == "Headers" || headers == "PrivateHeaders")) {
-            add((bundle + "/" + rest).str(), true, past_quoted);
+            add((bundle + "/" + rest).str(), true, past_quoted, searched.driver);
         }
     }
     ranges::stable_sort(candidates, {}, [](const Candidate& candidate) {
@@ -330,13 +331,15 @@ std::string IncludeArguments::rewrite(llvm::StringRef argument) const {
     if(!angled) {
         return argument.str();
     }
-    auto found = [&](bool as_angled) -> std::optional<CanonicalPath> {
-        auto resolved = resolve_include(name, as_angled, directory, false, 0, search, scope);
-        return resolved ? std::optional(CanonicalPath(Spelling::absolute(resolved->path)))
-                        : std::nullopt;
+    auto resolve = [&](bool as_angled) {
+        return resolve_include(name, as_angled, directory, false, 0, search, scope);
     };
-    auto named = found(argument.front() == '<');
-    return named && named == found(*angled) ? delimit(name, *angled) : argument.str();
+    auto named = resolve(argument.front() == '<');
+    auto respelled = resolve(*angled);
+    bool same = named && respelled &&
+                CanonicalPath(Spelling::absolute(respelled->path)) ==
+                    CanonicalPath(Spelling::absolute(named->path));
+    return same ? delimit(name, *angled) : argument.str();
 }
 
 }  // namespace clice

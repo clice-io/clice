@@ -421,6 +421,36 @@ ZEST_CASE(FrameworkHeaderArgument) {
     ZEXPECT(arguments.of(internal) == std::optional<std::string>("<Foo/Internal.h>"));
 }
 
+ZEST_CASE(ToolchainHeadersStayAngled) {
+    /// A pattern asking for quotes changes the delimiters of a header
+    /// -isystem finds, never those of the toolchain's own headers.
+    TempDir tmp;
+    tmp.touch("vendor/acme.h");
+    tmp.touch("toolchain/limits.h");
+    tmp.touch("src/main.cpp");
+
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("vendor")});
+    config.dirs.push_back({.path = tmp.path("toolchain"), .driver = true});
+
+    IncludeDelimiters delimiters;
+    auto everything = kotatsu::GlobPattern::create("**");
+    ZASSERT(everything);
+    delimiters.quoted.push_back(std::move(*everything));
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    IncludeArguments arguments(config,
+                               delimiters,
+                               Spelling::absolute(tmp.path("src/main.cpp")),
+                               scope);
+    auto header = [&](llvm::StringRef path) {
+        return CanonicalPath(Spelling::absolute(tmp.path(path)));
+    };
+    ZEXPECT(arguments.of(header("vendor/acme.h")) == std::optional<std::string>(R"("acme.h")"));
+    ZEXPECT(arguments.of(header("toolchain/limits.h")) == std::optional<std::string>("<limits.h>"));
+}
+
 ZEST_CASE(FirstFrameworkWins) {
     /// As in clang, the first framework directory holding a framework is
     /// its only one: a header it lacks is not looked for in a later copy of

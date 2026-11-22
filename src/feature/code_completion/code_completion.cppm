@@ -99,8 +99,8 @@ struct CodeCompletionOptions {
                   "the pragma's. Where the delimiters asked for would find "
                   "another header or none, as angle brackets do for a "
                   "header next to the file, the include takes the other "
-                  "ones. The standard library's headers always take angle "
-                  "brackets.")
+                  "ones. The headers of the toolchain's own directories, "
+                  "the standard library's, always take angle brackets.")
     std::vector<std::string> angled_includes;
 
     KANNOTATE(&quoted_includes,

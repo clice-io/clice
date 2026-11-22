@@ -107,14 +107,14 @@ public:
     /// search directories (resolved, however the command spells them) —
     /// whichever of these the command's lookup order actually resolves to
     /// `header`, since a shorter one can name a same-named file in an
-    /// earlier directory. Its delimiters are the ones `delimiters` asks
-    /// for, else angle brackets for a header found through a system
-    /// directory (-isystem, -idirafter, the toolchain's) or a framework,
-    /// quotes for any other; the other ones where these find another
-    /// header or none. None when that names a library's
-    /// internal header, which its public headers include and its users
-    /// never should: libstdc++'s and glibc's `bits/`, libc++'s
-    /// `__`-prefixed directories and files.
+    /// earlier directory. Its delimiters are angle brackets for a header
+    /// found through the toolchain's own directories, else the ones
+    /// `delimiters` asks for, else angle brackets for one found through a
+    /// system directory (-isystem, -idirafter) or a framework, quotes for
+    /// any other; the other ones where these find another header or none.
+    /// None when that names a library's internal header, which its public
+    /// headers include and its users never should: libstdc++'s and glibc's
+    /// `bits/`, libc++'s `__`-prefixed directories and files.
     std::optional<std::string> of(CanonicalRef header);
 
     /// `argument`, quotes or brackets included, as a header's IWYU pragma
