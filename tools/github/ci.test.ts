@@ -52,8 +52,42 @@ describe("summarize and report", () => {
         expect(lines).toContain(
             `  failed   ${String(summary.failed[0]?.job.id)}  test / linux — step "Run cases"`,
         );
-        expect(lines).toContain("  running  test / windows");
+        expect(lines).toContain(`  running  ${String(summary.running[0]?.id)}  test / windows`);
         expect(lines).toContain("  queued   test / macos");
+    });
+
+    test("a running job says the step it is at and for how long", () => {
+        const now = Date.parse("2026-11-22T12:00:00Z");
+        const building = {
+            ...job("test / linux / build", "in_progress"),
+            started_at: "2026-11-22T11:30:00Z",
+            steps: [
+                {
+                    name: "Set up job",
+                    status: "completed",
+                    conclusion: "success",
+                    started_at: "2026-11-22T11:30:00Z",
+                },
+                {
+                    name: "Build",
+                    status: "in_progress",
+                    conclusion: null,
+                    started_at: "2026-11-22T11:37:30Z",
+                },
+            ],
+        };
+        const starting = {
+            ...job("test / macos / build", "in_progress"),
+            started_at: "2026-11-22T11:59:30Z",
+            steps: [],
+        };
+        const lines = report("#1", [summarize(run("in_progress"), [building, starting])], now);
+        expect(lines).toContain(
+            `  running  ${String(building.id)}  test / linux / build — step "Build" for 22 min`,
+        );
+        expect(lines).toContain(
+            `  running  ${String(starting.id)}  test / macos / build for under a minute`,
+        );
     });
 
     test("a finished run is passed or names its failures", () => {

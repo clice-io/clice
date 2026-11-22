@@ -24,6 +24,7 @@ export interface Step {
     name: string;
     status: string;
     conclusion: string | null;
+    started_at?: string | null;
 }
 
 export interface Job {
@@ -33,6 +34,7 @@ export interface Job {
     status: string;
     conclusion: string | null;
     html_url: string;
+    started_at?: string | null;
     steps?: Step[];
 }
 
@@ -115,9 +117,30 @@ function endedWithoutFailedJob(summary: RunSummary): boolean {
     );
 }
 
+/// A running job's line: the step it is at and since when, which tells a slow
+/// job from a stuck one while its log does not exist yet.
+function runningLine(job: Job, now: number): string {
+    const step = job.steps?.find((each) => each.status === "in_progress");
+    const since = step?.started_at ?? job.started_at;
+    const minutes = since ? Math.floor((now - Date.parse(since)) / 60_000) : undefined;
+    return (
+        `  running  ${String(job.id)}  ${job.name}` +
+        (step === undefined ? "" : ` — step "${step.name}"`) +
+        (minutes === undefined
+            ? ""
+            : minutes < 1
+              ? " for under a minute"
+              : ` for ${String(minutes)} min`)
+    );
+}
+
 /// The lines `status` prints: the result over every run first, then each
 /// run's counts, failed jobs and the jobs still going.
-export function report(label: string, summaries: readonly RunSummary[]): string[] {
+export function report(
+    label: string,
+    summaries: readonly RunSummary[],
+    now: number = Date.now(),
+): string[] {
     if (summaries.length === 0) {
         return [`${label}: no CI run yet`];
     }
@@ -171,15 +194,12 @@ export function report(label: string, summaries: readonly RunSummary[]): string[
                     (step === undefined ? "" : ` — step "${step}"`),
             );
         }
-        for (const [word, jobs] of [
-            ["running", summary.running],
-            ["queued", summary.queued],
-        ] as const) {
-            if (jobs.length > 0) {
-                const names = jobs.slice(0, 6).map((job) => job.name);
-                const more = jobs.length > 6 ? `, and ${jobs.length - 6} more` : "";
-                lines.push(`  ${word.padEnd(8)} ${names.join(", ")}${more}`);
-            }
+        lines.push(...summary.running.map((job) => runningLine(job, now)));
+        const { queued } = summary;
+        if (queued.length > 0) {
+            const names = queued.slice(0, 6).map((job) => job.name);
+            const more = queued.length > 6 ? `, and ${String(queued.length - 6)} more` : "";
+            lines.push(`  queued   ${names.join(", ")}${more}`);
         }
     }
     return lines;
