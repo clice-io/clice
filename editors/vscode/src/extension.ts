@@ -105,10 +105,12 @@ async function retireChild(log: (line: string) => void): Promise<void> {
 /// started now would outlive it.
 let deactivating = false;
 
-function refuseWhenDeactivating(socket?: net.Socket): void {
-    if (deactivating) {
+/// Every start passes here, the client library's own restarts after a crash
+/// included: none while clice.enable is off.
+function refuseToStart(socket?: net.Socket): void {
+    if (deactivating || !enabled()) {
         socket?.destroy();
-        throw new Error("clice is shutting down");
+        throw new Error(deactivating ? "clice is shutting down" : "clice is disabled");
     }
 }
 
@@ -121,7 +123,7 @@ function makeServerOptions(
     channel: vscode.OutputChannel,
 ): ServerOptions {
     return async (): Promise<StreamInfo | cp.ChildProcess> => {
-        refuseWhenDeactivating();
+        refuseToStart();
         const setting = getSetting();
         if (setting.mode === "socket") {
             const socket = pendingSocket;
@@ -131,7 +133,7 @@ function makeServerOptions(
             }
             // Library-initiated restart after a crash: no validation ran.
             const fresh = await connectSocket(setting.host, setting.port);
-            refuseWhenDeactivating(fresh);
+            refuseToStart(fresh);
             return { reader: fresh, writer: fresh };
         }
         const executable = setting.executable ?? bundledExecutable(context);
@@ -141,7 +143,7 @@ function makeServerOptions(
         await retireChild((line) => {
             channel.appendLine(line);
         });
-        refuseWhenDeactivating();
+        refuseToStart();
         child = cp.spawn(executable, ["serve"], { cwd: workspaceDirectory(), env: setting.env });
         child.on("error", (error) => {
             channel.appendLine(`clice spawn failed: ${error.message}`);
