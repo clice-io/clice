@@ -157,6 +157,16 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
         error.path = std::move(path);
     };
 
+    for(auto [name, field]: {
+            std::pair{"pch_budget_bytes", &CacheSettings::pch_budget_bytes},
+            {"pcm_budget_bytes", &CacheSettings::pcm_budget_bytes}
+    }) {
+        if(cache.*field == 0) {
+            problem("a cache budget must be at least 1 byte", {"cache", name});
+            cache.*field = CacheSettings().*field;
+        }
+    }
+
     // Zero workers or a zero limit is never a runnable setting: an error,
     // and the field's born-valid default meanwhile.
     WorkersSettings workers_defaults;
