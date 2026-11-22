@@ -248,6 +248,15 @@ export function copyRoot(prefix: string): string {
     return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}é中😀-`)));
 }
 
+/// Remove a copy once no process of its test runs. Not `fs.rmSync`: on
+/// Windows, over a directory a process still holds and a name past ASCII,
+/// it ends the calling process at once (exit 127, nothing printed), where
+/// this throws EBUSY, after retries that outlast a server's workers
+/// exiting once it was killed.
+export async function removeCopy(root: string): Promise<void> {
+    await fs.promises.rm(root, { recursive: true, force: true, maxRetries: 10 });
+}
+
 /// Copy the inputs of `dir` to `root`: markers stripped, `*.in` with
 /// `${WS}` replaced, any other file byte for byte. Returns the copy's file
 /// names.

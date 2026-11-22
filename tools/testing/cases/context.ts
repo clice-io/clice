@@ -1,7 +1,6 @@
 /// What a scenario is handed, `t`, and how one registered test runs and
 /// leaves its output.
 
-import * as fs from "node:fs";
 import * as path from "node:path";
 import { running } from "../../client/process.ts";
 import { Workspace } from "../../client/workspace.ts";
@@ -16,14 +15,15 @@ import {
 import { block, type ShowOptions, type Shown } from "../render/shown.ts";
 import { gateLogs, keepLogs, type Faults, type Started } from "../logs/logs.ts";
 import { Serve, type ServerOptions } from "../server/serve.ts";
-import { SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
+import { announceFailure, SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
 import { markerOf, runAnswers } from "./answers.ts";
 import { at, locate, type Anchor, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
 import type { Case } from "./case.ts";
 import { Disk } from "./disk.ts";
 import { Output, type Blocks } from "./output.ts";
-import { copyRoot, materialize } from "./project.ts";
-import type { Registered, TestOptions } from "./script.ts";
+import { Processes } from "./processes.ts";
+import { copyRoot, materialize, removeCopy } from "./project.ts";
+import { testName, type Registered } from "./script.ts";
 
 export interface TestContext {
     /// The copy's root.
@@ -68,10 +68,13 @@ class TestRun implements TestContext {
     readonly output = new Output();
     readonly disk: Disk;
     private readonly case: Case;
+    /// `<case> > <test>`, as the runner names it.
+    private readonly name: string;
     private readonly workspace: Workspace;
     private readonly steps = new StepRecord();
     private readonly errors: RegExp[];
     private readonly serves: Serve[] = [];
+    private readonly processes = new Processes();
     /// The commands the test ran, and how those that died unasked ended.
     private readonly commands: Started[] = [];
     private readonly deaths: string[] = [];
@@ -80,14 +83,20 @@ class TestRun implements TestContext {
     /// The kills the test's commands were told to cause so far.
     private kills = 0;
 
-    constructor(c: Case, options: TestOptions) {
+    constructor(c: Case, registered: Registered & { kind: "test" }) {
         this.case = c;
+        this.name = `${c.id} > ${testName(registered)}`;
         this.root = copyRoot("clice-case-");
         this.temp = copyRoot("t");
         this.workspace = new Workspace(this.root);
         this.disk = new Disk(this.root, c.project, this.steps);
-        this.errors = (options.errors ?? []).map((source) => new RegExp(source));
+        this.errors = (registered.options.errors ?? []).map((source) => new RegExp(source));
         materialize(c.dir, this.root);
+    }
+
+    /// Run the test's script, every process it starts the test's.
+    script(fn: (t: TestContext) => Promise<void>): Promise<void> {
+        return this.processes.run(() => fn(this));
     }
 
     /// The project's databases, unless the test wrote one, before the first
@@ -219,15 +228,18 @@ class TestRun implements TestContext {
         });
     }
 
-    /// Shut down and gate every server; returns what failed.
-    async finish(failed: boolean): Promise<unknown[]> {
+    /// Shut down and gate every server, end the processes left, remove the
+    /// copy; returns what failed.
+    async finish(failure: { error: unknown } | undefined): Promise<unknown[]> {
+        const failed = failure !== undefined;
         if (failed) {
-            console.log(`steps:\n${this.steps.render()}`);
+            announceFailure(this.name, failure.error, this.steps);
         }
         const errors: unknown[] = this.deaths.map((death) => new Error(death));
         for (const s of this.serves) {
             errors.push(...(await s.finish(failed)));
         }
+        await this.processes.end();
         errors.push(
             ...gateLogs(
                 this.root,
@@ -242,8 +254,7 @@ class TestRun implements TestContext {
         );
         keepLogs(this.case.id, this.root);
         if (process.env["CLICE_KEEP_WORKSPACE"] === undefined) {
-            this.workspace.remove();
-            fs.rmSync(this.temp, { recursive: true, force: true });
+            await Promise.all([removeCopy(this.root), removeCopy(this.temp)]);
         } else {
             console.log(`workspace kept at ${this.root}, temporary directory at ${this.temp}`);
         }
@@ -254,15 +265,15 @@ class TestRun implements TestContext {
 /// Run one registered test of a case; returns its blocks.
 export async function runRegistered(c: Case, registered: Registered): Promise<Blocks> {
     if (registered.kind === "answers") {
-        return runAnswers(c, registered.options, registered.fn);
+        return runAnswers(c, registered);
     }
-    const run = new TestRun(c, registered.options);
+    const run = new TestRun(c, registered);
     let failure: { error: unknown } | undefined;
     try {
-        await withTimeout(registered.fn(run), SCRIPT_DEADLINE_MS, "the test hung");
+        await withTimeout(run.script(registered.fn), SCRIPT_DEADLINE_MS, "the test hung");
     } catch (error) {
         failure = { error };
     }
-    throwFailures(failure, await run.finish(failure !== undefined));
+    throwFailures(failure, await run.finish(failure));
     return run.output.blocks;
 }

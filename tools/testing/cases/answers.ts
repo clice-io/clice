@@ -2,7 +2,6 @@
 /// wrote it, once on `clice inspect` and once on a real server, each over
 /// its own copy, and the two must show the same.
 
-import * as fs from "node:fs";
 import * as proto from "vscode-languageserver-protocol";
 import { Workspace } from "../../client/workspace.ts";
 import { runCommand } from "../cli/run.ts";
@@ -13,13 +12,14 @@ import { block, type ShowOptions, type Shown } from "../render/shown.ts";
 import { plain, type Table } from "../render/value.ts";
 import { gateLogs, keepLogs, type Started } from "../logs/logs.ts";
 import { Serve } from "../server/serve.ts";
-import { SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
+import { announceFailure, SCRIPT_DEADLINE_MS, StepRecord, throwFailures } from "../server/steps.ts";
 import { at, type MarkerAnchor, type TextAnchor } from "./anchors.ts";
 import type { Case } from "./case.ts";
 import { Disk } from "./disk.ts";
 import { Output, writeSnapshot, type Blocks } from "./output.ts";
-import { copyRoot, HEADER, materialize, SOURCE, writeDatabases } from "./project.ts";
-import type { AnswersOptions } from "./script.ts";
+import { Processes } from "./processes.ts";
+import { copyRoot, HEADER, materialize, removeCopy, SOURCE, writeDatabases } from "./project.ts";
+import { testName, type AnswersOptions, type Registered } from "./script.ts";
 
 /// The requests an answers test asks, the same on both clients.
 const REQUESTS = [
@@ -153,10 +153,10 @@ function copy(c: Case, prefix: string): { root: string; copied: string[] } {
     return { root, copied };
 }
 
-function remove(c: Case, root: string): void {
+async function remove(c: Case, root: string): Promise<void> {
     keepLogs(c.id, root);
     if (process.env["CLICE_KEEP_WORKSPACE"] === undefined) {
-        fs.rmSync(root, { recursive: true, force: true });
+        await removeCopy(root);
     } else {
         console.log(`workspace kept at ${root}`);
     }
@@ -164,6 +164,7 @@ function remove(c: Case, root: string): void {
 
 async function onInspect(
     c: Case,
+    name: string,
     options: AnswersOptions,
     fn: (a: AnswersContext) => Promise<void>,
 ): Promise<Shows> {
@@ -192,15 +193,18 @@ async function onInspect(
         gateCompile(c, "clice inspect", await client.compileErrors());
         gateIndex(c, client.indexDifferences());
     };
+    const processes = new Processes();
     let failure: { error: unknown } | undefined;
     try {
-        await withTimeout(run(), SCRIPT_DEADLINE_MS, "the test hung");
+        await withTimeout(processes.run(run), SCRIPT_DEADLINE_MS, "the test hung");
     } catch (error) {
         failure = { error };
+        announceFailure(`${name} on clice inspect`, error);
     }
+    await processes.end();
     client.close();
     const gated = gateLogs(root, [...indexed, ...client.started], {}, failure !== undefined);
-    remove(c, root);
+    await remove(c, root);
     throwFailures(failure, gated);
     return shows;
 }
@@ -221,6 +225,7 @@ function opened(c: Case, copied: readonly string[]): string[] {
 
 async function onServer(
     c: Case,
+    name: string,
     options: AnswersOptions,
     fn: (a: AnswersContext) => Promise<void>,
 ): Promise<Shows> {
@@ -255,16 +260,19 @@ async function onServer(
         await fn(contextOf(c, s, root, shows));
         await s.stop();
     };
+    const processes = new Processes();
     let failure: { error: unknown } | undefined;
     try {
-        await withTimeout(run(), SCRIPT_DEADLINE_MS, "the test hung");
+        await withTimeout(processes.run(run), SCRIPT_DEADLINE_MS, "the test hung");
     } catch (error) {
         failure = { error };
-        console.log(`steps:\n${steps.render()}`);
+        announceFailure(`${name} on the server`, error, steps);
     }
     const failed = failure !== undefined;
-    const gated = [...(await s.finish(failed)), ...gateLogs(root, s.started(), {}, failed)];
-    remove(c, root);
+    const finished = await s.finish(failed);
+    await processes.end();
+    const gated = [...finished, ...gateLogs(root, s.started(), {}, failed)];
+    await remove(c, root);
     throwFailures(failure, gated);
     return shows;
 }
@@ -281,16 +289,17 @@ function apart(inspect: Blocks, server: Blocks): Blocks {
 /// Run an answers test on the clients it names; returns its blocks.
 export async function runAnswers(
     c: Case,
-    options: AnswersOptions,
-    fn: (a: AnswersContext) => Promise<void>,
+    registered: Registered & { kind: "answers" },
 ): Promise<Blocks> {
+    const { options, fn } = registered;
+    const name = `${c.id} > ${testName(registered)}`;
     const only = options.paths;
     const runs: Promise<{ client: string; shows: Shows }>[] = [];
     if (only === undefined || !("server" in only)) {
-        runs.push(onInspect(c, options, fn).then((shows) => ({ client: "inspect", shows })));
+        runs.push(onInspect(c, name, options, fn).then((shows) => ({ client: "inspect", shows })));
     }
     if (only === undefined || !("inspect" in only)) {
-        runs.push(onServer(c, options, fn).then((shows) => ({ client: "server", shows })));
+        runs.push(onServer(c, name, options, fn).then((shows) => ({ client: "server", shows })));
     }
     // Both run to the end, so neither outlives the test.
     const settled = await Promise.allSettled(runs);
