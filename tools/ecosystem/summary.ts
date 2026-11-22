@@ -1,22 +1,22 @@
-/// A round of the ecosystem workflow read in one place: every job's new
-/// failures, each beside whether earlier rounds swept its file, the
-/// regression numbers that moved since the round before, and every perf
+/// A run of the ecosystem workflow read in one place: every job's new
+/// failures, each beside whether earlier runs swept its file, the
+/// regression numbers that moved since the run before, and every perf
 /// measure slower than the baseline that another platform or the night
 /// before confirms, by ratio, with what makes it suspect. The
-/// workflow's last job writes it as the round's summary; here it also
-/// downloads the logs of what it flags (the ecosystem-round skill).
+/// workflow's last job writes it as the run's summary; here it also
+/// downloads the logs of what it flags (the ecosystem-runs skill).
 ///
 /// Usage:
-///   node tools/ecosystem/round.ts <run id>|latest [options]
+///   node tools/ecosystem/summary.ts <run id>|latest [options]
 ///
 /// Options:
-///   --out <dir>        where the round goes (default temp/ecosystem/<run id>):
-///                      round.md, round.json, results/<artifact>/ of every
+///   --out <dir>        where the summary goes (default temp/ecosystem/<run id>):
+///                      summary.md, summary.json, results/<artifact>/ of every
 ///                      job, logs/<artifact>/ of the flagged ones
-///   --history <n>      the rounds on main before it to compare with (default 14)
+///   --history <n>      the runs on main before it to compare with (default 14)
 ///   --no-logs          leave the flagged jobs' logs undownloaded
 ///
-/// `latest` is the newest finished round on main. gh must be logged in, or
+/// `latest` is the newest finished run on main. gh must be logged in, or
 /// GH_TOKEN set.
 
 import { execFile } from "node:child_process";
@@ -31,8 +31,8 @@ import { PLATFORMS, type Platform } from "./project.ts";
 import type { Results } from "./regression/regression.ts";
 import { artifactName, type Failure, type JobKind } from "./script.ts";
 
-/// One job of a round: its results, or GitHub's word on why it has none.
-export interface RoundJob {
+/// One job of a run: its results, or GitHub's word on why it has none.
+export interface RunJob {
     kind: JobKind;
     name: string;
     platform: Platform;
@@ -42,19 +42,19 @@ export interface RoundJob {
     perf?: PerfResults;
 }
 
-/// A regression job's results in a round before.
+/// A regression job's results in a run before.
 export interface Earlier {
     run: number;
     date: string;
     results: Results;
 }
 
-export interface Round {
+export interface EcosystemRun {
     run: number;
-    jobs: RoundJob[];
-    /// By artifact, the job's results in the rounds before, newest first.
+    jobs: RunJob[];
+    /// By artifact, the job's results in the runs before, newest first.
     earlier: ReadonlyMap<string, readonly Earlier[]>;
-    /// By artifact, the perf job's results in the round before.
+    /// By artifact, the perf job's results in the run before.
     perfBefore: ReadonlyMap<string, PerfResults>;
 }
 
@@ -66,7 +66,7 @@ export interface PerfRow extends Slower {
     flags: string[];
 }
 
-export interface RoundData {
+export interface SummaryData {
     run: number;
     clice: string | undefined;
     baseline: string | undefined;
@@ -109,7 +109,7 @@ export interface RoundData {
 /// A perf measure this many times the baseline's is more than a day's
 /// commits change: the two servers likely did different work.
 const EXTREME = 3;
-/// A regression number this many times the round before's is listed.
+/// A regression number this many times the run before's is listed.
 const MOVED = 1.5;
 
 function failureOf(failure: Failure): string {
@@ -124,10 +124,10 @@ function sameFailure(a: Failure, b: Failure): boolean {
     return a.kind === b.kind && a.file === b.file && a.request === b.request;
 }
 
-/// Whether the rounds before swept a failing file, and how it did there: a
+/// Whether the runs before swept a failing file, and how it did there: a
 /// file newly sampled points at an old bug the sample exposed, one that
 /// passed before at a regression. A failure outside the sweep (the index,
-/// the setup) runs every round alike.
+/// the setup) runs the same in every run.
 export function historyOf(failure: Failure, earlier: readonly Earlier[]): string | undefined {
     if (failure.file === undefined || earlier.length === 0) {
         return undefined;
@@ -139,20 +139,20 @@ export function historyOf(failure: Failure, earlier: readonly Earlier[]): string
     const before = earlier.filter(failed);
     const last = before[0];
     if (last !== undefined) {
-        return `failed so in ${String(before.length)} of the ${String(earlier.length)} rounds before, last ${last.date}`;
+        return `failed so in ${String(before.length)} of the ${String(earlier.length)} runs before, last ${last.date}`;
     }
     if (failure.request === undefined) {
-        return `new: none of the ${String(earlier.length)} rounds before failed so`;
+        return `new: none of the ${String(earlier.length)} runs before failed so`;
     }
     const recorded = earlier.filter((each) => Array.isArray(each.results.sweep?.files));
     if (recorded.length === 0) {
-        return `unknown: the ${String(earlier.length)} rounds before recorded no swept files`;
+        return `unknown: the ${String(earlier.length)} runs before recorded no swept files`;
     }
     const swept = recorded.filter((each) => each.results.sweep?.files.includes(failure.file ?? ""));
     const lastSwept = swept[0];
     return lastSwept === undefined
-        ? `newly sampled: none of the ${String(recorded.length)} rounds before swept it, likely an old bug; run the reproduce command with the previous nightly`
-        : `swept in ${String(swept.length)} of the ${String(recorded.length)} rounds before (last ${lastSwept.date}), never failing so: a regression suspect`;
+        ? `newly sampled: none of the ${String(recorded.length)} runs before swept it, likely an old bug; run the reproduce command with the previous nightly`
+        : `swept in ${String(swept.length)} of the ${String(recorded.length)} runs before (last ${lastSwept.date}), never failing so: a regression suspect`;
 }
 
 interface Moved {
@@ -242,9 +242,9 @@ function roleGap(perf: PerfResults, row: Slower): string | undefined {
 
 /// The measures slower on so many jobs at once, across
 /// projects, that the measurement is the likelier cause than the code.
-function broadMeasures(perfs: readonly RoundJob[]): Map<string, string> {
+function broadMeasures(perfs: readonly RunJob[]): Map<string, string> {
     const measured = perfs.filter((job) => job.perf?.binaries.baseline !== undefined);
-    const byMeasure = new Map<string, RoundJob[]>();
+    const byMeasure = new Map<string, RunJob[]>();
     for (const job of measured) {
         const bases = new Set((job.perf?.slower ?? []).map((row) => baseMeasure(row.measure)));
         for (const base of bases) {
@@ -283,7 +283,7 @@ function covers(a: Slower, b: Slower): boolean {
 /// confirms. A measure of fewer than SAMPLES pairs confirms nothing: one
 /// cold sample a side varies severalfold between two runs of one binary.
 function perfRows(
-    jobs: readonly RoundJob[],
+    jobs: readonly RunJob[],
     before: ReadonlyMap<string, PerfResults>,
     broad: ReadonlyMap<string, string>,
 ): { rows: PerfRow[]; unconfirmed: number } {
@@ -366,13 +366,13 @@ function cell(text: string): string {
     return text.replaceAll("|", "\\|").replaceAll("\n", " ");
 }
 
-export function roundReport(round: Round): { text: string; data: RoundData } {
-    const regressions = round.jobs.filter((job) => job.regression !== undefined);
-    const perfs = round.jobs.filter((job) => job.perf !== undefined);
+export function summaryOf(current: EcosystemRun): { text: string; data: SummaryData } {
+    const regressions = current.jobs.filter((job) => job.regression !== undefined);
+    const perfs = current.jobs.filter((job) => job.perf !== undefined);
     const firstPerf = perfs.find((job) => job.perf?.binaries.baseline !== undefined)?.perf;
-    const red = round.jobs.flatMap((job) => {
+    const red = current.jobs.flatMap((job) => {
         const failures = job.regression?.failures ?? job.perf?.failures ?? [];
-        const earlier = round.earlier.get(job.artifact) ?? [];
+        const earlier = current.earlier.get(job.artifact) ?? [];
         return failures.length === 0
             ? []
             : [
@@ -391,7 +391,7 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
     });
     // A job cut short (its runner killed, its time out) can leave the
     // results a perf job saves as it goes, which name no failure yet.
-    const missing = round.jobs
+    const missing = current.jobs
         .filter(
             (job) =>
                 (job.regression ?? job.perf) === undefined ||
@@ -407,7 +407,7 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
             partial: (regression ?? perf) !== undefined,
         }));
     const moved = regressions.flatMap((job) => {
-        const before = round.earlier.get(job.artifact)?.[0]?.results;
+        const before = current.earlier.get(job.artifact)?.[0]?.results;
         const now = job.regression;
         if (before === undefined || now === undefined) {
             return [];
@@ -430,7 +430,7 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
     });
     moved.sort((a, b) => b.ratio - a.ratio);
     const broad = broadMeasures(perfs);
-    const { rows, unconfirmed } = perfRows(round.jobs, round.perfBefore, broad);
+    const { rows, unconfirmed } = perfRows(current.jobs, current.perfBefore, broad);
     const flagged = [
         ...new Set([
             ...red.map((job) => job.artifact),
@@ -442,8 +442,8 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
                 .map((row) => row.artifact),
         ]),
     ];
-    const data: RoundData = {
-        run: round.run,
+    const data: SummaryData = {
+        run: current.run,
         clice: (regressions[0]?.regression ?? perfs[0]?.perf)?.clice,
         baseline: firstPerf === undefined ? undefined : baselineOf(firstPerf),
         seed: regressions[0]?.regression?.seed,
@@ -457,7 +457,7 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
     };
 
     const lines = [
-        `# ecosystem round ${String(round.run)}: ${red.length === 0 && missing.length === 0 ? "green" : `${String(red.length)} red, ${String(missing.length)} cut short or without results`}, of ${String(round.jobs.length)} jobs`,
+        `# ecosystem run ${String(current.run)}: ${red.length === 0 && missing.length === 0 ? "green" : `${String(red.length)} red, ${String(missing.length)} cut short or without results`}, of ${String(current.jobs.length)} jobs`,
         "",
         [
             data.clice === undefined ? undefined : `clice \`${data.clice}\``,
@@ -514,11 +514,11 @@ export function roundReport(round: Round): { text: string; data: RoundData } {
     if (moved.length > 0) {
         lines.push(
             "",
-            `## Regression numbers ${String(MOVED)}× the round before's or more (${String(moved.length)})`,
+            `## Regression numbers ${String(MOVED)}× the run before's or more (${String(moved.length)})`,
             "",
-            "The sweep's numbers depend on the files it samples, which change every round.",
+            "The sweep's numbers depend on the files it samples, which change every run.",
             "",
-            "| job | platform | measure | this round | the round before | ratio |",
+            "| job | platform | measure | this run | the run before | ratio |",
             "|---|---|---|---:|---:|---:|",
             ...moved.map(
                 (each) =>
@@ -597,7 +597,7 @@ function readJson(file: string): unknown {
     return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : undefined;
 }
 
-/// The jobs of a round, as GitHub names them: `<kind> <job> (<platform>)`.
+/// The jobs of a run, as GitHub names them: `<kind> <job> (<platform>)`.
 const JOB_NAME = /^(regression|perf) (\S+) \((linux|macos|windows)\)$/;
 
 async function main(): Promise<void> {
@@ -611,10 +611,10 @@ async function main(): Promise<void> {
     });
     const [which] = positionals;
     if (which === undefined) {
-        console.error("usage: node tools/ecosystem/round.ts <run id>|latest [--out <dir>]");
+        console.error("usage: node tools/ecosystem/summary.ts <run id>|latest [--out <dir>]");
         process.exit(2);
     }
-    const rounds = JSON.parse(
+    const runs = JSON.parse(
         await gh([
             "run",
             "list",
@@ -630,9 +630,9 @@ async function main(): Promise<void> {
             "databaseId,createdAt",
         ]),
     ) as { databaseId: number; createdAt: string }[];
-    const run = which === "latest" ? rounds[0]?.databaseId : Number(which);
+    const run = which === "latest" ? runs[0]?.databaseId : Number(which);
     if (run === undefined || Number.isNaN(run)) {
-        console.error(`no round: ${which}`);
+        console.error(`no ecosystem run: ${which}`);
         process.exit(2);
     }
     const view = JSON.parse(await gh(["run", "view", String(run), "--json", "createdAt,jobs"])) as {
@@ -641,7 +641,7 @@ async function main(): Promise<void> {
     };
     const out = path.resolve(values.out ?? path.join(REPO_ROOT, "temp", "ecosystem", String(run)));
     // What an earlier run wrote there, and nothing else the directory holds.
-    for (const written of ["round.md", "round.json", "results", "earlier", "logs"]) {
+    for (const written of ["summary.md", "summary.json", "results", "earlier", "logs"]) {
         fs.rmSync(path.join(out, written), { recursive: true, force: true });
     }
     fs.mkdirSync(out, { recursive: true });
@@ -669,7 +669,7 @@ async function main(): Promise<void> {
         listed.map((job) => `ecosystem-${job.artifact}`).filter((name) => artifacts.has(name)),
         results,
     );
-    const jobs: RoundJob[] = listed.map((job) => {
+    const jobs: RunJob[] = listed.map((job) => {
         const file = path.join(results, `ecosystem-${job.artifact}`, "results.json");
         const regression =
             job.kind === "regression" ? (readJson(file) as Results | undefined) : undefined;
@@ -681,7 +681,7 @@ async function main(): Promise<void> {
         };
     });
 
-    const before = rounds
+    const before = runs
         .filter((each) => each.createdAt < view.createdAt && each.databaseId !== run)
         .slice(0, Number(values.history));
     const red = new Set(
@@ -690,7 +690,7 @@ async function main(): Promise<void> {
     const earlier = new Map<string, Earlier[]>();
     const perfBefore = new Map<string, PerfResults>();
     for (const [i, { databaseId, createdAt }] of before.entries()) {
-        // The round before every job's results, the rounds before that the
+        // The run before every job's results, the runs before that the
         // red regression jobs'.
         const wanted = jobs.filter((job) => i === 0 || red.has(job.artifact));
         const present = new Set(await artifactsOf(databaseId));
@@ -716,9 +716,9 @@ async function main(): Promise<void> {
         }
     }
 
-    const { text, data } = roundReport({ run, jobs, earlier, perfBefore });
-    fs.writeFileSync(path.join(out, "round.md"), text);
-    fs.writeFileSync(path.join(out, "round.json"), `${JSON.stringify(data, null, 1)}\n`);
+    const { text, data } = summaryOf({ run, jobs, earlier, perfBefore });
+    fs.writeFileSync(path.join(out, "summary.md"), text);
+    fs.writeFileSync(path.join(out, "summary.json"), `${JSON.stringify(data, null, 1)}\n`);
     if (!values["no-logs"]) {
         for (const artifact of data.flagged) {
             const name = `ecosystem-${artifact}-logs`;
@@ -728,7 +728,7 @@ async function main(): Promise<void> {
         }
     }
     console.log(
-        `${path.join(out, "round.md")}: ${String(data.red.length)} red, ${String(data.missing.length)} cut short or without results, ${String(data.perf.length)} perf measures slower and confirmed (${String(data.unconfirmed)} not), ${String(data.flagged.length)} flagged`,
+        `${path.join(out, "summary.md")}: ${String(data.red.length)} red, ${String(data.missing.length)} cut short or without results, ${String(data.perf.length)} perf measures slower and confirmed (${String(data.unconfirmed)} not), ${String(data.flagged.length)} flagged`,
     );
 }
 

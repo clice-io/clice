@@ -242,12 +242,12 @@ jobs:
       prerelease: true
     secrets: inherit
 
-  # The ecosystem round over the nightly's commit, with the programs its
+  # The ecosystem run over the nightly's commit, with the programs its
   # main run built (ecosystem.yml): a stable release tags a nightly whose
-  # round shows no new failure. Dispatched, not called, so the round keeps a
-  # run history of its own, which each round compares its numbers with. Its
-  # perf jobs measure clice against the nightly before, and on Sundays
-  # against clangd.
+  # ecosystem run shows no new failure. Dispatched, not called, so
+  # ecosystem.yml keeps a run history of its own, which each of its runs
+  # compares its numbers with. Its perf jobs measure clice against the
+  # nightly before, and on Sundays against clangd.
   ecosystem:
     needs: prepare
     if: needs.prepare.outputs.publish == 'true'
@@ -256,7 +256,7 @@ jobs:
     permissions:
       actions: write
     steps:
-      - name: Dispatch the round
+      - name: Dispatch the ecosystem run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN: ${{ needs.prepare.outputs.run }}

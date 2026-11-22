@@ -1,6 +1,6 @@
 /// A job's results as a person reads them: what failed, the failures the
 /// project knows apart, each with the command that reproduces it, and the
-/// numbers beside the previous round's.
+/// numbers beside the previous run's.
 
 import { fence } from "../testing/docs/pages.ts";
 import type { PeakMemory, Resident } from "./memory.ts";
@@ -164,7 +164,7 @@ function knownSections(
     if (unseen.length > 0) {
         lines.push(
             "",
-            `## Known issues not seen this round (${String(unseen.length)})`,
+            `## Known issues not seen this run (${String(unseen.length)})`,
             "",
             ...unseen.map((known) => `- ${known.issue}: ${known.why}`),
         );
@@ -184,7 +184,7 @@ export function regressionReport(now: Results, before?: Results): string {
         "",
         `${now.about}, commit \`${now.commit}\`; clice \`${now.clice}\`; sample seed \`${now.seed}\`.`,
         "",
-        "| | this round | the round before |",
+        "| | this run | the run before |",
         "| --- | --- | --- |",
         ...[...numbers(now)].map(
             ([label, value]) => `| ${label} | ${value} | ${old.get(label) ?? ""} |`,

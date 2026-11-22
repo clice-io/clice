@@ -1,17 +1,17 @@
 name: ecosystem
 
-# A round of the real projects (ecosystem/README.md): every regression and
+# A run of the real projects (ecosystem/README.md): every regression and
 # perf job, each on a runner of its own, over the commit of a main CI run
-# with the programs that run built. nightly.yml dispatches a round with the
+# with the programs that run built. nightly.yml dispatches a run with the
 # main CI run whose packages it promoted; a dispatch by hand names a CI run
 # that built them in the last three days, while its build-* artifacts live.
 # A job's summary lists its new failures, each with the command that
 # reproduces it, then the known ones; a regression job's numbers stand
-# beside the previous round's, a perf job's are clice's and the previous
+# beside the previous run's, a perf job's are clice's and the previous
 # nightly's side by side (clangd's instead with `clangd`), what clice spends
-# a tenth more of listed; the last job's summary gathers them all. The round
+# a tenth more of listed; the last job's summary gathers them all. The run
 # only reports: nothing waits on it but a stable release, which tags a
-# nightly whose round shows no new failure.
+# nightly whose run shows no new failure.
 on:
   workflow_dispatch:
     inputs:
@@ -23,8 +23,8 @@ on:
         type: boolean
         default: false
 
-# A dispatch on a branch replaces the branch's round still going; main's
-# rounds, one per nightly, all run.
+# A dispatch on a branch replaces the branch's run still going; main's
+# runs, one per nightly, all run.
 concurrency:
   group: ecosystem-${{ github.ref == 'refs/heads/main' && inputs.run || github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
@@ -59,8 +59,8 @@ jobs:
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
 
       # The perf jobs' baseline: the newest nightly this commit descends
-      # from, the one before the nightly this round tests; never a newer one,
-      # which a round run again days later would otherwise pick.
+      # from, the one before the nightly this run tests; never a newer one,
+      # which an ecosystem run rerun days later would otherwise pick.
       - name: Find the baseline nightly
         id: baseline
         if: ${{ !inputs.clangd }}
@@ -161,10 +161,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ${{ matrix.packages }}
 
-      # The newest finished round on main that holds this job's results:
+      # The newest finished run on main that holds this job's results:
       # what a regression job's numbers stand beside. None for a job no
-      # round ran.
-      - name: Fetch the previous round's results
+      # run had.
+      - name: Fetch the previous run's results
         if: matrix.kind == 'regression'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -247,8 +247,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-  # The round in one place (tools/ecosystem/round.ts): every job's new
-  # failures, beside whether the rounds before swept their files, the
+  # The run in one place (tools/ecosystem/summary.ts): every job's new
+  # failures, beside whether the runs before swept their files, the
   # regression numbers that moved, and the perf measures past their
   # threshold by ratio, each with what makes it suspect.
   report:
@@ -267,22 +267,22 @@ jobs:
           environments: node
           activate-environment: node
 
-      - name: Read the round
+      - name: Summarize the run
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           pixi run -e node install-tests
-          pixi run -e node node tools/ecosystem/round.ts "$GITHUB_RUN_ID" --out "$RUNNER_TEMP/round" --no-logs
+          pixi run -e node node tools/ecosystem/summary.ts "$GITHUB_RUN_ID" --out "$RUNNER_TEMP/summary" --no-logs
 
       - name: Summary
-        run: head -c 1000000 "$RUNNER_TEMP/round/round.md" >> "$GITHUB_STEP_SUMMARY"
+        run: head -c 1000000 "$RUNNER_TEMP/summary/summary.md" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload the round
+      - name: Upload the summary
         uses: actions/upload-artifact@v7
         with:
-          name: ecosystem-round
+          name: ecosystem-summary
           path: |
-            ${{ runner.temp }}/round/round.md
-            ${{ runner.temp }}/round/round.json
+            ${{ runner.temp }}/summary/summary.md
+            ${{ runner.temp }}/summary/summary.json
           retention-days: 90

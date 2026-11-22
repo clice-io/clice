@@ -48,7 +48,7 @@ builds (`main.yml`'s path filter) and every main commit gets a run of its
 own, so the pick lacks them only while that change's `main` run is red or
 still running; the nightly then fails before tagging, naming the change:
 rerun its run green (`gh run rerun <id> --failed`), or wait for it. Once tagged, it dispatches the ecosystem
-round (`ecosystem.yml`, `ecosystem/README.md`) on that commit with the
+run (`ecosystem.yml`, `ecosystem/README.md`) on that commit with the
 packages' CI run: every real project's regression and perf jobs, report
 only; perf measures clice against the nightly before (what clice spends 1.2×
 of is listed, 1.5× under three pairs of samples), on Sundays against clangd. A failed nightly just means no nightly
@@ -82,12 +82,12 @@ logs to releases by the commit hash; the release notes state the hash.
 Every step that tags or publishes needs the maintainer's explicit approval first.
 
 1. Freeze: stop merging features; the last nightlies of the freeze are the RCs.
-2. When a nightly is judged good — its ecosystem round shows no new
+2. When a nightly is judged good — its ecosystem run shows no new
    failure: every job green, a job whose failures the project already knows
-   (its `known` issues) green too — dispatch its round against clangd and
+   (its `known` issues) green too — dispatch its run against clangd and
    read its perf tables:
    `gh workflow run ecosystem.yml --ref main -f run=<its CI run> -f clangd=true`
-   (the round reads the run's `build-*` artifacts, which live three days:
+   (the ecosystem run reads the CI run's `build-*` artifacts, which live three days:
    for an older nightly, rerun its main workflow first).
 3. Write the release notes into a draft release of the tag on the GitHub
    release page (the download table format from the nightly notes is a

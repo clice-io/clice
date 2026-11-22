@@ -1,36 +1,36 @@
 ---
-name: ecosystem-round
-description: Read before reading a nightly ecosystem round (a red job, a slower perf measure, a number that moved) — the round script, where the logs are, telling a regression from an old bug a new sample exposed, and the A/B pitfalls before calling a perf change real.
+name: ecosystem-runs
+description: Read before reading a nightly ecosystem run (a red job, a slower perf measure, a number that moved) — the summary script, where the logs are, telling a regression from an old bug a new sample exposed, and the A/B pitfalls before calling a perf change real.
 ---
 
-# Reading an ecosystem round
+# Reading an ecosystem run
 
 `ecosystem/README.md` is the contract of the jobs; this is how to read what a
-round of them says.
+run of them says.
 
-## The round in one place
+## The run in one place
 
 ```bash
-node tools/ecosystem/round.ts latest          # or a run id of ecosystem.yml
+node tools/ecosystem/summary.ts latest          # or a run id of ecosystem.yml
 ```
 
 It writes `temp/ecosystem/<run>/`:
 
-- `round.md` — the red jobs, each failure with whether the rounds before swept
+- `summary.md` — the red jobs, each failure with whether the runs before swept
   its file and the command reproducing it; the jobs cut short or without
   results; the
-  regression numbers 1.5× the round before's; every slower perf measure of
+  regression numbers 1.5× the run before's; every slower perf measure of
   three pairs of samples or more that another platform or the night before
   confirms, by ratio, each with its flags, and how many fewer pairs or
   nothing confirm (in the jobs' `report.md`).
-  `round.json` holds the same.
+  `summary.json` holds the same.
 - `results/ecosystem-<artifact>/` — the `results.json` and `report.md` of
   every job that uploaded them (one listed without results has none).
 - `logs/ecosystem-<artifact>-logs/` — the logs of the flagged jobs. Any other
   job's: `gh run download <run> -n ecosystem-<artifact>-logs -D <dir>`.
 
-The workflow's last job, `report`, runs the same script: the round's summary
-page and its `ecosystem-round` artifact are this report. Results live 90 days,
+The workflow's last job, `report`, runs the same script: the run's summary
+page and its `ecosystem-summary` artifact are this report. Results live 90 days,
 logs 30.
 
 A logs artifact holds, under the runner's directories:
@@ -54,11 +54,11 @@ believing a memory or CPU number.
 
 ## A red job: a regression, or an old bug a new sample exposed?
 
-The sweep samples different files every round (the seed is the date), and
+The sweep samples different files every run (the seed is the date), and
 each platform's database lists other units, so the same date samples other
 files on each platform. The history line under each failure says:
 
-- **newly sampled** — none of the rounds before swept the file: most likely an
+- **newly sampled** — none of the runs before swept the file: most likely an
   old bug. Confirm it.
 - **swept before, never failing so** — a regression suspect.
 - **failed so before** — an old failure no `known` entry names yet.
@@ -79,7 +79,7 @@ its `runner heap` figures show where.
 
 ## A perf measure: before calling it real
 
-The flags in `round.md`:
+The flags in `summary.md`:
 
 - `broad` — the measure is slower on most jobs at once: the measurement is
   the likelier cause.
@@ -96,7 +96,7 @@ Pitfalls of the A/B:
 - **One sample.** A scenario of one run measures its start and its memory
   once per server, and one cold `initialize` varies severalfold between two
   runs of the same binary on one machine (68 and 470 ms on a macOS runner):
-  the round confirms no measure of fewer than three pairs, which a job's
+  the summary confirms no measure of fewer than three pairs, which a job's
   `report.md` lists all the same.
   Swap the binaries on the same box (`CLICE_EXECUTABLE=<old> … --baseline
 <new>`) and run one binary on both sides as the negative control: a real
@@ -105,7 +105,7 @@ Pitfalls of the A/B:
   day for a scenario of one run. Where one server's run changes what the
   next one starts from (a file cache dropped, files a churn rewrote), the
   order is in the numbers: a job's report says per row which server ran
-  first in its pairs. A round on main confirms a row only with the other
+  first in its pairs. A run on main confirms a row only with the other
   order.
 - **The OS file cache.** Dropped before each run that wipes a cache, on Linux
   and macOS (`--drop-caches`, through sudo); Windows has no command for it, so
@@ -115,7 +115,7 @@ Pitfalls of the A/B:
   every fresh server after it reindexes that unit again.
 - **Runners.** Each job gets a runner of its own (EPYC 7763, 9V74, 9V45, Xeon
   8573C on Linux): only one job's numbers compare, and a regression job's
-  numbers beside the round before's come from another machine, twice apart
+  numbers beside the run before's come from another machine, twice apart
   on the same code and sample (abseil/msvc's index, 290 and 535 s). The
   sweep's numbers depend on its sample too.
 

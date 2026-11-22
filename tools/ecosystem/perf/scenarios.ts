@@ -74,7 +74,7 @@ function round(value: number): number {
     return Math.round(value * 10) / 10;
 }
 
-/// The servers in the order they take the `run`th round of a scenario: the
+/// The servers in the order they take the `run`th pair of a scenario: the
 /// one running second finds the file cache the first left, so the order
 /// swaps every run, and day by day for a scenario of one run.
 export function runOrder(servers: readonly ServerName[], run: number, day: number): ServerName[] {
@@ -129,7 +129,7 @@ export class Perf {
         return { file: file.file, at, ...(query === undefined ? {} : { query }) };
     }
 
-    /// Every run of a scenario: `runs` rounds, the servers alternating in
+    /// Every run of a scenario: `runs` pairs, the servers alternating in
     /// each, every run a fresh server. A run that fails is a result too:
     /// the job goes on to the others.
     private async each(
