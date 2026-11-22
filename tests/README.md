@@ -91,8 +91,8 @@ either: no push runs them, `ecosystem/` at the repository root does
     fails it with.
 
 - **A file named `*.in`** is copied without the suffix, `${WS}` replaced by the
-  copy's root: a hand-written database or response file that needs absolute
-  paths. It carries no markers.
+  copy's root in forward slashes on every platform: a hand-written database or
+  response file that needs absolute paths. It carries no markers.
 - **Generated inputs** (many units, a large file) come from
   `t.disk.write(generate.units(18))`, never from loops in a test.
 - **Every test runs on a fresh copy** of the case's inputs. The project's
@@ -414,12 +414,19 @@ written by hand that a case can show.
 - **At teardown**, every test: every server exits cleanly, and the logs of
   every process the test started — its session found by pid anywhere under
   the copy, its stderr for one that logged no session — hold no anomaly,
-  worker crash or error-level line the test did not declare.
-- **On failure** a test prints its step tree, what `sync` reports still
-  running, and the warning and error lines of every server it started.
+  worker crash or error-level line the test did not declare. A process it
+  started that still runs once its servers exited — a command, one its
+  script spawned itself — is killed before the logs are read and the copy
+  removed.
+- **On failure** a test prints its name, its error and its step tree on
+  stderr before any teardown, then what `sync` reports still running, and
+  the warning and error lines of every server it started.
 - **Time.** `sync` gives up after 4 minutes and says what is left; a script
   still running after 250 s is hung, fails with its steps and is torn down;
-  the runner gives up on a test at 5 minutes.
+  the runner gives up on a test at 5 minutes. Before the cases start, the
+  runner makes the first case's toolchain query and waits it out: a
+  compiler's first start on a fresh Windows runner can take past the 10 s
+  clice gives a query.
 
 ## Coverage
 
