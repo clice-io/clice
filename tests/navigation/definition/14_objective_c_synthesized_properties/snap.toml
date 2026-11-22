@@ -8,8 +8,7 @@ definition = ["@property int ⟦count⟧;"]
 definition = ["@property int ⟦width⟧;"]
 
 [answers.selector]
-wrong = "should reach the property, as a message to the accessor does: the accessor clang declares for it has no declaration of its own"
-definition = []
+definition = ["@property int ⟦count⟧;"]
 
 [answers.subclass]
 definition = ["@property int ⟦count⟧;"]

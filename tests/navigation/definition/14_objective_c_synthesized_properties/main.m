@@ -1,3 +1,5 @@
+#define COUNT_SELECTOR @selector(count)
+
 __attribute__((objc_root_class))
 @interface Object
 @end
@@ -27,6 +29,10 @@ __attribute__((objc_root_class))
 
 - (SEL)action {
     return @selector(§(selector)count);
+}
+
+- (SEL)written_by_macro {
+    return COUNT_SELECTOR;
 }
 @end
 

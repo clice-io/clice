@@ -399,6 +399,18 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         }
         return;
     }
+    // `@selector(count)` naming an accessor clang declares refers to the
+    // property in the semantic map, and to the accessor here, as a message
+    // does.
+    if(auto* selector = node.get<clang::ObjCSelectorExpr>()) {
+        const auto* method = objc_selector_target(semantics, index);
+        if(method && method->isImplicit()) {
+            if(auto pieces = decls::objc_selector_pieces(*selector, context); !pieces.empty()) {
+                add_self_relation(method, RelationKind::Candidate, pieces.front());
+            }
+        }
+        return;
+    }
     // `shape.count` calls its accessors, `+=` both, and refers to them
     // as a message does; `super.count` calls the superclass's, never an
     // override.

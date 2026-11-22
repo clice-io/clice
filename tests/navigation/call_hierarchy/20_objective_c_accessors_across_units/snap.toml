@@ -2,6 +2,7 @@
 references = [
     "- (int)⟦count⟧ {",
     "use.m │ return [super ⟦count⟧];",
+    "use.m │ return @selector(⟦count⟧);",
     "use.m │ counter.⟦count⟧ += [counter count];",
     "use.m │ counter.count += [counter ⟦count⟧];",
 ]
@@ -37,7 +38,12 @@ incoming_calls = [
 outgoing_calls = []
 
 [answers.tally_count]
-references = ["- (int)⟦count⟧ {", "counter.⟦count⟧ += [counter count];", "counter.count += [counter ⟦count⟧];"]
+references = [
+    "- (int)⟦count⟧ {",
+    "return @selector(⟦count⟧);",
+    "counter.⟦count⟧ += [counter count];",
+    "counter.count += [counter ⟦count⟧];",
+]
 incoming_calls = [
     {
         name = "bump",

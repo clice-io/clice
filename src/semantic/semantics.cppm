@@ -434,6 +434,11 @@ llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
                                                    std::uint32_t index,
                                                    types::TemplateResolver* resolver = nullptr);
 
+/// The Objective-C method the `@selector` of node `index` names: the one of
+/// its selector the class answers whose method it is written in
+/// (decls::objc_selector_method); null outside a method.
+const clang::ObjCMethodDecl* objc_selector_target(const Semantics& semantics, std::uint32_t index);
+
 /// The references of node `index` that a token spells, as name occurrences.
 llvm::SmallVector<NameOccurrence, 2>
     resolve_occurrences(const Semantics& semantics,
