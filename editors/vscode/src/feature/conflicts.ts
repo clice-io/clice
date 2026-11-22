@@ -128,14 +128,26 @@ export function registerConflictCheck(client: ClientHandle, ext: vscode.Extensio
             await ext.globalState.update(ignoreKey, true);
             return;
         }
-        if (choice !== disable) {
+        // Turned off while the warning was up, clice leaves the others to
+        // serve.
+        if (choice !== disable || !enabled()) {
             return;
         }
         let disabled = false;
         for (const candidate of fresh) {
             if (candidate.toggle) {
-                await turnOff(candidate.toggle);
-                disabled = true;
+                try {
+                    await turnOff(candidate.toggle);
+                    disabled = true;
+                } catch (error) {
+                    // A settings file VS Code cannot edit; the next check
+                    // asks again.
+                    warned.delete(candidate.id);
+                    const message = error instanceof Error ? error.message : String(error);
+                    void vscode.window.showErrorMessage(
+                        `clice: cannot turn ${candidate.name} off: ${message}`,
+                    );
+                }
             } else {
                 await vscode.commands.executeCommand(
                     "workbench.extensions.search",
