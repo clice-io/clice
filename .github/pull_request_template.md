@@ -4,9 +4,13 @@
 
 <!-- Link the issue this PR addresses, e.g. "Fixes #123". Delete this section if there is none. -->
 
+## Why
+
+<!-- The problem this PR solves or what it makes possible, as a user or a maintainer meets it. -->
+
 ## What changed
 
-<!-- What this PR does and why. -->
+<!-- What this PR does. -->
 
 ## Tests
 
