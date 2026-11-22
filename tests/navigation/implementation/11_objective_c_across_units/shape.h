@@ -7,7 +7,12 @@ __attribute__((objc_root_class))
 - (int)§(protocol)size;
 @end
 
-@interface Shape : Object <Sized>
+@protocol Measured
+- (int)§(redeclared)area;
+@end
+
+@interface Shape : Object <Sized, Measured>
+@property(nonatomic) int area;
 @end
 
 @interface Pen : Object

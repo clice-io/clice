@@ -4,6 +4,7 @@
 
 @implementation Shape
 SYNTHESIZE(size)
+@synthesize area = _area;
 
 - (int)twice {
     return [self §(synthesized)size] * 2;

@@ -127,7 +127,8 @@ void Builder::relate(clang::FileID fid,
 void Builder::add_self_relation(const clang::NamedDecl* decl,
                                 RelationKind kind,
                                 clang::SourceRange name) {
-    auto [fid, range] = *unit.written_range(name);
+    // A name a macro body spells is the invocation's, as its occurrence is.
+    auto [fid, range] = *unit.written_range(unit.seen_name(name).range);
     Relation relation{.kind = kind, .range = range, .target = 0};
 
     // What a property synthesizes, an instance variable or an accessor,
@@ -178,13 +179,39 @@ void Builder::relate_unseen_override(const clang::ObjCMethodDecl& method,
     }
     auto& entities = unit.get<EntityTable>();
     auto base = entities.objc_method(objc_class, method.getSelector(), method.isInstanceMethod());
+    // Its name and kind alone: the unit writing the method describes the
+    // rest, and the override's attributes are its own.
     if(auto [it, inserted] = symbols.try_emplace(base); inserted) {
-        it->second = describe(&method);
-        it->second.parent = entities.entity(&objc_class);
+        auto described = describe(&method);
+        it->second = {
+            .name = std::move(described.name),
+            .parent = entities.entity(&objc_class),
+            .kind = described.kind,
+            .flags = with_form(SymbolFlags::None, NameForm::Selector),
+            .token_class = {.kind = described.token_class.kind},
+        };
     }
     auto override = ensure_symbol(decls::normalize(&method));
     index->relations[override].push_back({.kind = RelationKind::Interface, .target = base});
     index->relations[base].push_back({.kind = RelationKind::Implementation, .target = override});
+}
+
+void Builder::relate_overrides(const clang::ObjCMethodDecl& method) {
+    llvm::SmallVector<const clang::ObjCMethodDecl*, 4> overridden;
+    method.getOverriddenMethods(overridden);
+    for(auto [objc_class, base]: decls::objc_overridden(method)) {
+        if(!base) {
+            relate_unseen_override(method, *objc_class);
+        } else if(ranges::none_of(overridden, [&](const clang::ObjCMethodDecl* seen) {
+                      return decls::normalize(seen) == decls::normalize(base);
+                  })) {
+            overridden.push_back(base);
+        }
+    }
+    for(const auto* base: overridden) {
+        add_pair_relation(&method, RelationKind::Interface, base, method.getLocation());
+        add_pair_relation(base, RelationKind::Implementation, &method, method.getLocation());
+    }
 }
 
 void Builder::add_type_definitions(const clang::ValueDecl* decl) {
@@ -611,24 +638,17 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         return;
     }
     // A method overrides its superclasses' methods of its selector and
-    // implements the protocols' its class adopts. A superclass's method this
-    // unit does not see, which another unit's @implementation may write, is
-    // known by its class and selector, as calls to it in that unit name it.
+    // implements the protocols' its class adopts, and so do the accessors
+    // clang declares for a property, which nothing traverses.
     if(auto* MD = llvm::dyn_cast<clang::ObjCMethodDecl>(D)) {
-        llvm::SmallVector<const clang::ObjCMethodDecl*, 4> overridden;
-        MD->getOverriddenMethods(overridden);
-        for(auto [objc_class, method]: decls::objc_overridden(*MD)) {
-            if(!method) {
-                relate_unseen_override(*MD, *objc_class);
-            } else if(ranges::none_of(overridden, [&](const clang::ObjCMethodDecl* base) {
-                          return decls::normalize(base) == decls::normalize(method);
-                      })) {
-                overridden.push_back(method);
+        relate_overrides(*MD);
+        return;
+    }
+    if(auto* OPD = llvm::dyn_cast<clang::ObjCPropertyDecl>(D)) {
+        for(const auto* accessor: {OPD->getGetterMethodDecl(), OPD->getSetterMethodDecl()}) {
+            if(accessor && accessor->isImplicit()) {
+                relate_overrides(*accessor);
             }
-        }
-        for(const auto* base: overridden) {
-            add_pair_relation(MD, RelationKind::Interface, base, MD->getLocation());
-            add_pair_relation(base, RelationKind::Implementation, MD, MD->getLocation());
         }
         return;
     }

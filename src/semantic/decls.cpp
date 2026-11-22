@@ -712,12 +712,17 @@ auto objc_selector_pieces(const clang::ObjCSelectorExpr& expr, const clang::ASTC
         token = token_after(token->getLocation());
     }
     llvm::SmallVector<clang::SourceLocation, 4> pieces;
-    for(unsigned slot = 0; slot < std::max(1U, selector.getNumArgs()) && token; slot += 1) {
-        if(token->is(clang::tok::raw_identifier)) {
+    for(unsigned slot = 0; slot < std::max(1U, selector.getNumArgs()); slot += 1) {
+        auto name = selector.getNameForSlot(slot);
+        if(name.empty()) {
+            pieces.emplace_back();
+        } else if(token && token->is(clang::tok::raw_identifier) &&
+                  token->getRawIdentifier() == name) {
             pieces.push_back(token->getLocation());
             token = token_after(token->getLocation());
         } else {
-            pieces.emplace_back();
+            // A macro writes it: the text here does not spell it.
+            return {};
         }
         if(selector.getNumArgs() != 0 && token && token->is(clang::tok::colon)) {
             token = token_after(token->getLocation());
@@ -752,9 +757,6 @@ auto objc_class_name(const clang::ObjCInterfaceDecl* objc_class, clang::SourceLo
 }
 
 auto objc_overridden(const clang::ObjCMethodDecl& method) -> llvm::SmallVector<ObjCOverridden, 4> {
-    auto written = [](const clang::ObjCMethodDecl* declaration) {
-        return !declaration->isImplicit() && !declaration->isSynthesizedAccessorStub();
-    };
     llvm::SmallVector<ObjCOverridden, 4> overridden;
     const auto* objc_class = decls::objc_class(method.getDeclContext());
     for(const auto* base = objc_class ? objc_class->getSuperClass() : nullptr;
@@ -767,7 +769,7 @@ auto objc_overridden(const clang::ObjCMethodDecl& method) -> llvm::SmallVector<O
             break;
         }
         overridden.push_back({.objc_class = base, .method = own});
-        if(own && (written(own) || written(own->getCanonicalDecl()))) {
+        if(own && !own->getCanonicalDecl()->isSynthesizedAccessorStub()) {
             break;
         }
     }

@@ -111,10 +111,13 @@ private:
                            const clang::NamedDecl* target,
                            clang::SourceRange anchor);
 
-    /// The Interface and Implementation relations of an Objective-C
-    /// override to the method of its selector a superclass has that this
-    /// unit sees no declaration of, which another unit's @implementation may
-    /// write: described as the override describes itself, in that class.
+    /// The Interface and Implementation relations of an Objective-C method
+    /// to the methods it overrides or implements (decls::objc_overridden).
+    void relate_overrides(const clang::ObjCMethodDecl& method);
+
+    /// Those to the method of its selector a superclass has that this unit
+    /// sees no declaration of, which another unit's @implementation may
+    /// write: a symbol of that class and selector.
     void relate_unseen_override(const clang::ObjCMethodDecl& method,
                                 const clang::ObjCInterfaceDecl& objc_class);
 

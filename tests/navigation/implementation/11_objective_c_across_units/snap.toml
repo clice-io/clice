@@ -4,5 +4,8 @@ implementation = ["sub.m │ - (int)⟦count⟧ {"]
 [answers.protocol]
 implementation = ["shape.m │ SYNTHESIZE(⟦size⟧)", "sub.m │ - (int)⟦size⟧ { @7", "sub.m │ - (int)⟦size⟧ { @25"]
 
+[answers.redeclared]
+implementation = ["shape.m │ @synthesize ⟦area⟧ = _area;"]
+
 [answers.synthesized]
 implementation = ["sub.m │ - (int)⟦size⟧ { @7"]

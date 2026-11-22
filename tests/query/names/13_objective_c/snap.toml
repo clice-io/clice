@@ -1,6 +1,6 @@
 [test."$ clice index"]
 stdout = '''
-Indexed 1 translation unit in #s: 2 file shards (# KB), 39 symbols.
+Indexed 1 translation unit in #s: 2 file shards (# KB), 45 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
@@ -18,6 +18,26 @@ stdout = '''
       "startLine": 7,
       "endLine": 38,
       "text": "@implementation Shape\n@synthesize x = _x;\n\nstatic int shapes;\n\n+ (int)count {\n    return shapes;\n}\n\n+ (void)setCount:(int)count {\n    shapes = count;\n}\n\n- (int)area {\n    return _x * _x;\n}\n\n- (void)setX:(int)x y:(int)y {\n    _x = x + y;\n    _generation += 1;\n    _name = @\"moved\";\n}\n\n+ (instancetype)shapeWithX:(int)x {\n    Shape *shape = [[self alloc] init];\n    [shape setX:x y:0];\n    return shape;\n}\n\n- (void)draw {\n}\n@end"
+    }
+  },
+  "stale": []
+}
+'''
+exit = 0
+
+[test."$ clice query definition Shape::setX:"]
+stdout = '''
+{
+  "result": {
+    "name": "setX:",
+    "kind": "Method",
+    "symbol": "#912b95402fccce5e",
+    "documentation": null,
+    "definition": {
+      "file": "${WS}/main.m",
+      "startLine": 8,
+      "endLine": 8,
+      "text": ""
     }
   },
   "stale": []
