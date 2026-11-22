@@ -206,7 +206,10 @@ function entries(project: Project, units: Record<string, UnitArgs>, root: string
 
 /// Every unit of the project with its own arguments: those it lists, or
 /// every C-family source of the copy.
-function projectUnits(project: Project, files: readonly string[]): Record<string, UnitArgs> {
+export function projectUnits(
+    project: Project,
+    files: readonly string[],
+): Record<string, UnitArgs> {
     if (project.units !== undefined) {
         return project.units;
     }
