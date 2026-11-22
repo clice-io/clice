@@ -11,22 +11,6 @@ compiles = true
  };
 '''
 
-[[answers.initialized.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Settings'"
-compiles = true
-
-[answers.initialized.code_actions.edits]
-"main.cpp" = '''
-     int timeout;
-     static int instances;
-+    Settings(const Settings&) = default;
-+    Settings(Settings&&) = default;
-+    Settings& operator=(const Settings&) = default;
-+    Settings& operator=(Settings&&) = default;
- };
-'''
-
 [[answers.bit_fields.code_actions]]
 kind = "refactor.rewrite.generateMemberwiseConstructor"
 title = "Generate a memberwise constructor for 'Flags'"
@@ -37,22 +21,6 @@ compiles = true
      unsigned visible : 1;
      unsigned level : 7;
 +    Flags(unsigned int visible, unsigned int level) : visible(visible), level(level) {}
- };
-'''
-
-[[answers.bit_fields.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Flags'"
-compiles = true
-
-[answers.bit_fields.code_actions.edits]
-"main.cpp" = '''
-     unsigned visible : 1;
-     unsigned level : 7;
-+    Flags(const Flags&) = default;
-+    Flags(Flags&&) = default;
-+    Flags& operator=(const Flags&) = default;
-+    Flags& operator=(Flags&&) = default;
  };
 '''
 
@@ -75,50 +43,8 @@ compiles = true
  };
 '''
 
-[[answers.template_fields.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Range'"
-compiles = true
+[answers.array]
+code_actions = []
 
-[answers.template_fields.code_actions.edits]
-"main.cpp" = '''
-     T first;
-     T last;
-+    Range(const Range&) = delete;
-+    Range(Range&&) = delete;
-+    Range& operator=(const Range&) = delete;
-+    Range& operator=(Range&&) = delete;
- };
-'''
-
-[[answers.array.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Buffer'"
-compiles = true
-
-[answers.array.code_actions.edits]
-"main.cpp" = '''
-     char bytes[16];
-     int used;
-+    Buffer(const Buffer&) = default;
-+    Buffer(Buffer&&) = default;
-+    Buffer& operator=(const Buffer&) = default;
-+    Buffer& operator=(Buffer&&) = default;
- };
-'''
-
-[[answers.anonymous_union.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Value'"
-compiles = true
-
-[answers.anonymous_union.code_actions.edits]
-"main.cpp" = '''
-         float real;
-     };
-+    Value(const Value&) = default;
-+    Value(Value&&) = default;
-+    Value& operator=(const Value&) = default;
-+    Value& operator=(Value&&) = default;
- };
-'''
+[answers.anonymous_union]
+code_actions = []

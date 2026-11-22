@@ -14,22 +14,6 @@ compiles = true
 '''
 
 [[answers.tpl.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Box'"
-compiles = true
-
-[answers.tpl.code_actions.edits]
-"main.cpp" = '''
-     void a();
-     void b();
-+    Box(const Box&) = delete;
-+    Box(Box&&) = delete;
-+    Box& operator=(const Box&) = delete;
-+    Box& operator=(Box&&) = delete;
- };
-'''
-
-[[answers.tpl.code_actions]]
 kind = "refactor.rewrite.reorderDefinitions"
 title = "Reorder definitions of 'Box' by declaration order"
 compiles = true

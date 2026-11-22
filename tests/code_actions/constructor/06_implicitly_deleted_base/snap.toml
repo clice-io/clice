@@ -1,50 +1,11 @@
-[[answers.explicit_base.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Derived'"
-compiles = true
+[answers.explicit_base]
+code_actions = []
 
-[answers.explicit_base.code_actions.edits]
-"main.cpp" = '''
- struct Derived : Explicit {
-     int x;
-+    Derived(const Derived&) = default;
-+    Derived(Derived&&) = default;
-+    Derived& operator=(const Derived&) = default;
-+    Derived& operator=(Derived&&) = default;
- };
-'''
+[answers.implicit_base]
+code_actions = []
 
-[[answers.implicit_base.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Another'"
-compiles = true
-
-[answers.implicit_base.code_actions.edits]
-"main.cpp" = '''
- struct Another : Implicit {
-     int x;
-+    Another(const Another&) = default;
-+    Another(Another&&) = default;
-+    Another& operator=(const Another&) = delete;
-+    Another& operator=(Another&&) = delete;
- };
-'''
-
-[[answers.const_base.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Third'"
-compiles = true
-
-[answers.const_base.code_actions.edits]
-"main.cpp" = '''
- struct Third : Frozen {
-     int x;
-+    Third(const Third&) = default;
-+    Third(Third&&) = default;
-+    Third& operator=(const Third&) = delete;
-+    Third& operator=(Third&&) = delete;
- };
-'''
+[answers.const_base]
+code_actions = []
 
 [[answers.const_initialized.code_actions]]
 kind = "refactor.rewrite.generateMemberwiseConstructor"
@@ -56,21 +17,5 @@ compiles = true
  struct Fourth : Timed {
      int x;
 +    explicit Fourth(int x) : x(x) {}
- };
-'''
-
-[[answers.const_initialized.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Fourth'"
-compiles = true
-
-[answers.const_initialized.code_actions.edits]
-"main.cpp" = '''
- struct Fourth : Timed {
-     int x;
-+    Fourth(const Fourth&) = default;
-+    Fourth(Fourth&&) = default;
-+    Fourth& operator=(const Fourth&) = delete;
-+    Fourth& operator=(Fourth&&) = delete;
  };
 '''

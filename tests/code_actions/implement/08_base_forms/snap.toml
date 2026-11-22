@@ -16,26 +16,6 @@ compiles = true
  class Task {
 '''
 
-[[answers.specialization.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Numbers'"
-compiles = true
-
-[answers.specialization.code_actions.edits]
-"main.cpp" = '''
- };
-
--struct Numbers : Source<int> {};
-+struct Numbers : Source<int> {
-+    Numbers(const Numbers&) = default;
-+    Numbers(Numbers&&) = default;
-+    Numbers& operator=(const Numbers&) = default;
-+    Numbers& operator=(Numbers&&) = default;
-+};
-
- class Task {
-'''
-
 [[answers.private_virtual.code_actions]]
 kind = "refactor.rewrite.implementPureVirtuals"
 title = "Implement pure virtual methods of 'Download'"
@@ -53,46 +33,8 @@ compiles = true
  struct Interface {
 '''
 
-[[answers.private_virtual.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Download'"
-compiles = true
-
-[answers.private_virtual.code_actions.edits]
-"main.cpp" = '''
- };
-
--class Download : public Task {};
-+class Download : public Task {
-+public:
-+    Download(const Download&) = default;
-+    Download(Download&&) = default;
-+    Download& operator=(const Download&) = default;
-+    Download& operator=(Download&&) = default;
-+};
-
- struct Interface {
-'''
-
-[[answers.destructor_only.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Concrete'"
-compiles = true
-
-[answers.destructor_only.code_actions.edits]
-"main.cpp" = '''
- };
-
--struct Concrete : Interface {};
-+struct Concrete : Interface {
-+    Concrete(const Concrete&) = default;
-+    Concrete(Concrete&&) = default;
-+    Concrete& operator=(const Concrete&) = default;
-+    Concrete& operator=(Concrete&&) = default;
-+};
-
- class Stage {
-'''
+[answers.destructor_only]
+code_actions = []
 
 [[answers.access_sections.code_actions]]
 kind = "refactor.rewrite.implementPureVirtuals"
@@ -108,34 +50,5 @@ compiles = true
 +    void prepare() override;
 +private:
 +    void advance() override;
- };
-'''
-
-[[answers.access_sections.code_actions]]
-kind = "refactor.rewrite.generateMemberwiseConstructor"
-title = "Generate a memberwise constructor for 'Pipeline'"
-compiles = true
-
-[answers.access_sections.code_actions.edits]
-"main.cpp" = '''
- struct Pipeline : Stage {
-     int state;
-+    explicit Pipeline(int state) : state(state) {}
- };
-'''
-
-[[answers.access_sections.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Pipeline'"
-compiles = true
-
-[answers.access_sections.code_actions.edits]
-"main.cpp" = '''
- struct Pipeline : Stage {
-     int state;
-+    Pipeline(const Pipeline&) = default;
-+    Pipeline(Pipeline&&) = default;
-+    Pipeline& operator=(const Pipeline&) = default;
-+    Pipeline& operator=(Pipeline&&) = default;
  };
 '''

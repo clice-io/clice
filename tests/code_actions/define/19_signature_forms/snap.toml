@@ -212,21 +212,5 @@ compiles = true
 +}
 '''
 
-[[answers.events.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Events'"
-compiles = true
-
-[answers.events.code_actions.edits]
-"main.cpp" = '''
-     Handler on_event;
-     void fire();
-+    Events(const Events&) = default;
-+    Events(Events&&) = default;
-+    Events& operator=(const Events&) = default;
-+    Events& operator=(Events&&) = default;
- };
-'''
-
 [answers.handler_member]
 code_actions = []

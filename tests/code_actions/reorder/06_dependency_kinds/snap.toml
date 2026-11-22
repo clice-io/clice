@@ -1,95 +1,17 @@
-[[answers.using.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'U'"
-compiles = true
+[answers.using]
+code_actions = []
 
-[answers.using.code_actions.edits]
-"main.cpp" = '''
-     int a();
-     int b();
-+    U(const U&) = default;
-+    U(U&&) = default;
-+    U& operator=(const U&) = default;
-+    U& operator=(U&&) = default;
- };
-'''
+[answers.include]
+code_actions = []
 
-[[answers.include.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'I'"
-compiles = true
+[answers.undef]
+code_actions = []
 
-[answers.include.code_actions.edits]
-"main.cpp" = '''
-     int a();
-     int b();
-+    I(const I&) = default;
-+    I(I&&) = default;
-+    I& operator=(const I&) = default;
-+    I& operator=(I&&) = default;
- };
-'''
+[answers.constexpr]
+code_actions = []
 
-[[answers.undef.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'D'"
-compiles = true
+[answers.complete]
+code_actions = []
 
-[answers.undef.code_actions.edits]
-"main.cpp" = '''
-     int a();
-     int b();
-+    D(const D&) = default;
-+    D(D&&) = default;
-+    D& operator=(const D&) = default;
-+    D& operator=(D&&) = default;
- };
-'''
-
-[[answers.constexpr.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'K'"
-compiles = true
-
-[answers.constexpr.code_actions.edits]
-"main.cpp" = '''
-     int a();
-     int b();
-+    K(const K&) = default;
-+    K(K&&) = default;
-+    K& operator=(const K&) = default;
-+    K& operator=(K&&) = default;
- };
-'''
-
-[[answers.complete.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'T'"
-compiles = true
-
-[answers.complete.code_actions.edits]
-"main.cpp" = '''
-     int a();
-     int b();
-+    T(const T&) = default;
-+    T(T&&) = default;
-+    T& operator=(const T&) = default;
-+    T& operator=(T&&) = default;
- };
-'''
-
-[[answers.forward.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'F'"
-compiles = true
-
-[answers.forward.code_actions.edits]
-"main.cpp" = '''
-     int a();
-     int b();
-+    F(const F&) = default;
-+    F(F&&) = default;
-+    F& operator=(const F&) = default;
-+    F& operator=(F&&) = default;
- };
-'''
+[answers.forward]
+code_actions = []

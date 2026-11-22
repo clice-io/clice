@@ -10,19 +10,3 @@ compiles = true
 +    Record(int id, const Name& name, const char* label, double* weight) : id(id), name(name), label(label), weight(weight) {}
  };
 '''
-
-[[answers.record.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Record'"
-compiles = true
-
-[answers.record.code_actions.edits]
-"main.cpp" = '''
-     const char* label;
-     double* weight;
-+    Record(const Record&) = default;
-+    Record(Record&&) = default;
-+    Record& operator=(const Record&) = delete;
-+    Record& operator=(Record&&) = delete;
- };
-'''

@@ -1,6 +1,7 @@
 // A class still being typed, open at the end of the file, offers no
-// constructor, no overrides and no definition out of line: nothing can go
-// before or after its closing brace. A method is still defined in place.
+// constructor, no special members, no overrides and no definition out of
+// line: nothing can go before or after its closing brace. A method is still
+// defined in place.
 #include <cstddef>
 
 struct Shape {

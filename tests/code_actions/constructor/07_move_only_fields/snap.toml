@@ -15,37 +15,8 @@ compiles = true
  };
 '''
 
-[[answers.owner.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Owner'"
-compiles = true
-
-[answers.owner.code_actions.edits]
-"main.cpp" = '''
-     int&& pending;
-     int count;
-+    Owner(const Owner&) = delete;
-+    Owner(Owner&&) = default;
-+    Owner& operator=(const Owner&) = delete;
-+    Owner& operator=(Owner&&) = delete;
- };
-'''
-
-[[answers.pinned.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Pinned'"
-compiles = true
-
-[answers.pinned.code_actions.edits]
-"main.cpp" = '''
-     Lock lock;
-     int count;
-+    Pinned(const Pinned&) = delete;
-+    Pinned(Pinned&&) = delete;
-+    Pinned& operator=(const Pinned&) = default;
-+    Pinned& operator=(Pinned&&) = default;
- };
-'''
+[answers.pinned]
+code_actions = []
 
 [[answers.holder.code_actions]]
 kind = "refactor.rewrite.generateMemberwiseConstructor"
@@ -61,21 +32,5 @@ compiles = true
      Slot<T> slot;
      int count;
 +    Holder(Slot<T> slot, int count) : slot(std::move(slot)), count(count) {}
- };
-'''
-
-[[answers.holder.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Holder'"
-compiles = true
-
-[answers.holder.code_actions.edits]
-"main.cpp" = '''
-     Slot<T> slot;
-     int count;
-+    Holder(const Holder&) = delete;
-+    Holder(Holder&&) = delete;
-+    Holder& operator=(const Holder&) = delete;
-+    Holder& operator=(Holder&&) = delete;
  };
 '''

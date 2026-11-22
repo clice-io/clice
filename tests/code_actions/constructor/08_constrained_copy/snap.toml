@@ -10,19 +10,3 @@ compiles = true
 +    Constrained(Maybe<int> maybe, int count) : maybe(std::move(maybe)), count(count) {}
  };
 '''
-
-[[answers.constrained.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Constrained'"
-compiles = true
-
-[answers.constrained.code_actions.edits]
-"main.cpp" = '''
-     Maybe<int> maybe;
-     int count;
-+    Constrained(const Constrained&) = delete;
-+    Constrained(Constrained&&) = default;
-+    Constrained& operator=(const Constrained&) = delete;
-+    Constrained& operator=(Constrained&&) = delete;
- };
-'''

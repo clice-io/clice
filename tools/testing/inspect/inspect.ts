@@ -407,13 +407,17 @@ export class Inspect extends Client {
         selection: Range,
         only: readonly string[] | undefined,
     ): Promise<Action[]> {
-        if (only !== undefined) {
-            return this.cannot("code actions of some kinds", file);
-        }
         const raws = ((await this.overRange("code-action", file, selection)) ??
             []) as RawCodeAction[];
         const source = this.context().file(file);
-        return raws.map((raw) => {
+        // clice inspect answers every kind; the filter admits a kind and
+        // the kinds below it, as the server's does.
+        const admitted = raws.filter(
+            (raw) =>
+                only === undefined ||
+                only.some((kind) => raw.kind === kind || raw.kind.startsWith(`${kind}.`)),
+        );
+        return admitted.map((raw) => {
             const edits = raw.edits.map((edit) => ({
                 range: this.range(source, edit.range),
                 newText: edit.text,

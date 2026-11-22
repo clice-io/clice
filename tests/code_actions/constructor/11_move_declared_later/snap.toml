@@ -17,22 +17,6 @@ compiles = true
  };
 '''
 
-[[answers.before.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Before'"
-compiles = true
-
-[answers.before.code_actions.edits]
-"main.cpp" = '''
- struct Before {
-     Handle handle;
-+    Before(const Before&) = delete;
-+    Before(Before&&) = default;
-+    Before& operator=(const Before&) = delete;
-+    Before& operator=(Before&&) = delete;
- };
-'''
-
 [[answers.after.code_actions]]
 kind = "refactor.rewrite.generateMemberwiseConstructor"
 title = "Generate a memberwise constructor for 'After'"
@@ -43,21 +27,5 @@ compiles = true
  struct After {
      Handle handle;
 +    explicit After(Handle handle) : handle(std::move(handle)) {}
- };
-'''
-
-[[answers.after.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'After'"
-compiles = true
-
-[answers.after.code_actions.edits]
-"main.cpp" = '''
- struct After {
-     Handle handle;
-+    After(const After&) = delete;
-+    After(After&&) = default;
-+    After& operator=(const After&) = delete;
-+    After& operator=(After&&) = delete;
  };
 '''

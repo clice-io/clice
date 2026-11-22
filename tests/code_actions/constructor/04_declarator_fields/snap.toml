@@ -10,19 +10,3 @@ compiles = true
 +    Callbacks(void (*on_open)(int), int (&counter)[4], const char* name) : on_open(on_open), counter(counter), name(name) {}
  };
 '''
-
-[[answers.callbacks.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Callbacks'"
-compiles = true
-
-[answers.callbacks.code_actions.edits]
-"main.cpp" = '''
-     int (&counter)[4];
-     const char* name;
-+    Callbacks(const Callbacks&) = default;
-+    Callbacks(Callbacks&&) = default;
-+    Callbacks& operator=(const Callbacks&) = delete;
-+    Callbacks& operator=(Callbacks&&) = delete;
- };
-'''

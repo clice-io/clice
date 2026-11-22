@@ -10,19 +10,3 @@ compiles = true
 +    Node(std::unique_ptr<Node> next, const std::string& name) : next(std::move(next)), name(name) {}
  };
 '''
-
-[[answers.node.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Node'"
-compiles = true
-
-[answers.node.code_actions.edits]
-"main.cpp" = '''
-     std::unique_ptr<Node> next;
-     std::string name;
-+    Node(const Node&) = delete;
-+    Node(Node&&) = default;
-+    Node& operator=(const Node&) = delete;
-+    Node& operator=(Node&&) = default;
- };
-'''

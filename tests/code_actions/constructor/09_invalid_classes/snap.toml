@@ -7,24 +7,5 @@ code_actions = []
 [answers.recursive]
 code_actions = []
 
-[[answers.undefined_nested.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'OnHolder'"
-compiles = false
-errors = [
-    "field has incomplete type 'Again'",
-    "field has incomplete type 'Incomplete'",
-    "field has incomplete type 'Recursive'",
-]
-
-[answers.undefined_nested.code_actions.edits]
-"main.cpp" = '''
-     struct OnHolder : Holder {
-         int x;
-+        OnHolder(const OnHolder&) = delete;
-+        OnHolder(OnHolder&&) = delete;
-+        OnHolder& operator=(const OnHolder&) = delete;
-+        OnHolder& operator=(OnHolder&&) = delete;
-     };
- };
-'''
+[answers.undefined_nested]
+code_actions = []

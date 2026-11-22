@@ -11,20 +11,3 @@ compiles = true
  };
  }
 '''
-
-[[answers.painter.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Painter'"
-compiles = true
-
-[answers.painter.code_actions.edits]
-"main.cpp" = '''
- namespace app {
- struct Painter : shapes::Painter {
-+    Painter(const Painter&) = default;
-+    Painter(Painter&&) = default;
-+    Painter& operator=(const Painter&) = default;
-+    Painter& operator=(Painter&&) = default;
- };
- }
-'''

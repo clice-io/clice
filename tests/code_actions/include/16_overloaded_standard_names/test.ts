@@ -4,6 +4,6 @@ import { answers } from "@clice/tools/testing";
 // ships none of them.
 answers(async (a) => {
     for (const m of a.markers()) {
-        await a.show(m.name, a.codeActions(m));
+        await a.show(m.name, a.codeActions(m, { only: ["quickfix"] }));
     }
 });

@@ -42,24 +42,6 @@ void ns::Widget::done() {
 ''',
 ]
 
-[[answers.inspect.cls.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Widget'"
-compiles = true
-
-[answers.inspect.cls.code_actions.edits]
-"widget.h" = '''
- private:
-     int id_;
-+public:
-+    Widget(const Widget&) = default;
-+    Widget(Widget&&) = default;
-+    Widget& operator=(const Widget&) = default;
-+    Widget& operator=(Widget&&) = default;
- };
- }
-'''
-
 [[answers.inspect.id.code_actions]]
 kind = "refactor.rewrite.define.inline"
 title = "Define 'id' inline"
@@ -143,24 +125,6 @@ compiles = true
 +
  int main() {
      ns::Widget w(1);
-'''
-
-[[answers.server.cls.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Widget'"
-compiles = true
-
-[answers.server.cls.code_actions.edits]
-"widget.h" = '''
- private:
-     int id_;
-+public:
-+    Widget(const Widget&) = default;
-+    Widget(Widget&&) = default;
-+    Widget& operator=(const Widget&) = default;
-+    Widget& operator=(Widget&&) = default;
- };
- }
 '''
 
 [[answers.server.id.code_actions]]

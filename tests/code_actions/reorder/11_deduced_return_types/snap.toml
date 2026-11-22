@@ -1,15 +1,2 @@
-[[answers.cls.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'S'"
-compiles = true
-
-[answers.cls.code_actions.edits]
-"main.cpp" = '''
-     int b();
-     auto a();
-+    S(const S&) = default;
-+    S(S&&) = default;
-+    S& operator=(const S&) = default;
-+    S& operator=(S&&) = default;
- };
-'''
+[answers.cls]
+code_actions = []

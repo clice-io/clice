@@ -14,24 +14,3 @@ compiles = true
 
  static_assert(!__is_abstract(Both));
 '''
-
-[[answers.spelled.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Both'"
-compiles = false
-errors = ["static assertion failed due to requirement '!__is_abstract(Both)'"]
-
-[answers.spelled.code_actions.edits]
-"main.cpp" = '''
- };
-
--struct Both : Aliased, Plain {};
-+struct Both : Aliased, Plain {
-+    Both(const Both&) = default;
-+    Both(Both&&) = default;
-+    Both& operator=(const Both&) = default;
-+    Both& operator=(Both&&) = default;
-+};
-
- static_assert(!__is_abstract(Both));
-'''

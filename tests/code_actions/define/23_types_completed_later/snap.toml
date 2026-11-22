@@ -29,22 +29,6 @@ compiles = true
 +}
 '''
 
-[[answers.panel.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Panel'"
-compiles = true
-
-[answers.panel.code_actions.edits]
-"main.cpp" = '''
-     void make(Missing missing);
-     void plain();
-+    Panel(const Panel&) = default;
-+    Panel(Panel&&) = default;
-+    Panel& operator=(const Panel&) = default;
-+    Panel& operator=(Panel&&) = default;
- };
-'''
-
 [[answers.take.code_actions]]
 kind = "refactor.rewrite.define.outOfLine"
 title = "Define 'Panel::take' out of line"

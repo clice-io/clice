@@ -14,19 +14,3 @@ compiles = true
 +void Widget::grow(int by) {
 +}
 '''
-
-[[answers.all.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Widget'"
-compiles = true
-
-[answers.all.code_actions.edits]
-"main.cpp" = '''
-     void grow(int by);
-     int id() const { return 0; }
-+    Widget(const Widget&) = default;
-+    Widget(Widget&&) = delete;
-+    Widget& operator=(const Widget&) = default;
-+    Widget& operator=(Widget&&) = delete;
- };
-'''

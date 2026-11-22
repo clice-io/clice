@@ -190,23 +190,6 @@ compiles = true
 +}
 '''
 
-[[answers.inspect.anonymous_class.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Hidden'"
-compiles = true
-
-[answers.inspect.anonymous_class.code_actions.edits]
-"widget.h" = '''
- struct Hidden {
-     void g();
-+    Hidden(const Hidden&) = default;
-+    Hidden(Hidden&&) = default;
-+    Hidden& operator=(const Hidden&) = default;
-+    Hidden& operator=(Hidden&&) = default;
- };
- }
-'''
-
 [[answers.server.constructor.code_actions]]
 kind = "refactor.rewrite.define.inline"
 title = "Define 'Widget' inline"
@@ -357,21 +340,4 @@ compiles = true
  }
 +
 +}
-'''
-
-[[answers.server.anonymous_class.code_actions]]
-kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Hidden'"
-compiles = true
-
-[answers.server.anonymous_class.code_actions.edits]
-"widget.h" = '''
- struct Hidden {
-     void g();
-+    Hidden(const Hidden&) = default;
-+    Hidden(Hidden&&) = default;
-+    Hidden& operator=(const Hidden&) = default;
-+    Hidden& operator=(Hidden&&) = default;
- };
- }
 '''
