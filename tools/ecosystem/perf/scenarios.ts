@@ -375,7 +375,7 @@ export class Perf {
                 s.snapshot("held");
             }
             // Sized once the server is down: clice saves its index after the
-            // round ends, and again at exit.
+            // pass ends, and again at exit.
             await s.finish();
             const { disk, index } = cacheBytes(workspace, database, s.server);
             // A clice ignoring the cache_dir it is given, as one of another
@@ -706,17 +706,17 @@ export class Perf {
         });
     }
 
-    /// Requests after the server sat idle: `rounds` rounds of an edit, a
+    /// Requests after the server sat idle: `edits` edits, each followed by a
     /// hover, semantic tokens, inlay hints and a completion, each after
     /// `gap` ms of idleness.
-    async idle(file: FileArg, options: { rounds?: number; gap?: number } = {}): Promise<void> {
+    async idle(file: FileArg, options: { edits?: number; gap?: number } = {}): Promise<void> {
         const opened = this.resolve(file);
         const gap = options.gap ?? 3000;
         await this.each("idle", opened.file, {}, async (s) => {
             const client = await s.start();
             const { uri } = await s.open(opened.file);
             await s.edit(uri);
-            for (let i = 0; i < (options.rounds ?? 20); i += 1) {
+            for (let i = 0; i < (options.edits ?? 20); i += 1) {
                 // Time is the feature: each request comes after the server
                 // sat idle.
                 await pause(gap);
@@ -746,7 +746,7 @@ export class Perf {
 
     /// Editing while the background index runs from scratch: every `every`
     /// ms an edit, a completion, a hover and semantic tokens while an index
-    /// round is running (at most `minutes`), then ten rounds once none is.
+    /// pass is running (at most `minutes`), then ten more once none is.
     async duringIndex(
         file: FileArg,
         options: { every?: number; minutes?: number } = {},
@@ -761,9 +761,9 @@ export class Perf {
             let active = false;
             let begun = false;
             let after = 0;
-            let rounds = 0;
+            let edits = 0;
             while (after < 10) {
-                // Time is the feature: the rounds come at an editor's pace.
+                // Time is the feature: the edits come at an editor's pace.
                 await pause(options.every ?? 5000);
                 for (const event of client.progressEvents.slice(seen)) {
                     if (event.token === token) {
@@ -772,7 +772,7 @@ export class Perf {
                     }
                 }
                 seen = client.progressEvents.length;
-                // The first round announces itself within a minute of the
+                // The first pass announces itself within a minute of the
                 // open (clice waits for the editor to go idle first).
                 const indexing = active || (!begun && nowMs() - s.started < 60_000);
                 const phase = indexing && nowMs() - s.started < cap ? "during" : "after";
@@ -786,14 +786,14 @@ export class Perf {
                     client.hoverAt(uri, Math.floor(end.line / 2), 4),
                 );
                 await s.measure(`${phase}_semantic_tokens`, () => client.semanticTokensFull(uri));
-                rounds += 1;
+                edits += 1;
                 if (phase === "after") {
                     after += 1;
                 } else {
-                    s.result.values["rounds during the index"] = rounds;
+                    s.result.values["edits during the index"] = edits;
                 }
-                if (rounds % 20 === 0) {
-                    s.snapshot(`round ${String(rounds)}`);
+                if (edits % 20 === 0) {
+                    s.snapshot(`edit ${String(edits)}`);
                 }
             }
         });
