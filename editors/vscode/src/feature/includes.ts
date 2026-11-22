@@ -61,6 +61,7 @@ export function registerIncludeCompletion(
         vscode.workspace.onDidChangeTextDocument((event) => {
             const [change] = event.contentChanges;
             if (
+                !client()?.isRunning() ||
                 event.contentChanges.length !== 1 ||
                 change.text.length !== 1 ||
                 change.text === "\n" ||
