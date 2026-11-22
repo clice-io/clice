@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
+import { registerCommand } from "../commands";
 import type { ClientHandle } from "../client";
 import { LANGUAGES } from "../languages";
 // Protocol shapes come from the shared definition in tools/protocol —
@@ -516,13 +517,11 @@ export function registerCompilationContext(client: ClientHandle, ext: vscode.Ext
         vscode.workspace.onDidSaveTextDocument(() => void refresh(vscode.window.activeTextEditor)),
         vscode.workspace.onDidOpenTextDocument((document) => void detectCxxFragment(document)),
         vscode.window.registerTreeDataProvider("clice.contexts", tree),
-        vscode.commands.registerCommand("clice.switchContext", select),
-        vscode.commands.registerCommand("clice.resetContext", () => reset()),
-        vscode.commands.registerCommand("clice.applyContext", applyContext),
-        vscode.commands.registerCommand("clice.loadMoreContexts", () => tree.loadMore()),
-        vscode.commands.registerCommand("clice.refreshContexts", () =>
-            refresh(vscode.window.activeTextEditor),
-        ),
+        registerCommand("clice.switchContext", select),
+        registerCommand("clice.resetContext", () => reset()),
+        registerCommand("clice.applyContext", applyContext),
+        registerCommand("clice.loadMoreContexts", () => tree.loadMore()),
+        registerCommand("clice.refreshContexts", () => refresh(vscode.window.activeTextEditor)),
         vscode.window.onDidChangeActiveTextEditor((editor) => void refresh(editor)),
         // Refresh the custom UI on server lifecycle edges: a (re)started
         // server re-targets every session, a stopped one has nothing to

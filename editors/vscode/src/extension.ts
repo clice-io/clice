@@ -14,10 +14,11 @@ import {
     StreamInfo,
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
+import { registerCommand } from "./commands";
 import { LANGUAGES } from "./languages";
 import { serverOutput, TraceChannel } from "./log";
 import { exitsWithin, retire } from "./process";
-import { getSetting, Setting, variable, workspaceDirectory } from "./setting";
+import { enabled, getSetting, Setting, variable, workspaceDirectory } from "./setting";
 import { registerAliasRedirect } from "./feature/aliases";
 import { registerCompileCommand } from "./feature/command";
 import { registerBuildConfiguration } from "./feature/configuration";
@@ -223,9 +224,10 @@ function takeQueuedRestart(): boolean {
     return queued;
 }
 
-// Start, or restart when running. Serves initial activation, the restart
-// command, and the settings-changed prompt alike, so a user can always
-// recover from a bad configuration without reloading the window.
+// Start, or restart when running, and stop while clice.enable is off. Serves
+// initial activation, the restart command, the settings-changed prompt and
+// clice.enable alike, so a user can always recover from a bad configuration
+// without reloading the window.
 async function startServer(context: ExtensionContext): Promise<void> {
     if (!client) {
         return;
@@ -239,7 +241,17 @@ async function startServer(context: ExtensionContext): Promise<void> {
         do {
             // Stop before validating: the LSP shutdown tells the server to
             // exit (in socket mode that is the user's external server), so
-            // validation must look at what is reachable afterwards.
+            // validation must look at what is reachable afterwards. A
+            // library-initiated restart after a crash may still be starting:
+            // renewing under it would leave it running unsupervised, so it
+            // is joined and stopped too.
+            try {
+                if (client.current.state === State.Starting) {
+                    await client.current.start();
+                }
+            } catch {
+                // A start that fails leaves nothing to stop.
+            }
             try {
                 if (client.isRunning()) {
                     await client.current.stop();
@@ -247,17 +259,15 @@ async function startServer(context: ExtensionContext): Promise<void> {
             } catch {
                 // Stopping a hung server times out; start fresh regardless.
             }
+            if (!enabled()) {
+                continue;
+            }
             const problem = await validateSettings(context);
             if (problem) {
                 void window.showErrorMessage(`clice: ${problem}`);
                 continue;
             }
-            // A library-initiated restart may still be starting; renewing
-            // under it would leave that attempt running unsupervised, so
-            // join it instead — start() below returns its promise.
-            if (client.current.state !== State.Starting) {
-                client.renew();
-            }
+            client.renew();
             try {
                 await client.current.start();
             } catch (error) {
@@ -318,6 +328,16 @@ async function onSettingsChanged(
     event: vscode.ConfigurationChangeEvent,
     context: ExtensionContext,
 ) {
+    if (event.affectsConfiguration("clice.enable")) {
+        // Also reported for a scope another outranks, which changes nothing.
+        if (enabled() !== client?.current.needsStop()) {
+            await startServer(context);
+        }
+        return;
+    }
+    if (!enabled()) {
+        return;
+    }
     const launchSettings = [
         "clice.executable",
         "clice.mode",
@@ -402,9 +422,14 @@ export async function activate(context: ExtensionContext) {
     });
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("clice.restart", () => startServer(context)),
+        registerCommand("clice.restart", () => startServer(context)),
         vscode.workspace.onDidChangeConfiguration((event) => {
             void onSettingsChanged(event, context);
+        }),
+        client.onDidChangeState((event) => {
+            if (event.newState === State.Stopped) {
+                inactive.clear();
+            }
         }),
     );
 

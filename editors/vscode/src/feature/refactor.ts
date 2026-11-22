@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { registerCommand } from "../commands";
 
 /// The refactoring commands the manifest contributes, each named after the
 /// code action kind it asks for: `clice.refactor.rewrite.populateSwitch`
@@ -13,7 +14,7 @@ export function registerRefactorCommands(context: vscode.ExtensionContext) {
         }
         const kind = command.slice("clice.".length);
         context.subscriptions.push(
-            vscode.commands.registerCommand(command, () =>
+            registerCommand(command, () =>
                 vscode.commands.executeCommand("editor.action.codeAction", {
                     kind,
                     apply: "ifSingle",

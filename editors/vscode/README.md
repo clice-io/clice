@@ -58,6 +58,7 @@ downloads live on the [GitHub releases and CI pages](https://github.com/clice-io
 
 | Setting                         | Default     | Description                                                                                                                                                                        |
 | ------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `clice.enable`                  | `true`      | Whether clice runs in this window; `false` in a workspace's settings leaves it to another C/C++ extension.                                                                         |
 | `clice.executable`              | _(bundled)_ | Path to a clice binary to use instead of the bundled one.                                                                                                                          |
 | `clice.mode`                    | `pipe`      | Server transport; `socket` connects to an external server (debugging).                                                                                                             |
 | `clice.host`                    | `127.0.0.1` | Host for socket mode.                                                                                                                                                              |
@@ -109,8 +110,16 @@ lists them.
 Other C/C++ language extensions running next to clice duplicate completion
 and diagnostics. Once clice is up, it detects the Microsoft C/C++
 (cpptools), clangd and ccls extensions and offers to turn their language
-features off and reload the window — cpptools keeps its debugger, only
-IntelliSense is disabled.
+features off in the workspace's settings (the user's in a window without a
+folder) and reload the window — cpptools keeps its debugger, only
+IntelliSense is disabled. A warning dismissed is not repeated in that window.
+
+To leave a workspace to another extension instead, set `clice.enable` to
+`false` in its settings: clice starts no server there, and its commands say
+it is disabled. `false` in the user settings turns clice off in every
+workspace that does not set it back to `true`. The change applies at once.
+One server serves the whole window, so a multi-root workspace takes the
+setting from its `.code-workspace` file.
 
 ## Troubleshooting
 
