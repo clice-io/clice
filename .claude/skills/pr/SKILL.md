@@ -34,9 +34,9 @@ Commit all work first (`git status` clean): the reviewers read `git diff origin/
    - tests — new behavior covered, no existing test broken, skipped or weakened;
    - docs — only when the branch touched `docs/` or documented cases.
 
-   Each prompt names its dimension, the diff command and the rule files to read, and ends with the same fixed text: _Report only defects that lead to a concrete failure scenario — the input or state, and the wrong result it produces — each with file:line. Nothing outside this diff's scope. No refactoring, restructuring or style-preference suggestions. No findings is a valid answer._
+   Each prompt names its dimension, the diff command and the rule files to read, has the changed files read in full with the callers and callees of what changed — not only the diff's lines — and ends with the same fixed text: _Report only defects that lead to a concrete failure scenario — the input or state, and the wrong result it produces — each with file:line. Nothing outside this diff's scope. No refactoring, restructuring or style-preference suggestions. No findings is a valid answer._
 
-2. **codex, in addition — only when it is logged in and has quota.** Run the codex skill's review command in the background beside the Opus reviewers. If `codex login status` fails or the run stops on a usage limit, skip it without mention.
+2. **External agents, in addition — each only where it works.** In the background, beside the Opus reviewers, every agent of the external-agents skill gets its review prompt; one not installed, not logged in or out of quota is skipped without mention.
 3. Every finding is a hypothesis: confirm it with a probe that fails on the defect before fixing it. Fix everything confirmed and commit; the checks then run on the fixed tree.
 
 ## Opening
