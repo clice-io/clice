@@ -706,7 +706,7 @@ auto objc_selector_method(const clang::ObjCInterfaceDecl& objc_class, clang::Sel
     }
     for(bool instance: {true, false}) {
         if(const auto* method = objc_class.lookupPrivateMethod(selector, instance)) {
-            return &objc_declared(*method);
+            return method;
         }
         if(const auto* method = objc_class.lookupMethod(selector, instance)) {
             return method;
@@ -771,15 +771,22 @@ auto objc_class_name(const clang::ObjCInterfaceDecl* objc_class, clang::SourceLo
 }
 
 auto objc_overridden(const clang::ObjCMethodDecl& method) -> llvm::SmallVector<ObjCOverridden, 4> {
+    auto written = [](const clang::ObjCMethodDecl* declaration) {
+        return !declaration->isImplicit() && !declaration->isSynthesizedAccessorStub();
+    };
     llvm::SmallVector<ObjCOverridden, 4> overridden;
     const auto* objc_class = decls::objc_class(method.getDeclContext());
     for(const auto* base = objc_class ? objc_class->getSuperClass() : nullptr;
         base && base->hasDefinition();
         base = base->getSuperClass()) {
         const auto* own = own_method(*base, method.getSelector(), method.isInstanceMethod());
+        // No unit of the project writes the @implementation of a class a
+        // system header declares.
+        if(!own && base->getASTContext().getSourceManager().isInSystemHeader(base->getLocation())) {
+            break;
+        }
         overridden.push_back({.objc_class = base, .method = own});
-        if(const auto* declared = own ? own->getCanonicalDecl() : nullptr;
-           declared && !declared->isImplicit() && !declared->isSynthesizedAccessorStub()) {
+        if(own && (written(own) || written(own->getCanonicalDecl()))) {
             break;
         }
     }

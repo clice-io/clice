@@ -2234,7 +2234,7 @@ llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
         References out;
         if(const auto* method = objc_selector_target(semantics, index)) {
             refer_method(out,
-                         method,
+                         &decls::objc_declared(*method),
                          RelationKind::Candidate,
                          decls::objc_selector_pieces(*selector, method->getASTContext()));
         }

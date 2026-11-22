@@ -86,8 +86,10 @@ private:
     void add_unresolved_macro(clang::SourceLocation location);
 
     /// Record a relation of `decl` in the index of `fid`, `target` naming
-    /// the symbol it leads to. A file file_index drops takes the relation
-    /// with it, and neither symbol is registered.
+    /// the symbol it leads to; without one, `relation` holds its target as
+    /// given: a symbol this unit has no declaration of registers no record,
+    /// another unit's describes it. A file file_index drops takes the
+    /// relation with it, and neither symbol is registered.
     void relate(clang::FileID fid,
                 const clang::NamedDecl* decl,
                 Relation relation,
@@ -109,13 +111,6 @@ private:
     void add_pair_relation(const clang::NamedDecl* decl,
                            RelationKind kind,
                            const clang::NamedDecl* target,
-                           clang::SourceRange anchor);
-
-    /// One to a symbol this unit has no declaration of, which records no
-    /// symbol for it: another unit's record describes it, when one does.
-    void add_pair_relation(const clang::NamedDecl* decl,
-                           RelationKind kind,
-                           SymbolHash target,
                            clang::SourceRange anchor);
 
     /// The TypeDefinition relations of a value (a function's: its return
