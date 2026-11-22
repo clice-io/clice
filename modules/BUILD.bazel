@@ -8,7 +8,7 @@ load(":modules.bzl", "LIBRARIES", "MODULE_COPTS")
 # configuration whose condition holds, and exports what they declare;
 # libc.cppm exports the C library's names the standard library leaves out.
 # macros.h replays the macros their headers define, and every unit of clice
-# includes it ahead of everything else. scripts/modules.py writes all of it
+# includes it ahead of everything else. tools/modules/modules.ts writes all of it
 # from demand.cpp; nothing it writes is edited by hand.
 
 # The fragments, the macro headers and the preludes.
@@ -45,7 +45,7 @@ cc_library(
     ],
 )
 
-# What clice takes from the libraries, the program scripts/modules.py
+# What clice takes from the libraries, the program tools/modules/modules.ts
 # indexes for each configuration to write the rest of modules/.
 cc_library(
     name = "demand",

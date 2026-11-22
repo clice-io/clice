@@ -6,9 +6,9 @@ report, the same answers from `clice inspect` and from a server), and
 **perf**, which measures clice against the previous nightly's clice or
 against clangd on the same project, the same files and the same machine. Neither runs on a push: that is `tests/`.
 
-A round runs both over every project. This file is the contract: what a
+An ecosystem run runs both over every project. This file is the contract: what a
 project directory holds, what each kind of job does and records, what fails
-one, and when CI runs a round. The framework is
+one, and when CI starts a run. The framework is
 `tools/ecosystem/`, to this directory what `tools/testing/` is to `tests/`.
 
 ## Projects
@@ -18,7 +18,7 @@ ecosystem/
   test.ts            the default script: a project without a test.ts runs it
   <project>/
     project.toml     where the project comes from and how it is prepared
-    test.ts          optional: what a round does on it
+    test.ts          optional: what a run does on it
     README.md        why the project is here: what it covers that no other does
 ```
 
@@ -131,7 +131,7 @@ perf("editing", { configuration: "clang" }, async (p) => {
 });
 ```
 
-A script registers the jobs a round runs on the project:
+A script registers the project's jobs:
 
 - **`regression(options?)`**: the regression on each of `configurations`
   (default every one), `sample` source files a night (default 40), with the
@@ -207,7 +207,7 @@ compiles, or cannot check; a request either client answers with an error; a
 place where the two answers differ; an error of the runner itself. A
 difference a case in `tests/` pins as accepted is listed, not failed (the
 framework's list, each naming its case). Counts, sizes, memory and times are
-recorded beside the previous round's, never gated.
+recorded beside the previous run's, never gated.
 
 Every failure names the command that reproduces it from the repository root.
 
@@ -215,7 +215,7 @@ Every failure names the command that reproduces it from the repository root.
 
 clice under test against the **baseline**, the clice of the newest nightly
 the tested commit descends from (its release package, which lives 30 days),
-so that a round shows what the day's commits changed. The round of every
+so that a run shows what the day's commits changed. The run of every
 Sunday, one before a stable release and one on request measure it against
 **clangd** instead, the official release of the version the framework pins
 (the LLVM major xclang tracks), and list nothing as slower. Each runs in
@@ -237,8 +237,8 @@ on Linux and macOS, the OS file cache.
 | `session(files, { churn })`             | the files opened in turn and edited twice each, switched through twice; unless `churn: false`, a branch switch (50 unopened sources and 10 included headers changed on disk and back) and the database rewritten unchanged, each until the servers settle; then all closed |
 | `sample(files, { wipe })`               | each file in a fresh server, clangd, each clice without its PCHs and with them (with `wipe: "cache"`, each server without any cache, then with what that left): open, semantic tokens, three edits, the whole-file requests                                                |
 | `soak(file, { edits })`                 | `edits` edits, a completion and a hover every tenth: whether time and memory stay flat                                                                                                                                                                                     |
-| `idle(file, { rounds, gap })`           | each request after the server sat idle for `gap`                                                                                                                                                                                                                           |
-| `duringIndex(file, { every, minutes })` | edits and requests every `every` while the background index runs from scratch (at most `minutes`), then ten rounds once it is done                                                                                                                                         |
+| `idle(file, { edits, gap })`            | each request after the server sat idle for `gap`                                                                                                                                                                                                                           |
+| `duringIndex(file, { every, minutes })` | edits and requests every `every` while the background index runs from scratch (at most `minutes`), then ten more once it is done                                                                                                                                           |
 | `references(file, at)`                  | references and rename of a symbol once the index is idle                                                                                                                                                                                                                   |
 | `long(files, { minutes })`              | a session cycling through the files, opening, editing, asking and closing, for `minutes`                                                                                                                                                                                   |
 | `limitedIndex(file, { mb, minutes })`   | (Linux) `index` inside a memory limit of `mb`, stalled when not done within `minutes`                                                                                                                                                                                      |
@@ -246,7 +246,7 @@ on Linux and macOS, the OS file cache.
 
 `p.pick({ seed, sources, headers, under })` lists the files a scenario takes:
 sources of the database and headers they include, under the given
-directories, the fixed seed picking the same ones every round.
+directories, the fixed seed picking the same ones every run.
 
 Every run records the latencies the client observes, the memory of the
 server's process tree (its peak, at the end, and at each stage of a session,
@@ -284,10 +284,10 @@ share) count nowhere. The measures differ by platform: compare within one.
 
 ## Reports
 
-A regression job's summary gives its numbers beside the previous round's,
+A regression job's summary gives its numbers beside the previous run's,
 then its new failures, each with what failed and the command reproducing it,
 then the known ones with their issue, then the known issues it did not see
-(fixed, or not sampled this round). A perf job's summary gives its failures
+(fixed, or not sampled this run). A perf job's summary gives its failures
 the same way, then what clice spends more of than the baseline, then a table
 per scenario: each measure's median and p90 for every server and the ratio of
 clice's median to the other server's (for a scenario over many files, the
@@ -295,10 +295,10 @@ median of the files' ratios). Each job uploads its whole results as JSON (a
 regression job's with the files it swept), and its logs: every clice
 session's, the baseline's among them, and what the job printed.
 
-The round's own summary gathers them: every job's new failures, each beside
-whether the rounds before swept its file (a file newly sampled points at an
+The run's own summary gathers them: every job's new failures, each beside
+whether the runs before swept its file (a file newly sampled points at an
 old bug the sample exposed, one that passed before at a regression), the
-regression numbers half again the round before's, and by ratio every slower
+regression numbers half again the run before's, and by ratio every slower
 measure that another platform's job or the job the night before finds slower
 too, with the servers in the other order (a measure one job ran both ways
 needs no other order). The rest stay in the jobs' reports. A row is flagged
@@ -306,34 +306,34 @@ where it looks like the measurement rather than the code: slower on most jobs
 at once, on one platform only, three times the baseline's or more, negative.
 
 A job is red when it has a new failure; known failures alone leave it green.
-**A round shows no new failure** when every job is green: that is what a
+**A run shows no new failure** when every job is green: that is what a
 stable release requires of the nightly it tags.
 
 ## CI
 
-`.github/workflows/ecosystem.yml` runs a round: every regression and perf job
+A run of `.github/workflows/ecosystem.yml` runs every regression and perf job
 of every project, each on a free runner of its platform, all at once, on the
 commit of a main CI run with the `build-*` programs that run built. Once
-`nightly.yml` has tagged a nightly, it dispatches the round on that commit,
+`nightly.yml` has tagged a nightly, it dispatches the run on that commit,
 its perf jobs against the nightly before (`clangd: true` on Sundays, UTC); a
-day without a new nightly has no round. A dispatch by hand names a CI run
-whose artifacts still live (three days), and `clangd: true` for a round
+day without a new nightly has no run. A dispatch by hand names a CI run
+whose artifacts still live (three days), and `clangd: true` for a run
 against clangd. Each job is bounded well within the
 runner's six hours; on Linux it runs inside a memory scope a little smaller
 than the machine, so that a clice exhausting it is killed (first) and
 reported, not the runner's agent.
 
-The round only reports: nothing waits on it but a stable release.
+The run only reports: nothing waits on it but a stable release.
 
 ## Running
 
 ```
-node tools/ecosystem/run.ts --jobs                              every job of a round, as JSON
+node tools/ecosystem/run.ts --jobs                              every job of a run, as JSON
 node tools/ecosystem/run.ts regression <job> --dir <dir> [options]
 node tools/ecosystem/run.ts perf <job> --dir <dir> [options]
 node tools/ecosystem/perf/compare.ts <results.json>...           the perf tables
 node tools/ecosystem/perf/logs.ts <log>... [--trace <file>]      a session's [perf:*] lines
-node tools/ecosystem/round.ts <run id>|latest [options]           a round's summary, results and flagged logs
+node tools/ecosystem/summary.ts <run id>|latest [options]           a run's summary, results and flagged logs
 ```
 
 `CLICE_EXECUTABLE` names the clice under test. `--dir` is where projects are
@@ -358,7 +358,7 @@ tools/ecosystem/
   regression/     the index, the compiler's confirmation, the sweep, the job
   perf/           the servers, a timed session, the scenarios, results and their tables, [perf:*] lines
   report.ts       the summaries
-  round.ts        a round's summary, from every job's results
+  summary.ts      a run's summary, from every job's results
   run.ts          the command line
   **/*.test.ts    the framework's own tests, beside the code
 ```

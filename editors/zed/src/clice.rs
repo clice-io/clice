@@ -91,21 +91,6 @@ fn selects_pre_release(channel: Option<&serde_json::Value>) -> Result<bool> {
     }
 }
 
-/// The newest release of the channel; `latest(pre_release)` is the newest
-/// release that is, or is not, a pre-release. The stable channel takes the
-/// newest pre-release while there is no stable release, so it works before the
-/// first stable release and follows stable releases once they exist.
-fn latest_release(
-    pre_release: bool,
-    latest: impl Fn(bool) -> Result<GithubRelease>,
-) -> Result<GithubRelease> {
-    if pre_release {
-        latest(true)
-    } else {
-        latest(false).or_else(|_| latest(true))
-    }
-}
-
 /// The version and download URL of `release`'s archive for this platform.
 fn release_asset(release: &GithubRelease, asset_suffix: &str) -> Result<(String, String)> {
     // Tags are `v<version>`; asset names carry the bare version.
@@ -197,15 +182,13 @@ fn install_latest(
     // workflows publish a release only once every platform archive is
     // attached, and nightly.yml prunes nightlies so that the newest stable
     // release stays on the first page.
-    let release = latest_release(pre_release, |pre_release| {
-        zed::latest_github_release(
-            REPOSITORY,
-            GithubReleaseOptions {
-                require_assets: true,
-                pre_release,
-            },
-        )
-    })
+    let release = zed::latest_github_release(
+        REPOSITORY,
+        GithubReleaseOptions {
+            require_assets: true,
+            pre_release,
+        },
+    )
     .map_err(|error| format!("failed to find a clice release: {error}"))?;
     let (version, url) = release_asset(&release, package.asset_suffix)?;
 
@@ -308,51 +291,6 @@ mod tests {
                 })
                 .collect(),
         }
-    }
-
-    /// `latest` over a release list with only these newest releases.
-    fn newest(
-        stable: Option<&'static str>,
-        pre_release: Option<&'static str>,
-    ) -> impl Fn(bool) -> Result<GithubRelease> {
-        move |wants_pre_release| {
-            let tag = if wants_pre_release {
-                pre_release
-            } else {
-                stable
-            };
-            tag.map(|tag| release(tag, &[LINUX]))
-                .ok_or_else(|| "finding a prerelease".to_owned())
-        }
-    }
-
-    fn version(release: Result<GithubRelease>) -> Result<String> {
-        release.map(|release| release.version)
-    }
-
-    #[test]
-    fn stable_prefers_stable_release() {
-        let latest = newest(Some("v0.2.0"), Some("v0.3.2026110108"));
-        assert_eq!(version(latest_release(false, &latest)), Ok("v0.2.0".into()));
-        assert_eq!(
-            version(latest_release(true, &latest)),
-            Ok("v0.3.2026110108".into())
-        );
-    }
-
-    #[test]
-    fn stable_falls_back_to_pre_release() {
-        let latest = newest(None, Some("v0.1.2026100509"));
-        assert_eq!(
-            version(latest_release(false, &latest)),
-            Ok("v0.1.2026100509".into())
-        );
-    }
-
-    #[test]
-    fn pre_release_never_takes_stable() {
-        assert!(latest_release(true, newest(Some("v0.2.0"), None)).is_err());
-        assert!(latest_release(false, newest(None, None)).is_err());
     }
 
     #[test]

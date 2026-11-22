@@ -139,8 +139,7 @@ CheckResult symbol_table_ok(const Root& root) {
         return std::unexpected("relation offsets are not a partition of the relations");
     }
     // FIXME: a reserved hash (~0, ~0-1) is not rejected here as the other hash
-    // columns reject it: corrupt bytes ending in one assert as a DenseMap key in
-    // collect_locals.
+    // columns reject it.
     if(!strictly_ascending(symbol_hashes)) {
         return std::unexpected("symbol hashes are not strictly ascending");
     }

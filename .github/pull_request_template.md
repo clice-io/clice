@@ -1,11 +1,17 @@
+<!-- Title: `type(scope): what it does` — conventional commits, one thing (no `;` or `,`); CI checks it. -->
+
 ## Related issue
 
 <!-- Link the issue this PR addresses, e.g. "Fixes #123". Delete this section if there is none. -->
 
+## Why
+
+<!-- The problem this PR solves or what it makes possible, as a user or a maintainer meets it. -->
+
 ## What changed
 
-<!-- Briefly describe what this PR does and why. -->
+<!-- What this PR does. -->
 
 ## Tests
 
-<!-- Which tests did you run locally? Did you add new tests for the change? -->
+<!-- Which tests does the change add? What did you verify that CI does not show (other platforms, real projects, measurements)? -->
