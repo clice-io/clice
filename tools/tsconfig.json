@@ -23,6 +23,7 @@
     "compat/**/*.ts",
     "docs/**/*.ts",
     "ecosystem/**/*.ts",
+    "github/**/*.ts",
     "lint/**/*.ts",
     "protocol/**/*.ts",
     "testing/**/*.ts",
