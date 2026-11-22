@@ -31,5 +31,9 @@ test(async (t) => {
     await s.client.progressed(PROGRESS, "begin", begins + 1);
     await held.release();
     await s.client.progressed(PROGRESS, "end", ends + 1);
-    await t.show("end", { message: values().at(-1)?.message });
+    const message = values().at(-1)?.message;
+    if (message === undefined) {
+        throw new Error("the pass ended without a message");
+    }
+    await t.show("end", { message });
 });
