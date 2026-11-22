@@ -22,7 +22,7 @@ real, so leave Open VSX to CI.
 ## Tier 1 — Instant builds (every green CI run)
 
 Nothing to operate. Every `main` push and PR run repackages the test-suite
-binaries (no strip) into `vsix-build-<target>` workflow artifacts, and
+binaries, their debug info stripped, into `vsix-build-<target>` workflow artifacts, and
 the raw binaries are in `build-<triple>-<type>` artifacts. To hand a
 fix to a user: point them at the run's artifact (GitHub login required), or
 have them set `clice.executable` to the extracted binary.
@@ -50,8 +50,8 @@ still running; the nightly then fails before tagging, naming the change:
 rerun its run green (`gh run rerun <id> --failed`), or wait for it. Once tagged, it dispatches the ecosystem
 round (`ecosystem.yml`, `ecosystem/README.md`) on that commit with the
 packages' CI run: every real project's regression and perf jobs, report
-only; perf measures clice against the nightly before (what clice spends a
-tenth more of is listed), on Sundays against clangd. A failed nightly just means no nightly
+only; perf measures clice against the nightly before (what clice spends 1.2×
+of is listed, 1.5× under three pairs of samples), on Sundays against clangd. A failed nightly just means no nightly
 that day — fix main and rerun via dispatch, with the maintainer's
 approval like any release trigger.
 
@@ -88,20 +88,22 @@ Every step that tags or publishes needs the maintainer's explicit approval first
    read its perf tables:
    `gh workflow run ecosystem.yml --ref main -f run=<its CI run> -f clangd=true`
    (the round reads the run's `build-*` artifacts, which live three days:
-   for an older nightly, rerun its main workflow first). Then tag its commit:
+   for an older nightly, rerun its main workflow first).
+3. Write the release notes into a draft release of the tag on the GitHub
+   release page (the download table format from the nightly notes is a
+   good template): the promote path publishes the release as soon as every
+   archive is attached, so notes written after the tag come too late. Then
+   tag its commit:
    `git tag v1.0.0 <commit> && git push origin v1.0.0`.
    The tag push runs the release path of `main.yml`, which promotes the
    already-tested packages from that commit's green CI run and publishes the
    extensions (Marketplace and Open VSX, without the pre-release flag). The promote path
    creates the GitHub release as a draft if none exists, and publishes it
    once every platform archive is attached; it refuses a release that is
-   already published, so notes prepared on the releases page beforehand
-   must be saved as a draft. Package artifacts
+   already published. Package artifacts
    expire 30 days after the CI run, so the tagged commit's run must be
    less than a month old — for an older commit, rerun its main workflow
    first to regenerate the packages.
-3. Write the release notes on the GitHub release page (the download table
-   format from the nightly notes is a good template).
 4. Verify: assets present (6 packages + 6 symbol archives + 6 vsix),
    Marketplace and Open VSX show the new stable version.
 

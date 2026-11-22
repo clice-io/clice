@@ -9,7 +9,7 @@ The compiler clice builds with and the LLVM/Clang libraries it links both come f
 
 **Read `toolchain-changelog.md` in this directory before touching `MODULE.bazel`, `.bazelrc`, `BUILD.bazel` or `bazel/`**: it records the platform pitfalls that still apply (symptom, cause, fix, how to check). Every new one is added there in the same shape; a toolchain change without an entry is not finished.
 
-The work happens on a branch `chore/upgrade-llvm-<major>`, created from fresh `origin/main` (CLAUDE.md) before Step 2, and runs on two boxes (the agent-box skill), leased once and kept for the whole upgrade: a Linux one, which regenerates `modules/` for every configuration and cross-builds arm64 Linux and both Windows targets as CI does, and a macOS one, which builds its own and x64 macOS.
+The work happens on a branch `chore/upgrade-llvm-<major>`, created from fresh `origin/main` (CLAUDE.md) before Step 2, and runs on a Linux box (the agent-box skill), leased once and kept for the whole upgrade: it regenerates `modules/` for every configuration and builds every target, as CI does.
 
 ## Step 1: The xclang Release
 
@@ -80,13 +80,13 @@ Strategy:
 2. Fix type system and signature changes (requires understanding semantics)
 3. Update the case outputs upstream changed: `UPDATE_SNAPSHOTS=1`, every changed block reviewed like code (the write-tests skill)
 4. Ensure `pixi run -e test-run unit-test RelWithDebInfo` passes
-5. Port `clang/lib/AST/StmtProfile.cpp` changes into `src/semantic/expr_hash.cpp` (a trimmed copy of `StmtProfiler` with clice's own leaves): do not diff the files — list the upstream commits with `git log llvmorg-<old>..llvmorg-<new> -- clang/lib/AST/StmtProfile.cpp`, and hand an Opus subagent that list with the instruction to apply each commit's C and C++ visitor changes to the port; `unittests --test-filter=expr_hash` (the bit-for-bit fidelity test against `Stmt::Profile`) must be green afterwards
+5. Port `clang/lib/AST/StmtProfile.cpp` changes into `src/semantic/expr_hash.cpp` (a trimmed copy of `StmtProfiler` with clice's own leaves): do not diff the files — list the upstream commits with `git log llvmorg-<old>..llvmorg-<new> -- clang/lib/AST/StmtProfile.cpp`, and hand an Opus subagent that list with the instruction to apply each commit's C and C++ visitor changes to the port; `pixi run -e test-run unit-test RelWithDebInfo -- --test-filter='expr_hash.*'` (the bit-for-bit fidelity test against `Stmt::Profile`) must be green afterwards
 6. Bump `index_format_version` in `src/index/format.cppm`: entity hashes (`src/semantic/identity.cpp`) follow clang's canonicalization rules, so they can change silently across versions and an old index would otherwise keep serving stale symbols
 7. A library clice starts using directly is added to `LLVM_LIBRARIES` in `bazel/BUILD.bazel`. xclang's libclang archives carry only the libraries clice uses: one they lack goes into xclang's `toolchain/cmake/caches/clang.cmake` (`LLVM_Development_DISTRIBUTION_COMPONENTS`) first, and needs a new xclang release
 
 When a fix is not obvious, read the LLVM source code to understand the new API. If `../llvm-project` exists locally, use it. Otherwise, look up the upstream commit/PR on GitHub.
 
-Then the unit tests and the cases on the Linux box, and a build of every other configuration on the box that builds it: `pixi run build Debug` on both boxes (the ASan libclang, built with assertions, declares more than the release one), `pixi run build RelWithDebInfo` on macOS, and `pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:<triple>` for the cross ones. CI runs them all, but a configuration that does not build is found faster here.
+Then the unit tests and the cases, and a build of every other configuration, each on a box of its own (the build-and-test skill): `pixi run build Debug` and `pixi run build Debug -- --platforms=@xclang//platforms:aarch64-apple-darwin` (the ASan libclang, built with assertions, declares more than the release one), and `pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:<triple>` for the other targets. CI runs them all, but a configuration that does not build is found faster here.
 
 ## Step 6: Write the Changelogs (REQUIRED)
 

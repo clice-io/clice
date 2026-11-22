@@ -66,7 +66,7 @@ files on each platform. The history line under each failure says:
 Confirm on a box (the agent-box skill) with two binaries: the previous nightly
 (`gh release download <tag> --pattern 'clice-*.<target>.tar.gz'`, `.zip` for
 Windows, 30 days) and the tested commit's (every main CI run uploads
-`package-clice.<target>.tar.gz`, `.zip` for Windows, three days). Run the failure's reproduce
+`package-clice.<target>.tar.gz`, `.zip` for Windows, 30 days). Run the failure's reproduce
 command with each as `CLICE_EXECUTABLE`. Failing with both: an old bug, a
 board issue (write_issues) and a `known` entry in the project's `test.ts`, as
 narrow as the failure. Failing only with the new one: bisect the commits

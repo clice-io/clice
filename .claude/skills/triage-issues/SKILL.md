@@ -1,5 +1,5 @@
 ---
-name: triage
+name: triage-issues
 description: Use when asked to triage issues — label and retitle the untriaged ones and report an activity digest; nothing is applied before the maintainer approves.
 ---
 

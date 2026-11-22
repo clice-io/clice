@@ -8,7 +8,7 @@ toolchain change; drop one once nothing can bring it back.
 
 ## What xclang owns
 
-xclang's Bazel module carries the ThinLTO cache (clice's `.bazelrc` only
+xclang's Bazel module carries the ThinLTO cache (clice's `bazel/clice.bazelrc` only
 names the directory, `--repo_env=XCLANG_THINLTO_CACHE`), `-oso_prefix` on
 macOS (`--keep-icf-stabs` only on the links that make a dSYM), stripping by
 object format, the choice of the ASan libclang (`@libclang` follows

@@ -1,4 +1,4 @@
-/// Triage of the untriaged issues (the triage skill): a snapshot to classify
+/// Triage of the untriaged issues (the triage-issues skill): a snapshot to classify
 /// from, the check of the proposed labels and titles against the taxonomy
 /// and the rules, and their application once the maintainer approved.
 ///
