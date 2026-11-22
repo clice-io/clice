@@ -125,12 +125,12 @@ the settings name one). The crash section starts with `clice <version>
 download that release's `*.symbols.tar.xz` (`.zip` for Windows; GSYM) and run:
 
 ```bash
-python scripts/symbolize.py crash.log --symbols clice.gsym
+node tools/release/symbolize.ts crash.log --symbols clice.gsym
 ```
 
 Every CI platform that packages runs this path on its own package: the package's clice
 crashes on purpose and its trace symbolizes against the symbol package
-(`scripts/check_crash_symbols.py`).
+(`tools/release/crash_symbols.ts`).
 
 For core-dump-level debugging, fetch the full DWARF from the `debug-info-*`
 artifact of the main CI run that built the release (90-day retention; find

@@ -19,13 +19,13 @@ bazel_dep(name = "simdjson", version = "5.1.1.clice.1")
 # The C++ toolchain on every platform and the LLVM/Clang libraries clice
 # links, both from one xclang release: libclang's ThinLTO bitcode needs the
 # lld of the same LLVM. pixi.toml pins the same release for the tools the
-# tests and the artifact checks run.
+# tests and the package checks run.
 bazel_dep(name = "xclang", version = "23.1.5.2")
 
 xclang = use_extension("@xclang//bazel:extensions.bzl", "xclang")
 use_repo(xclang, "libclang")
 
-# scripts/modules.py generates the macOS configurations of modules/ on Linux,
-# against Apple's SDK, which a build fetches only for a macOS target off a
-# macOS host; CI builds macOS on macOS, with Xcode's.
+# CI builds the macOS targets on Linux, and tools/modules/modules.ts generates
+# their configurations of modules/ there, against Apple's SDK, which a build
+# fetches only for a macOS target off a macOS host.
 xclang.macos_sdk(accept_license = True)

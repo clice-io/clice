@@ -29,10 +29,9 @@ files.
   stops.** Off a macOS host the macOS targets build against Apple's SDK,
   which xclang's module fetches only once the root module accepts its
   license: `MODULE.bazel`'s `xclang.macos_sdk(accept_license = True)`, for
-  `scripts/modules.py`, which generates every configuration of `modules/`
-  on x64 Linux. CI cross-builds arm64 Linux and both Windows targets on x64
-  Linux, x64 macOS on arm64 macOS (`build_os` in `test.yml`), and tests on
-  the target's runner. Check: `npx bazel build --platforms=@xclang//platforms:aarch64-apple-darwin //modules:demand`
+  `tools/modules/modules.ts`, which generates every configuration of `modules/`
+  on x64 Linux. CI builds every target on x64 Linux (`build_os` in `test.yml`)
+  and tests on the target's runner. Check: `npx bazel build --platforms=@xclang//platforms:aarch64-apple-darwin //modules:demand`
   on x64 Linux.
 - **Every link of clice takes minutes.** The libclang archives hold ThinLTO
   bitcode; lld redoes its code generation on every link unless its cache has
@@ -82,14 +81,14 @@ files.
   recorded by absolute path; xclang's `-oso_prefix` makes the paths relative
   to the execution root, and its `generate_dsym_file` feature links the dSYM
   `xclang_debug_symbols` converts. Check: `dsymutil -s build/RelWithDebInfo/bin/bin/clice | grep OSO`
-  names `bazel-out/...`; `scripts/symbolize.py` on a macOS crash log prints
+  names `bazel-out/...`; `tools/release/symbolize.ts` on a macOS crash log prints
   `file:line` for clice's frames.
 - **The binary links the SDK's `libc++.dylib`.** `--no-default-config`
   (conda-forge's clang habit) drops xclang's config files, which select its
   static, hermetic libc++ (hidden visibility, libc++abi merged in). Never
   pass it. The SDK's `libc++.1.dylib` still arrives through system frameworks
   (libuv → CoreFoundation → libobjc); two libc++ in one process is expected.
-  Check: `scripts/check_artifact_deps.py` (CI runs it on every platform that packages).
+  Check: `tools/release/system_libraries.ts` (CI runs it on every platform that packages).
 
 ## Windows
 

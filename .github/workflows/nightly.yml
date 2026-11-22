@@ -212,7 +212,7 @@ jobs:
             row "Windows arm64" aarch64-w64-mingw32 zip zip
             echo
             echo "Symbol packages hold GSYM data for crash log symbolization"
-            echo "via \`scripts/symbolize.py\`. Extension users on the Marketplace"
+            echo "via \`tools/release/symbolize.ts\`. Extension users on the Marketplace"
             echo "or Open VSX pre-release channel update automatically."
           } > /tmp/notes.md
           gh release create "$TAG" --draft --prerelease --title "$TAG" \
