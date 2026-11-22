@@ -61,7 +61,17 @@ auto semantic_tokens(SourceText& source,
         }
     };
 
+    // A declaration paints the name an occurrence of it writes: the
+    // accessors an @synthesize defines lie at the property's name, which
+    // names the property alone.
+    llvm::DenseSet<std::pair<std::uint32_t, index::SymbolHash>> written;
+    for(const auto& occurrence: entries.occurrences) {
+        written.insert({occurrence.range.begin, occurrence.target});
+    }
     for(const auto& decl: entries.decls) {
+        if(!written.contains({decl.range.begin, decl.symbol})) {
+            continue;
+        }
         auto info = resolve(decl.symbol);
         if(!info || info->token_class.kind == Kind::None) {
             continue;

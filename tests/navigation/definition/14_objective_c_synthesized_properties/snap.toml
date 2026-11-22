@@ -1,14 +1,14 @@
 [answers.setter]
-definition = ["@property int ⟦count⟧;"]
+definition = ["@synthesize ⟦count⟧ = _count;"]
 
 [answers.protocol]
-definition = ["@property int ⟦count⟧;"]
+definition = ["@synthesize ⟦count⟧ = _count;"]
 
 [answers.superclass]
-definition = ["@property int ⟦width⟧;"]
+definition = ["@synthesize ⟦width⟧ = _width;"]
 
 [answers.selector]
-definition = ["@property int ⟦count⟧;"]
+definition = ["@synthesize ⟦count⟧ = _count;"]
 
 [answers.subclass]
-definition = ["@property int ⟦count⟧;"]
+definition = ["@synthesize ⟦count⟧ = _count;"]

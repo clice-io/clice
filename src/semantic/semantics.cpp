@@ -262,7 +262,7 @@ public:
         // What a property synthesizes is declared by no code: the instance
         // variable, whose name an @synthesize holds, and the accessors it
         // declares in the @implementation, at the places of the declaration
-        // they copy when one is written.
+        // they copy; an @synthesize written defines them in the index.
         if(auto* ivar = llvm::dyn_cast_if_present<clang::ObjCIvarDecl>(X);
            ivar && ivar->getSynthesize()) {
             return true;
@@ -1155,10 +1155,11 @@ void refer_selector(References& out,
     }
 }
 
-/// References to the Objective-C method a message or a `@selector` names: an
-/// accessor clang declares for a property is written nowhere, and the name
-/// names the property, at its first piece; a `@selector` a macro writes has
-/// none to place it at.
+/// References to the Objective-C method a message or a `@selector` names. An
+/// accessor a property synthesizes stands for its class's declaration of it,
+/// itself when the class has none. An accessor clang declares for a property
+/// is written nowhere, and the name names the property, at its first piece;
+/// a `@selector` a macro writes has none to place it at.
 void refer_method(References& out,
                   const clang::ObjCMethodDecl* method,
                   RelationKind kind,
@@ -1166,7 +1167,10 @@ void refer_method(References& out,
     if(!method) {
         return;
     }
-    if(method->isImplicit()) {
+    if(method->isSynthesizedAccessorStub()) {
+        method = method->getCanonicalDecl();
+    }
+    if(method->isImplicit() && !method->isSynthesizedAccessorStub()) {
         if(!pieces.empty()) {
             refer(out, method->findPropertyDecl(), kind, pieces.front());
         }
@@ -1762,7 +1766,7 @@ void stmt_references(const clang::Stmt* S,
         OME->getSelectorLocs(pieces);
         auto kind = decls::objc_untyped(*OME) ? RelationKind::Candidate : RelationKind::Reference;
         const auto* method = decls::objc_message_target(*OME);
-        refer_method(out, method ? &decls::objc_declared(*method) : nullptr, kind, pieces);
+        refer_method(out, method, kind, pieces);
         return;
     }
 
@@ -2234,7 +2238,7 @@ llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
         References out;
         if(const auto* method = objc_selector_target(semantics, index)) {
             refer_method(out,
-                         &decls::objc_declared(*method),
+                         method,
                          RelationKind::Candidate,
                          decls::objc_selector_pieces(*selector, method->getASTContext()));
         }

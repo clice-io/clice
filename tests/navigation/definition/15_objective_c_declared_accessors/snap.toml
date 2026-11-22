@@ -1,14 +1,14 @@
 [answers.message]
-definition = ["shapes.h │ - (int)⟦size⟧;"]
+definition = ["@synthesize ⟦size⟧ = _size;"]
 
 [answers.selector]
-definition = ["shapes.h │ - (int)⟦size⟧;"]
+definition = ["@synthesize ⟦size⟧ = _size;"]
 
 [answers.class_selector]
-definition = ["shapes.h │ - (int)⟦count⟧;"]
+definition = ["@synthesize ⟦count⟧ = _count;"]
 
 [answers.declaration]
-definition = ["- (int)⟦size⟧;"]
+definition = ["main.m │ @synthesize ⟦size⟧ = _size;"]
 
 [answers.class_declaration]
-definition = ["- (int)⟦count⟧;"]
+definition = ["main.m │ @synthesize ⟦count⟧ = _count;"]

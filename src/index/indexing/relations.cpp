@@ -130,10 +130,12 @@ void Builder::add_self_relation(const clang::NamedDecl* decl,
     auto [fid, range] = *unit.written_range(name);
     Relation relation{.kind = kind, .range = range, .target = 0};
 
-    // An instance variable a property synthesizes spans no declaration
-    // of its own, an @synthesize names it at most.
+    // What a property synthesizes, an instance variable or an accessor,
+    // spans no declaration of its own: an @synthesize names it at most.
     const auto* ivar = llvm::dyn_cast<clang::ObjCIvarDecl>(decl);
-    if(kind.declares() && !(ivar && ivar->getSynthesize())) {
+    const auto* method = llvm::dyn_cast<clang::ObjCMethodDecl>(decl);
+    if(kind.declares() && !(ivar && ivar->getSynthesize()) &&
+       !(method && method->isSynthesizedAccessorStub())) {
         auto source_range = decls::written_range(decl);
         if(source_range.isValid()) {
             auto [def_fid, extent] = unit.produced_range(source_range);
@@ -166,6 +168,23 @@ void Builder::add_pair_relation(const clang::NamedDecl* decl,
     // The anchor only routes the relation to a file's index; symbol pairs
     // carry no range of their own.
     relate(unit.produced_at(anchor.getBegin()).file, decl, {.kind = kind}, target);
+}
+
+void Builder::relate_unseen_override(const clang::ObjCMethodDecl& method,
+                                     const clang::ObjCInterfaceDecl& objc_class) {
+    auto* index = file_index(unit.produced_at(method.getLocation()).file);
+    if(!index) {
+        return;
+    }
+    auto& entities = unit.get<EntityTable>();
+    auto base = entities.objc_method(objc_class, method.getSelector(), method.isInstanceMethod());
+    if(auto [it, inserted] = symbols.try_emplace(base); inserted) {
+        it->second = describe(&method);
+        it->second.parent = entities.entity(&objc_class);
+    }
+    auto override = ensure_symbol(decls::normalize(&method));
+    index->relations[override].push_back({.kind = RelationKind::Interface, .target = base});
+    index->relations[base].push_back({.kind = RelationKind::Implementation, .target = override});
 }
 
 void Builder::add_type_definitions(const clang::ValueDecl* decl) {
@@ -354,14 +373,9 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
 
     // A property's accessor clang declares is one symbol with the method
     // an @implementation, maybe in another unit, writes for it: a call
-    // to one nothing writes finds no callee. A message naming one, or one
-    // a property synthesizes, refers in the semantic map to what declares
-    // it, and to the accessor here, where that method, and the other
-    // methods of its selector, find it.
-    // LIMITATION: a call to an accessor a property synthesizes, which a
-    // protocol or a superclass declares in writing, is in no call
-    // hierarchy: the message names that declaration, the call the
-    // accessor, which has no place.
+    // to one nothing writes finds no callee. A message naming one refers
+    // to the property in the semantic map, and to the accessor here,
+    // where that method, and the other methods of its selector, find it.
     if(auto* OME = node.get<clang::ObjCMessageExpr>()) {
         const auto* method = decls::objc_message_target(*OME);
         if(!method) {
@@ -369,7 +383,7 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         }
         auto name = decls::objc_message_name(*OME);
         call(method, name);
-        if(method->isImplicit() || method->isSynthesizedAccessorStub()) {
+        if(method->isImplicit()) {
             add_self_relation(method,
                               decls::objc_untyped(*OME) ? RelationKind::Candidate
                                                         : RelationKind::Reference,
@@ -382,12 +396,12 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         }
         return;
     }
-    // `@selector(count)` naming an accessor no code writes refers in the
-    // semantic map to what declares it, and to the accessor here, as a
-    // message does.
+    // `@selector(count)` naming an accessor clang declares refers to the
+    // property in the semantic map, and to the accessor here, as a message
+    // does.
     if(auto* selector = node.get<clang::ObjCSelectorExpr>()) {
         const auto* method = objc_selector_target(semantics, index);
-        if(method && (method->isImplicit() || method->isSynthesizedAccessorStub())) {
+        if(method && method->isImplicit()) {
             if(auto pieces = decls::objc_selector_pieces(*selector, context); !pieces.empty()) {
                 add_self_relation(method, RelationKind::Candidate, pieces.front());
             }
@@ -565,6 +579,37 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         }
         return;
     }
+    // `@synthesize count = _count;` defines the accessors it synthesizes at
+    // the property's name, which the semantic map leaves to the property;
+    // those of a protocol's or a superclass's property implement its
+    // accessors.
+    if(auto* PID = llvm::dyn_cast<clang::ObjCPropertyImplDecl>(D)) {
+        if(PID->getBeginLoc().isInvalid()) {
+            return;
+        }
+        const auto* property = PID->getPropertyDecl();
+        for(auto [synthesized, declared]: {
+                std::pair{PID->getGetterMethodDecl(), property->getGetterMethodDecl()},
+                std::pair{PID->getSetterMethodDecl(), property->getSetterMethodDecl()}
+        }) {
+            if(!synthesized || !synthesized->isSynthesizedAccessorStub()) {
+                continue;
+            }
+            add_self_relation(synthesized, RelationKind::Definition, PID->getLocation());
+            if(decls::objc_class(declared->getDeclContext()) !=
+               decls::objc_class(synthesized->getDeclContext())) {
+                add_pair_relation(synthesized,
+                                  RelationKind::Interface,
+                                  declared,
+                                  PID->getLocation());
+                add_pair_relation(declared,
+                                  RelationKind::Implementation,
+                                  synthesized,
+                                  PID->getLocation());
+            }
+        }
+        return;
+    }
     // A method overrides its superclasses' methods of its selector and
     // implements the protocols' its class adopts. A superclass's method this
     // unit does not see, which another unit's @implementation may write, is
@@ -574,14 +619,7 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         MD->getOverriddenMethods(overridden);
         for(auto [objc_class, method]: decls::objc_overridden(*MD)) {
             if(!method) {
-                // LIMITATION: the implementations of a method only another
-                // unit's @implementation writes leave this override out.
-                relate(unit.produced_at(MD->getLocation()).file,
-                       MD,
-                       {.kind = RelationKind::Interface,
-                        .target = unit.get<EntityTable>().objc_method(*objc_class,
-                                                                      MD->getSelector(),
-                                                                      MD->isInstanceMethod())});
+                relate_unseen_override(*MD, *objc_class);
             } else if(ranges::none_of(overridden, [&](const clang::ObjCMethodDecl* base) {
                           return decls::normalize(base) == decls::normalize(method);
                       })) {

@@ -656,25 +656,6 @@ auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::Ob
                                                              : nullptr;
 }
 
-auto objc_declared(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl& {
-    if(!method.isSynthesizedAccessorStub()) {
-        return method;
-    }
-    if(const auto* declared = method.getCanonicalDecl(); declared != &method) {
-        return *declared;
-    }
-    const auto* implementation = llvm::cast<clang::ObjCImplDecl>(method.getDeclContext());
-    for(const auto* synthesis: implementation->property_impls()) {
-        if(synthesis->getGetterMethodDecl() == &method) {
-            return *synthesis->getPropertyDecl()->getGetterMethodDecl();
-        }
-        if(synthesis->getSetterMethodDecl() == &method) {
-            return *synthesis->getPropertyDecl()->getSetterMethodDecl();
-        }
-    }
-    std::unreachable();
-}
-
 auto objc_alias_names(const clang::ObjCCompatibleAliasDecl& alias)
     -> std::pair<clang::SourceLocation, clang::SourceLocation> {
     auto& context = alias.getASTContext();

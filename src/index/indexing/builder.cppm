@@ -86,10 +86,8 @@ private:
     void add_unresolved_macro(clang::SourceLocation location);
 
     /// Record a relation of `decl` in the index of `fid`, `target` naming
-    /// the symbol it leads to; without one, `relation` holds its target as
-    /// given: a symbol this unit has no declaration of registers no record,
-    /// another unit's describes it. A file file_index drops takes the
-    /// relation with it, and neither symbol is registered.
+    /// the symbol it leads to. A file file_index drops takes the relation
+    /// with it, and neither symbol is registered.
     void relate(clang::FileID fid,
                 const clang::NamedDecl* decl,
                 Relation relation,
@@ -112,6 +110,13 @@ private:
                            RelationKind kind,
                            const clang::NamedDecl* target,
                            clang::SourceRange anchor);
+
+    /// The Interface and Implementation relations of an Objective-C
+    /// override to the method of its selector a superclass has that this
+    /// unit sees no declaration of, which another unit's @implementation may
+    /// write: described as the override describes itself, in that class.
+    void relate_unseen_override(const clang::ObjCMethodDecl& method,
+                                const clang::ObjCInterfaceDecl& objc_class);
 
     /// The TypeDefinition relations of a value (a function's: its return
     /// value): the type it is declared with, and for a smart pointer also

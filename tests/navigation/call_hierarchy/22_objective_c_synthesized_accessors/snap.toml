@@ -1,17 +1,31 @@
 [answers.twice]
-wrong = "should list the call to size: the accessor Box synthesizes for a property a protocol declares, with a declaration of size, has no place to list"
 call_hierarchy = [
     { name = "twice", kind = "Method", at = "- (int)⟦twice⟧ {", detail = "Box::twice" },
 ]
 incoming_calls = []
-outgoing_calls = []
+outgoing_calls = [
+    {
+        name = "size",
+        kind = "Method",
+        at = "@synthesize ⟦size⟧ = _size;",
+        detail = "Box::size",
+        sites = ["return [self ⟦size⟧] * 2;"],
+    },
+]
 
 [answers.message]
-wrong = "should list twice: the message names the protocol's declaration of size, while the call runs the accessor Box synthesizes, which has no place"
 call_hierarchy = [
-    { name = "size", kind = "Method", at = "- (int)⟦size⟧;", detail = "Sized::size" },
+    { name = "size", kind = "Method", at = "@synthesize ⟦size⟧ = _size;", detail = "Box::size" },
 ]
-incoming_calls = []
+incoming_calls = [
+    {
+        name = "twice",
+        kind = "Method",
+        at = "- (int)⟦twice⟧ {",
+        detail = "Box::twice",
+        sites = ["return [self ⟦size⟧] * 2;"],
+    },
+]
 outgoing_calls = []
 
 [answers.circle]
