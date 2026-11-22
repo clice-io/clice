@@ -7,8 +7,5 @@ definition = ["@property int ⟦count⟧;"]
 [answers.superclass]
 definition = ["@property int ⟦width⟧;"]
 
-[answers.selector]
-definition = ["@property int ⟦count⟧;"]
-
 [answers.subclass]
 definition = ["@property int ⟦count⟧;"]

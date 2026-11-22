@@ -1,5 +1,7 @@
 #import "shapes.h"
 
+#define SIZE_SELECTOR @selector(size)
+
 @implementation Box
 @synthesize size = _size;
 
@@ -9,5 +11,9 @@
 
 - (SEL)action {
     return @selector(§(selector)size);
+}
+
+- (SEL)written_by_macro {
+    return SIZE_SELECTOR;
 }
 @end

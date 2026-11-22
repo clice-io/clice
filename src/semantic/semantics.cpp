@@ -1155,24 +1155,6 @@ void refer_selector(References& out,
     }
 }
 
-/// References to the Objective-C method a message or a selector names, by
-/// what declares it (decls::objc_declared): an accessor clang declares for
-/// a property is written nowhere, and the name names the property.
-void refer_method(References& out,
-                  const clang::ObjCMethodDecl* method,
-                  RelationKind kind,
-                  llvm::ArrayRef<clang::SourceLocation> pieces) {
-    if(!method) {
-        return;
-    }
-    const auto& declared = decls::objc_declared(*method);
-    if(declared.isImplicit()) {
-        refer(out, declared.findPropertyDecl(), kind, pieces.front());
-        return;
-    }
-    refer_selector(out, &declared, kind, pieces);
-}
-
 /// References to the protocols a declaration or a type lists, at their names.
 void refer_protocols(References& out, auto&& protocols, auto&& locations) {
     for(auto [protocol, location]: views::zip(protocols, locations)) {
@@ -1759,7 +1741,15 @@ void stmt_references(const clang::Stmt* S,
         llvm::SmallVector<clang::SourceLocation, 4> pieces;
         OME->getSelectorLocs(pieces);
         auto kind = decls::objc_untyped(*OME) ? RelationKind::Candidate : RelationKind::Reference;
-        refer_method(out, decls::objc_message_target(*OME), kind, pieces);
+        const auto* method = decls::objc_message_target(*OME);
+        const auto* declared = method ? &decls::objc_declared(*method) : nullptr;
+        // An accessor clang declares for a property is written nowhere: the
+        // message names the property.
+        if(declared && declared->isImplicit()) {
+            refer(out, declared->findPropertyDecl(), kind, pieces.front());
+            return;
+        }
+        refer_selector(out, declared, kind, pieces);
         return;
     }
 
@@ -2234,10 +2224,10 @@ llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
             const auto* method = semantics.node(parent).node.get<clang::ObjCMethodDecl>();
             const auto* objc_class = method ? decls::objc_class(method->getDeclContext()) : nullptr;
             if(objc_class) {
-                refer_method(out,
-                             decls::objc_selector_method(*objc_class, selector->getSelector()),
-                             RelationKind::Candidate,
-                             decls::objc_selector_pieces(*selector, method->getASTContext()));
+                refer_selector(out,
+                               decls::objc_selector_method(*objc_class, selector->getSelector()),
+                               RelationKind::Candidate,
+                               decls::objc_selector_pieces(*selector, method->getASTContext()));
                 break;
             }
         }

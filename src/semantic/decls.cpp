@@ -703,7 +703,7 @@ auto objc_selector_method(const clang::ObjCInterfaceDecl& objc_class, clang::Sel
     }
     for(bool instance: {true, false}) {
         if(const auto* method = objc_class.lookupPrivateMethod(selector, instance)) {
-            return method;
+            return &objc_declared(*method);
         }
         if(const auto* method = objc_class.lookupMethod(selector, instance)) {
             return method;

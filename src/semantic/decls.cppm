@@ -154,7 +154,7 @@ auto objc_extension_paren(const clang::ObjCCategoryDecl& extension) -> clang::So
 
 /// A method of `selector` an Objective-C class answers: implemented or
 /// declared by it or a superclass, or by a protocol it adopts, an instance
-/// method before a class method; null for none.
+/// method before a class method, as objc_declared gives it; null for none.
 auto objc_selector_method(const clang::ObjCInterfaceDecl& objc_class, clang::Selector selector)
     -> const clang::ObjCMethodDecl*;
 
