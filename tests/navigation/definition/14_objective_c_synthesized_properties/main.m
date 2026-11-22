@@ -24,6 +24,10 @@ __attribute__((objc_root_class))
     [self §(setter)setCount:1];
     return [self §(protocol)count] + [self §(superclass)width];
 }
+
+- (SEL)action {
+    return @selector(§(selector)count);
+}
 @end
 
 int measure(Square *square) {

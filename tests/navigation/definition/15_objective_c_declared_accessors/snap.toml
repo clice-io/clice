@@ -1,0 +1,8 @@
+[answers.message]
+definition = ["shapes.h │ - (int)⟦size⟧;"]
+
+[answers.selector]
+definition = ["shapes.h │ - (int)⟦size⟧;"]
+
+[answers.declaration]
+definition = ["- (int)⟦size⟧;"]

@@ -168,6 +168,13 @@ void Builder::add_pair_relation(const clang::NamedDecl* decl,
     relate(unit.produced_at(anchor.getBegin()).file, decl, {.kind = kind}, target);
 }
 
+void Builder::add_pair_relation(const clang::NamedDecl* decl,
+                                RelationKind kind,
+                                SymbolHash target,
+                                clang::SourceRange anchor) {
+    relate(unit.produced_at(anchor.getBegin()).file, decl, {.kind = kind, .target = target});
+}
+
 void Builder::add_type_definitions(const clang::ValueDecl* decl) {
     auto* target = type_definition_of(decl, place_resolver);
     if(!target) {
@@ -354,9 +361,10 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
 
     // A property's accessor clang declares is one symbol with the method
     // an @implementation, maybe in another unit, writes for it: a call
-    // to one nothing writes finds no callee. A message naming one refers
-    // to the property in the semantic map, and to the accessor here,
-    // where that method, and the other methods of its selector, find it.
+    // to one nothing writes finds no callee. A message naming one, or one
+    // an @synthesize declares, refers in the semantic map to what declares
+    // it (decls::objc_declared), and to the accessor here, where that
+    // method, and the other methods of its selector, find it.
     if(auto* OME = node.get<clang::ObjCMessageExpr>()) {
         const auto* method = decls::objc_message_target(*OME);
         if(!method) {
@@ -364,7 +372,7 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         }
         auto name = decls::objc_message_name(*OME);
         call(method, name);
-        if(method->isImplicit()) {
+        if(method->isImplicit() || method->isSynthesizedAccessorStub()) {
             add_self_relation(method,
                               decls::objc_untyped(*OME) ? RelationKind::Candidate
                                                         : RelationKind::Reference,
@@ -549,15 +557,27 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         return;
     }
     // A method overrides its superclasses' methods of its selector and
-    // implements the protocols' its class adopts.
+    // implements the protocols' its class adopts. A superclass's method this
+    // unit does not see, which another unit's @implementation may write, is
+    // known by its class and selector, as calls to it in that unit name it.
     if(auto* MD = llvm::dyn_cast<clang::ObjCMethodDecl>(D)) {
         llvm::SmallVector<const clang::ObjCMethodDecl*, 4> overridden;
         MD->getOverriddenMethods(overridden);
-        if(const auto* nearest = decls::objc_overridden(*MD);
-           nearest && ranges::none_of(overridden, [&](const clang::ObjCMethodDecl* base) {
-               return decls::normalize(base) == decls::normalize(nearest);
-           })) {
-            overridden.push_back(nearest);
+        for(auto [objc_class, method]: decls::objc_overridden(*MD)) {
+            if(!method) {
+                // LIMITATION: the implementations of a method only another
+                // unit's @implementation writes leave this override out.
+                add_pair_relation(MD,
+                                  RelationKind::Interface,
+                                  unit.get<EntityTable>().objc_method(*objc_class,
+                                                                      MD->getSelector(),
+                                                                      MD->isInstanceMethod()),
+                                  MD->getLocation());
+            } else if(ranges::none_of(overridden, [&](const clang::ObjCMethodDecl* base) {
+                          return decls::normalize(base) == decls::normalize(method);
+                      })) {
+                overridden.push_back(method);
+            }
         }
         for(const auto* base: overridden) {
             add_pair_relation(MD, RelationKind::Interface, base, MD->getLocation());

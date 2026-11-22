@@ -290,14 +290,31 @@ std::uint64_t EntityTable::entity(const clang::NamedDecl* decl) {
         return hasher.finish();
     }
 
-    Hasher hasher;
-    add_context(hasher, decl);
-    add_self(hasher, decl);
-    auto result = hasher.finish();
+    std::uint64_t result = 0;
+    const auto* method = llvm::dyn_cast<clang::ObjCMethodDecl>(decl);
+    if(const auto* objc_class = method ? decls::objc_class(method->getDeclContext()) : nullptr) {
+        result = objc_method(*objc_class, method->getSelector(), method->isInstanceMethod());
+    } else {
+        Hasher hasher;
+        add_context(hasher, decl);
+        add_self(hasher, decl);
+        result = hasher.finish();
+    }
 
     in_progress.erase(decl);
     entities[decl] = result;
     return result;
+}
+
+std::uint64_t EntityTable::objc_method(const clang::ObjCInterfaceDecl& objc_class,
+                                       clang::Selector selector,
+                                       bool instance) {
+    Hasher hasher;
+    add_module(hasher, &objc_class);
+    hasher.add(Tag::Context);
+    hasher.add(entity(&objc_class));
+    add_objc_method(hasher, selector, instance);
+    return hasher.finish();
 }
 
 std::uint64_t EntityTable::entity(const clang::MacroInfo* macro) {
@@ -731,7 +748,7 @@ std::uint64_t EntityTable::expr_hash(const clang::Expr* expr) {
     return result;
 }
 
-void EntityTable::add_context(Hasher& hasher, const clang::Decl* decl) {
+void EntityTable::add_module(Hasher& hasher, const clang::Decl* decl) {
     /// Partitions attach to their module: a class one partition
     /// forward-declares and another defines is one entity, whichever
     /// declaration a unit reads first.
@@ -739,6 +756,10 @@ void EntityTable::add_context(Hasher& hasher, const clang::Decl* decl) {
         hasher.add(Tag::Module);
         hasher.add(module->getPrimaryModuleInterfaceName());
     }
+}
+
+void EntityTable::add_context(Hasher& hasher, const clang::Decl* decl) {
+    add_module(hasher, decl);
 
     /// C linkage names one entity across every namespace.
     if(has_c_linkage(decl)) {
@@ -893,11 +914,7 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
     } else if(auto* function = dyn_cast<FunctionDecl>(decl)) {
         add_function(hasher, function);
     } else if(auto* method = dyn_cast<ObjCMethodDecl>(decl)) {
-        /// `-count` and `+count` are two methods of one class.
-        hasher.add(Tag::Other);
-        hasher.add(static_cast<std::uint64_t>(decl->getKind()));
-        add_declaration_name(hasher, decl->getDeclName());
-        hasher.add(static_cast<std::uint64_t>(method->isInstanceMethod()));
+        add_objc_method(hasher, method->getSelector(), method->isInstanceMethod());
     } else if(auto* property = dyn_cast<ObjCPropertyDecl>(decl)) {
         hasher.add(Tag::Other);
         hasher.add(static_cast<std::uint64_t>(decl->getKind()));
@@ -970,6 +987,14 @@ void EntityTable::add_self(Hasher& hasher, const clang::NamedDecl* decl) {
     if(needs_path(decl, unit)) {
         add_path(hasher, decl->getLocation());
     }
+}
+
+void EntityTable::add_objc_method(Hasher& hasher, clang::Selector selector, bool instance) {
+    /// `-count` and `+count` are two methods of one class.
+    hasher.add(Tag::Other);
+    hasher.add(static_cast<std::uint64_t>(clang::Decl::ObjCMethod));
+    add_declaration_name(hasher, clang::DeclarationName(selector));
+    hasher.add(static_cast<std::uint64_t>(instance));
 }
 
 void EntityTable::add_function(Hasher& hasher, const clang::FunctionDecl* function) {

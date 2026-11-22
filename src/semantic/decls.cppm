@@ -136,9 +136,10 @@ auto objc_message_target(const clang::ObjCMessageExpr& message) -> const clang::
 /// synthesizes the variable with no @synthesize written; null otherwise.
 auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::ObjCPropertyDecl*;
 
-/// The property an Objective-C method is an accessor of, or overrides an
-/// accessor of; null for any other method.
-auto objc_accessor_property(const clang::ObjCMethodDecl& method) -> const clang::ObjCPropertyDecl*;
+/// What an Objective-C method stands for: the accessor its property
+/// declares for one an @synthesize declares in an @implementation, which no
+/// code writes; the method itself otherwise.
+auto objc_declared(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl&;
 
 /// Where `@compatibility_alias Quill Pen;` writes the alias and the class:
 /// clang locates the declaration at its `@` alone. Invalid when a macro
@@ -167,10 +168,20 @@ auto objc_selector_pieces(const clang::ObjCSelectorExpr& expr, const clang::ASTC
 auto objc_class_name(const clang::ObjCInterfaceDecl* objc_class, clang::SourceLocation location)
     -> const clang::NamedDecl*;
 
-/// The nearest superclass method an Objective-C method overrides, null for
-/// none; getOverriddenMethods leaves out one only an @implementation or a
-/// category declares.
-auto objc_overridden(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl*;
+/// A superclass of an Objective-C method's class, and its method of the
+/// method's selector this unit sees: null when none, though an
+/// @implementation of another unit may write one.
+struct ObjCOverridden {
+    const clang::ObjCInterfaceDecl* objc_class;
+
+    const clang::ObjCMethodDecl* method;
+};
+
+/// Every superclass of an Objective-C method's class, nearest first, with
+/// the method of its selector it overrides there; getOverriddenMethods
+/// stops at the nearest one it sees, and leaves out one only an
+/// @implementation or a category declares.
+auto objc_overridden(const clang::ObjCMethodDecl& method) -> llvm::SmallVector<ObjCOverridden, 4>;
 
 /// The constructor a construction runs, as the source names it: an
 /// inherited constructor is an implicit declaration standing in for the

@@ -656,19 +656,17 @@ auto objc_unwritten_property(const clang::ObjCIvarDecl& ivar) -> const clang::Ob
                                                              : nullptr;
 }
 
-auto objc_accessor_property(const clang::ObjCMethodDecl& method) -> const clang::ObjCPropertyDecl* {
-    // clang's findPropertyDecl looks for the property of an accessor a
-    // @synthesize declares in the class, its extensions and categories
-    // alone, and crashes when it is a protocol's or a superclass's: the
-    // @synthesize names it.
+auto objc_declared(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl& {
     if(!method.isSynthesizedAccessorStub()) {
-        return method.findPropertyDecl();
+        return method;
     }
     const auto* implementation = llvm::cast<clang::ObjCImplDecl>(method.getDeclContext());
     for(const auto* synthesis: implementation->property_impls()) {
-        if(synthesis->getGetterMethodDecl() == &method ||
-           synthesis->getSetterMethodDecl() == &method) {
-            return synthesis->getPropertyDecl();
+        if(synthesis->getGetterMethodDecl() == &method) {
+            return *synthesis->getPropertyDecl()->getGetterMethodDecl();
+        }
+        if(synthesis->getSetterMethodDecl() == &method) {
+            return *synthesis->getPropertyDecl()->getSetterMethodDecl();
         }
     }
     std::unreachable();
@@ -769,16 +767,16 @@ auto objc_class_name(const clang::ObjCInterfaceDecl* objc_class, clang::SourceLo
     return objc_class;
 }
 
-auto objc_overridden(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl* {
+auto objc_overridden(const clang::ObjCMethodDecl& method) -> llvm::SmallVector<ObjCOverridden, 4> {
+    llvm::SmallVector<ObjCOverridden, 4> overridden;
     const auto* objc_class = decls::objc_class(method.getDeclContext());
     for(const auto* base = objc_class ? objc_class->getSuperClass() : nullptr;
         base && base->hasDefinition();
         base = base->getSuperClass()) {
-        if(const auto* own = own_method(*base, method.getSelector(), method.isInstanceMethod())) {
-            return own;
-        }
+        overridden.push_back(
+            {base, own_method(*base, method.getSelector(), method.isInstanceMethod())});
     }
-    return nullptr;
+    return overridden;
 }
 
 auto constructor_of(const clang::CXXConstructExpr* construct) -> const clang::CXXConstructorDecl* {

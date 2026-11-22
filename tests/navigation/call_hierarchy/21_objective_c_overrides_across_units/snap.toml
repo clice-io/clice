@@ -1,0 +1,36 @@
+[answers.square]
+call_hierarchy = [
+    { name = "count", kind = "Method", at = "- (int)⟦count⟧ { @+0", detail = "Square::count" },
+]
+incoming_calls = [
+    {
+        name = "twice",
+        kind = "Method",
+        at = "shape.m │ - (int)⟦twice⟧ {",
+        detail = "Shape::twice",
+        sites = ["shape.m │ return [self ⟦count⟧] * 2;"],
+    },
+]
+outgoing_calls = []
+
+[answers.nib]
+call_hierarchy = [
+    { name = "count", kind = "Method", at = "- (int)⟦count⟧ { @+0", detail = "Nib::count" },
+]
+incoming_calls = [
+    {
+        name = "twice",
+        kind = "Method",
+        at = "pen.m │ - (int)⟦twice⟧ {",
+        detail = "Pen::twice",
+        sites = ["pen.m │ return [self ⟦count⟧] * 2;"],
+    },
+]
+outgoing_calls = []
+
+[answers.circle]
+call_hierarchy = [
+    { name = "count", kind = "Method", at = "- (int)⟦count⟧ { @+0", detail = "Circle::count" },
+]
+incoming_calls = []
+outgoing_calls = []

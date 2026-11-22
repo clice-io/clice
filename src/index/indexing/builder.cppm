@@ -111,6 +111,13 @@ private:
                            const clang::NamedDecl* target,
                            clang::SourceRange anchor);
 
+    /// One to a symbol this unit has no declaration of, which records no
+    /// symbol for it: another unit's record describes it, when one does.
+    void add_pair_relation(const clang::NamedDecl* decl,
+                           RelationKind kind,
+                           SymbolHash target,
+                           clang::SourceRange anchor);
+
     /// The TypeDefinition relations of a value (a function's: its return
     /// value): the type it is declared with, and for a smart pointer also
     /// the type it points to.

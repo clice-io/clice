@@ -259,10 +259,16 @@ public:
             return true;
         }
 
-        // The instance variable a property synthesizes is declared by no
-        // code: an @synthesize naming it holds the name.
+        // What a property synthesizes is declared by no code: the instance
+        // variable, whose name an @synthesize holds, and the accessors it
+        // declares in the @implementation, at the places of the declaration
+        // they copy when one is written.
         if(auto* ivar = llvm::dyn_cast_if_present<clang::ObjCIvarDecl>(X);
            ivar && ivar->getSynthesize()) {
+            return true;
+        }
+        if(auto* method = llvm::dyn_cast_if_present<clang::ObjCMethodDecl>(X);
+           method && method->isSynthesizedAccessorStub()) {
             return true;
         }
 
@@ -1149,6 +1155,24 @@ void refer_selector(References& out,
     }
 }
 
+/// References to the Objective-C method a message or a selector names, by
+/// what declares it (decls::objc_declared): an accessor clang declares for
+/// a property is written nowhere, and the name names the property.
+void refer_method(References& out,
+                  const clang::ObjCMethodDecl* method,
+                  RelationKind kind,
+                  llvm::ArrayRef<clang::SourceLocation> pieces) {
+    if(!method) {
+        return;
+    }
+    const auto& declared = decls::objc_declared(*method);
+    if(declared.isImplicit()) {
+        refer(out, declared.findPropertyDecl(), kind, pieces.front());
+        return;
+    }
+    refer_selector(out, &declared, kind, pieces);
+}
+
 /// References to the protocols a declaration or a type lists, at their names.
 void refer_protocols(References& out, auto&& protocols, auto&& locations) {
     for(auto [protocol, location]: views::zip(protocols, locations)) {
@@ -1735,14 +1759,7 @@ void stmt_references(const clang::Stmt* S,
         llvm::SmallVector<clang::SourceLocation, 4> pieces;
         OME->getSelectorLocs(pieces);
         auto kind = decls::objc_untyped(*OME) ? RelationKind::Candidate : RelationKind::Reference;
-        const auto* method = decls::objc_message_target(*OME);
-        // An accessor clang declares for a property is written nowhere: the
-        // message names the property.
-        if(method && method->isImplicit()) {
-            refer(out, decls::objc_accessor_property(*method), kind, pieces.front());
-            return;
-        }
-        refer_selector(out, method, kind, pieces);
+        refer_method(out, decls::objc_message_target(*OME), kind, pieces);
         return;
     }
 
@@ -1765,7 +1782,7 @@ void stmt_references(const clang::Stmt* S,
             const auto* accessor = OPRE->isMessagingGetter() ? OPRE->getImplicitPropertyGetter()
                                                              : OPRE->getImplicitPropertySetter();
             const clang::ObjCPropertyDecl* property =
-                accessor ? decls::objc_accessor_property(*accessor) : nullptr;
+                accessor ? accessor->findPropertyDecl() : nullptr;
             target = property ? static_cast<const clang::NamedDecl*>(property) : accessor;
         }
         refer(out, target, RelationKind::Reference, OPRE->getLocation());
@@ -2217,10 +2234,10 @@ llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
             const auto* method = semantics.node(parent).node.get<clang::ObjCMethodDecl>();
             const auto* objc_class = method ? decls::objc_class(method->getDeclContext()) : nullptr;
             if(objc_class) {
-                refer_selector(out,
-                               decls::objc_selector_method(*objc_class, selector->getSelector()),
-                               RelationKind::Candidate,
-                               decls::objc_selector_pieces(*selector, method->getASTContext()));
+                refer_method(out,
+                             decls::objc_selector_method(*objc_class, selector->getSelector()),
+                             RelationKind::Candidate,
+                             decls::objc_selector_pieces(*selector, method->getASTContext()));
                 break;
             }
         }
