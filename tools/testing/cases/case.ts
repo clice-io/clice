@@ -7,7 +7,15 @@ import * as path from "node:path";
 import yaml from "js-yaml";
 import { parseAnnotations, type AnnotatedSource } from "./annotation.ts";
 import type { MarkerAnchor } from "./anchors.ts";
-import { MARKED, inputFiles, mergeProjects, posix, readProject, type Project } from "./project.ts";
+import {
+    CASES_DIR,
+    MARKED,
+    inputFiles,
+    mergeProjects,
+    posix,
+    readProject,
+    type Project,
+} from "./project.ts";
 import { SUITES, TOPICS } from "./topics.ts";
 
 /// A documented case's page: README.md.
@@ -281,4 +289,13 @@ export function shard(cases: readonly Case[], spec: string): Case[] {
         }
     }
     return mine.sort((a, b) => (a.id < b.id ? -1 : 1));
+}
+
+/// The cases a run runs: those under CLICE_CASES=<path prefix>, of the
+/// shard CLICE_CASES_SHARD=i/n names.
+export function selectedCases(): Case[] {
+    const prefix = process.env["CLICE_CASES"] ?? "";
+    const under = loadCases(CASES_DIR).filter((c) => c.id.startsWith(prefix));
+    const spec = process.env["CLICE_CASES_SHARD"];
+    return spec === undefined ? under : shard(under, spec);
 }

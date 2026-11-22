@@ -481,11 +481,9 @@ describe("database", () => {
                 parts: { one: ["one/"], two: ["two/", "one/two/"] },
             };
             const own = jobDatabase(config, "two", root);
-            expect(own.entries.map((entry) => path.relative(root, entry.file))).toEqual([
-                "two/b.cpp",
-                "two/c.cpp",
-                "one/two/d.cpp",
-            ]);
+            expect(own.entries.map((entry) => entry.file)).toEqual(
+                ["two/b.cpp", "two/c.cpp", "one/two/d.cpp"].map((file) => path.join(root, file)),
+            );
             expect(own.directory).toBe(path.join(root, ".ecosystem"));
             expect(fs.readFileSync(path.join(root, "clice.toml"), "utf8")).toBe(
                 '[[rules]]\ncompile_commands = [".ecosystem/compile_commands.json"]\n',
