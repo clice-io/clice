@@ -8,23 +8,40 @@ import type { ChildProcess } from "node:child_process";
 import { subscribe } from "node:diagnostics_channel";
 import { once } from "node:events";
 
-const owner = new AsyncLocalStorage<ChildProcess[]>();
+interface Owner {
+    started: ChildProcess[];
+    ended: boolean;
+}
+
+const owner = new AsyncLocalStorage<Owner>();
 
 subscribe("child_process", (message) => {
-    owner.getStore()?.push((message as { process: ChildProcess }).process);
+    const test = owner.getStore();
+    if (test === undefined) {
+        return;
+    }
+    const child = (message as { process: ChildProcess }).process;
+    test.started.push(child);
+    // A script past its deadline runs on once the kills end what it waited
+    // for: what it starts then dies at once.
+    if (test.ended) {
+        child.once("spawn", () => child.kill("SIGKILL"));
+    }
 });
 
 export class Processes {
-    private readonly started: ChildProcess[] = [];
+    private readonly owner: Owner = { started: [], ended: false };
 
     /// Run `body`, every process spawned in it this test's.
     run<T>(body: () => Promise<T>): Promise<T> {
-        return owner.run(this.started, body);
+        return owner.run(this.owner, body);
     }
 
-    /// Kill the ones still running, and wait until they exited.
+    /// Kill the ones still running, and wait until they exited; one the
+    /// test starts after is killed as it starts.
     async end(): Promise<void> {
-        const running = this.started.filter(
+        this.owner.ended = true;
+        const running = this.owner.started.filter(
             (child) =>
                 child.pid !== undefined && child.exitCode === null && child.signalCode === null,
         );

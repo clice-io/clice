@@ -38,4 +38,20 @@ describe("Processes", () => {
             other.kill("SIGKILL");
         }
     });
+
+    test("what a test starts once it ended dies as it starts", async () => {
+        const processes = new Processes();
+        let resume = (): void => undefined;
+        const resumed = new Promise<void>((resolve) => (resume = resolve));
+        let late: ChildProcess | undefined;
+        const script = processes.run(async () => {
+            await resumed;
+            late = idle();
+            await once(late, "exit");
+        });
+        await processes.end();
+        resume();
+        await script;
+        expect(late?.signalCode).toBe("SIGKILL");
+    });
 });

@@ -18,7 +18,7 @@ import type { Case } from "./case.ts";
 import { Disk } from "./disk.ts";
 import { Output, writeSnapshot, type Blocks } from "./output.ts";
 import { Processes } from "./processes.ts";
-import { copyRoot, HEADER, materialize, removeCopy, SOURCE, writeDatabases } from "./project.ts";
+import { copyRoot, HEADER, materialize, removeCopies, SOURCE, writeDatabases } from "./project.ts";
 import { testName, type AnswersOptions, type Registered } from "./script.ts";
 
 /// The requests an answers test asks, the same on both clients.
@@ -153,13 +153,14 @@ function copy(c: Case, prefix: string): { root: string; copied: string[] } {
     return { root, copied };
 }
 
-async function remove(c: Case, root: string): Promise<void> {
+/// Keep the copy's logs and remove it; returns what failed.
+async function remove(c: Case, root: string): Promise<Error[]> {
     keepLogs(c.id, root);
     if (process.env["CLICE_KEEP_WORKSPACE"] === undefined) {
-        await removeCopy(root);
-    } else {
-        console.log(`workspace kept at ${root}`);
+        return removeCopies(root);
     }
+    console.log(`workspace kept at ${root}`);
+    return [];
 }
 
 async function onInspect(
@@ -203,8 +204,10 @@ async function onInspect(
     }
     await processes.end();
     client.close();
-    const gated = gateLogs(root, [...indexed, ...client.started], {}, failure !== undefined);
-    await remove(c, root);
+    const gated = [
+        ...gateLogs(root, [...indexed, ...client.started], {}, failure !== undefined),
+        ...(await remove(c, root)),
+    ];
     throwFailures(failure, gated);
     return shows;
 }
@@ -271,8 +274,11 @@ async function onServer(
     const failed = failure !== undefined;
     const finished = await s.finish(failed);
     await processes.end();
-    const gated = [...finished, ...gateLogs(root, s.started(), {}, failed)];
-    await remove(c, root);
+    const gated = [
+        ...finished,
+        ...gateLogs(root, s.started(), {}, failed),
+        ...(await remove(c, root)),
+    ];
     throwFailures(failure, gated);
     return shows;
 }

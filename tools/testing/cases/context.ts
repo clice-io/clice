@@ -22,7 +22,7 @@ import type { Case } from "./case.ts";
 import { Disk } from "./disk.ts";
 import { Output, type Blocks } from "./output.ts";
 import { Processes } from "./processes.ts";
-import { copyRoot, materialize, removeCopy } from "./project.ts";
+import { copyRoot, materialize, removeCopies } from "./project.ts";
 import { testName, type Registered } from "./script.ts";
 
 export interface TestContext {
@@ -254,7 +254,7 @@ class TestRun implements TestContext {
         );
         keepLogs(this.case.id, this.root);
         if (process.env["CLICE_KEEP_WORKSPACE"] === undefined) {
-            await Promise.all([removeCopy(this.root), removeCopy(this.temp)]);
+            errors.push(...(await removeCopies(this.root, this.temp)));
         } else {
             console.log(`workspace kept at ${this.root}, temporary directory at ${this.temp}`);
         }
