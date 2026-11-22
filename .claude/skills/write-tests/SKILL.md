@@ -26,7 +26,7 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
    when the inherited script does not fit; a `README.md` only when the case
    shows a capability a reader should see. A case that pins an edge or a
    fixed bug has no README.
-3. Run it alone, on the box the build ran on (the test skill):
+3. Run it alone, on the box the build ran on (the build-and-test skill):
    `CLICE_CASES=<topic>/<subtopic>/NN_name pixi run -e test-run cases-test`.
    `UPDATE_SNAPSHOTS=1` writes its `snap.toml` and prints what changed:
    review every block like code. It is written on the box:

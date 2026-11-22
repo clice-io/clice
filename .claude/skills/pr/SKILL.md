@@ -5,7 +5,7 @@ description: Read before committing, opening a PR, or checking on an open one �
 
 # PR Pipeline
 
-Branch (CLAUDE.md) → code → commit → self-review and fixes → checks, with the push and opening beside the box run → watch CI and threads until settled → report ready. Merging needs the maintainer's explicit authorization for this PR.
+Branch (CLAUDE.md) → code → commit → self-review and fixes → checks, with the push and opening beside the build and tests → watch CI and threads until settled → report ready. Merging needs the maintainer's explicit authorization for this PR.
 
 ## Commits and titles
 
@@ -18,10 +18,7 @@ Branch (CLAUDE.md) → code → commit → self-review and fixes → checks, wit
 1. **Docs sync — once, at the end, delegated.** If the branch touched documented cases (a `README.md` or the output of a case that has one), config annotations, or anything under `docs/`, hand the sync to an Opus subagent following the docs skill's "Syncing docs at the end of a branch". Repeat on later pushes only when those inputs changed again.
 2. `pixi run format`.
 3. `npm run check` at the repo root when TypeScript changed; `pixi run check-layers` when C++ imports or includes changed; `pixi run check-timers` when C++ waits on the clock.
-4. The unit tests and the cases pass on a box (the test skill) and in CI. The two run side by side: push without waiting for the box. `npm test -w tools` needs no build and passes here. Changes to async code, shutdown or position math run the Debug suites too: ASan and the assertions of clang and kotatsu live only there.
-5. Read results from a full log, not a pipe: `cmd > /tmp/x.log 2>&1`, then the exit code and the log tail (`Build did NOT complete successfully`, `FAILED`, the suite summary). `| tail` reports tail's exit code (a failed build looks green), `pipefail` + `| grep error` fails when there is nothing to find. Before running a suite, check the test binary was built after your last source edit (on a box: after your last `box push`) — a pass on a stale binary verifies nothing.
-6. Long runs (`box run` builds and suites, codex) go through Bash `run_in_background`, which notifies on exit — not a detached script polled by timed wake-ups.
-7. A platform failure is reproduced and fixed on a box of that OS (the test skill).
+4. What the change runs (the build-and-test skill, "What a change runs") passes, beside CI: push without waiting for it.
 
 ## Pushing
 
@@ -57,7 +54,7 @@ A sustained loop, not a single check — a PR typically needs 5-6 rounds of chec
 - Cadence: one check every ~30 minutes by default, via timed wake-ups — never background shell loops. CI runs take their own time, and agent reviewers need a while to post after each push; decide the number of rounds from elapsed time and remaining activity.
 - Every check covers BOTH CI status AND unresolved review threads. `python3 .claude/skills/pr/scripts/info.py [N]` prints the PR's state, merge status, check buckets (failing ones with links) and review load on one screen; `comments.py` prints the findings themselves, including those bots post in review bodies instead of threads (the codex connector puts its P2 findings there).
 - Threads go through the resolve-comments skill. If it left changes in the worktree: commit them as an ordinary commit and run the checks. A rebase onto a newer `main` (to resolve a conflict) is the only reason to rewrite a PR branch, and it needs the maintainer's approval first.
-- CI failure: reproduce it on a box of the failing platform (the test skill), fix, verify, then push. Digest CI logs through an Opus subagent, not in the main conversation; `gh run view --log` refuses while the run is in progress, `gh api repos/clice-io/clice/actions/jobs/<id>/logs` reads a finished job of a running run. Infrastructure failures — a runner that lost communication, a step that timed out on `npm install` — are not yours to fix: wait for the run to finish, then `gh run rerun <run-id> --failed` (non-interactive `gh` refuses to pick the run itself).
+- CI failure: reproduce it on the failing platform (the build-and-test skill), fix, verify, then push. Digest CI logs through an Opus subagent, not in the main conversation; `gh run view --log` refuses while the run is in progress, `gh api repos/clice-io/clice/actions/jobs/<id>/logs` reads a finished job of a running run. Infrastructure failures — a runner that lost communication, a step that timed out on `npm install` — are not yours to fix: wait for the run to finish, then `gh run rerun <run-id> --failed` (non-interactive `gh` refuses to pick the run itself).
 - Keep API calls sparse — one batch per check, `sleep 1` between `gh` calls.
 
 ## Done

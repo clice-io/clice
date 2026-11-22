@@ -34,6 +34,7 @@
 # Build & Toolchain
 *build*/
 !/src/**/*build*/
+!/.claude/skills/*build*/
 temp/
 .cache/
 
