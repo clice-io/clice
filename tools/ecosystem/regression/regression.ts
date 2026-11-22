@@ -80,7 +80,7 @@ export interface Results {
         failed: number;
     };
     /// The files swept in full: whether a failing file was swept in an
-    /// earlier round tells a regression from what a new sample exposed.
+    /// earlier run tells a regression from what a new sample exposed.
     sweep?: Pick<
         SweepRun,
         "files" | "serverOnly" | "requests" | "inspectSeconds" | "serverSeconds" | "slow" | "memory"

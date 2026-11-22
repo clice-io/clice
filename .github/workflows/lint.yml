@@ -48,8 +48,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+
       - name: Check src/ include layering
-        run: python3 scripts/check_layers.py
+        run: pixi run -e node node tools/precheck/layers.ts
 
   timers:
     runs-on: ubuntu-latest
@@ -59,8 +63,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: node
+
       - name: Check C++ timers carry their reason
-        run: python3 scripts/check_timers.py
+        run: pixi run -e node node tools/precheck/timers.ts
 
   docs:
     runs-on: ubuntu-latest

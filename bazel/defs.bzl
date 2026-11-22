@@ -47,7 +47,7 @@ def release_packages():
     """//:package and //:symbols, of the package's :bin/clice.
 
     The release archive is clice/{bin/clice, lib/clang, clice.toml, LICENSE},
-    the symbol package clice.gsym for scripts/symbolize.py: the programs of
+    the symbol package clice.gsym for tools/release/symbolize.ts: the programs of
     these builds are the ones the test suites run.
     """
     pkg_files(

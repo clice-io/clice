@@ -29,8 +29,8 @@ namespace {
 ZEST_SUITE(Logging) {
 
 ZEST_CASE(VersionInfoSet) {
-    // Guards the cmake target-stamping plumbing: an unset CLICE_TARGET_STRING
-    // would otherwise only show in crash logs.
+    // Guards the version Bazel writes into the binary (bazel/BUILD.bazel,
+    // `version_cpp`): an empty one would otherwise only show in crash logs.
     ZEXPECT(!clice::version.empty());
     ZEXPECT(!clice::target.empty());
 }
@@ -84,9 +84,8 @@ ZEST_CASE(BusyPipeSwitchesLater) {
 
 // The rest is POSIX-only: the Windows PIPE_NOWAIT backpressure path has no
 // unit harness (_pipe buffers are not fillable without a reader thread);
-// it is exercised end-to-end by the integration flood test on the Windows
-// CI runner. A full disk is simulated by the file size limit, which
-// Windows lacks.
+// it is exercised end-to-end by the case tests/lifecycle/stderr/01_flood.
+// A full disk is simulated by the file size limit, which Windows lacks.
 
 struct Pipe {
     int fds[2] = {-1, -1};

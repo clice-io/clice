@@ -31,7 +31,7 @@ The build types are configurations, each with a directory of its own, `build/<ty
 
 The LLVM/Clang libraries hold ThinLTO bitcode, so every link of a program redoes their code generation, minutes per program. lld keeps what it generated in a cache, `/var/tmp/xclang-thinlto` (`C:/xclang-thinlto` on Windows), and later links take seconds.
 
-`bazel build //:package //:symbols` builds the release archive and the symbol package, whose `clice.gsym` `scripts/symbolize.py` reads: `clice.tar.gz` and `clice-symbol.tar.xz` in `build/<type>/bin` (`.zip` on Windows).
+`bazel build //:package //:symbols` builds the release archive and the symbol package, whose `clice.gsym` `tools/release/symbolize.ts` reads: `clice.tar.gz` and `clice-symbol.tar.xz` in `build/<type>/bin` (`.zip` on Windows).
 
 ## Working on clice
 

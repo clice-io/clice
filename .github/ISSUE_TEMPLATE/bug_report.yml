@@ -13,7 +13,7 @@ body:
     id: version
     attributes:
       label: clice version
-      description: Output of `clice --version`, or the nightly build date / extension version you installed.
+      description: Output of `clice --version`, or the version of the release you installed.
       placeholder: e.g. clice 1.0.0
     validations:
       required: true
@@ -44,6 +44,7 @@ body:
         - Sublime Text
         - JetBrains
         - Other
+        - None — the command line
     validations:
       required: true
 
@@ -85,6 +86,13 @@ body:
         - Inactive regions
         - Signature help
         - Go to definition / references
+        - Rename
+        - Code actions
+        - Workspace symbols
+        - Call / type hierarchy
+        - Selection ranges
+        - Header contexts
+        - Command line (clice query, lint, index, …)
         - Indexing
         - C++20 modules
         - Configuration

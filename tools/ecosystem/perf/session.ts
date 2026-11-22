@@ -35,11 +35,11 @@ const REQUEST_BOUND = 600_000;
 /// Hang detection: a full background index of LLVM on a 3-core runner.
 const INDEX_BOUND = 6 * 3600_000;
 /// How long the servers must stay quiet to count as idle: no index
-/// progress, and a tenth of a core at most. Both may end one round and
+/// progress, and a tenth of a core at most. Both may end one pass and
 /// begin another for files found meanwhile.
 const QUIET_MS = 15_000;
-/// Hang detection: the longest a server takes to announce its first round
-/// on a wiped cache. clice drops a round's progress when the round ends
+/// Hang detection: the longest a server takes to announce its first pass
+/// on a wiped cache. clice drops a pass's progress when the pass ends
 /// before the client acknowledged its token (a project of a few files).
 const ANNOUNCE_BOUND = 300_000;
 
@@ -318,13 +318,13 @@ export class Session {
         }
     }
 
-    /// Waits until the server is idle: no background index round running,
+    /// Waits until the server is idle: no background index pass running,
     /// none begun and the tree at a tenth of a core at most for QUIET_MS,
-    /// at most `limit` ms. With `round`, a round must have ended first.
-    /// Returns when the last round ended (or when it went quiet), the most
-    /// files a round counted, and whether it went idle at all.
+    /// at most `limit` ms. With `pass`, a pass must have ended first.
+    /// Returns when the last pass ended (or when it went quiet), the most
+    /// files a pass counted, and whether it went idle at all.
     async idle(
-        round: boolean,
+        pass: boolean,
         limit = INDEX_BOUND,
     ): Promise<{ ended: number; files: number; idle: boolean }> {
         const client = this.client;
@@ -352,7 +352,7 @@ export class Session {
                 }
                 const value = event.value as { kind?: string; message?: string };
                 announced = true;
-                // The events of rounds before the wait still tell whether
+                // The events of passes before the wait still tell whether
                 // one is running; the quiet counts from the wait at least,
                 // or a churn the server has not reacted to yet reads as
                 // settled at once.
@@ -366,13 +366,13 @@ export class Session {
                     files = Math.max(files, Number(counted[2]));
                 }
             }
-            if (!active && (!round || ended !== null) && nowMs() - changed >= QUIET_MS) {
+            if (!active && (!pass || ended !== null) && nowMs() - changed >= QUIET_MS) {
                 if (this.busy() < 0.1) {
                     return { ended: ended ?? changed, files, idle: true };
                 }
             }
-            if (round && !announced && nowMs() - this.started > ANNOUNCE_BOUND) {
-                throw new RunFailure("hang", `${this.server} announced no background index round`);
+            if (pass && !announced && nowMs() - this.started > ANNOUNCE_BOUND) {
+                throw new RunFailure("hang", `${this.server} announced no background index pass`);
             }
             await pause(1000);
         }

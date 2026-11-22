@@ -393,9 +393,9 @@ struct ServedProject::CompileAttempt {
     /// The command the send compiles under, the include trees the header's
     /// host search needs taken first: a header compiles under the host every
     /// process finds for it. `first`: the send that may be the
-    /// self-containment check; `verdict`: the check's, for the send in the
-    /// host's context it steers.
-    async::task<std::optional<Result>> command(bool first, std::optional<bool> verdict);
+    /// self-containment check; `self_contained`: the check's result, for the
+    /// send in the host's context it steers.
+    async::task<std::optional<Result>> command(bool first, std::optional<bool> self_contained);
 
     /// The modules the buffer imports, built: an import whose build failed is
     /// left to the parse, which reports it on the import next to the file's
@@ -541,7 +541,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
         Inputs inputs;
     };
     std::optional<Comparison> comparison;
-    // The alone compile's verdict only steers the host's: an attempt ending
+    // The alone compile's result only steers the host's: an attempt ending
     // before the host's compile answers leaves the result unknown, for the
     // next attempt to check again.
     auto unfinished = llvm::make_scope_exit([&] {
@@ -605,7 +605,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
                 continue;
             }
         } else if(comparison) {
-            // The verdict rests on both compiles: a change to what either
+            // The decision rests on both compiles: a change to what either
             // read compares again.
             auto alone = std::exchange(comparison, std::nullopt);
             auto inputs = std::move(alone->inputs);
@@ -632,7 +632,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
 }
 
 async::task<std::optional<Result>>
-    ServedProject::CompileAttempt::command(bool first, std::optional<bool> verdict) {
+    ServedProject::CompileAttempt::command(bool first, std::optional<bool> self_contained) {
     params = {};
     params.indexing.known_instantiations = known_instantiations;
     params.indexing.function_bodies = project.rules.function_body_rules();
@@ -647,7 +647,7 @@ async::task<std::optional<Result>>
         path_id,
         [&] {
             auto request = served.command_request(path_id);
-            request.self_contained = verdict;
+            request.self_contained = self_contained;
             return request;
         },
         [&] { return ticket.fresh(); });

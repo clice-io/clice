@@ -1884,7 +1884,7 @@ ZEST_CASE(DeepExpressionChain) {
     // Doubling macros expand to a ~32k-term binary expression chain.
     // Regression test: indexing such an AST must not overflow the stack.
     std::string code = "#define A0 1+1\n";
-    for(int i = 1; i <= 14; i++) {
+    for(int i = 1; i <= 14; i += 1) {
         code += std::format("#define A{} A{}+A{}\n", i, i - 1, i - 1);
     }
     code += "int bomb = A14;\n";
@@ -1904,7 +1904,7 @@ ZEST_CASE(DeepExpressionChain) {
 
     // Index on a deliberately tight stack: the traversal must use
     // constant stack space however deep the expression is, so any
-    // reintroduced per-node recursion crashes here deterministically
+    // per-node recursion crashes here deterministically
     // instead of only on production workers with deeper files.
     InactiveScan scan;
     auto index_thread = sys::Thread::start(2u << 20, [&] {
@@ -1915,7 +1915,7 @@ ZEST_CASE(DeepExpressionChain) {
         // The semantic map must also serve token classification and a
         // selection at the giant expansion's invocation on this stack:
         // per-token ancestor walks and recursive tree materialization
-        // both used to degrade on chains this deep.
+        // both degrade on chains this deep.
         feature::semantic_tokens(*unit, {});
         auto use_offset = static_cast<std::uint32_t>(code.rfind("A14"));
         SelectionTree::create_right(*unit, LocalSourceRange(use_offset, use_offset));

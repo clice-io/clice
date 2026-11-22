@@ -30,7 +30,7 @@ import {
 import { perfResults, regressionResults } from "./fixtures.ts";
 import type { Results } from "./regression/regression.ts";
 import { regressionReport } from "./report.ts";
-import { historyOf, roundReport, type Earlier } from "./round.ts";
+import { historyOf, summaryOf, type Earlier } from "./summary.ts";
 import {
     allJobs,
     artifactName,
@@ -584,7 +584,7 @@ describe("memory", () => {
 describe("report", () => {
     const base = regressionResults();
 
-    test("failures with their reproduction, numbers beside the previous round's", () => {
+    test("failures with their reproduction, numbers beside the previous run's", () => {
         const index = {
             seconds: 120,
             units: 3,
@@ -634,7 +634,7 @@ describe("report", () => {
         expect(text).toContain(
             "## Known failures (1)\n\n### 10-22#6: a.cpp, signatureHelp at `f(⟦⟧)`",
         );
-        expect(text).toContain("## Known issues not seen this round (1)\n\n- 10-22#7: too big");
+        expect(text).toContain("## Known issues not seen this run (1)\n\n- 10-22#7: too big");
     });
 
     test("one cause at many places is shown once", () => {
@@ -724,7 +724,7 @@ describe("report", () => {
     });
 });
 
-describe("round", () => {
+describe("summary", () => {
     const regression = (
         files: unknown,
         failures: Results["failures"] = [],
@@ -746,32 +746,32 @@ describe("round", () => {
 
     test("a failing file newly sampled, or swept before and passing there", () => {
         expect(historyOf(hang, [earlier("10-25", regression(["b.cpp"]))])).toMatch(
-            /^newly sampled: none of the 1 rounds before swept it/,
+            /^newly sampled: none of the 1 runs before swept it/,
         );
         expect(
             historyOf(hang, [
                 earlier("10-25", regression(["b.cpp"])),
                 earlier("10-24", regression(["a.cpp"])),
             ]),
-        ).toMatch(/^swept in 1 of the 2 rounds before \(last 10-24\), never failing so/);
+        ).toMatch(/^swept in 1 of the 2 runs before \(last 10-24\), never failing so/);
         expect(historyOf(hang, [earlier("10-25", regression(["a.cpp"], [hang]))])).toMatch(
-            /^failed so in 1 of the 1 rounds before, last 10-25/,
+            /^failed so in 1 of the 1 runs before, last 10-25/,
         );
-        // A file the round before failed on but ran out of time in counts as
+        // A file the run before failed on but ran out of time in counts as
         // failing there, not as unswept.
         expect(
             historyOf(hang, [
                 earlier("10-25", regression(["b.cpp"], [hang])),
                 earlier("10-24", regression(["a.cpp"])),
             ]),
-        ).toMatch(/^failed so in 1 of the 2 rounds before, last 10-25/);
+        ).toMatch(/^failed so in 1 of the 2 runs before, last 10-25/);
         expect(historyOf(hang, [earlier("10-25", regression(50))])).toMatch(/^unknown/);
     });
 
     test("a failure outside the sweep is compared with the same failure before", () => {
         const index = { kind: "index", file: "a.cpp", detail: "failed", repro: "r" };
         expect(historyOf(index, [earlier("10-25", regression([], [index]))])).toMatch(
-            /^failed so in 1 of the 1 rounds before/,
+            /^failed so in 1 of the 1 runs before/,
         );
     });
 
@@ -828,7 +828,7 @@ describe("round", () => {
         const memory = row("peak memory MB", "553", "32.0", 15, 30, "clice first");
         // One cold sample a side, slower on both platforms all the same.
         const initialize = row("initialize", "90", "30", 3, 1);
-        const { text, data } = roundReport({
+        const { text, data } = summaryOf({
             run: 7,
             jobs: [
                 perf(
@@ -897,7 +897,7 @@ describe("round", () => {
 
     test("a failed job whose results name no failure was cut short", () => {
         const cut = { ...perf("linux", []), conclusion: "failure" };
-        const { text, data } = roundReport({
+        const { text, data } = summaryOf({
             run: 7,
             jobs: [cut],
             earlier: new Map(),
@@ -924,7 +924,7 @@ describe("round", () => {
             { ...perf(platform, [row("initialize", "80", "60", 1.3)]), name: "p/a" },
             { ...perf(platform, [row("initialize", "80", "60", 1.3)]), name: "q/b" },
         ]);
-        const { data } = roundReport({ run: 7, jobs, earlier: new Map(), perfBefore: new Map() });
+        const { data } = summaryOf({ run: 7, jobs, earlier: new Map(), perfBefore: new Map() });
         expect(data.broad).toHaveLength(1);
         expect(data.broad[0]).toMatch(/^`initialize` is slower on 6 of the 6 perf jobs/);
         expect(data.perf.every((each) => each.flags.includes("broad"))).toBe(true);
@@ -941,17 +941,17 @@ describe("round", () => {
             conclusion: results === undefined ? "cancelled" : "failure",
             ...(results === undefined ? {} : { regression: results }),
         });
-        const { text, data } = roundReport({
+        const { text, data } = summaryOf({
             run: 7,
             jobs: [job(now, "linux"), job(undefined, "macos")],
             earlier: new Map([["regression-p-linux", [earlier("10-25", before)]]]),
             perfBefore: new Map(),
         });
         expect(text).toContain(
-            "# ecosystem round 7: 1 red, 1 cut short or without results, of 2 jobs",
+            "# ecosystem run 7: 1 red, 1 cut short or without results, of 2 jobs",
         );
         expect(text).toContain(
-            "- **hang** a.cpp, hover: timed out\n  - newly sampled: none of the 1 rounds before swept it",
+            "- **hang** a.cpp, hover: timed out\n  - newly sampled: none of the 1 runs before swept it",
         );
         expect(text).toContain("- regression p on macos: the job's conclusion: cancelled");
         expect(data.moved).toEqual([

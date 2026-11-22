@@ -6,7 +6,7 @@ name: vscode
 #   source: package  — six platform vsix embedding the release packages from
 #                      publish-clice.yml (release, nightly, and dry runs).
 #   source: build    — six platform vsix embedding the test-suite binaries
-#                      (no strip) already built by the test jobs,
+#                      already built by the test jobs, debug info stripped,
 #                      so a fix is installable the moment its CI run is green.
 on:
   workflow_call:
@@ -125,13 +125,7 @@ jobs:
           RELEASE_TAG: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name || '') }}
         run: |
           if [ -n "$RELEASE_TAG" ]; then
-            python3 - <<'EOF'
-          import json, os
-          path = "editors/vscode/package.json"
-          data = json.load(open(path))
-          data["version"] = os.environ["RELEASE_TAG"].lstrip("v")
-          json.dump(data, open(path, "w"), indent=2)
-          EOF
+            pixi run -e node -- npm pkg set "version=${RELEASE_TAG#v}" -w editors/vscode
           fi
 
       - name: Package platform extension

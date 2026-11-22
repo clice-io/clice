@@ -1,6 +1,6 @@
 /// A job's results as a person reads them: what failed, the failures the
 /// project knows apart, each with the command that reproduces it, and the
-/// numbers beside the previous round's.
+/// numbers beside the previous run's.
 
 import { fence } from "../testing/docs/pages.ts";
 import type { PeakMemory, Resident } from "./memory.ts";
@@ -164,7 +164,7 @@ function knownSections(
     if (unseen.length > 0) {
         lines.push(
             "",
-            `## Known issues not seen this round (${String(unseen.length)})`,
+            `## Known issues not seen this run (${String(unseen.length)})`,
             "",
             ...unseen.map((known) => `- ${known.issue}: ${known.why}`),
         );
@@ -172,7 +172,7 @@ function knownSections(
     return lines;
 }
 
-function verdict(fresh: number, known: number): string {
+function summary(fresh: number, known: number): string {
     const failures = fresh === 0 ? "green" : `${String(fresh)} new failures`;
     return known === 0 ? failures : `${failures}, ${String(known)} known`;
 }
@@ -180,11 +180,11 @@ function verdict(fresh: number, known: number): string {
 export function regressionReport(now: Results, before?: Results): string {
     const old = before === undefined ? new Map<string, string>() : numbers(before);
     const lines = [
-        `# regression ${now.job} on ${now.platform}: ${verdict(now.failures.length, now.known.length)}`,
+        `# regression ${now.job} on ${now.platform}: ${summary(now.failures.length, now.known.length)}`,
         "",
         `${now.about}, commit \`${now.commit}\`; clice \`${now.clice}\`; sample seed \`${now.seed}\`.`,
         "",
-        "| | this round | the round before |",
+        "| | this run | the run before |",
         "| --- | --- | --- |",
         ...[...numbers(now)].map(
             ([label, value]) => `| ${label} | ${value} | ${old.get(label) ?? ""} |`,
@@ -263,7 +263,7 @@ function slowerSection(slower: PerfResults["slower"]): string[] {
 export function perfReport(now: PerfResults): string {
     const slower = now.slower.length === 0 ? "" : `, ${String(now.slower.length)} slower`;
     const lines = [
-        `# perf ${now.job} on ${now.platform}: ${verdict(now.failures.length, now.known.length)}${slower}`,
+        `# perf ${now.job} on ${now.platform}: ${summary(now.failures.length, now.known.length)}${slower}`,
         "",
         `${now.about}, commit \`${now.commit}\`; clice \`${now.clice}\`.`,
         ...failureSections(now.failures, PERF_KINDS),

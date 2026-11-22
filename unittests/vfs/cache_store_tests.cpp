@@ -472,7 +472,7 @@ ZEST_CASE(CheckpointAutoTriggers) {
 
     // Enough commits to cross the internal change threshold; the manifest
     // must appear without an explicit checkpoint() or shutdown().
-    for(int i = 0; i < 16; ++i) {
+    for(int i = 0; i < 16; i += 1) {
         put(store, "pch", std::format("k{}", i), "blob");
     }
     auto manifest = read_file(tmp.path("root/cache/v1/manifest.json"));
