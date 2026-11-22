@@ -410,11 +410,12 @@ export class Inspect extends Client {
         const raws = ((await this.overRange("code-action", file, selection)) ??
             []) as RawCodeAction[];
         const source = this.context().file(file);
-        // clice inspect answers every kind; the filter admits a kind and
-        // the kinds below it, as the server's does.
+        // clice inspect answers every kind: the filter admits a kind and the
+        // kinds below it, and an empty one admits every kind, as the server's.
         const admitted = raws.filter(
             (raw) =>
                 only === undefined ||
+                only.length === 0 ||
                 only.some((kind) => raw.kind === kind || raw.kind.startsWith(`${kind}.`)),
         );
         return admitted.map((raw) => {

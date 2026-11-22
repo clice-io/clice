@@ -12,6 +12,19 @@ compiles = true
  };
 '''
 
+[[answers.assigned.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit special members of 'Assigned'"
+compiles = true
+
+[answers.assigned.code_actions.edits]
+"main.cpp" = '''
+
+     int id;
++    Assigned(const Assigned&) = default;
+ };
+'''
+
 [[answers.holder.code_actions]]
 kind = "refactor.rewrite.declareSpecialMembers"
 title = "Declare the implicit special members of 'Holder'"

@@ -22,15 +22,9 @@ struct Deleted {
 /// members a user-declared move deletes are deleted in all of them.
 Deleted deleted_members(CompilationUnit& unit, const clang::CXXRecordDecl* record) {
     if(record->isDependentContext()) {
-        // LIMITATION: clang counts a copy or move a template declares only
-        // when its parameter is spelled as the class itself; one spelled
-        // through a dependent type (`std::pair`'s conditional assignment) or
-        // followed by a parameter pack is declared again here, and the class
-        // no longer compiles.
-        bool copies = record->hasUserDeclaredMoveOperation();
-        return {.copy_constructor = copies, .copy_assignment = copies};
+        bool deletes_copies = record->hasUserDeclaredMoveOperation();
+        return {.copy_constructor = deletes_copies, .copy_assignment = deletes_copies};
     }
-    // Sema takes the class non-const to declare them.
     unit.sema().ForceDeclarationOfImplicitMembers(const_cast<clang::CXXRecordDecl*>(record));
     Deleted deleted;
     for(const auto* method: record->methods()) {
@@ -54,12 +48,18 @@ Deleted deleted_members(CompilationUnit& unit, const clang::CXXRecordDecl* recor
 void special_members(const Context& ctx, std::vector<CodeAction>& out) {
     auto& unit = ctx.unit;
     const auto* record = ctx.node.get<clang::CXXRecordDecl>();
-    if(!record || !record->isThisDeclarationADefinition() || record->isInvalidDecl() ||
-       record->isUnion() || record->isInterface() || record->isLambda() ||
-       record->getName().empty() || !unit.lang_options().CPlusPlus11) {
+    if(!record->isThisDeclarationADefinition() || record->isInvalidDecl() ||
+       record->isInterface() || record->getName().empty() || !unit.lang_options().CPlusPlus11) {
         return;
     }
     auto deleted = deleted_members(unit, record);
+    // LIMITATION: in a class template, clang counts a copy or move the class
+    // declares only when its parameter is spelled as the class itself, and
+    // tells the copies' `const` only from the members whose types are known:
+    // a copy spelled through a dependent type (`std::pair`'s conditional
+    // assignment) or followed by a parameter pack is declared again, and an
+    // instantiation whose member copies only from a non-const object (as
+    // `std::auto_ptr` does) loses its copies to the `const` ones declared here.
     // A move that a user-declared copy member or destructor suppresses stays
     // undeclared: `= delete` would reject the rvalues that copy now, and
     // `= default` would move them instead of calling the user's copy.

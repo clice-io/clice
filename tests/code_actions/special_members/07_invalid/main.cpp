@@ -1,5 +1,6 @@
-// Classes still being typed are ill-formed, and neither a base holding a
-// member of incomplete type nor a class containing itself gets declarations.
+// Classes still being typed are ill-formed: neither a class deriving from a
+// base that holds a member of incomplete type nor a class containing itself
+// gets declarations.
 
 struct Incomplete;
 

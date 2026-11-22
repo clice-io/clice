@@ -5,6 +5,16 @@ struct §(resource)Resource {
     int id;
 };
 
+struct §(assigned)Assigned {
+    Assigned(int id) : id(id) {}
+    Assigned& operator=(const Assigned& other) {
+        id = other.id;
+        return *this;
+    }
+
+    int id;
+};
+
 struct Pinned {
     Pinned() = default;
     Pinned(const Pinned&) = default;
@@ -23,8 +33,10 @@ Resource make(int id) {
     return resource;
 }
 
-void use(Resource& resource, Holder& holder) {
+void use(Resource& resource, Assigned& assigned, Holder& holder) {
     Resource copy = static_cast<Resource&&>(resource);
     copy = static_cast<Resource&&>(resource);
-    Holder other = static_cast<Holder&&>(holder);
+    Assigned other = static_cast<Assigned&&>(assigned);
+    other = static_cast<Assigned&&>(assigned);
+    Holder moved = static_cast<Holder&&>(holder);
 }

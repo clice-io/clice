@@ -278,7 +278,7 @@ tests/code_actions/constructor/07_move_only_fields
 
 ## Special Members
 
-A class receives explicit declarations of the copy and move operations, and of the default constructor, that the compiler declares for it implicitly, each `= default` or `= delete` as the compiler has it.
+A class receives explicit declarations of the default constructor and the copy and move operations the compiler declares for it implicitly: `= default`, or `= delete` where the compiler deletes one; a move the compiler suppresses or deletes is left undeclared.
 
 <!-- BEGIN GENERATED ITEMS: code_actions/special_members -->
 
@@ -286,9 +286,9 @@ A class receives explicit declarations of the copy and move operations, and of t
 
 **Members made explicit**
 
-A class whose members copy and move gains explicit `= default` declarations of all four operations
+A class whose members copy and move gains explicit `= default` declarations of its copy and move operations
 
-The declarations are appended to the end of the class body, in the order of copy constructor, move constructor, copy assignment and move assignment. They declare what the compiler declared implicitly, so every use of the class compiles and behaves as before.
+The declarations are appended to the end of the class body: the default constructor when the class has no constructor, then the copy constructor, move constructor, copy assignment and move assignment. They declare what the compiler declared implicitly, so the uses of the class compile and behave as before; only an aggregate loses its aggregate initialization.
 
 ```case
 tests/code_actions/special_members/01_defaulted
@@ -300,9 +300,9 @@ tests/code_actions/special_members/01_defaulted
 
 **Impossible operations deleted**
 
-An operation a member makes impossible is declared `= delete` instead of `= default`
+A copy operation a member makes impossible is declared `= delete`, and a move it makes impossible is left undeclared
 
-A member class that only moves makes the copy operations impossible. A reference member or a `const` member makes the assignments impossible: the copy assignment is declared deleted, and the move assignment stays undeclared, since overload resolution never chooses the move the compiler deletes, but would choose one declared `= delete`.
+A member class that only moves makes the copy operations impossible; a reference member or a `const` member makes the assignments impossible. The move assignment then stays undeclared: overload resolution never chooses a move the compiler deletes, but would choose one declared `= delete`.
 
 ```case
 tests/code_actions/special_members/02_deleted
@@ -340,7 +340,7 @@ tests/code_actions/special_members/04_access
 
 **Class templates**
 
-A class template's operations are declared `= default`, and each instantiation deletes the ones it cannot perform, as the compiler does
+A class template's operations follow the language's rules, `= default` where the compiler would declare them, and each instantiation deletes those it cannot perform
 
 `Box<int>` still copies and `Box<MoveOnly>` still only moves. Declaring a move deletes the implicit copies in every instantiation, so a template that declares its move constructor gets `= delete` copy declarations.
 
@@ -356,7 +356,7 @@ tests/code_actions/special_members/05_template
 
 A class without a constructor also gains its default constructor, which the declared copy constructor would otherwise remove
 
-On an aggregate the declared constructors end aggregate initialization since C++20: `Point{1, 2}` no longer compiles once the action is applied.
+It is `= delete` where the compiler deletes it, as for a reference member nothing initializes. On an aggregate the declared constructors end aggregate initialization since C++20: `Point{1, 2}` no longer compiles once the action is applied.
 
 ```case
 tests/code_actions/special_members/08_default_constructor
@@ -742,5 +742,5 @@ tests/code_actions/formatting/01_project_style
 
 - A definition placed in the host source goes after the last definition of the class's members the index knows in that file, or at the end of the file when it holds none. Which source file hosts a header follows the header's compilation context.
 - Members already defined in another source file are left out of a "define missing members" action only when the project index knows that definition; while the index does not hold the file defining them, every undefined member is offered.
-- In a class template, a copy or move operation whose parameter type depends on a template parameter (`std::pair`'s conditional copy assignment) or that takes a parameter pack is not recognized as one: the special members action declares the operation again, and the class no longer compiles.
+- In a class template, the special members action recognizes a copy or move the class declares only when its parameter names the class itself: one spelled through a type that becomes the class only in an instantiation (`std::pair`'s conditional copy assignment), or followed by a parameter pack, is declared again, and the class no longer compiles. The copies it declares take a `const` parameter, which an instantiation whose member copies only from a non-const object (`std::auto_ptr`) deletes.
 - Missing-include candidates come from the standard library mapping and from headers the project index has seen; a header no indexed source file includes is not suggested.

@@ -32,3 +32,19 @@ compiles = true
 +    Point& operator=(Point&&) = default;
  };
 '''
+
+[[answers.bound.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit special members of 'Bound'"
+compiles = true
+
+[answers.bound.code_actions.edits]
+"main.cpp" = '''
+ struct Bound {
+     int& target;
++    Bound() = delete;
++    Bound(const Bound&) = default;
++    Bound(Bound&&) = default;
++    Bound& operator=(const Bound&) = delete;
+ };
+'''

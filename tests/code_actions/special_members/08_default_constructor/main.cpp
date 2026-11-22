@@ -14,9 +14,14 @@ struct §(point)Point {
     int y;
 };
 
-void use() {
+struct §(bound)Bound {
+    int& target;
+};
+
+void use(Bound& bound) {
     Counter counter;
     Counter other = counter;
     Point point;
     Point origin = point;
+    Bound alias = bound;
 }

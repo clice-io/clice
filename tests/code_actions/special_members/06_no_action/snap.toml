@@ -1,7 +1,7 @@
 [answers.forward]
 code_actions = []
 
-[answers.value]
+[answers.unnamed]
 code_actions = []
 
 [answers.declared]
