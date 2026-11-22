@@ -76,6 +76,19 @@ items = [
     },
 ]
 
+[default.quoted_pragma.completion]
+items = [
+    {
+        label = "stamp_detail",
+        kind = "Function",
+        insert = "stamp_detail($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "stamp/version.h"' },
+        ],
+    },
+]
+
 [default.idirafter.completion]
 items = [
     {
@@ -85,6 +98,19 @@ items = [
         snippet = true,
         edits = [
             { at = "⟦⟧int local = local_cou;", text = "#include <tardy/late.h>" },
+        ],
+    },
+]
+
+[default.standard_name.completion]
+items = [
+    {
+        label = "std::vector",
+        kind = "Class",
+        insert = "std::vector<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <vector>" },
         ],
     },
 ]
@@ -167,6 +193,19 @@ items = [
     },
 ]
 
+[angled.quoted_pragma.completion]
+items = [
+    {
+        label = "stamp_detail",
+        kind = "Function",
+        insert = "stamp_detail($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "stamp/version.h"' },
+        ],
+    },
+]
+
 [angled.idirafter.completion]
 items = [
     {
@@ -176,6 +215,19 @@ items = [
         snippet = true,
         edits = [
             { at = "⟦⟧int local = local_cou;", text = "#include <tardy/late.h>" },
+        ],
+    },
+]
+
+[angled.standard_name.completion]
+items = [
+    {
+        label = "std::vector",
+        kind = "Class",
+        insert = "std::vector<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <vector>" },
         ],
     },
 ]
@@ -258,6 +310,19 @@ items = [
     },
 ]
 
+[quoted.quoted_pragma.completion]
+items = [
+    {
+        label = "stamp_detail",
+        kind = "Function",
+        insert = "stamp_detail($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "stamp/version.h"' },
+        ],
+    },
+]
+
 [quoted.idirafter.completion]
 items = [
     {
@@ -267,6 +332,19 @@ items = [
         snippet = true,
         edits = [
             { at = "⟦⟧int local = local_cou;", text = '#include "tardy/late.h"' },
+        ],
+    },
+]
+
+[quoted.standard_name.completion]
+items = [
+    {
+        label = "std::vector",
+        kind = "Class",
+        insert = "std::vector<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <vector>" },
         ],
     },
 ]
@@ -349,6 +427,19 @@ items = [
     },
 ]
 
+[both.quoted_pragma.completion]
+items = [
+    {
+        label = "stamp_detail",
+        kind = "Function",
+        insert = "stamp_detail($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "stamp/version.h"' },
+        ],
+    },
+]
+
 [both.idirafter.completion]
 items = [
     {
@@ -358,6 +449,19 @@ items = [
         snippet = true,
         edits = [
             { at = "⟦⟧int local = local_cou;", text = "#include <tardy/late.h>" },
+        ],
+    },
+]
+
+[both.standard_name.completion]
+items = [
+    {
+        label = "std::vector",
+        kind = "Class",
+        insert = "std::vector<$0>",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <vector>" },
         ],
     },
 ]

@@ -110,16 +110,17 @@ public:
     /// earlier directory. Its delimiters are the ones `delimiters` asks
     /// for, else angle brackets for a header found through a system
     /// directory (-isystem, -idirafter, the toolchain's) or a framework,
-    /// quotes for any other; the other delimiters only where none of the
-    /// paths finds `header` with these. None when that names a library's
+    /// quotes for any other; the other ones where these find another
+    /// header or none. None when that names a library's
     /// internal header, which its public headers include and its users
     /// never should: libstdc++'s and glibc's `bits/`, libc++'s
     /// `__`-prefixed directories and files.
     std::optional<std::string> of(CanonicalRef header);
 
     /// `argument`, quotes or brackets included, as a header's IWYU pragma
-    /// names the header to include instead, its delimiters the ones
-    /// `delimiters` asks for, else its own.
+    /// names the header to include instead: with the delimiters
+    /// `delimiters` asks for where they find the header it names, else as
+    /// written.
     std::string rewrite(llvm::StringRef argument) const;
 
 private:

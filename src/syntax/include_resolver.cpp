@@ -261,8 +261,8 @@ std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
         std::string name;
         bool angled;
 
-        /// The other delimiters than those the header takes, tried once
-        /// no path finds it with those.
+        /// The other delimiters than those the header takes, tried after
+        /// those.
         bool fallback;
 
         /// A library's internal header, found where an angled include
@@ -304,7 +304,7 @@ std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
         }
     }
     ranges::stable_sort(candidates, {}, [](const Candidate& candidate) {
-        return std::pair(candidate.fallback, candidate.name.size());
+        return std::pair(candidate.name.size(), candidate.fallback);
     });
     for(const auto& candidate: candidates) {
         auto resolved =
@@ -327,7 +327,16 @@ std::string IncludeArguments::rewrite(llvm::StringRef argument) const {
     }
     auto name = argument.drop_front().drop_back();
     auto angled = delimiters.angled_for(name);
-    return angled ? delimit(name, *angled) : argument.str();
+    if(!angled) {
+        return argument.str();
+    }
+    auto found = [&](bool as_angled) -> std::optional<CanonicalPath> {
+        auto resolved = resolve_include(name, as_angled, directory, false, 0, search, scope);
+        return resolved ? std::optional(CanonicalPath(Spelling::absolute(resolved->path)))
+                        : std::nullopt;
+    };
+    auto named = found(argument.front() == '<');
+    return named && named == found(*angled) ? delimit(name, *angled) : argument.str();
 }
 
 }  // namespace clice

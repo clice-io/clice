@@ -31,6 +31,12 @@ pushes = [
             message = "invalid glob pattern 'acme/[a': unmatched `[` at code_completion.angled_includes[0]",
             source = "clice",
         },
+        {
+            at = 'quoted_includes = [⟦"acme\\**"⟧]',
+            severity = "error",
+            message = "'acme\\**' holds a backslash: separate directories with `/` on every platform, and match a literal `*`, `?`, `[` or `{` with a range such as `[*]` at code_completion.quoted_includes[0]",
+            source = "clice",
+        },
     ],
 ]
 

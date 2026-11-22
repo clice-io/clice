@@ -18,7 +18,10 @@ test("glob", async (t) => {
 });
 
 test("include glob", async (t) => {
-    t.disk.write("clice.toml", '[code_completion]\nangled_includes = ["acme/[a"]\n');
+    t.disk.write(
+        "clice.toml",
+        '[code_completion]\nangled_includes = ["acme/[a"]\nquoted_includes = ["acme\\\\**"]\n',
+    );
     const s = await t.start();
     await t.show("clice.toml", s.pushes("clice.toml"));
 });
