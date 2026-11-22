@@ -107,3 +107,42 @@ describe("digest", () => {
         });
     });
 });
+
+describe("a run that ended without a failed job", () => {
+    test("a workflow GitHub rejected is no pass", () => {
+        const rejected = summarize(run("completed", "startup_failure"), []);
+        expect(report("#1", [rejected])).toEqual([
+            "#1: CI finished, run 7 ended startup_failure",
+            "run 7 main (pull_request, attempt 1): startup_failure  https://github.com/o/r/actions/runs/7",
+            "  no jobs",
+        ]);
+    });
+});
+
+describe("digest of a job whose failure ran a step after it", () => {
+    test("the step that reported the error, not the upload after it", () => {
+        const log = [
+            "2026-11-21T13:52:00.0000000Z ##[group]Run pixi run cases-test",
+            "2026-11-21T13:52:00.1000000Z ##[endgroup]",
+            "2026-11-21T13:58:14.6645989Z ##[error]Error: hover/x: the output differs from snap.toml",
+            "2026-11-21T13:58:14.7189078Z ##[error]Process completed with exit code 1.",
+            "2026-11-21T13:58:15.0000000Z ##[group]Run actions/upload-artifact@v7",
+            "2026-11-21T13:58:15.1000000Z ##[endgroup]",
+            "2026-11-21T13:58:16.0000000Z Artifact download URL: https://example",
+            "2026-11-21T13:58:17.0000000Z Post job cleanup.",
+        ].join("\n");
+        expect(digest(log, 10)).toEqual({
+            step: "Run pixi run cases-test",
+            errors: [
+                "Error: hover/x: the output differs from snap.toml",
+                "Process completed with exit code 1.",
+            ],
+            tail: [
+                "##[group]Run pixi run cases-test",
+                "##[endgroup]",
+                "##[error]Error: hover/x: the output differs from snap.toml",
+                "##[error]Process completed with exit code 1.",
+            ],
+        });
+    });
+});

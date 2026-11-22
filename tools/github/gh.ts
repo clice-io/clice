@@ -17,8 +17,8 @@ const RETRY_PAUSES_MS = [5_000, 15_000, 45_000];
 
 /// gh's standard output for `args`. A failure prints gh's own message and
 /// exits, as a reader can do nothing else with it.
-export async function gh(args: readonly string[]): Promise<string> {
-    const result = await call(args);
+export async function gh(args: readonly string[], retry = true): Promise<string> {
+    const result = await call(args, retry);
     if (typeof result !== "string") {
         console.error(result.stderr.trim() || `gh ${args.join(" ")} failed`);
         process.exit(1);
@@ -26,14 +26,18 @@ export async function gh(args: readonly string[]): Promise<string> {
     return result;
 }
 
-/// gh's standard output for `args`, or undefined when GitHub refused the
-/// request (a log that expired, a job that has none yet).
-export async function ghOrUndefined(args: readonly string[]): Promise<string | undefined> {
+/// gh's standard output for `args`, or its error output when GitHub refused
+/// the request (a log that expired, a job that has none yet).
+export async function ghTry(
+    args: readonly string[],
+): Promise<{ stdout: string } | { stderr: string }> {
     const result = await call(args);
-    return typeof result === "string" ? result : undefined;
+    return typeof result === "string" ? { stdout: result } : result;
 }
 
-async function call(args: readonly string[]): Promise<string | { stderr: string }> {
+/// `retry` is off for a request that is not safe to repeat: GitHub may
+/// have done it before it answered with the error.
+async function call(args: readonly string[], retry = true): Promise<string | { stderr: string }> {
     for (let attempt = 0; ; attempt += 1) {
         try {
             const { stdout } = await exec("gh", args, {
@@ -48,7 +52,7 @@ async function call(args: readonly string[]): Promise<string | { stderr: string 
         } catch (error: unknown) {
             const stderr = (error as { stderr?: string }).stderr ?? String(error);
             const pause = RETRY_PAUSES_MS[attempt];
-            if (pause === undefined || !TRANSIENT.test(stderr)) {
+            if (!retry || pause === undefined || !TRANSIENT.test(stderr)) {
                 return { stderr };
             }
             // No event: nothing announces that GitHub recovered from a
@@ -58,8 +62,8 @@ async function call(args: readonly string[]): Promise<string | { stderr: string 
     }
 }
 
-export async function ghJson<T>(args: readonly string[]): Promise<T> {
-    return JSON.parse(await gh(args)) as T;
+export async function ghJson<T>(args: readonly string[], retry = true): Promise<T> {
+    return JSON.parse(await gh(args, retry)) as T;
 }
 
 /// A GraphQL query's `data`; numbers go as typed variables, strings as
@@ -67,6 +71,7 @@ export async function ghJson<T>(args: readonly string[]): Promise<T> {
 export async function graphql<T>(
     query: string,
     variables: Readonly<Record<string, string | number | undefined>>,
+    retry = true,
 ): Promise<T> {
     const args = ["api", "graphql", "-f", `query=${query}`];
     for (const [key, value] of Object.entries(variables)) {
@@ -74,7 +79,7 @@ export async function graphql<T>(
             args.push(typeof value === "number" ? "-F" : "-f", `${key}=${String(value)}`);
         }
     }
-    return (await ghJson<{ data: T }>(args)).data;
+    return (await ghJson<{ data: T }>(args, retry)).data;
 }
 
 let repository: { owner: string; name: string } | undefined;

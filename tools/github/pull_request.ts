@@ -17,6 +17,7 @@ import { parseArgs } from "node:util";
 import { clean, indent, isFinding, truncate } from "./bodies.ts";
 import { statusOf } from "./ci.ts";
 import { currentPr, ghJson, graphql, login, repo } from "./gh.ts";
+import { atMost, count, issueNumber } from "./options.ts";
 
 interface Comment {
     author: { login: string } | null;
@@ -285,11 +286,24 @@ async function resolve(ids: readonly string[]): Promise<void> {
 async function reply(id: string, body: string): Promise<void> {
     const answer = await graphql<{
         addPullRequestReviewThreadReply: { comment: { url: string } };
-    }>(REPLY_MUTATION, { id, body });
+    }>(REPLY_MUTATION, { id, body }, false);
     console.log(answer.addPullRequestReviewThreadReply.comment.url);
 }
 
 async function main(): Promise<void> {
+    const help =
+        "usage: node tools/github/pull_request.ts status [PR] | threads [PR] [--all] [--max-chars <n>] | reply <thread id> <text> | resolve <thread id>...";
+    // A reply's text is the user's own: one that starts with "-" (a list, a
+    // flag's name) is not an option.
+    const [first, id, text, ...extra] = process.argv.slice(2);
+    if (first === "reply") {
+        if (id === undefined || text === undefined || extra.length > 0) {
+            console.error(help);
+            process.exit(2);
+        }
+        await reply(id, text);
+        return;
+    }
     const { values, positionals } = parseArgs({
         options: {
             all: { type: "boolean", default: false },
@@ -299,25 +313,18 @@ async function main(): Promise<void> {
         allowPositionals: true,
     });
     const [command, ...rest] = positionals;
-    const pr = async (): Promise<number> =>
-        rest[0] === undefined ? await currentPr() : Number(rest[0]);
+    const pr = async (): Promise<number> => {
+        const [given] = atMost(rest, 1, help);
+        return given === undefined ? await currentPr() : issueNumber(given, "the PR");
+    };
     if (command === "status") {
-        await status(await pr(), Number(values.commits));
+        await status(await pr(), count(values.commits, "--commits"));
     } else if (command === "threads") {
-        await printThreads(await pr(), values.all, Number(values["max-chars"]));
+        await printThreads(await pr(), values.all, count(values["max-chars"], "--max-chars"));
     } else if (command === "resolve" && rest.length > 0) {
         await resolve(rest);
-    } else if (
-        command === "reply" &&
-        rest.length === 2 &&
-        rest[0] !== undefined &&
-        rest[1] !== undefined
-    ) {
-        await reply(rest[0], rest[1]);
     } else {
-        console.error(
-            "usage: node tools/github/pull_request.ts status [PR] | threads [PR] [--all] | reply <thread id> <text> | resolve <thread id>...",
-        );
+        console.error(help);
         process.exit(2);
     }
 }

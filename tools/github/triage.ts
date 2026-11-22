@@ -15,6 +15,7 @@ import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { REPO_ROOT } from "../repo.ts";
 import { gh, ghJson } from "./gh.ts";
+import { atMost, count, issueNumbers, oneOf } from "./options.ts";
 
 const OUT = path.join(REPO_ROOT, "temp", "triage");
 const SNAPSHOT = path.join(OUT, "snapshot.json");
@@ -60,7 +61,7 @@ export interface Checked extends Proposal {
 
 /// Every label name of .github/labels.yml.
 export function taxonomy(labelsYml: string): Set<string> {
-    return new Set([...labelsYml.matchAll(/^- name: "(.+)"$/gm)].map((match) => match[1] ?? ""));
+    return new Set([...labelsYml.matchAll(/^- name: "(.+)"\r?$/gm)].map((match) => match[1] ?? ""));
 }
 
 /// The proposals held to the taxonomy and the rules, and to the snapshot:
@@ -126,7 +127,12 @@ export function check(
             labels: [...proposed].sort(),
             add: [...proposed].filter((label) => !existing.has(label)).sort(),
             leftOut: [...existing]
-                .filter((label) => !proposed.has(label) && !MARKERS.has(label))
+                .filter(
+                    (label) =>
+                        !proposed.has(label) &&
+                        !MARKERS.has(label) &&
+                        !removedByApply(label, existing, snapshot.issues[String(number)]?.state),
+                )
                 .sort(),
         });
     }
@@ -137,6 +143,91 @@ export function check(
         );
     }
     return { valid, failures };
+}
+
+/// The labels apply takes off an issue itself: the template's kind while
+/// `needs-triage` is on, and a closed issue's `status:` labels.
+function removedByApply(
+    label: string,
+    existing: ReadonlySet<string>,
+    state: string | undefined,
+): boolean {
+    return (
+        (existing.has("needs-triage") && label.startsWith("kind:")) ||
+        (state !== "OPEN" && label.startsWith("status:"))
+    );
+}
+
+/// The issue as apply reads it again, and as the snapshot saw it.
+export interface Live {
+    labels: string[];
+    state: string;
+    title: string;
+}
+
+/// What apply does to one issue: skip it with the reason, or its edits and
+/// the notes it prints about them.
+export type Plan =
+    | { skip: string }
+    | { add: string[]; remove: string[]; title: string | undefined; notes: string[] };
+
+export function plan(
+    proposal: Checked,
+    live: Live,
+    seen: { title: string; state: string } | undefined,
+    options: { keepTitles: boolean; includeClosed: boolean },
+): Plan {
+    const liveLabels = new Set(live.labels);
+    const closed = live.state !== "OPEN";
+    // The proposal was made for the snapshot's issue: a changed state, or
+    // someone else's triage meanwhile, makes it stale.
+    if (live.state !== seen?.state) {
+        return { skip: "its state changed since the snapshot" };
+    }
+    if (liveLabels.has("triaged")) {
+        return { skip: "triaged since the snapshot" };
+    }
+    if (closed && !options.includeClosed) {
+        return { skip: "closed" };
+    }
+    const marker = liveLabels.has("needs-triage");
+    const liveKinds = [...liveLabels].filter((label) => label.startsWith("kind:")).sort();
+    if (!marker && liveKinds.length > 1) {
+        return { skip: `several kinds ${liveKinds.join(", ")} (resolve by hand)` };
+    }
+    const notes: string[] = [];
+    const kind = proposal.labels.find((label) => label.startsWith("kind:"));
+    let add = proposal.labels.filter((label) => !liveLabels.has(label));
+    const remove = marker ? ["needs-triage"] : [];
+    if (closed) {
+        add = add.filter((label) => !label.startsWith("status:"));
+        remove.push(...[...liveLabels].filter((label) => label.startsWith("status:")).sort());
+    }
+    // The maintainer's kind wins over the proposed one; the status labels
+    // and the title depend on the kind, so they go with it.
+    const maintainerKind =
+        !marker && liveKinds.length > 0 && kind !== undefined && !liveKinds.includes(kind);
+    if (marker) {
+        remove.push(...liveKinds.filter((label) => label !== kind));
+    } else if (maintainerKind) {
+        add = add.filter((label) => !label.startsWith("kind:") && !label.startsWith("status:"));
+        notes.push(`the maintainer's ${liveKinds.join(", ")} wins over ${kind}`);
+    }
+    const all = new Set([...liveLabels, ...add]);
+    if (all.has("os:wsl") && [...all].some((label) => NATIVE_OS.has(label))) {
+        return { skip: "os:wsl beside a native os label (resolve by hand)" };
+    }
+    let title: string | undefined;
+    if (!options.keepTitles && proposal.title && proposal.title !== live.title) {
+        if (maintainerKind) {
+            notes.push("title kept: its type came from the dropped kind");
+        } else if (live.title !== seen.title) {
+            notes.push("title kept: it changed since the snapshot");
+        } else {
+            title = proposal.title;
+        }
+    }
+    return { add, remove, title, notes };
 }
 
 function author(entry: { login: string } | null | undefined): string {
@@ -284,10 +375,6 @@ function printCheck(file: string): void {
     }
 }
 
-function numbers(text: string | undefined): Set<number> {
-    return new Set(text === undefined || text === "" ? [] : text.split(",").map(Number));
-}
-
 async function apply(
     file: string,
     options: { only: Set<number>; skip: Set<number>; keepTitles: boolean; includeClosed: boolean },
@@ -302,7 +389,6 @@ async function apply(
         if ((options.only.size > 0 && !options.only.has(number)) || options.skip.has(number)) {
             continue;
         }
-        const seen = snap.issues[String(number)];
         const live = await ghJson<{ labels: { name: string }[]; state: string; title: string }>([
             "issue",
             "view",
@@ -310,61 +396,23 @@ async function apply(
             "--json",
             "labels,state,title",
         ]);
-        const liveLabels = new Set(live.labels.map((label) => label.name));
-        const closed = live.state !== "OPEN";
-        // The proposal was made for the snapshot's issue: a changed state, or
-        // someone else's triage meanwhile, makes it stale.
-        if (live.state !== seen?.state) {
-            console.log(`#${number} skipped: its state changed since the snapshot`);
+        const edits = plan(
+            proposal,
+            { ...live, labels: live.labels.map((label) => label.name) },
+            snap.issues[String(number)],
+            options,
+        );
+        if ("skip" in edits) {
+            console.log(`#${number} skipped: ${edits.skip}`);
             continue;
         }
-        if (liveLabels.has("triaged")) {
-            console.log(`#${number} skipped: triaged since the snapshot`);
-            continue;
+        const { add, remove, title, notes } = edits;
+        for (const note of notes) {
+            console.log(`#${number} ${note}`);
         }
-        if (closed && !options.includeClosed) {
-            console.log(`#${number} skipped: closed`);
-            continue;
-        }
-        const marker = liveLabels.has("needs-triage");
-        const liveKinds = [...liveLabels].filter((label) => label.startsWith("kind:")).sort();
-        if (!marker && liveKinds.length > 1) {
-            console.log(
-                `#${number} skipped: several kinds ${liveKinds.join(", ")} (resolve by hand)`,
-            );
-            continue;
-        }
-        const kind = proposal.labels.find((label) => label.startsWith("kind:"));
-        let add = proposal.labels.filter((label) => !liveLabels.has(label));
-        const remove = marker ? ["needs-triage"] : [];
-        if (closed) {
-            add = add.filter((label) => !label.startsWith("status:"));
-            remove.push(...[...liveLabels].filter((label) => label.startsWith("status:")).sort());
-        }
-        // The maintainer's kind wins over the proposed one; the status labels
-        // and the title depend on the kind, so they go with it.
-        const maintainerKind =
-            !marker && liveKinds.length > 0 && kind !== undefined && !liveKinds.includes(kind);
-        if (marker) {
-            remove.push(...liveKinds.filter((label) => label !== kind));
-        } else if (maintainerKind) {
-            add = add.filter((label) => !label.startsWith("kind:") && !label.startsWith("status:"));
-            console.log(`#${number} the maintainer's ${liveKinds.join(", ")} wins over ${kind}`);
-        }
-        const all = new Set([...liveLabels, ...add]);
-        if (all.has("os:wsl") && [...all].some((label) => NATIVE_OS.has(label))) {
-            console.log(`#${number} skipped: os:wsl beside a native os label (resolve by hand)`);
-            continue;
-        }
-        if (!options.keepTitles && proposal.title && proposal.title !== live.title) {
-            if (maintainerKind) {
-                console.log(`#${number} title kept: its type came from the dropped kind`);
-            } else if (live.title !== seen.title) {
-                console.log(`#${number} title kept: it changed since the snapshot`);
-            } else {
-                await gh(["issue", "edit", String(number), "--title", proposal.title]);
-                console.log(`#${number} title → ${proposal.title}`);
-            }
+        if (title !== undefined) {
+            await gh(["issue", "edit", String(number), "--title", title]);
+            console.log(`#${number} title → ${title}`);
         }
         if (remove.length > 0) {
             await gh(["issue", "edit", String(number), "--remove-label", remove.join(",")]);
@@ -393,22 +441,26 @@ async function main(): Promise<void> {
         },
         allowPositionals: true,
     });
-    const [command, file] = positionals;
+    const help =
+        "usage: node tools/github/triage.ts snapshot [--state all] [--limit <n>] | check <labels.json> | apply <labels.json> [--only N,N | --skip N,N] [--keep-titles] [--include-closed]";
+    const [command, ...rest] = positionals;
+    const [file] = atMost(rest, command === "snapshot" ? 0 : 1, help);
     if (command === "snapshot") {
-        await snapshot(values.state === "all" ? "all" : "open", Number(values.limit));
+        await snapshot(
+            oneOf(values.state, "--state", ["open", "all"] as const),
+            count(values.limit, "--limit"),
+        );
     } else if (command === "check" && file !== undefined) {
         printCheck(file);
     } else if (command === "apply" && file !== undefined) {
         await apply(file, {
-            only: numbers(values.only),
-            skip: numbers(values.skip),
+            only: issueNumbers(values.only, "--only"),
+            skip: issueNumbers(values.skip, "--skip"),
             keepTitles: values["keep-titles"],
             includeClosed: values["include-closed"],
         });
     } else {
-        console.error(
-            "usage: node tools/github/triage.ts snapshot [--state all] | check <labels.json> | apply <labels.json> [--only N,N | --skip N,N] [--keep-titles] [--include-closed]",
-        );
+        console.error(help);
         process.exit(2);
     }
 }

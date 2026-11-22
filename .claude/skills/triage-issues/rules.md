@@ -41,6 +41,8 @@ the issue is genuinely cross-cutting. Attribute by where the user-visible
 benefit lands, not by the internal machinery:
 
 - Doc-comment parsing (doxygen etc.) surfaces in hover → `feature:hover`.
+- A `clice` command's output or behavior (`query`, `lint`, `index`, …) →
+  `feature:cli`.
 - Compiler-driver compatibility (clang-cl, newer clang releases, driver
   flags) → `feature:query-toolchain`.
 - On-type editing behavior (comment continuation on Enter, ...) →
@@ -77,8 +79,8 @@ If no feature label fits, omit it and name the gap in `gap`.
 
 - `build` — building clice itself from source.
 - `packaging` — prebuilt binaries, releases, distribution.
-- `ci` — CI workflows and repository automation, including maintainer
-  scripts (symbolize.py and friends).
+- `ci` — CI workflows and repository automation, including the maintainer
+  tools (`tools/release/symbolize.ts` and the like).
 - `tests` — test infrastructure and test failures.
 - `extension` — editor extension/plugin code rather than the server.
 - `security` — security-related issues.

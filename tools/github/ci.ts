@@ -17,7 +17,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
 import { REPO_ROOT } from "../repo.ts";
-import { ghJson, ghOrUndefined } from "./gh.ts";
+import { ghJson, ghTry } from "./gh.ts";
+import { atMost, count, issueNumber } from "./options.ts";
 
 export interface Step {
     name: string;
@@ -100,6 +101,20 @@ function finished(summary: RunSummary): boolean {
     return summary.run.status === "completed";
 }
 
+/// The conclusions of a finished run that passed.
+const PASSED = new Set(["success", "skipped", "neutral"]);
+
+/// A finished run that did not pass although none of its jobs failed: one
+/// that never started its jobs (`startup_failure`, a workflow file GitHub
+/// rejected), one waiting for approval (`action_required`), one cancelled.
+function endedWithoutFailedJob(summary: RunSummary): boolean {
+    return (
+        finished(summary) &&
+        summary.failed.length === 0 &&
+        !PASSED.has(summary.run.conclusion ?? "")
+    );
+}
+
 /// The lines `status` prints: the result over every run first, then each
 /// run's counts, failed jobs and the jobs still going.
 export function report(label: string, summaries: readonly RunSummary[]): string[] {
@@ -113,11 +128,16 @@ export function report(label: string, summaries: readonly RunSummary[]): string[
         0,
     );
     const lines: string[] = [];
+    const ended = summaries.filter(endedWithoutFailedJob);
     if (summaries.every(finished)) {
+        const failures = [
+            ...(failed > 0 ? [`${failed} of ${total} jobs failed`] : []),
+            ...ended.map((each) => `run ${each.run.id} ended ${each.run.conclusion ?? ""}`),
+        ];
         lines.push(
-            failed === 0
+            failures.length === 0
                 ? `${label}: CI finished, passed (${total} jobs)`
-                : `${label}: CI finished, ${failed} of ${total} jobs failed`,
+                : `${label}: CI finished, ${failures.join("; ")}`,
         );
     } else {
         const waiting = summaries.filter((each) => !finished(each) && each.total === 0).length;
@@ -136,7 +156,7 @@ export function report(label: string, summaries: readonly RunSummary[]): string[
             `run ${run.id} ${run.name} (${run.event}, attempt ${run.run_attempt}): ${state}  ${run.html_url}`,
         );
         if (summary.total === 0) {
-            lines.push("  no jobs yet");
+            lines.push(finished(summary) ? "  no jobs" : "  no jobs yet");
             continue;
         }
         lines.push(
@@ -165,9 +185,10 @@ export function report(label: string, summaries: readonly RunSummary[]): string[
     return lines;
 }
 
-/// The part of a job's log that tells why it failed: its failing step's
-/// name, the errors the step reported and its last lines. The log's
-/// timestamps are dropped, and so are the post-job steps after it.
+/// The part of a job's log that tells why it failed: the step that reported
+/// the last error — later steps, an upload of the failure's logs, are not
+/// it — that step's errors and its last lines. The log's timestamps are
+/// dropped, and so are the post-job steps.
 export function digest(
     log: string,
     lines: number,
@@ -177,15 +198,22 @@ export function digest(
         .split(/\r?\n/)
         .map((line) => line.replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z ?/, ""));
     const post = text.findIndex((line) => line.startsWith("Post job cleanup."));
-    const end = post === -1 ? text.length : post;
-    let start = 0;
-    for (let index = end - 1; index >= 0; index -= 1) {
-        if (text[index]?.startsWith("##[group]Run ")) {
-            start = index;
+    const jobEnd = post === -1 ? text.length : post;
+    const isStep = (line: string | undefined): boolean =>
+        line?.startsWith("##[group]Run ") ?? false;
+    const lastError = text.slice(0, jobEnd).findLastIndex((line) => line.startsWith("##[error]"));
+    const anchor = lastError === -1 ? jobEnd - 1 : lastError;
+    let found = -1;
+    for (let index = anchor; index >= 0; index -= 1) {
+        if (isStep(text[index])) {
+            found = index;
             break;
         }
     }
-    const step = start === 0 ? undefined : text[start]?.slice("##[group]".length);
+    const start = Math.max(found, 0);
+    const next = text.slice(anchor + 1, jobEnd).findIndex(isStep);
+    const end = next === -1 ? jobEnd : anchor + 1 + next;
+    const step = found === -1 ? undefined : text[found]?.slice("##[group]".length);
     const errors = [
         ...new Set(
             text
@@ -256,7 +284,7 @@ async function resolveTarget(
     const view = await ghJson<{ number: number; headRefOid: string }>([
         "pr",
         "view",
-        ...(pr === undefined ? [] : [pr]),
+        ...(pr === undefined ? [] : [String(issueNumber(pr, "the PR"))]),
         "--json",
         "number,headRefOid",
     ]);
@@ -273,11 +301,12 @@ async function printLog(job: Job, lines: number): Promise<void> {
         console.log(`${header}: ${job.status} — its log comes when the job finishes`);
         return;
     }
-    const log = await ghOrUndefined(["api", `repos/{owner}/{repo}/actions/jobs/${job.id}/logs`]);
-    if (log === undefined) {
-        console.log(`${header}: ${job.conclusion ?? ""} — GitHub has no log for it (expired?)`);
+    const answer = await ghTry(["api", `repos/{owner}/{repo}/actions/jobs/${job.id}/logs`]);
+    if ("stderr" in answer) {
+        console.log(`${header}: ${job.conclusion ?? ""} — no log: ${answer.stderr.trim()}`);
         return;
     }
+    const log = answer.stdout;
     const file = path.join(REPO_ROOT, "temp", "ci", String(job.run_id), `${job.id}.log`);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, log);
@@ -307,12 +336,15 @@ async function main(): Promise<void> {
         allowPositionals: true,
     });
     const [command, ...rest] = positionals;
-    const lines = Number(values.lines);
+    const lines = count(values.lines, "--lines");
+    const help =
+        "usage: node tools/github/ci.ts status [PR] [--sha <sha> | --run <id>]\n" +
+        "       node tools/github/ci.ts logs <job id>... | --failed [PR] [--sha <sha> | --run <id>] [--lines <n>]";
     if (command === "status") {
-        const target = await resolveTarget(rest[0], values.sha, values.run);
+        const target = await resolveTarget(atMost(rest, 1, help)[0], values.sha, values.run);
         console.log(report(target.label, await summariesOf(target.runs)).join("\n"));
     } else if (command === "logs" && values.failed) {
-        const target = await resolveTarget(rest[0], values.sha, values.run);
+        const target = await resolveTarget(atMost(rest, 1, help)[0], values.sha, values.run);
         const failed = (await summariesOf(target.runs)).flatMap((each) =>
             each.failed.map(({ job }) => job),
         );
@@ -324,16 +356,14 @@ async function main(): Promise<void> {
         }
     } else if (command === "logs" && rest.length > 0) {
         for (const id of rest) {
+            const job = issueNumber(id, "a job id");
             await printLog(
-                await ghJson<Job>(["api", `repos/{owner}/{repo}/actions/jobs/${id}`]),
+                await ghJson<Job>(["api", `repos/{owner}/{repo}/actions/jobs/${job}`]),
                 lines,
             );
         }
     } else {
-        console.error(
-            "usage: node tools/github/ci.ts status [PR] [--sha <sha> | --run <id>]\n" +
-                "       node tools/github/ci.ts logs <job id>... | --failed [PR] [--sha <sha> | --run <id>] [--lines <n>]",
-        );
+        console.error(help);
         process.exit(2);
     }
 }

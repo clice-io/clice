@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { check, taxonomy, type Proposal, type Snapshot } from "./triage.ts";
+import { check, plan, taxonomy, type Proposal, type Snapshot } from "./triage.ts";
 
 const labels = taxonomy(
     [
@@ -10,6 +10,7 @@ const labels = taxonomy(
         '- name: "os:wsl"',
         '- name: "help wanted"',
         '- name: "needs-triage"',
+        '- name: "status:needs-info"',
     ].join("\n"),
 );
 
@@ -82,5 +83,131 @@ describe("check", () => {
             snapshot({ "1": { title: "", state: "OPEN", labels: ["help wanted"] } }),
         );
         expect(failures).toEqual([]);
+    });
+});
+
+describe("check, the rest of its rules", () => {
+    test("several proposals for one issue and an empty title are rejected", () => {
+        const { failures } = check(
+            [
+                proposal(1, ["kind:bug"]),
+                proposal(1, ["kind:crash"]),
+                proposal(2, ["kind:bug"], { title: " " }),
+            ],
+            labels,
+            snapshot({
+                "1": { title: "", state: "OPEN", labels: [] },
+                "2": { title: "", state: "OPEN", labels: [] },
+            }),
+        );
+        expect(failures).toEqual(["#1: several proposals", "#2: an empty title"]);
+    });
+
+    test("what apply removes itself is not left to the maintainer", () => {
+        const { valid } = check(
+            [proposal(1, ["kind:crash"])],
+            labels,
+            snapshot({ "1": { title: "", state: "OPEN", labels: ["needs-triage", "kind:bug"] } }),
+        );
+        expect(valid[0]?.leftOut).toEqual([]);
+    });
+});
+
+describe("plan", () => {
+    const checked = (labelSet: string[], title?: string) => {
+        const { valid } = check(
+            [proposal(1, labelSet, title === undefined ? {} : { title })],
+            labels,
+            snapshot({ "1": { title: "old", state: "OPEN", labels: [] } }),
+        );
+        const [first] = valid;
+        if (first === undefined) {
+            throw new Error("the proposal did not pass the check");
+        }
+        return first;
+    };
+    const seen = { title: "old", state: "OPEN" };
+    const options = { keepTitles: false, includeClosed: false };
+
+    test("an issue that changed since the snapshot is skipped", () => {
+        const proposalOf = checked(["kind:bug"]);
+        expect(
+            plan(proposalOf, { labels: [], state: "CLOSED", title: "old" }, seen, options),
+        ).toEqual({
+            skip: "its state changed since the snapshot",
+        });
+        expect(
+            plan(proposalOf, { labels: ["triaged"], state: "OPEN", title: "old" }, seen, options),
+        ).toEqual({
+            skip: "triaged since the snapshot",
+        });
+        expect(
+            plan(
+                proposalOf,
+                { labels: ["kind:bug", "kind:crash"], state: "OPEN", title: "old" },
+                seen,
+                options,
+            ),
+        ).toEqual({ skip: "several kinds kind:bug, kind:crash (resolve by hand)" });
+    });
+
+    test("while needs-triage is on, the proposed kind replaces the template's", () => {
+        expect(
+            plan(
+                checked(["kind:crash", "feature:hover"], "crash(hover): x"),
+                { labels: ["needs-triage", "kind:bug"], state: "OPEN", title: "old" },
+                seen,
+                options,
+            ),
+        ).toEqual({
+            add: ["feature:hover", "kind:crash"],
+            remove: ["needs-triage", "kind:bug"],
+            title: "crash(hover): x",
+            notes: [],
+        });
+    });
+
+    test("the maintainer's kind wins, and takes the title along", () => {
+        expect(
+            plan(
+                checked(["kind:crash", "feature:hover"], "crash(hover): x"),
+                { labels: ["kind:bug"], state: "OPEN", title: "old" },
+                seen,
+                options,
+            ),
+        ).toEqual({
+            add: ["feature:hover"],
+            remove: [],
+            title: undefined,
+            notes: [
+                "the maintainer's kind:bug wins over kind:crash",
+                "title kept: its type came from the dropped kind",
+            ],
+        });
+    });
+
+    test("a title someone changed since the snapshot stays", () => {
+        const result = plan(
+            checked(["kind:bug"], "bug: x"),
+            { labels: ["needs-triage"], state: "OPEN", title: "edited" },
+            seen,
+            options,
+        );
+        expect(result).toMatchObject({
+            title: undefined,
+            notes: ["title kept: it changed since the snapshot"],
+        });
+    });
+
+    test("a closed issue loses its status labels and gains none", () => {
+        const closed = { title: "old", state: "CLOSED" };
+        expect(
+            plan(
+                checked(["kind:bug"]),
+                { labels: ["kind:bug", "status:needs-info"], state: "CLOSED", title: "old" },
+                closed,
+                { keepTitles: false, includeClosed: true },
+            ),
+        ).toEqual({ add: [], remove: ["status:needs-info"], title: undefined, notes: [] });
     });
 });

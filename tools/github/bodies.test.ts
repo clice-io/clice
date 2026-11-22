@@ -53,3 +53,17 @@ describe("truncate", () => {
         expect(truncate("abcdef", 4)).toBe("abc…");
     });
 });
+
+describe("clean, the rest of the markup", () => {
+    test("comments, quotes, alerts and a one-line blob link", () => {
+        const body = [
+            "<!-- tracking -->",
+            "> [!CAUTION]",
+            "> Outside diff range: https://github.com/o/r/blob/0123abcd/src/c.cpp#L7 leaks",
+        ].join("\n");
+        const { text } = clean(body);
+        expect(text).toBe("Outside diff range: src/c.cpp:7 leaks");
+        expect(isFinding("coderabbitai", text)).toBe(true);
+        expect(isFinding("coderabbitai", "Nitpick comments (1)")).toBe(true);
+    });
+});
