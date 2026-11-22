@@ -638,9 +638,16 @@ void Project::look_again(llvm::StringRef pch_key) {
     if(!pchs.contains(pch_key) && !graph.is_compiling(pch_node(pch_key))) {
         return;
     }
-    pchs[pch_key].saves += 1;
-    graph.invalidate(pch_node(pch_key));
+    auto& entry = pchs[pch_key];
+    bool asked = entry.saves != entry.saves_built;
+    entry.saves += 1;
     mark_precompiled_dirty();
+    // While a save waits for a build, the next ones leave that build alone:
+    // restarting it at each would keep a file saved every second, its
+    // header still missing, from ever getting its PCH.
+    if(!asked) {
+        graph.invalidate(pch_node(pch_key));
+    }
 }
 
 void Project::pch_consume_failed(llvm::StringRef pch_key) {

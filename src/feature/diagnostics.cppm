@@ -98,7 +98,8 @@ struct FileDiagnostic {
     /// The page documenting the code; empty for none.
     std::string link;
 
-    /// The message as reported, without where it came from.
+    /// The message as reported, without where it came from, and a paragraph
+    /// each the notes clang gave no location.
     std::string message;
 
     DiagnosticOrigin origin = DiagnosticOrigin::File;

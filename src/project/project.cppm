@@ -985,7 +985,8 @@ struct Project {
     /// A document using the key's PCH was saved: its next build looks again
     /// for the files this one did not find, which may have appeared where
     /// its lookups record no place (a framework directory, a header map). A
-    /// build in flight looked before the save: it is overtaken.
+    /// build in flight looked before the save: it is overtaken, unless an
+    /// earlier save already waits for it.
     void look_again(llvm::StringRef pch_key);
 
     /// A parse reading the pair died or found it unreadable: remove both

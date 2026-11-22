@@ -45,3 +45,20 @@ test("save during a build", async (t) => {
     void rebuilt.catch(() => undefined);
     expect(await s.errors("framework.cpp")).toEqual([]);
 });
+
+// A save while the build an earlier save asked for runs leaves that build
+// alone: restarting it at every save would keep a file saved every second
+// from ever getting its PCH.
+test("saves while its build runs", async (t) => {
+    const s = await t.start({ lastRule: { background_index: false } });
+    await s.errors("framework.cpp");
+    const build = await s.park("pch", "framework.cpp", { at: "reply" });
+    s.save("framework.cpp");
+    const saved = s.errors("framework.cpp");
+    await build.reached();
+    s.save("framework.cpp");
+    await build.release();
+    void saved.catch(() => undefined);
+    await s.errors("framework.cpp");
+    expect(await pchBuilds(s, "framework.cpp")).toBe(2);
+});

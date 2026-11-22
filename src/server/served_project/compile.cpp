@@ -177,15 +177,22 @@ void ServedProject::retry_after_save(Session& session) {
     }
     // A PCH that did not find a file its preamble names stands while
     // nothing its lookups looked at changes, yet some look at no place a file
-    // appears in: a save looks again.
+    // appears in: a save looks again. What the key's PCH found decides, as
+    // another document's save may have rebuilt it since; one evicted leaves
+    // what the document compiled with.
     if(auto compiled = latest(path_id); compiled && compiled->pch_key) {
         auto& key = *compiled->pch_key;
         if(compiled->pch_failed) {
             retry |= project.forget_pch_failure(key);
-        } else if(auto preamble = project.preamble_index(key);
-                  preamble && ranges::any_of(preamble_diagnostics(*preamble), misses_file)) {
-            project.look_again(key);
-            retry = true;
+        } else {
+            auto preamble = project.preamble_index(key);
+            if(!preamble) {
+                preamble = compiled->preamble_index;
+            }
+            if(preamble && ranges::any_of(preamble_diagnostics(*preamble), misses_file)) {
+                project.look_again(key);
+                retry = true;
+            }
         }
     }
     if(retry) {
