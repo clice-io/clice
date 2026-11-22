@@ -159,7 +159,7 @@ tests/code_completion/scopes/20_written_qualifiers
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: partial -->
 
 **Include delimiters**
 

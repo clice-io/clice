@@ -43,17 +43,17 @@ std::string pragma_argument(llvm::StringRef argument, const IncludeDelimiters& d
 /// The header, quotes or brackets included, an `#include` for `candidate`
 /// names in `file`: a standard name's from the standard library's own
 /// table (the C library's for a C file, `c`), another's the header the
-/// index says declares it, or the one its IWYU pragmas name instead
-/// (`pragmas_of`): a private header's mapping, or a header including it
-/// that exports it, included the same way in turn. Its delimiters are
-/// include_argument's.
+/// index says declares it (include_argument), or the one its IWYU pragmas
+/// name instead (`pragmas_of`): a private header's mapping
+/// (pragma_argument), or a header including it that exports it, included
+/// the same way in turn.
 /// None when only a library's internal header is known.
 std::optional<std::string> include_for(const index::IndexQuery& query,
                                        const DependencyGraph& graph,
                                        const ScopeCandidate& candidate,
                                        bool c,
                                        Fid file,
-                                       IncludeArguments& arguments,
+                                       IncludeNames& names,
                                        const IncludeDelimiters& delimiters,
                                        llvm::function_ref<const IncludePragmas&(Fid)> pragmas_of) {
     auto& files = query.file_table();
@@ -95,7 +95,7 @@ std::optional<std::string> include_for(const index::IndexQuery& query,
             return pragma_argument(pragmas.include_instead, delimiters);
         }
         if(!pragmas.is_private) {
-            return include_argument(arguments, delimiters, path);
+            return include_argument(names, delimiters, path);
         }
         // An export names the private header as its includer wrote it:
         // beside the includer, or under a search directory.
@@ -143,18 +143,18 @@ std::optional<bool> IncludeDelimiters::angled_for(llvm::StringRef path) const {
     return std::nullopt;
 }
 
-std::optional<std::string> include_argument(IncludeArguments& arguments,
+std::optional<std::string> include_argument(IncludeNames& names,
                                             const IncludeDelimiters& delimiters,
                                             CanonicalRef header) {
-    auto name = arguments.of(header);
+    auto name = names.of(header);
     if(!name) {
         return std::nullopt;
     }
     using enum IncludeName::Found;
     // LIMITATION: quotes for a header -I finds name another file where one
-    // of the same path sits next to the including file (a src/config.h
-    // beside an include/config.h), which quotes find first. Only a project
-    // with two headers of one name meets it.
+    // of the same path sits next to the including file or under -iquote
+    // (a src/config.h beside an include/config.h), which quotes find
+    // first. Only a project with two headers of one name meets it.
     bool angled = name->found == Toolchain ||
                   delimiters.angled_for(name->path).value_or(name->found == System);
     return delimit(name->path, angled);
@@ -171,7 +171,7 @@ auto finish_completion(protocol::CompletionList list,
                        std::uint32_t limit) -> protocol::CompletionList {
     IncludeInsertion insertion{.opens_fragment = include.opens_fragment};
     vfs::Scope scope(query.file_table().dirs);
-    IncludeArguments arguments(search, query.file_table().spelling(file), scope);
+    IncludeNames names(search, query.file_table().spelling(file), scope);
     // Read from the disk, once a header.
     llvm::DenseMap<Fid, IncludePragmas> pragmas;
     auto pragmas_of = [&](Fid header) -> const IncludePragmas& {
@@ -196,14 +196,8 @@ auto finish_completion(protocol::CompletionList list,
             return each.symbol == *symbol;
         });
         assert(candidate != candidates.end() && "the worker names a candidate it was given");
-        auto header = include_for(query,
-                                  graph,
-                                  *candidate,
-                                  include.c,
-                                  file,
-                                  arguments,
-                                  delimiters,
-                                  pragmas_of);
+        auto header =
+            include_for(query, graph, *candidate, include.c, file, names, delimiters, pragmas_of);
         if(!header) {
             return true;
         }

@@ -68,9 +68,9 @@ ZEST_CASE(ToolchainHeadersAngled) {
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
+    IncludeNames names(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
     auto argument = [&](llvm::StringRef path) {
-        return feature::include_argument(arguments,
+        return feature::include_argument(names,
                                          delimiters,
                                          CanonicalPath(Spelling::absolute(tmp.path(path))));
     };

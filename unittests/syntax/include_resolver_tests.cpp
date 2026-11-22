@@ -409,16 +409,16 @@ ZEST_CASE(FrameworkHeaderArgument) {
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
+    IncludeNames names(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
     auto header =
         CanonicalPath(Spelling::absolute(tmp.path("Frameworks/Foo.framework/Headers/Bar.h")));
-    auto bar = arguments.of(header);
+    auto bar = names.of(header);
     ZASSERT(bar);
     ZEXPECT(bar->path == "Foo/Bar.h");
     ZEXPECT(bar->found == IncludeName::Found::System);
     auto internal = CanonicalPath(
         Spelling::absolute(tmp.path("Frameworks/Foo.framework/PrivateHeaders/Internal.h")));
-    auto private_header = arguments.of(internal);
+    auto private_header = names.of(internal);
     ZASSERT(private_header);
     ZEXPECT(private_header->path == "Foo/Internal.h");
 }
@@ -463,10 +463,10 @@ ZEST_CASE(VersionedFrameworkArgument, skip = Windows) {
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
+    IncludeNames names(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
     auto header = CanonicalPath(
         Spelling::absolute(tmp.path("Frameworks/Foo.framework/Versions/A/Headers/Bar.h")));
-    auto bar = arguments.of(header);
+    auto bar = names.of(header);
     ZASSERT(bar);
     ZEXPECT(bar->path == "Foo/Bar.h");
 }

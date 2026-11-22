@@ -366,7 +366,7 @@ void LSPClient::register_editing() {
                 host_session || !host.valid() ? host_path : files.spelling(host).str();
             std::optional<SourceText> host_disk;
             std::optional<SearchConfig> search;
-            std::optional<IncludeArguments> arguments;
+            std::optional<IncludeNames> names;
             auto query = project.editing_query();
             vfs::Scope scope(files.dirs);
             auto resolved = feature::resolve_actions(
@@ -389,12 +389,12 @@ void LSPClient::register_editing() {
                     },
                     .include_argument =
                         [&](CanonicalRef header) {
-                            if(!arguments) {
+                            if(!names) {
                                 search = project.search_of(path_id);
-                                arguments.emplace(*search, files.spelling(path_id), scope);
+                                names.emplace(*search, files.spelling(path_id), scope);
                             }
                             return feature::include_argument(
-                                *arguments,
+                                *names,
                                 project.project.settings.include_delimiters,
                                 header);
                         },

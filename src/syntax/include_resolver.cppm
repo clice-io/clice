@@ -77,7 +77,7 @@ std::optional<ResolveResult> resolve_forced_include(llvm::StringRef filename,
                                                     const ResolvedSearchConfig& config,
                                                     vfs::Scope& scope);
 
-/// How an include directive names a header (IncludeArguments::of).
+/// How an include directive names a header (IncludeNames::of).
 struct IncludeName {
     /// The directories the build finds a header through.
     enum class Found : std::uint8_t {
@@ -98,9 +98,9 @@ struct IncludeName {
 /// The names an include directive of `file` names headers by, with the
 /// command's search directories resolved once for them all. Borrows
 /// `search` and `scope`.
-class IncludeArguments {
+class IncludeNames {
 public:
-    IncludeArguments(const SearchConfig& search, const Spelling& file, vfs::Scope& scope);
+    IncludeNames(const SearchConfig& search, const Spelling& file, vfs::Scope& scope);
 
     /// `header`'s, the header by identity and the file as the build reaches
     /// it: its path below the file's directory (where a quoted include

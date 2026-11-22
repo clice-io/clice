@@ -208,16 +208,14 @@ std::optional<ResolveResult> resolve_forced_include(llvm::StringRef filename,
 }
 
 /// Whether an include's path names a library's internal header (see
-/// IncludeArguments::of).
+/// IncludeNames::of).
 static bool internal_header(bool angled, llvm::StringRef name) {
     return angled && ranges::any_of(path::components(name), [](std::string_view part) {
                return part == "bits" || part.starts_with("__");
            });
 }
 
-IncludeArguments::IncludeArguments(const SearchConfig& search,
-                                   const Spelling& file,
-                                   vfs::Scope& scope) :
+IncludeNames::IncludeNames(const SearchConfig& search, const Spelling& file, vfs::Scope& scope) :
     search(search), scope(scope), directory(file.parent()),
     resolved_directory(CanonicalPath(directory)) {
     for(auto& dir: search.dirs) {
@@ -225,11 +223,11 @@ IncludeArguments::IncludeArguments(const SearchConfig& search,
     }
 }
 
-std::optional<IncludeName> IncludeArguments::of(CanonicalRef header) {
+std::optional<IncludeName> IncludeNames::of(CanonicalRef header) {
     auto [known_entry, inserted] = known.try_emplace(llvm::StringRef(header));
-    auto& argument = known_entry->second;
+    auto& name = known_entry->second;
     if(!inserted) {
-        return argument;
+        return name;
     }
     auto below = [&](CanonicalRef root) -> std::optional<llvm::StringRef> {
         if(root.empty() || !path::is_within(header, root) || header.size() <= root.size()) {
@@ -291,12 +289,12 @@ std::optional<IncludeName> IncludeArguments::of(CanonicalRef header) {
         auto resolved = resolve_include(path, candidate.angled, directory, false, 0, search, scope);
         if(resolved && CanonicalPath(Spelling::absolute(resolved->path)) == header) {
             if(!internal_header(candidate.angled, path)) {
-                argument = std::move(candidate.name);
+                name = std::move(candidate.name);
             }
             break;
         }
     }
-    return argument;
+    return name;
 }
 
 }  // namespace clice

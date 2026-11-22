@@ -14,6 +14,7 @@ import :syntax.scan;
 import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.ids;
+import :vfs.path;
 
 namespace clice::feature {
 
@@ -233,11 +234,11 @@ struct IncludeDelimiters {
 };
 
 /// The argument, quotes or brackets included, of an `#include` of `header`
-/// in the file `arguments` names headers for: angle brackets for one of the
+/// in the file `names` names headers for: angle brackets for one of the
 /// toolchain's own headers, else the delimiters `delimiters` asks for, else
 /// those of the directories finding it (IncludeName::Found). None where no
 /// include names it.
-std::optional<std::string> include_argument(IncludeArguments& arguments,
+std::optional<std::string> include_argument(IncludeNames& names,
                                             const IncludeDelimiters& delimiters,
                                             CanonicalRef header);
 
