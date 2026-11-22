@@ -5,7 +5,7 @@ description: Read before running another vendor's CLI agent — codex (GPT-6 ast
 
 # External agents
 
-Agents of other vendors, run as CLIs. Their value is independence: they did not write what they review, and they do not see your conclusions. Each is optional: where one is not installed, not logged in or out of quota, carry on without it and without comment. The one exception is the triage skill, which stops instead: its classification never leaves codex's sandbox.
+Agents of other vendors, run as CLIs. Their value is independence: they did not write what they review, and they do not see your conclusions. Each is optional: where one is not installed, not logged in or out of quota, carry on without it and without comment.
 
 | Agent   | Model       | Its file   |
 | ------- | ----------- | ---------- |
@@ -46,7 +46,7 @@ valid answer.
 
 ## Their answers
 
-- **Hypothesis, not verdict.** Every concrete claim ("this input breaks it") gets an empirical probe before you act on it; "looks fine" carries no weight. They have refuted arguments this side was sure of, and confidently asserted things a probe then disproved: the probe decides, never authority. Where an agent and your own reading disagree, go back to the code. Report which findings held and which did not.
+- **Hypothesis, not conclusion.** Every concrete claim ("this input breaks it") gets an empirical probe before you act on it; "looks fine" carries no weight. They have refuted arguments this side was sure of, and confidently asserted things a probe then disproved: the probe decides, never authority. Where an agent and your own reading disagree, go back to the code. Report which findings held and which did not.
 - **A plan or a design**: write the doc → the agent looks for concrete counterexamples, not general commentary → probe each → revise the doc, recording adopted and refuted findings → the next round continues the same session. Stop when a round yields no new confirmed finding.
 
 ## When one edits code

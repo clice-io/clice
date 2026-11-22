@@ -2,7 +2,7 @@
 
 The label taxonomy lives in `.github/labels.yml` — the single source of
 truth for label names and descriptions. These rules define how to choose
-labels for an issue; they bind model classifiers and human triage equally.
+labels and the title for an issue.
 
 ## General
 
@@ -46,7 +46,7 @@ benefit lands, not by the internal machinery:
 - On-type editing behavior (comment continuation on Enter, ...) →
   `feature:formatting`.
 
-If no feature label fits, omit it and report the gap via `taxonomy_gap`.
+If no feature label fits, omit it and name the gap in `gap`.
 
 ## os: / editor: / toolchain: — evidence only
 
@@ -92,9 +92,8 @@ If no feature label fits, omit it and report the gap via `taxonomy_gap`.
   rationale.
 - NEVER apply `good first issue` or `help wanted` — maintainer judgment
   only.
-- Never include `needs-triage` or `triaged` in the output — they are
-  process markers managed by the triage tooling itself, not
-  classification facts.
+- Never include `needs-triage` or `triaged` — the triage tool manages
+  them.
 
 ## Title normalization
 
@@ -114,32 +113,26 @@ Issue titles follow the PR-title convention:
   reporter's meaning. Reporters are never required to write titles this
   way — normalization happens at triage time.
 
-## Classifier output schema
+## The labels file
 
-Reply with ONLY a JSON array, one object per issue:
+`temp/triage/labels.json` is one array, an object per snapshotted issue:
 
 ```json
 [
   {
     "issue": 0,
     "labels": [],
-    "confidence": "high|medium|low",
+    "confidence": "high",
     "rationale": "<one sentence>",
-    "ask_reporter": null,
-    "better_title": null,
-    "taxonomy_gap": null
+    "title": null,
+    "ask": null,
+    "gap": null
   }
 ]
 ```
 
-The reply is always an array, even for a single issue.
-
-- `labels` — the complete label set for the issue (including labels it
-  already has when they remain correct).
-- `confidence` — high: every label evidence-backed; medium: some judgment
-  calls; low: thin evidence (empty body, vague report).
-- `ask_reporter` — what a maintainer would need to ask before acting, or
-  null when the issue is actionable as-is.
-- `better_title` — the normalized title per the title-normalization
-  section; null only when the current title already conforms.
-- `taxonomy_gap` — what label is missing from the taxonomy, or null.
+- `labels` — the complete label set (with the labels the issue already has when they still hold).
+- `confidence` — `high`: every label backed by the thread; `medium`: some judgment calls; `low`: thin evidence (an empty body, a vague report).
+- `title` — the title in the form above; null only when the current one already has it.
+- `ask` — what the maintainer would need to ask before acting, or null.
+- `gap` — the label the taxonomy lacks for the issue, or null.
