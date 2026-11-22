@@ -1,0 +1,2 @@
+# A standard clang does not know.
+flags = ["-std=c++99"]

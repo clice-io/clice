@@ -1,0 +1,32 @@
+[test."main.cpp"]
+diagnostics = []
+
+[test."config.h"]
+diagnostics = []
+
+[test."commented.cpp"]
+diagnostics = [
+    { at = '#⟦warning⟧ "kept"', severity = "warning", message = '"kept"', source = "clang", code = "-W#warnings" },
+]
+
+[test."unended.cpp"]
+diagnostics = [
+    {
+        at = "int other = LEVEL;⟦⟧",
+        severity = "warning",
+        message = "no newline at end of file",
+        source = "clang",
+        code = "-Wnewline-eof",
+    },
+]
+
+[test."bare.h"]
+diagnostics = [
+    {
+        at = "#define BARE 1⟦⟧",
+        severity = "warning",
+        message = "no newline at end of file",
+        source = "clang",
+        code = "-Wnewline-eof",
+    },
+]

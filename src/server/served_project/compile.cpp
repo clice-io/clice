@@ -38,6 +38,19 @@ static std::vector<feature::FileDiagnostic>
     return diagnostics;
 }
 
+/// Whether the diagnostic says the compile did not find a file, or took
+/// another in its place: a file appearing later may be the one it meant.
+static bool misses_file(const feature::FileDiagnostic& diagnostic) {
+    namespace diag = clang::diag;
+    return ranges::contains(
+        std::array<std::uint32_t, 5>{diag::err_pp_file_not_found,
+                                     diag::err_pp_file_not_found_angled_include_not_fatal,
+                                     diag::err_pp_file_not_found_typo_not_fatal,
+                                     diag::err_pp_error_opening_file,
+                                     diag::err_module_not_found},
+        diagnostic.id);
+}
+
 /// The imports of a module several units provide, each resolved to the
 /// nearest of them (scan_imports).
 static std::vector<feature::ModuleChoice> module_choices(const Imports& imports,
@@ -162,17 +175,16 @@ void ServedProject::retry_after_save(Session& session) {
         retry |= project.forget_module_failure(modules[i]);
         add_imports(modules[i]);
     }
-    // A PCH that kept its preamble's errors misses the same lookups as a
-    // failed build: a save rebuilds it.
+    // A PCH that did not find a file its preamble names stands while
+    // nothing its lookups looked at changes, yet some look at no place a file
+    // appears in: a save looks again.
     if(auto compiled = latest(path_id); compiled && compiled->pch_key) {
+        auto& key = *compiled->pch_key;
         if(compiled->pch_failed) {
-            retry |= project.forget_pch_failure(*compiled->pch_key);
-        } else if(auto& preamble = compiled->preamble_index;
-                  preamble && ranges::any_of(preamble_diagnostics(*preamble),
-                                             [](const feature::FileDiagnostic& diagnostic) {
-                                                 return diagnostic.level >= DiagnosticLevel::Error;
-                                             })) {
-            project.discard_pch(*compiled->pch_key);
+            retry |= project.forget_pch_failure(key);
+        } else if(auto preamble = project.preamble_index(key);
+                  preamble && ranges::any_of(preamble_diagnostics(*preamble), misses_file)) {
+            project.look_again(key);
             retry = true;
         }
     }

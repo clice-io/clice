@@ -70,7 +70,7 @@ tests/diagnostics/templates/01_instantiation_errors
 
 ## Notes
 
-The notes clang attaches to an error travel with it as related information; a client that takes no related information gets them in the message.
+The notes clang attaches to an error travel with it as related information; a client that takes no related information gets them in the message. A note that points at no place in the code, such as those on a flag clang refuses or on a precompiled header it will not load, is part of the message for every client.
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/notes -->
 

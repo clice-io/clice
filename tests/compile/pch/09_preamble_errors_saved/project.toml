@@ -1,0 +1,2 @@
+# Framework lookups record no place they looked in.
+flags = ["-Fframeworks"]
