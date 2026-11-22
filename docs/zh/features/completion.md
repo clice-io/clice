@@ -157,6 +157,20 @@ tests/code_completion/scopes/20_written_qualifiers
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**包含指令的定界符**
+
+插入的 `#include` 按找到头文件的目录选用双引号或尖括号，配置另有指定时除外
+
+位于当前文件同目录下或经 `-iquote`、`-I` 找到的头文件使用双引号；经 `-isystem`、`-idirafter` 找到的头文件使用尖括号。`angled_includes` 与 `quoted_includes` 则改为按头文件的路径选择，两者都匹配的头文件使用双引号。若所要求的定界符会找到另一个头文件或找不到头文件，包含指令改用另一种定界符。
+
+```case
+tests/code_completion/scopes/22_include_delimiters
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 成员访问

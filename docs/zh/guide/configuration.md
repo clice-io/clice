@@ -577,6 +577,26 @@ clice 在独立的 worker 进程中执行编译。前台 worker 负责让已打�
 
 <div class="config-option">
 
+| 选项              | 类型              | 默认值 |
+| ----------------- | ----------------- | ------ |
+| `angled_includes` | `array of string` | `[]`   |
+
+用 glob 模式指定哪些头文件由补全或代码操作添加 `#include` 时使用尖括号。模式匹配写在尖括号之间的路径（`fmt/core.h`），语法与规则的 `patterns` 相同：`fmt/**` 匹配 `fmt/` 下的所有头文件。此项与 `quoted_includes` 都不匹配的头文件，若位于当前文件同目录下或经 `-iquote`、`-I` 找到，使用双引号；若经 `-isystem`、`-idirafter`、framework 目录或工具链自带的目录找到，使用尖括号；IWYU pragma 指明应改为包含的头文件，则沿用该 pragma 所写的定界符。若所要求的定界符会找到另一个头文件或找不到头文件（尖括号对当前文件同目录下的头文件即是如此），包含指令改用另一种定界符。标准库的头文件始终使用尖括号。
+
+</div>
+
+<div class="config-option">
+
+| 选项              | 类型              | 默认值 |
+| ----------------- | ----------------- | ------ |
+| `quoted_includes` | `array of string` | `[]`   |
+
+用 glob 模式指定哪些头文件由补全或代码操作添加 `#include` 时使用双引号，匹配方式见 `angled_includes`。两者都匹配的头文件使用双引号：`angled_includes = ["**"]` 配合 `quoted_includes = ["myproj/**"]`，会让除项目自身头文件以外的所有头文件都使用尖括号。
+
+</div>
+
+<div class="config-option">
+
 | 选项             | 类型   | 默认值 |
 | ---------------- | ------ | ------ |
 | `insert_imports` | `bool` | `true` |
