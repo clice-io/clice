@@ -10,3 +10,10 @@ struct §(record)Record {
     Point point;
     const char* label;
 };
+
+void use(Record& record) {
+    Record copy = record;
+    Record moved = static_cast<Record&&>(copy);
+    copy = moved;
+    moved = static_cast<Record&&>(copy);
+}

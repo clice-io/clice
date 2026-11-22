@@ -22,7 +22,7 @@ Each refactoring has its own code action kind, so an editor can ask for one alon
 | Define the missing members of a class                | `refactor.rewrite.define.missing`                |
 | Implement pure virtual methods                       | `refactor.rewrite.implementPureVirtuals`         |
 | Generate a memberwise constructor                    | `refactor.rewrite.generateMemberwiseConstructor` |
-| Declare the implicit copy and move members           | `refactor.rewrite.declareSpecialMembers`         |
+| Declare the implicit special members                 | `refactor.rewrite.declareSpecialMembers`         |
 | Add the missing enum cases to a switch               | `refactor.rewrite.populateSwitch`                |
 | Expand a deduced type                                | `refactor.rewrite.expandDeducedType`             |
 | Reorder definitions by declaration order             | `refactor.rewrite.reorderDefinitions`            |
@@ -278,7 +278,7 @@ tests/code_actions/constructor/07_move_only_fields
 
 ## Special Members
 
-When a user-defined constructor is defined, explicit special members are needed.
+A class receives explicit declarations of the copy and move operations, and of the default constructor, that the compiler declares for it implicitly, each `= default` or `= delete` as the compiler has it.
 
 <!-- BEGIN GENERATED ITEMS: code_actions/special_members -->
 
@@ -288,7 +288,7 @@ When a user-defined constructor is defined, explicit special members are needed.
 
 A class whose members copy and move gains explicit `= default` declarations of all four operations
 
-The declarations are appended to the end of the class body, in the order of copy constructor, move constructor, copy assignment and move assignment.
+The declarations are appended to the end of the class body, in the order of copy constructor, move constructor, copy assignment and move assignment. They declare what the compiler declared implicitly, so every use of the class compiles and behaves as before.
 
 ```case
 tests/code_actions/special_members/01_defaulted
@@ -302,7 +302,7 @@ tests/code_actions/special_members/01_defaulted
 
 An operation a member makes impossible is declared `= delete` instead of `= default`
 
-For example, a reference member or a `const` member makes the assignment operators impossible; a member class that only moves makes the copy operations impossible.
+A member class that only moves makes the copy operations impossible. A reference member or a `const` member makes the assignments impossible: the copy assignment is declared deleted, and the move assignment stays undeclared, since overload resolution never chooses the move the compiler deletes, but would choose one declared `= delete`.
 
 ```case
 tests/code_actions/special_members/02_deleted
@@ -314,9 +314,9 @@ tests/code_actions/special_members/02_deleted
 
 **Only the missing members**
 
-A class that already declares some operations gains gets the declarations it lacks
+A class that already declares some operations gets the declarations it lacks, as the compiler has them
 
-Notably, class declaring only its copy constructor and copy assignment gets two `= delete` move declarations; one declaring only the move operations gets two `= delete` copy declarations.
+A class declaring its move operations gets two `= delete` copy declarations: declaring a move deletes the implicit copies. A class declaring its copy constructor gets its copy assignment and no move declaration: the compiler declares no move there, rvalues are copied by the user's constructor, and a declared move would change that.
 
 ```case
 tests/code_actions/special_members/03_partial
@@ -332,6 +332,48 @@ The generated declarations go under a `public:` label when the class body ends i
 
 ```case
 tests/code_actions/special_members/04_access
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**Class templates**
+
+A class template's operations are declared `= default`, and each instantiation deletes the ones it cannot perform, as the compiler does
+
+`Box<int>` still copies and `Box<MoveOnly>` still only moves. Declaring a move deletes the implicit copies in every instantiation, so a template that declares its move constructor gets `= delete` copy declarations.
+
+```case
+tests/code_actions/special_members/05_template
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**Default constructor kept**
+
+A class without a constructor also gains its default constructor, which the declared copy constructor would otherwise remove
+
+On an aggregate the declared constructors end aggregate initialization since C++20: `Point{1, 2}` no longer compiles once the action is applied.
+
+```case
+tests/code_actions/special_members/08_default_constructor
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**Rvalues keep copying**
+
+A move the compiler does not declare, or declares deleted, is left undeclared, and rvalues keep copying
+
+A declared destructor or copy operation suppresses the implicit moves; a member that cannot move deletes them, and overload resolution then passes over them. Either way an rvalue is copied today. `= delete` would make it fail to compile, and `= default` on a class with a destructor would move members the user's code copied.
+
+```case
+tests/code_actions/special_members/09_undeclared_moves
 ```
 
 <!-- END CAPABILITY -->
@@ -700,4 +742,5 @@ tests/code_actions/formatting/01_project_style
 
 - A definition placed in the host source goes after the last definition of the class's members the index knows in that file, or at the end of the file when it holds none. Which source file hosts a header follows the header's compilation context.
 - Members already defined in another source file are left out of a "define missing members" action only when the project index knows that definition; while the index does not hold the file defining them, every undefined member is offered.
+- In a class template, a copy or move operation whose parameter type depends on a template parameter (`std::pair`'s conditional copy assignment) or that takes a parameter pack is not recognized as one: the special members action declares the operation again, and the class no longer compiles.
 - Missing-include candidates come from the standard library mapping and from headers the project index has seen; a header no indexed source file includes is not suggested.

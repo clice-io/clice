@@ -1,6 +1,6 @@
 // The action has no body to append to on a forward declaration, nothing to
-// declare on a union, and nothing to add to a class that already declares all
-// four operations itself.
+// declare on a union, and nothing to add to a class that declares all four
+// operations itself, or its copies and destructor, which suppress the moves.
 
 struct §(forward)Forward;
 
@@ -14,4 +14,10 @@ struct §(declared)Declared {
     Declared(Declared&&) = default;
     Declared& operator=(const Declared&) = default;
     Declared& operator=(Declared&&) = default;
+};
+
+struct §(rule_of_three)RuleOfThree {
+    RuleOfThree(const RuleOfThree&);
+    RuleOfThree& operator=(const RuleOfThree&);
+    ~RuleOfThree();
 };

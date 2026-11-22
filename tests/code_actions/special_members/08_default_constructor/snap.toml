@@ -1,0 +1,34 @@
+[[answers.counter.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit special members of 'Counter'"
+compiles = true
+
+[answers.counter.code_actions.edits]
+"main.cpp" = '''
+ private:
+     int count = 0;
++public:
++    Counter() = default;
++    Counter(const Counter&) = default;
++    Counter(Counter&&) = default;
++    Counter& operator=(const Counter&) = default;
++    Counter& operator=(Counter&&) = default;
+ };
+'''
+
+[[answers.point.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit special members of 'Point'"
+compiles = true
+
+[answers.point.code_actions.edits]
+"main.cpp" = '''
+     int x;
+     int y;
++    Point() = default;
++    Point(const Point&) = default;
++    Point(Point&&) = default;
++    Point& operator=(const Point&) = default;
++    Point& operator=(Point&&) = default;
+ };
+'''

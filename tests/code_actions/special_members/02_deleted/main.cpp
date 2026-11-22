@@ -26,3 +26,10 @@ struct §(holder)Holder {
 
     Handle handle;
 };
+
+void use(Reference& reference, Constant& constant, Holder& holder) {
+    Reference other_reference = static_cast<Reference&&>(reference);
+    Constant other_constant = static_cast<Constant&&>(constant);
+    Holder other_holder = static_cast<Holder&&>(holder);
+    other_holder = static_cast<Holder&&>(holder);
+}

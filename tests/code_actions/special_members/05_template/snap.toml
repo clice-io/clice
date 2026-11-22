@@ -1,15 +1,29 @@
 [[answers.box.code_actions]]
 kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Box'"
+title = "Declare the implicit special members of 'Box'"
 compiles = true
 
 [answers.box.code_actions.edits]
 "main.cpp" = '''
 
      T value;
-+    Box(const Box&) = delete;
-+    Box(Box&&) = delete;
-+    Box& operator=(const Box&) = delete;
-+    Box& operator=(Box&&) = delete;
++    Box(const Box&) = default;
++    Box(Box&&) = default;
++    Box& operator=(const Box&) = default;
++    Box& operator=(Box&&) = default;
+ };
+'''
+
+[[answers.unique.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit special members of 'Unique'"
+compiles = true
+
+[answers.unique.code_actions.edits]
+"main.cpp" = '''
+
+     T* pointer;
++    Unique(const Unique&) = delete;
++    Unique& operator=(const Unique&) = delete;
  };
 '''

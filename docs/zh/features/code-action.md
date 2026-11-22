@@ -22,7 +22,7 @@ clice 针对选区提供代码操作：依据编译器掌握的信息生成或�
 | 定义类中缺失的成员                   | `refactor.rewrite.define.missing`                |
 | 实现纯虚方法                         | `refactor.rewrite.implementPureVirtuals`         |
 | 生成逐成员构造函数                   | `refactor.rewrite.generateMemberwiseConstructor` |
-| 声明隐式的拷贝和移动成员             | `refactor.rewrite.declareSpecialMembers`         |
+| 声明隐式的特殊成员                   | `refactor.rewrite.declareSpecialMembers`         |
 | 为 switch 补全缺失的枚举分支         | `refactor.rewrite.populateSwitch`                |
 | 展开推导类型                         | `refactor.rewrite.expandDeducedType`             |
 | 按声明顺序重排定义                   | `refactor.rewrite.reorderDefinitions`            |
@@ -278,7 +278,7 @@ tests/code_actions/constructor/07_move_only_fields
 
 ## 特殊成员
 
-声明了用户自定义构造函数后，需要显式声明移动/拷贝成员
+编译器为类隐式声明的拷贝操作、移动操作和默认构造函数，会显式写进类中，每一项都与编译器的处理一致，写作 `= default` 或 `= delete`。
 
 <!-- BEGIN GENERATED ITEMS: code_actions/special_members -->
 
@@ -288,7 +288,7 @@ tests/code_actions/constructor/07_move_only_fields
 
 类的成员可拷贝、可移动时，全部四个操作都会获得显式的 `= default` 声明
 
-这些声明附加在类体末尾，顺序依次为拷贝构造函数、移动构造函数、拷贝赋值运算符、移动赋值运算符。
+这些声明附加在类体末尾，顺序依次为拷贝构造函数、移动构造函数、拷贝赋值运算符、移动赋值运算符。它们声明的正是编译器原本隐式声明的内容，因此该类的每一处使用都照常编译，行为也与之前相同。
 
 ```case
 tests/code_actions/special_members/01_defaulted
@@ -298,11 +298,11 @@ tests/code_actions/special_members/01_defaulted
 
 <!-- BEGIN CAPABILITY: supported clice#1111 -->
 
-**不可行的操作声明为 delete**
+**无法实现的操作声明为 delete**
 
-某个成员使其无法实现的操作会声明为 `= delete`，而非 `= default`。
+成员使之无法实现的操作会声明为 `= delete`，而非 `= default`
 
-例如，引用成员或`const`成员使赋值运算符无法实现；只能移动的成员类使拷贝操作无法实现。
+类型只能移动的成员使拷贝操作无法实现。引用成员或 `const` 成员使赋值无法实现：拷贝赋值声明为删除，移动赋值则不予声明，因为重载决议（overload resolution）从不选择编译器删除的移动赋值，却会选中声明为 `= delete` 的那一个。
 
 ```case
 tests/code_actions/special_members/02_deleted
@@ -314,9 +314,9 @@ tests/code_actions/special_members/02_deleted
 
 **只生成缺失的成员**
 
-已经声明了部分操作的类只会生成所缺的声明
+已经声明了部分操作的类只会补上所缺的声明，写法与编译器的处理一致
 
-只声明了拷贝构造函数和拷贝赋值的类会生成两条均为`= delete`的移动声明；只声明了移动操作的类会获得两条均为`= delete`的拷贝声明。
+声明了移动操作的类会获得两条 `= delete` 拷贝声明：声明移动操作会删除隐式的拷贝操作。声明了拷贝构造函数的类会获得拷贝赋值，但不会获得移动声明：编译器在这种情况下不声明移动操作，右值由用户编写的构造函数拷贝，声明移动操作就会改变这一点。
 
 ```case
 tests/code_actions/special_members/03_partial
@@ -332,6 +332,48 @@ tests/code_actions/special_members/03_partial
 
 ```case
 tests/code_actions/special_members/04_access
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**类模板**
+
+类模板的操作声明为 `= default`，每个实例化会像编译器那样删除自己无法执行的操作
+
+`Box<int>` 依然可以拷贝，`Box<MoveOnly>` 依然只能移动。声明移动操作会在每个实例化中删除隐式的拷贝操作，因此声明了移动构造函数的模板会获得 `= delete` 拷贝声明。
+
+```case
+tests/code_actions/special_members/05_template
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**保留默认构造函数**
+
+没有构造函数的类还会获得默认构造函数，否则显式声明的拷贝构造函数会让它消失
+
+对聚合类型而言，自 C++20 起，声明了构造函数就不能再进行聚合初始化：应用此操作后，`Point{1, 2}` 将无法通过编译。
+
+```case
+tests/code_actions/special_members/08_default_constructor
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported clice#1111 -->
+
+**右值照旧拷贝**
+
+编译器未声明或声明为删除的移动操作不予声明，右值照旧拷贝
+
+声明了析构函数或拷贝操作，编译器就不再隐式声明移动操作；无法移动的成员则会删除隐式的移动操作，重载决议随即跳过它们。无论哪种情况，当前代码都会拷贝右值。写成 `= delete` 会让这样的代码无法编译，而在带析构函数的类上写成 `= default`，则会移动用户代码原本拷贝的成员。
+
+```case
+tests/code_actions/special_members/09_undeclared_moves
 ```
 
 <!-- END CAPABILITY -->
@@ -700,4 +742,5 @@ tests/code_actions/formatting/01_project_style
 
 - 放入宿主源文件的定义会排在索引已知的、该文件中该类成员的最后一个定义之后；若文件中尚无任何成员定义，则放在文件末尾。哪个源文件充当头文件的宿主，取决于该头文件的编译上下文。
 - 已在另一个源文件中定义的成员，只有在项目索引记录了该定义时才会从“定义缺失的成员”操作中排除；只要索引尚未收录定义它们的文件，所有未定义的成员仍会全部列出。
+- 在类模板中，若拷贝或移动操作的参数类型依赖模板参数（如 `std::pair` 的条件拷贝赋值），或接受参数包（parameter pack），则不会被识别为拷贝或移动操作：“声明隐式的特殊成员”操作会再次声明该操作，导致类无法通过编译。
 - 缺失头文件的候选来自标准库映射以及项目索引见过的头文件；未被任何已索引源文件包含过的头文件不会出现在建议中。

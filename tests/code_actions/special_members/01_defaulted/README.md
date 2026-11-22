@@ -6,4 +6,4 @@ issues: [clice#1111]
 
 A class whose members copy and move gains explicit `= default` declarations of all four operations
 
-The declarations are appended to the end of the class body, in the order of copy constructor, move constructor, copy assignment and move assignment.
+The declarations are appended to the end of the class body, in the order of copy constructor, move constructor, copy assignment and move assignment. They declare what the compiler declared implicitly, so every use of the class compiles and behaves as before.

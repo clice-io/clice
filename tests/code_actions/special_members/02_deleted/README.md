@@ -6,4 +6,4 @@ issues: [clice#1111]
 
 An operation a member makes impossible is declared `= delete` instead of `= default`
 
-For example, a reference member or a `const` member makes the assignment operators impossible; a member class that only moves makes the copy operations impossible.
+A member class that only moves makes the copy operations impossible. A reference member or a `const` member makes the assignments impossible: the copy assignment is declared deleted, and the move assignment stays undeclared, since overload resolution never chooses the move the compiler deletes, but would choose one declared `= delete`.

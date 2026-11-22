@@ -1,6 +1,6 @@
 [[answers.record.code_actions]]
 kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Record'"
+title = "Declare the implicit special members of 'Record'"
 compiles = true
 
 [answers.record.code_actions.edits]

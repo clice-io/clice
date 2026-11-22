@@ -1,6 +1,6 @@
 [[answers.file.code_actions]]
 kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'File'"
+title = "Declare the implicit special members of 'File'"
 compiles = true
 
 [answers.file.code_actions.edits]
@@ -17,7 +17,7 @@ compiles = true
 
 [[answers.handle.code_actions]]
 kind = "refactor.rewrite.declareSpecialMembers"
-title = "Declare the implicit copy/move members of 'Handle'"
+title = "Declare the implicit special members of 'Handle'"
 compiles = true
 
 [answers.handle.code_actions.edits]
