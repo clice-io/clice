@@ -5,8 +5,10 @@ import :command.table;
 import :feature.code_completion.cursor;
 import :feature.code_completion;
 import :support.json;
+import :syntax.include_resolver;
 import :syntax.lexer;
 import :syntax.position;
+import :unittests.utils.temp_dir;
 import :unittests.utils;
 import :vfs.dir_cache;
 import :vfs.path;
@@ -44,6 +46,39 @@ ZEST_CASE(InternalBuiltinsLast) {
 }
 
 };  // ZEST_SUITE(IncludeCompletion)
+
+ZEST_SUITE(IncludeArgument) {
+
+/// A pattern asking for quotes changes a header -isystem finds, never one
+/// of the toolchain's own.
+ZEST_CASE(ToolchainHeadersAngled) {
+    TempDir tmp;
+    tmp.touch("vendor/acme.h");
+    tmp.touch("toolchain/limits.h");
+    tmp.touch("src/main.cpp");
+
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("vendor")});
+    config.dirs.push_back({.path = tmp.path("toolchain"), .driver = true});
+
+    feature::IncludeDelimiters delimiters;
+    auto everything = kotatsu::GlobPattern::create("**");
+    ZASSERT(everything);
+    delimiters.quoted.push_back(std::move(*everything));
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
+    auto argument = [&](llvm::StringRef path) {
+        return feature::include_argument(arguments,
+                                         delimiters,
+                                         CanonicalPath(Spelling::absolute(tmp.path(path))));
+    };
+    ZEXPECT(argument("vendor/acme.h") == std::optional<std::string>(R"("acme.h")"));
+    ZEXPECT(argument("toolchain/limits.h") == std::optional<std::string>("<limits.h>"));
+}
+
+};  // ZEST_SUITE(IncludeArgument)
 
 }  // namespace
 }  // namespace clice::testing

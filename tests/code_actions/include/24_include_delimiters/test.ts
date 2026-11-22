@@ -10,7 +10,7 @@ async function actions(a: AnswersContext): Promise<void> {
 }
 
 const paths = {
-    server: "the declaring header comes from the project index, which only the server builds",
+    server: "clice inspect resolves code actions as an empty index would: no header declares the name",
 };
 answers("default", { paths, indexing: true }, actions);
 answers(

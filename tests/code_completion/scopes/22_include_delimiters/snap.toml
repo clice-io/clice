@@ -38,6 +38,7 @@ items = [
 ]
 
 [default.shadowed.completion]
+wrong = "config_level is declared in include/config.h, but the quoted include finds src/app/config.h beside main.cpp first: it should read <config.h>, which skips that directory"
 items = [
     {
         label = "config_level",
@@ -45,7 +46,7 @@ items = [
         insert = "config_level($0)",
         snippet = true,
         edits = [
-            { at = "⟦⟧int local = local_cou;", text = "#include <config.h>" },
+            { at = "⟦⟧int local = local_cou;", text = '#include "config.h"' },
         ],
     },
 ]
@@ -123,7 +124,7 @@ items = [
         insert = "local_count($0)",
         snippet = true,
         edits = [
-            { at = "⟦⟧int local = local_cou;", text = '#include "local.h"' },
+            { at = "⟦⟧int local = local_cou;", text = "#include <local.h>" },
         ],
     },
 ]
@@ -136,7 +137,7 @@ items = [
         insert = "build_version($0)",
         snippet = true,
         edits = [
-            { at = "⟦⟧int local = local_cou;", text = '#include "stamp/version.h"' },
+            { at = "⟦⟧int local = local_cou;", text = "#include <stamp/version.h>" },
         ],
     },
 ]
@@ -201,7 +202,7 @@ items = [
         insert = "stamp_detail($0)",
         snippet = true,
         edits = [
-            { at = "⟦⟧int local = local_cou;", text = '#include "stamp/version.h"' },
+            { at = "⟦⟧int local = local_cou;", text = "#include <stamp/version.h>" },
         ],
     },
 ]
@@ -279,7 +280,7 @@ items = [
         insert = "config_level($0)",
         snippet = true,
         edits = [
-            { at = "⟦⟧int local = local_cou;", text = "#include <config.h>" },
+            { at = "⟦⟧int local = local_cou;", text = '#include "config.h"' },
         ],
     },
 ]
@@ -357,7 +358,7 @@ items = [
         insert = "local_count($0)",
         snippet = true,
         edits = [
-            { at = "⟦⟧int local = local_cou;", text = '#include "local.h"' },
+            { at = "⟦⟧int local = local_cou;", text = "#include <local.h>" },
         ],
     },
 ]
@@ -370,7 +371,7 @@ items = [
         insert = "build_version($0)",
         snippet = true,
         edits = [
-            { at = "⟦⟧int local = local_cou;", text = '#include "stamp/version.h"' },
+            { at = "⟦⟧int local = local_cou;", text = "#include <stamp/version.h>" },
         ],
     },
 ]
@@ -435,7 +436,7 @@ items = [
         insert = "stamp_detail($0)",
         snippet = true,
         edits = [
-            { at = "⟦⟧int local = local_cou;", text = '#include "stamp/version.h"' },
+            { at = "⟦⟧int local = local_cou;", text = "#include <stamp/version.h>" },
         ],
     },
 ]

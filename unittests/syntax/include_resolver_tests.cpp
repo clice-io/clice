@@ -395,8 +395,9 @@ ZEST_CASE(FrameworkHeaders) {
 }
 
 ZEST_CASE(FrameworkHeaderArgument) {
-    /// A framework's header is included as <Foo/Bar.h>, a private one too,
-    /// also where -F finds it, ahead of the system directories.
+    /// A framework's header is named Foo/Bar.h, a private one too, and is a
+    /// system header also where -F finds it, ahead of the system
+    /// directories.
     TempDir tmp;
     tmp.touch("Frameworks/Foo.framework/Headers/Bar.h");
     tmp.touch("Frameworks/Foo.framework/PrivateHeaders/Internal.h");
@@ -408,47 +409,18 @@ ZEST_CASE(FrameworkHeaderArgument) {
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    IncludeDelimiters delimiters;
-    IncludeArguments arguments(config,
-                               delimiters,
-                               Spelling::absolute(tmp.path("src/main.cpp")),
-                               scope);
+    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
     auto header =
         CanonicalPath(Spelling::absolute(tmp.path("Frameworks/Foo.framework/Headers/Bar.h")));
-    ZEXPECT(arguments.of(header) == std::optional<std::string>("<Foo/Bar.h>"));
+    auto bar = arguments.of(header);
+    ZASSERT(bar);
+    ZEXPECT(bar->path == "Foo/Bar.h");
+    ZEXPECT(bar->found == IncludeName::Found::System);
     auto internal = CanonicalPath(
         Spelling::absolute(tmp.path("Frameworks/Foo.framework/PrivateHeaders/Internal.h")));
-    ZEXPECT(arguments.of(internal) == std::optional<std::string>("<Foo/Internal.h>"));
-}
-
-ZEST_CASE(ToolchainHeadersStayAngled) {
-    /// A pattern asking for quotes changes the delimiters of a header
-    /// -isystem finds, never those of the toolchain's own headers.
-    TempDir tmp;
-    tmp.touch("vendor/acme.h");
-    tmp.touch("toolchain/limits.h");
-    tmp.touch("src/main.cpp");
-
-    SearchConfig config;
-    config.dirs.push_back({tmp.path("vendor")});
-    config.dirs.push_back({.path = tmp.path("toolchain"), .driver = true});
-
-    IncludeDelimiters delimiters;
-    auto everything = kotatsu::GlobPattern::create("**");
-    ZASSERT(everything);
-    delimiters.quoted.push_back(std::move(*everything));
-
-    vfs::DirCache cache;
-    vfs::Scope scope(cache);
-    IncludeArguments arguments(config,
-                               delimiters,
-                               Spelling::absolute(tmp.path("src/main.cpp")),
-                               scope);
-    auto header = [&](llvm::StringRef path) {
-        return CanonicalPath(Spelling::absolute(tmp.path(path)));
-    };
-    ZEXPECT(arguments.of(header("vendor/acme.h")) == std::optional<std::string>(R"("acme.h")"));
-    ZEXPECT(arguments.of(header("toolchain/limits.h")) == std::optional<std::string>("<limits.h>"));
+    auto private_header = arguments.of(internal);
+    ZASSERT(private_header);
+    ZEXPECT(private_header->path == "Foo/Internal.h");
 }
 
 ZEST_CASE(FirstFrameworkWins) {
@@ -491,14 +463,12 @@ ZEST_CASE(VersionedFrameworkArgument, skip = Windows) {
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    IncludeDelimiters delimiters;
-    IncludeArguments arguments(config,
-                               delimiters,
-                               Spelling::absolute(tmp.path("src/main.cpp")),
-                               scope);
+    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
     auto header = CanonicalPath(
         Spelling::absolute(tmp.path("Frameworks/Foo.framework/Versions/A/Headers/Bar.h")));
-    ZEXPECT(arguments.of(header) == std::optional<std::string>("<Foo/Bar.h>"));
+    auto bar = arguments.of(header);
+    ZASSERT(bar);
+    ZEXPECT(bar->path == "Foo/Bar.h");
 }
 
 // TODO: add tests for:

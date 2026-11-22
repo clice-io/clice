@@ -10,7 +10,6 @@ import :feature.semantic_tokens;
 import :feature.signature_help;
 import :support.json;
 import :support.prelude;
-import :syntax.include_resolver;
 
 namespace clice {
 
@@ -557,7 +556,7 @@ struct Settings {
 
     /// `code_completion.quoted_includes` and `angled_includes` compiled.
     KANNOTATE(&include_delimiters, skip = true)
-    IncludeDelimiters include_delimiters;
+    feature::IncludeDelimiters include_delimiters;
 
     /// Compute the values derived from the final merged settings: default
     /// cache/logging directories, variable substitution, path

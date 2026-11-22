@@ -94,13 +94,13 @@ struct CodeCompletionOptions {
                   "neither this nor `quoted_includes` matches takes quotes "
                   "when found next to the file or through `-iquote` or "
                   "`-I`, and angle brackets when found through `-isystem`, "
-                  "`-idirafter`, a framework directory or the toolchain's "
-                  "own; one an IWYU pragma names to include instead keeps "
-                  "the pragma's. Where the delimiters asked for would find "
-                  "another header or none, as angle brackets do for a "
-                  "header next to the file, the include takes the other "
-                  "ones. The headers of the toolchain's own directories, "
-                  "the standard library's, always take angle brackets.")
+                  "`-idirafter` or a framework directory; one an IWYU "
+                  "pragma names to include instead keeps the pragma's. A "
+                  "header found through the toolchain's own directories, "
+                  "the standard library's, always takes angle brackets. A "
+                  "pattern is followed even where its delimiters do not "
+                  "find the header: angle brackets do not search the "
+                  "file's own directory or `-iquote`.")
     std::vector<std::string> angled_includes;
 
     KANNOTATE(&quoted_includes,
@@ -219,6 +219,27 @@ auto code_complete(CompilationParams params,
 /// The most names one completion takes from the index (ScopeCandidate), and
 /// reads of the files its compile loads where a name is typed (TypedNames).
 constexpr inline std::size_t scope_candidate_limit = 100;
+
+/// The delimiters the user includes some headers with
+/// (`code_completion.quoted_includes` and `angled_includes`), compiled:
+/// glob patterns matching the path written between them.
+struct IncludeDelimiters {
+    std::vector<kotatsu::GlobPattern> quoted;
+    std::vector<kotatsu::GlobPattern> angled;
+
+    /// Whether an include of `path` (`fmt/core.h`) takes angle brackets:
+    /// none when no pattern matches it, quotes when both lists do.
+    std::optional<bool> angled_for(llvm::StringRef path) const;
+};
+
+/// The argument, quotes or brackets included, of an `#include` of `header`
+/// in the file `arguments` names headers for: angle brackets for one of the
+/// toolchain's own headers, else the delimiters `delimiters` asks for, else
+/// those of the directories finding it (IncludeName::Found). None where no
+/// include names it.
+std::optional<std::string> include_argument(IncludeArguments& arguments,
+                                            const IncludeDelimiters& delimiters,
+                                            CanonicalRef header);
 
 /// A completion's reply finished (Completion): an item naming what the
 /// file does not include yet takes the `#include` of the header declaring

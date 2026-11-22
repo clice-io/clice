@@ -391,12 +391,12 @@ void LSPClient::register_editing() {
                         [&](CanonicalRef header) {
                             if(!arguments) {
                                 search = project.search_of(path_id);
-                                arguments.emplace(*search,
-                                                  project.project.settings.include_delimiters,
-                                                  files.spelling(path_id),
-                                                  scope);
+                                arguments.emplace(*search, files.spelling(path_id), scope);
                             }
-                            return arguments->of(header);
+                            return feature::include_argument(
+                                *arguments,
+                                project.project.settings.include_delimiters,
+                                header);
                         },
                 });
             result = feature::to_protocol(
