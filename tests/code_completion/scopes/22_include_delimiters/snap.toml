@@ -37,8 +37,10 @@ items = [
     },
 ]
 
-[default.shadowed.completion]
+[default.shadowed]
 wrong = "config_level is declared in include/config.h, but the quoted include finds src/app/config.h beside main.cpp first: it should read <config.h>, which skips that directory"
+
+[default.shadowed.completion]
 items = [
     {
         label = "config_level",
