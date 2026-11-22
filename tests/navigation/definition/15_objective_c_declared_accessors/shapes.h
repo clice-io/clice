@@ -7,5 +7,10 @@ __attribute__((objc_root_class))
 - (int)§(declaration)size;
 @end
 
-@interface Box : Object <Sized>
+@protocol Counted
+@property(nonatomic) int count;
+@end
+
+@interface Box : Object <Sized, Counted>
+- (int)§(class_declaration)count;
 @end

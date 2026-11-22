@@ -660,6 +660,9 @@ auto objc_declared(const clang::ObjCMethodDecl& method) -> const clang::ObjCMeth
     if(!method.isSynthesizedAccessorStub()) {
         return method;
     }
+    if(const auto* declared = method.getCanonicalDecl(); declared != &method) {
+        return *declared;
+    }
     const auto* implementation = llvm::cast<clang::ObjCImplDecl>(method.getDeclContext());
     for(const auto* synthesis: implementation->property_impls()) {
         if(synthesis->getGetterMethodDecl() == &method) {
@@ -773,8 +776,11 @@ auto objc_overridden(const clang::ObjCMethodDecl& method) -> llvm::SmallVector<O
     for(const auto* base = objc_class ? objc_class->getSuperClass() : nullptr;
         base && base->hasDefinition();
         base = base->getSuperClass()) {
-        overridden.push_back(
-            {base, own_method(*base, method.getSelector(), method.isInstanceMethod())});
+        const auto* own = own_method(*base, method.getSelector(), method.isInstanceMethod());
+        overridden.push_back({base, own});
+        if(own && !own->isSynthesizedAccessorStub()) {
+            break;
+        }
     }
     return overridden;
 }

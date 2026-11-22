@@ -4,5 +4,11 @@ definition = ["shapes.h │ - (int)⟦size⟧;"]
 [answers.selector]
 definition = ["shapes.h │ - (int)⟦size⟧;"]
 
+[answers.class_selector]
+definition = ["shapes.h │ - (int)⟦count⟧;"]
+
 [answers.declaration]
 definition = ["- (int)⟦size⟧;"]
+
+[answers.class_declaration]
+definition = ["- (int)⟦count⟧;"]
