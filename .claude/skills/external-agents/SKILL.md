@@ -1,6 +1,6 @@
 ---
 name: external-agents
-description: Read before running another vendor's CLI agent — codex (GPT-6 astra), agy (Gemini 4) — as an external reviewer in the pr skill's self-review, a second opinion on a plan, research or a measurement, a debugger, or the implementer of a scoped task. Each only where it is installed and works.
+description: Read before running another vendor's CLI agent — codex (GPT-6 astra), agy (Gemini 4) — as an external reviewer in the pull-request skill's self-review, a second opinion on a plan, research or a measurement, a debugger, or the implementer of a scoped task. Each only where it is installed and works.
 ---
 
 # External agents
@@ -24,7 +24,7 @@ Read an agent's file before running it: the invocation, the flags it needs, its 
 
 ## The review prompt
 
-The pr skill's self-review gives every external agent this prompt, which loads the rules and carries the fixed constraints of the Opus reviewers:
+The pull-request skill's self-review gives every external agent this prompt, which loads the rules and carries the fixed constraints of the Opus reviewers:
 
 ```text
 Read .claude/CLAUDE.md, .claude/skills/cpp-style/SKILL.md and, when test code

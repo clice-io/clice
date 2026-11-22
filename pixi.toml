@@ -155,7 +155,7 @@ cmd = "node tools/docs/translations.ts report"
 cmd = "node tools/docs/translations.ts record"
 
 [tasks.docs-review]
-cmd = "node tools/docs/translations.ts review --glossary=.claude/skills/translate-docs/SKILL.md"
+cmd = "node tools/docs/translations.ts review --glossary=.claude/skills/write-docs/glossary.md"
 
 # One test at a time: many start workers and compilers of their own, and
 # running them side by side is not vetted for resource contention.

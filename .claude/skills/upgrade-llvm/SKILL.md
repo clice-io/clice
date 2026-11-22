@@ -115,7 +115,7 @@ The maintainer decides whether all changes are acceptable or if adjustments are 
 
 ## Step 8: The PR
 
-The pr skill takes over; the title is `chore: upgrade LLVM to <X.Y.Z>`.
+The pull-request skill takes over; the title is `chore: upgrade LLVM to <X.Y.Z>`.
 
 ## Notes
 

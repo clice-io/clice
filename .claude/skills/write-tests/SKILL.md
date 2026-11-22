@@ -36,8 +36,8 @@ the hard rules and the pitfalls. The framework is `tools/testing/`
    `wrong = "<reason>"` on the block.
 4. Gate: `pixi run npm run check` at the repo root (strict tsc + ESLint,
    zero tolerance). Page regions and translations are synced, and
-   `docs-check` run, once at the end of the branch (the docs skill's
-   "Syncing docs at the end of a branch").
+   `docs-check` run, once at the end of the branch (the write-docs skill's
+   `sync.md`).
 
 ## Hard rules
 

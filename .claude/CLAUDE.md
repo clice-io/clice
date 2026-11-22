@@ -60,4 +60,4 @@ Beyond `src/`: `tools/` is the TypeScript harness (`@clice/tools`: the case fram
 
 - Branches are `<type>/<short-topic>`, always created from freshly fetched `origin/main` (`git fetch origin && git switch -c <branch> origin/main`) — never from the local `main`, which goes stale.
 - Commit with the repository's configured identity (`git config user.email`), never an email the session environment supplies.
-- Commit and PR title format and everything from "code is ready" to "ready to merge" is the **pr** skill.
+- Commit and PR title format and everything from "code is ready" to "ready to merge" is the **pull-request** skill.

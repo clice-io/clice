@@ -1,9 +1,11 @@
 ---
-name: docs
-description: Read before editing anything under docs/, and for the end-of-branch docs sync — generated feature and config pages, the en↔zh translation checker, the pixi commands driving them.
+name: write-docs
+description: Read before writing or editing anything under docs/ — the generated pages, the en↔zh contract and the pixi commands that check it; sync.md for the end-of-branch docs sync, glossary.md for the Chinese pages' wording.
 ---
 
-# Documentation system
+# Writing the docs
+
+Beside this file: `sync.md`, the docs sync at the end of a branch; `glossary.md`, the wording of the Chinese pages.
 
 ## Layout and sources of truth
 
@@ -49,50 +51,24 @@ before any edit touching translated pages:
 The pixi tasks above run it at an exact release, locally and in the lint
 workflow's docs job alike: `tools/docs/translations.ts` holds the pin,
 until the package is on npm and the tasks call `npx @clice-io/translate@1`.
-A new release is adopted by bumping that pin and the RULES.md references
-here and in the translate-docs skill. What clice adds on top:
+A new release is adopted by bumping that pin and the RULES.md reference
+here. What clice adds on top:
 
 - In clice the frontmatter that translates is index.md's (the VitePress
   home page), and the bold paragraph whose shape must survive is a
   capability card's name; a table row paired with a later heading is a
   capability's status row and its section.
 - The formatter of step 4 in RULES.md's workflow is `pixi run format`
-  (it canonicalizes table padding, emphasis style and CJK spacing).
+  (table padding, emphasis style). The spacing between Chinese and Latin
+  text is the writer's: CI's lint docs job checks it (autocorrect).
 - The workflow applies to generated regions too: after
   `docs-update` changes an en page, the zh page must
   receive the translated equivalent in the same PR — batched at the end of
-  the branch, see below.
-- The wording — clice's page conventions and glossary — is the
-  translate-docs skill. `docs-review [page...]` passes that
-  skill to the model as the glossary; review its diff, then `format` and
-  `record`. Prefer it over handing a model whole pages: the code blocks
-  would only burn its context.
-
-## Syncing docs at the end of a branch
-
-Generated regions and translations are synced **once per branch, right
-before the checks** of the pr skill — not after every case or
-page edit, and not in the main conversation: delegate it to an Opus
-subagent so the report output and page texts never enter the main context. Give the
-subagent this skill and `git diff --name-only origin/main...HEAD`; its
-brief is:
-
-1. If documented cases or config annotations changed:
-   `pixi run docs-update` rewrites the en GENERATED regions. The
-   configuration page renders the committed schema: after a config
-   annotation changed, first rewrite it with the built clice,
-   `clice inspect config-schema > docs/public/clice-config.schema.json`.
-2. `pixi run docs-report` lists every broken pair with both
-   texts. Translate each new or drifted en segment into the zh page,
-   keeping the skeleton (same block kind, list marker, heading depth,
-   nested code byte-identical) and the terminology of the surrounding
-   page; delete zh segments whose en segment is gone. For whole new
-   pages, or dozens of drifted pages, copy the en page over the zh one
-   and run `review` on it (machine drafting, RULES.md).
-3. `pixi run format`, then `pixi run docs-record`, then
-   `pixi run docs-check` — green.
-4. Report back: pages touched, how many segments were translated, and
-   anything deliberately left as is.
+  the branch (`sync.md`).
+- `pixi run docs-review [page...]` has a model (codex, the external-agents
+  skill) review the zh pages segment by segment against `glossary.md`;
+  review its diff, then `format` and `record`. Prefer it over handing a
+  model whole pages: the code blocks would only burn its context.
 
 **docs/ contains no changelog content** — neither per-page "Changelog"
 sections nor changelog pages. Feature history lives in git and PRs; LLVM
@@ -102,10 +78,9 @@ upgrade notes live in the upgrade-llvm skill's `llvm-changelog.md`.
 
 Design-level, user-visible trade-offs that are stable on a months timescale,
 written in behavior terms — they answer the reader's "why does it work this
-way". Bugs never go there: they live in the internal bug inventory and simply
-disappear when fixed; putting them in docs creates staleness debt. Feature
-coverage gaps are already expressed by the generated status tables. The flow is
-one-way: an internal item graduates into a doc limitation only once it is
+way". Bugs never go there: they live in the issues and disappear when fixed;
+in docs they would go stale. Feature coverage gaps are already expressed by
+the generated status tables. An issue becomes a doc limitation only once it is
 decided to be design (or long-term deferral), and a doc limitation is removed
 only when the design changes. Never reference internal IDs, file paths, or
 timelines in docs.

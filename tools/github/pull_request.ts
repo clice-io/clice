@@ -1,10 +1,10 @@
-/// A PR read in one place, and its review threads resolved (the pr skill).
+/// A PR read in one place, and its review threads resolved (the pull-request skill).
 ///
 /// Usage:
-///   node tools/github/pr.ts status [PR] [--commits <n>]
-///   node tools/github/pr.ts threads [PR] [--all] [--max-chars <n>]
-///   node tools/github/pr.ts reply <thread id> <text>
-///   node tools/github/pr.ts resolve <thread id>...
+///   node tools/github/pull_request.ts status [PR] [--commits <n>]
+///   node tools/github/pull_request.ts threads [PR] [--all] [--max-chars <n>]
+///   node tools/github/pull_request.ts reply <thread id> <text>
+///   node tools/github/pull_request.ts resolve <thread id>...
 ///
 /// The PR defaults to the current branch's. `status` prints its state,
 /// whether it merges, the CI result (tools/github/ci.ts), the review load
@@ -316,7 +316,7 @@ async function main(): Promise<void> {
         await reply(rest[0], rest[1]);
     } else {
         console.error(
-            "usage: node tools/github/pr.ts status [PR] | threads [PR] [--all] | reply <thread id> <text> | resolve <thread id>...",
+            "usage: node tools/github/pull_request.ts status [PR] | threads [PR] [--all] | reply <thread id> <text> | resolve <thread id>...",
         );
         process.exit(2);
     }

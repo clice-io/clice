@@ -1,6 +1,6 @@
 /// A commit's CI read while it runs: every job of every workflow run on the
 /// commit, finished or not, and the log of each job that finished, without
-/// waiting for the rest of its run (the pr skill).
+/// waiting for the rest of its run (the pull-request skill).
 ///
 /// Usage:
 ///   node tools/github/ci.ts status [PR] [--sha <sha> | --run <id>]
