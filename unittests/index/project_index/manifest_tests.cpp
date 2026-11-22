@@ -102,8 +102,7 @@ ZEST_CASE(ManifestJunkRejected) {
 }
 
 ZEST_CASE(ManifestCorruptUsesRejected) {
-    // A use the manifest names keys a DenseMap at load: a sentinel value
-    // must not decode, nor a use no file lists.
+    // A reserved use must not decode, nor a use no file lists.
     index::TUManifestBlob layout;
     layout.format_version = index::index_format_version;
     layout.instantiation_files = {1};

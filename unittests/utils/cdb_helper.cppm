@@ -41,7 +41,7 @@ inline std::string json_escape(llvm::StringRef s) {
 /// Uses "arguments" array form to avoid platform-specific tokenization issues.
 inline std::string build_cdb_json(llvm::ArrayRef<CDBEntry> entries) {
     std::string json = "[\n";
-    for(std::size_t i = 0; i < entries.size(); ++i) {
+    for(std::size_t i = 0; i < entries.size(); i += 1) {
         auto& e = entries[i];
         if(i > 0) {
             json += ",\n";

@@ -39,7 +39,7 @@ ZEST_CASE(TrapInvokedPerReport) {
 ZEST_CASE(RateLimitSuppresses) {
     AnomalyCapture capture;
 
-    for(std::uint32_t i = 0; i < logging::anomaly_report_limit + 5; ++i) {
+    for(std::uint32_t i = 0; i < logging::anomaly_report_limit + 5; i += 1) {
         LOG_ANOMALY(CompileFail, "occurrence {}", i);
     }
 
@@ -53,7 +53,7 @@ ZEST_CASE(RateLimitSuppresses) {
 ZEST_CASE(RateLimitPerId) {
     AnomalyCapture capture;
 
-    for(std::uint32_t i = 0; i < logging::anomaly_report_limit + 5; ++i) {
+    for(std::uint32_t i = 0; i < logging::anomaly_report_limit + 5; i += 1) {
         LOG_ANOMALY(CompileFail, "occurrence {}", i);
     }
     LOG_ANOMALY(PCMBuildFail, "different id still reports");
@@ -69,11 +69,11 @@ ZEST_CASE(SuppressedArgsNotEvaluated) {
 
     int evaluations = 0;
     auto observe = [&evaluations] {
-        ++evaluations;
+        evaluations += 1;
         return 42;
     };
 
-    for(std::uint32_t i = 0; i < logging::anomaly_report_limit + 5; ++i) {
+    for(std::uint32_t i = 0; i < logging::anomaly_report_limit + 5; i += 1) {
         LOG_ANOMALY(PositionMapFail, "value {}", observe());
     }
 
@@ -86,7 +86,7 @@ ZEST_CASE(LevelGateSkipsEvaluation) {
 
     int evaluations = 0;
     auto observe = [&evaluations] {
-        ++evaluations;
+        evaluations += 1;
         return 42;
     };
     LOG_ANOMALY(PCHBuildFail, "value {}", observe());
@@ -114,7 +114,7 @@ ZEST_CASE(GuidanceLazyAtLevel) {
 
     int evaluations = 0;
     auto observe = [&evaluations] {
-        ++evaluations;
+        evaluations += 1;
         return 1;
     };
     LOG_GUIDANCE("value {}", observe());
@@ -150,7 +150,7 @@ ZEST_CASE(MarkerNamesStable) {
         "StaleTrust",
         "IndexReadBack",
     };
-    for(std::size_t i = 0; i < logging::anomaly_id_count; ++i) {
+    for(std::size_t i = 0; i < logging::anomaly_id_count; i += 1) {
         ZEXPECT(capture.notified[i].second == std::format("[anomaly:{}] x", expected[i]));
     }
 }

@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-// The comparison's verdict rests on what both its compiles read: main.cpp
+// The comparison's result rests on what both its compiles read: main.cpp
 // declares Host only after h.h, which fixes nothing, so h.h compiles alone;
 // once main.cpp declares it first, open h.h compiles again, compares again
 // and takes main.cpp's context.

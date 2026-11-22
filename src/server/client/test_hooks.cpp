@@ -190,7 +190,7 @@ void LSPClient::register_test_hooks() {
             auto count = std::min<std::uint32_t>(params.count, 100'000);
             auto size = std::clamp<std::uint32_t>(params.size, 16, 4096);
             std::string padding(size, 'f');
-            for(std::uint32_t i = 0; i < count; ++i) {
+            for(std::uint32_t i = 0; i < count; i += 1) {
                 LOG_INFO("[stderr-flood {}] {}", i, padding);
             }
             co_return to_raw(ext::LogFloodResult{count});

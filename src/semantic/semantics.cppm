@@ -304,8 +304,8 @@ struct SemanticsOptions {
 };
 
 /// The semantic map of the focus file, built once after a successful
-/// parse and serving every consumer that used to run its own traversal:
-/// selection, semantic tokens, hover and the TU index build.
+/// parse: selection, the features answering from the AST and the TU index
+/// build read it rather than traverse the AST themselves.
 ///
 /// It stores only structure — the recorded nodes and which spelled token
 /// belongs to which node. Everything semantic (referenced decls, relations,

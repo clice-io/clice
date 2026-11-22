@@ -606,11 +606,13 @@ struct SearchIndex::Segment {
     /// The run the segment belongs to.
     std::uint32_t run = 0;
 
-    mutable llvm::DenseMap<std::uint32_t, Bitmap> token_cache;
-    mutable llvm::DenseMap<std::uint32_t, Bitmap> children_cache;
-    mutable llvm::DenseMap<std::uint32_t, Bitmap> subtree_cache;
-    mutable llvm::DenseMap<std::uint32_t, Bitmap> kind_cache;
-    mutable llvm::DenseMap<std::uint32_t, Bitmap> file_cache;
+    /// The posting lists decoded so far. Node-based maps: a reference
+    /// cached() returns stays valid while later calls insert.
+    mutable std::unordered_map<std::uint32_t, Bitmap> token_cache;
+    mutable std::unordered_map<std::uint32_t, Bitmap> children_cache;
+    mutable std::unordered_map<std::uint32_t, Bitmap> subtree_cache;
+    mutable std::unordered_map<std::uint32_t, Bitmap> kind_cache;
+    mutable std::unordered_map<std::uint32_t, Bitmap> file_cache;
     mutable std::optional<Bitmap> top_level_cache;
     mutable std::optional<Bitmap> long_names_cache;
 
@@ -685,7 +687,7 @@ struct SearchIndex::Segment {
         return std::move(*decoded);
     }
 
-    const Bitmap& cached(llvm::DenseMap<std::uint32_t, Bitmap>& cache,
+    const Bitmap& cached(std::unordered_map<std::uint32_t, Bitmap>& cache,
                          llvm::ArrayRef<std::uint8_t> arena,
                          llvm::ArrayRef<std::uint32_t> ends,
                          std::uint32_t i,

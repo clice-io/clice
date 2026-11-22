@@ -190,7 +190,7 @@ ZEST_CASE(ForcedChainDropsIncludes) {
     ZEXPECT(forced(pch).second == std::vector<std::string>{"config.h"});
 
     // Its self-containment check found it needs its includer's context. The
-    // compile that just checked takes its own verdict, which a change of
+    // compile that just checked takes its own result, which a change of
     // what the check read may have dropped from the store.
     auto key = forced(part).first.self_containment;
     ZASSERT(key);

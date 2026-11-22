@@ -1,4 +1,4 @@
-/// CliceClient — LSP client for the case framework, the ecosystem rounds and
+/// CliceClient — LSP client for the case framework, the ecosystem jobs and
 /// the Zed suite, on vscode-languageserver-protocol.
 ///
 /// The client owns its whole lifecycle: spawn, typed requests including
@@ -361,7 +361,7 @@ export class CliceClient {
             this.progressWaiters = this.progressWaiters.filter((waiter) => !waiter.ready());
         });
         // Requests the test client does not model are answered with null
-        // instead of "method not found", mirroring pygls' lenient client.
+        // instead of "method not found".
         // The methods are recorded so tests can assert that a refresh (or
         // any other server-initiated request) was actually sent.
         raw.onRequest((method) => {

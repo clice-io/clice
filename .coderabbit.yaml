@@ -3,7 +3,5 @@ chat:
 reviews:
   auto_review:
     enabled: true
-  # The key #400 used (reviews.summary.enabled) does not exist in the
-  # schema and was silently ignored; high_level_summary is the real switch.
   high_level_summary: false
   sequence_diagrams: false

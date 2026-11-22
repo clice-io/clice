@@ -160,7 +160,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
     }
 
     llvm::StringMap<std::size_t> name_to_index;
-    for(std::size_t i = 0; i < modules.size(); ++i) {
+    for(std::size_t i = 0; i < modules.size(); i += 1) {
         name_to_index[modules[i].module_name] = i;
     }
 
@@ -187,7 +187,7 @@ bool Tester::compile_with_modules(llvm::StringRef standard) {
         return true;
     };
 
-    for(std::size_t i = 0; i < modules.size(); ++i) {
+    for(std::size_t i = 0; i < modules.size(); i += 1) {
         if(!topo_visit(i))
             return false;
     }

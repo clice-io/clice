@@ -178,9 +178,9 @@ jobs:
           build/RelWithDebInfo/bin/bin/clice inspect config-schema > docs/public/clice-config.schema.json
           git diff --exit-code -- docs/public/clice-config.schema.json
 
-      - name: Check artifact dependencies
+      - name: Check the binary links only system libraries
         if: ${{ inputs.asset_name }}
-        run: pixi run -e default -- python scripts/check_artifact_deps.py build/${{ inputs.build_type }}/bin/bin/clice.stripped
+        run: pixi run -e default -- node tools/release/system_libraries.ts build/${{ inputs.build_type }}/bin/bin/clice.stripped
 
       # These artifacts are what releases promote — there is no separate
       # release build — once the whole run is green.
@@ -249,7 +249,7 @@ jobs:
 
       - name: Symbolize a crash of the package
         if: ${{ inputs.asset_name }}
-        run: pixi run -e test-run python scripts/check_crash_symbols.py "$RUNNER_TEMP/package"
+        run: pixi run -e test-run node tools/release/crash_symbols.ts "$RUNNER_TEMP/package"
 
   cases:
     needs: build

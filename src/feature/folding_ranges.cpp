@@ -258,12 +258,15 @@ private:
         for(const auto& token: llvm::reverse(tokens)) {
             if(token.kind() == clang::tok::r_brace) {
                 depth += 1;
-            } else if(token.kind() == clang::tok::l_brace && --depth == 0) {
-                add_declaration_block(
-                    clang::SourceRange(token.location(), tokens.back().location()),
-                    function->getLocation(),
-                    std::move(kind));
-                return;
+            } else if(token.kind() == clang::tok::l_brace) {
+                depth -= 1;
+                if(depth == 0) {
+                    add_declaration_block(
+                        clang::SourceRange(token.location(), tokens.back().location()),
+                        function->getLocation(),
+                        std::move(kind));
+                    return;
+                }
             }
         }
     }

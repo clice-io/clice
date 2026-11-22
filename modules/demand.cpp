@@ -1,5 +1,5 @@
 // What clice takes from the libraries modules/ wraps, as a program
-// scripts/modules.py indexes to write the rest of modules/: the switches
+// tools/modules/modules.ts indexes to write the rest of modules/: the switches
 // clice defines ahead of them, the standard headers it reaches C library
 // names through, the libraries' headers it uses and the ones it still
 // includes itself, the C library names only those headers bring, and the
