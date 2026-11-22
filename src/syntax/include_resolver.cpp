@@ -208,17 +208,36 @@ std::optional<ResolveResult> resolve_forced_include(llvm::StringRef filename,
 }
 
 /// Whether an include's path names a library's internal header (see
-/// include_argument).
-static bool internal_header(bool angled, llvm::StringRef name) {
-    return angled && ranges::any_of(path::components(name), [](std::string_view part) {
-               return part == "bits" || part.starts_with("__");
-           });
+/// IncludeArguments::of).
+static bool internal_header(llvm::StringRef name) {
+    return ranges::any_of(path::components(name), [](std::string_view part) {
+        return part == "bits" || part.starts_with("__");
+    });
+}
+
+/// `name` between the delimiters of an angled or a quoted include.
+static std::string delimit(llvm::StringRef name, bool angled) {
+    return angled ? std::format("<{}>", name) : std::format(R"("{}")", name);
+}
+
+std::optional<bool> IncludeDelimiters::angled_for(llvm::StringRef name) const {
+    auto matches = [&](const kotatsu::GlobPattern& glob) {
+        return glob.match(name);
+    };
+    if(ranges::any_of(quoted, matches)) {
+        return false;
+    }
+    if(ranges::any_of(angled, matches)) {
+        return true;
+    }
+    return std::nullopt;
 }
 
 IncludeArguments::IncludeArguments(const SearchConfig& search,
+                                   const IncludeDelimiters& delimiters,
                                    const Spelling& file,
                                    vfs::Scope& scope) :
-    search(search), scope(scope), directory(file.parent()),
+    search(search), delimiters(delimiters), scope(scope), directory(file.parent()),
     resolved_directory(CanonicalPath(directory)) {
     for(auto& dir: search.dirs) {
         resolved_dirs.push_back(CanonicalPath(Spelling::absolute(dir.path)));
@@ -241,20 +260,35 @@ std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
     struct Candidate {
         std::string name;
         bool angled;
+
+        /// The other delimiters than those the header takes, tried once
+        /// no path finds it with those.
+        bool fallback;
+
+        /// A library's internal header, found where an angled include
+        /// searches.
+        bool internal;
     };
 
     std::vector<Candidate> candidates;
+    auto add = [&](llvm::StringRef name, bool system, bool past_quoted) {
+        bool angled = delimiters.angled_for(name).value_or(system);
+        bool internal = past_quoted && internal_header(name);
+        candidates.push_back({name.str(), angled, false, internal});
+        candidates.push_back({name.str(), !angled, true, internal});
+    };
     if(auto relative = below(resolved_directory)) {
-        candidates.push_back({relative->str(), false});
+        add(*relative, false, false);
     }
     for(auto [index, dir]: views::enumerate(resolved_dirs)) {
         auto relative = below(dir);
         if(!relative) {
             continue;
         }
-        bool angled = static_cast<std::size_t>(index) >= search.angled_start_idx;
+        bool past_quoted = static_cast<std::size_t>(index) >= search.angled_start_idx;
+        bool system = static_cast<std::size_t>(index) >= search.system_start_idx;
         if(!search.dirs[index].framework) {
-            candidates.push_back({relative->str(), angled});
+            add(*relative, system, past_quoted);
             continue;
         }
         auto [bundle, inside] = relative->split('/');
@@ -266,24 +300,34 @@ std::optional<std::string> IncludeArguments::of(CanonicalRef header) {
         auto [headers, rest] = inside.split('/');
         if(bundle.consume_back(".framework") && !rest.empty() &&
            (headers == "Headers" || headers == "PrivateHeaders")) {
-            candidates.push_back({(bundle + "/" + rest).str(), angled});
+            add((bundle + "/" + rest).str(), true, past_quoted);
         }
     }
     ranges::stable_sort(candidates, {}, [](const Candidate& candidate) {
-        return candidate.name.size();
+        return std::pair(candidate.fallback, candidate.name.size());
     });
     for(const auto& candidate: candidates) {
         auto resolved =
             resolve_include(candidate.name, candidate.angled, directory, false, 0, search, scope);
         if(resolved && CanonicalPath(Spelling::absolute(resolved->path)) == header) {
-            if(!internal_header(candidate.angled, candidate.name)) {
-                argument = candidate.angled ? std::format("<{}>", candidate.name)
-                                            : std::format("\"{}\"", candidate.name);
+            if(!candidate.internal) {
+                argument = delimit(candidate.name, candidate.angled);
             }
             break;
         }
     }
     return argument;
+}
+
+std::string IncludeArguments::rewrite(llvm::StringRef argument) const {
+    bool delimited = (argument.starts_with('"') && argument.ends_with('"')) ||
+                     (argument.starts_with('<') && argument.ends_with('>'));
+    if(argument.size() <= 2 || !delimited) {
+        return argument.str();
+    }
+    auto name = argument.drop_front().drop_back();
+    auto angled = delimiters.angled_for(name);
+    return angled ? delimit(name, *angled) : argument.str();
 }
 
 }  // namespace clice

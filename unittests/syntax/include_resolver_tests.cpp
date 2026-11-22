@@ -395,7 +395,8 @@ ZEST_CASE(FrameworkHeaders) {
 }
 
 ZEST_CASE(FrameworkHeaderArgument) {
-    /// A framework's header is included as <Foo/Bar.h>, a private one too.
+    /// A framework's header is included as <Foo/Bar.h>, a private one too,
+    /// also where -F finds it, ahead of the system directories.
     TempDir tmp;
     tmp.touch("Frameworks/Foo.framework/Headers/Bar.h");
     tmp.touch("Frameworks/Foo.framework/PrivateHeaders/Internal.h");
@@ -403,10 +404,15 @@ ZEST_CASE(FrameworkHeaderArgument) {
 
     SearchConfig config;
     config.dirs.push_back({.path = tmp.path("Frameworks"), .framework = true});
+    config.system_start_idx = 1;
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
+    IncludeDelimiters delimiters;
+    IncludeArguments arguments(config,
+                               delimiters,
+                               Spelling::absolute(tmp.path("src/main.cpp")),
+                               scope);
     auto header =
         CanonicalPath(Spelling::absolute(tmp.path("Frameworks/Foo.framework/Headers/Bar.h")));
     ZEXPECT(arguments.of(header) == std::optional<std::string>("<Foo/Bar.h>"));
@@ -455,7 +461,11 @@ ZEST_CASE(VersionedFrameworkArgument, skip = Windows) {
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
+    IncludeDelimiters delimiters;
+    IncludeArguments arguments(config,
+                               delimiters,
+                               Spelling::absolute(tmp.path("src/main.cpp")),
+                               scope);
     auto header = CanonicalPath(
         Spelling::absolute(tmp.path("Frameworks/Foo.framework/Versions/A/Headers/Bar.h")));
     ZEXPECT(arguments.of(header) == std::optional<std::string>("<Foo/Bar.h>"));

@@ -245,6 +245,7 @@ void LSPClient::register_editing() {
                                                     project.project.dep_graph,
                                                     path_id,
                                                     project.search_of(path_id),
+                                                    settings.include_delimiters,
                                                     at_most(settings.code_completion.limit)));
     });
 
@@ -390,7 +391,10 @@ void LSPClient::register_editing() {
                         [&](CanonicalRef header) {
                             if(!arguments) {
                                 search = project.search_of(path_id);
-                                arguments.emplace(*search, files.spelling(path_id), scope);
+                                arguments.emplace(*search,
+                                                  project.project.settings.include_delimiters,
+                                                  files.spelling(path_id),
+                                                  scope);
                             }
                             return arguments->of(header);
                         },

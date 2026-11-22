@@ -1,0 +1,363 @@
+[default.next_to_file.completion]
+items = [
+    {
+        label = "local_count",
+        kind = "Function",
+        insert = "local_count($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "local.h"' },
+        ],
+    },
+]
+
+[default.iquote.completion]
+items = [
+    {
+        label = "build_version",
+        kind = "Function",
+        insert = "build_version($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "stamp/version.h"' },
+        ],
+    },
+]
+
+[default.include_dir.completion]
+items = [
+    {
+        label = "button_width",
+        kind = "Function",
+        insert = "button_width($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "widgets/button.h"' },
+        ],
+    },
+]
+
+[default.shadowed.completion]
+items = [
+    {
+        label = "config_level",
+        kind = "Function",
+        insert = "config_level($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <config.h>" },
+        ],
+    },
+]
+
+[default.isystem.completion]
+items = [
+    {
+        label = "acme_format",
+        kind = "Function",
+        insert = "acme_format($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <acme/format.h>" },
+        ],
+    },
+]
+
+[default.pragma.completion]
+items = [
+    {
+        label = "acme_core",
+        kind = "Function",
+        insert = "acme_core($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <acme/format.h>" },
+        ],
+    },
+]
+
+[default.idirafter.completion]
+items = [
+    {
+        label = "tardy_value",
+        kind = "Function",
+        insert = "tardy_value($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <tardy/late.h>" },
+        ],
+    },
+]
+
+[angled.next_to_file.completion]
+items = [
+    {
+        label = "local_count",
+        kind = "Function",
+        insert = "local_count($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "local.h"' },
+        ],
+    },
+]
+
+[angled.iquote.completion]
+items = [
+    {
+        label = "build_version",
+        kind = "Function",
+        insert = "build_version($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "stamp/version.h"' },
+        ],
+    },
+]
+
+[angled.include_dir.completion]
+items = [
+    {
+        label = "button_width",
+        kind = "Function",
+        insert = "button_width($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <widgets/button.h>" },
+        ],
+    },
+]
+
+[angled.shadowed.completion]
+items = [
+    {
+        label = "config_level",
+        kind = "Function",
+        insert = "config_level($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <config.h>" },
+        ],
+    },
+]
+
+[angled.isystem.completion]
+items = [
+    {
+        label = "acme_format",
+        kind = "Function",
+        insert = "acme_format($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <acme/format.h>" },
+        ],
+    },
+]
+
+[angled.pragma.completion]
+items = [
+    {
+        label = "acme_core",
+        kind = "Function",
+        insert = "acme_core($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <acme/format.h>" },
+        ],
+    },
+]
+
+[angled.idirafter.completion]
+items = [
+    {
+        label = "tardy_value",
+        kind = "Function",
+        insert = "tardy_value($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <tardy/late.h>" },
+        ],
+    },
+]
+
+[quoted.next_to_file.completion]
+items = [
+    {
+        label = "local_count",
+        kind = "Function",
+        insert = "local_count($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "local.h"' },
+        ],
+    },
+]
+
+[quoted.iquote.completion]
+items = [
+    {
+        label = "build_version",
+        kind = "Function",
+        insert = "build_version($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "stamp/version.h"' },
+        ],
+    },
+]
+
+[quoted.include_dir.completion]
+items = [
+    {
+        label = "button_width",
+        kind = "Function",
+        insert = "button_width($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "widgets/button.h"' },
+        ],
+    },
+]
+
+[quoted.shadowed.completion]
+items = [
+    {
+        label = "config_level",
+        kind = "Function",
+        insert = "config_level($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <config.h>" },
+        ],
+    },
+]
+
+[quoted.isystem.completion]
+items = [
+    {
+        label = "acme_format",
+        kind = "Function",
+        insert = "acme_format($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "acme/format.h"' },
+        ],
+    },
+]
+
+[quoted.pragma.completion]
+items = [
+    {
+        label = "acme_core",
+        kind = "Function",
+        insert = "acme_core($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "acme/format.h"' },
+        ],
+    },
+]
+
+[quoted.idirafter.completion]
+items = [
+    {
+        label = "tardy_value",
+        kind = "Function",
+        insert = "tardy_value($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "tardy/late.h"' },
+        ],
+    },
+]
+
+[both.next_to_file.completion]
+items = [
+    {
+        label = "local_count",
+        kind = "Function",
+        insert = "local_count($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "local.h"' },
+        ],
+    },
+]
+
+[both.iquote.completion]
+items = [
+    {
+        label = "build_version",
+        kind = "Function",
+        insert = "build_version($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "stamp/version.h"' },
+        ],
+    },
+]
+
+[both.include_dir.completion]
+items = [
+    {
+        label = "button_width",
+        kind = "Function",
+        insert = "button_width($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = '#include "widgets/button.h"' },
+        ],
+    },
+]
+
+[both.shadowed.completion]
+items = [
+    {
+        label = "config_level",
+        kind = "Function",
+        insert = "config_level($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <config.h>" },
+        ],
+    },
+]
+
+[both.isystem.completion]
+items = [
+    {
+        label = "acme_format",
+        kind = "Function",
+        insert = "acme_format($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <acme/format.h>" },
+        ],
+    },
+]
+
+[both.pragma.completion]
+items = [
+    {
+        label = "acme_core",
+        kind = "Function",
+        insert = "acme_core($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <acme/format.h>" },
+        ],
+    },
+]
+
+[both.idirafter.completion]
+items = [
+    {
+        label = "tardy_value",
+        kind = "Function",
+        insert = "tardy_value($0)",
+        snippet = true,
+        edits = [
+            { at = "⟦⟧int local = local_cou;", text = "#include <tardy/late.h>" },
+        ],
+    },
+]

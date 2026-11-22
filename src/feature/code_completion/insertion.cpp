@@ -23,8 +23,9 @@ namespace clice::feature {
 /// names in `file`, as `arguments` spells it: a standard name's from the
 /// standard library's own table (the C library's for a C file, `c`),
 /// another's the header the index says declares it, or the one its IWYU
-/// pragmas name instead (`pragmas_of`): a private header's mapping, or a
-/// header including it that exports it, included the same way in turn.
+/// pragmas name instead (`pragmas_of`): a private header's mapping, its
+/// delimiters as `arguments` rewrites them, or a header including it that
+/// exports it, included the same way in turn.
 /// None when only a library's internal header is known.
 static std::optional<std::string>
     include_for(const index::IndexQuery& query,
@@ -70,7 +71,7 @@ static std::optional<std::string>
         visited.push_back(header);
         auto& pragmas = pragmas_of(header);
         if(!pragmas.include_instead.empty()) {
-            return pragmas.include_instead;
+            return arguments.rewrite(pragmas.include_instead);
         }
         if(!pragmas.is_private) {
             return arguments.of(path);
@@ -113,10 +114,11 @@ auto finish_completion(protocol::CompletionList list,
                        const DependencyGraph& graph,
                        Fid file,
                        const SearchConfig& search,
+                       const IncludeDelimiters& delimiters,
                        std::uint32_t limit) -> protocol::CompletionList {
     IncludeInsertion insertion{.opens_fragment = include.opens_fragment};
     vfs::Scope scope(query.file_table().dirs);
-    IncludeArguments arguments(search, query.file_table().spelling(file), scope);
+    IncludeArguments arguments(search, delimiters, query.file_table().spelling(file), scope);
     // Read from the disk, once a header.
     llvm::DenseMap<Fid, IncludePragmas> pragmas;
     auto pragmas_of = [&](Fid header) -> const IncludePragmas& {

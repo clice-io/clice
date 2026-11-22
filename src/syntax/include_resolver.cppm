@@ -77,27 +77,55 @@ std::optional<ResolveResult> resolve_forced_include(llvm::StringRef filename,
                                                     const ResolvedSearchConfig& config,
                                                     vfs::Scope& scope);
 
+/// The delimiters the user includes some headers with, wherever the
+/// command finds them (`code_completion.quoted_includes` and
+/// `angled_includes`): glob patterns matching the path written between
+/// the delimiters.
+struct IncludeDelimiters {
+    std::vector<kotatsu::GlobPattern> quoted;
+    std::vector<kotatsu::GlobPattern> angled;
+
+    /// Whether the header `name` (`fmt/core.h`) is included with angle
+    /// brackets: none when no pattern matches it, quotes when both lists
+    /// do.
+    std::optional<bool> angled_for(llvm::StringRef name) const;
+};
+
 /// The arguments, quotes or brackets included, an include directive of
 /// `file` names headers by, with the command's search directories resolved
-/// once for them all. Borrows `search` and `scope`.
+/// once for them all. Borrows `search`, `delimiters` and `scope`.
 class IncludeArguments {
 public:
-    IncludeArguments(const SearchConfig& search, const Spelling& file, vfs::Scope& scope);
+    IncludeArguments(const SearchConfig& search,
+                     const IncludeDelimiters& delimiters,
+                     const Spelling& file,
+                     vfs::Scope& scope);
 
     /// `header`'s, the header by identity and the file as the build reaches
     /// it: its path below the file's directory (where a quoted include
     /// looks first), else the shortest path below one of the command's
-    /// search directories (resolved, however the command spells them),
-    /// angled past the quoted segment — whichever of these the command's
-    /// lookup order actually resolves to `header`, since a shorter one can
-    /// name a same-named file in an earlier directory. None when that names
-    /// a library's internal header, which its public headers include and
-    /// its users never should: libstdc++'s and glibc's `bits/`, libc++'s
+    /// search directories (resolved, however the command spells them) —
+    /// whichever of these the command's lookup order actually resolves to
+    /// `header`, since a shorter one can name a same-named file in an
+    /// earlier directory. Its delimiters are the ones `delimiters` asks
+    /// for, else angle brackets for a header found through a system
+    /// directory (-isystem, -idirafter, the toolchain's) or a framework,
+    /// quotes for any other; the other delimiters only where none of the
+    /// paths finds `header` with these. None when that names a library's
+    /// internal header, which its public headers include and its users
+    /// never should: libstdc++'s and glibc's `bits/`, libc++'s
     /// `__`-prefixed directories and files.
     std::optional<std::string> of(CanonicalRef header);
 
+    /// `argument`, quotes or brackets included, as a header's IWYU pragma
+    /// names the header to include instead, its delimiters the ones
+    /// `delimiters` asks for, else its own.
+    std::string rewrite(llvm::StringRef argument) const;
+
 private:
     const SearchConfig& search;
+
+    const IncludeDelimiters& delimiters;
 
     vfs::Scope& scope;
 

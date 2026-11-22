@@ -10,6 +10,7 @@ import :feature.semantic_tokens;
 import :feature.signature_help;
 import :support.json;
 import :support.prelude;
+import :syntax.include_resolver;
 
 namespace clice {
 
@@ -554,15 +555,20 @@ struct Settings {
     KANNOTATE(&compiled_rules, skip = true)
     std::vector<CompiledRule> compiled_rules;
 
+    /// `code_completion.quoted_includes` and `angled_includes` compiled.
+    KANNOTATE(&include_delimiters, skip = true)
+    IncludeDelimiters include_delimiters;
+
     /// Compute the values derived from the final merged settings: default
     /// cache/logging directories, variable substitution, path
-    /// canonicalization and anchoring at the project root, and rule
-    /// compilation. Run once per load, after every source has been
-    /// overlaid. Returns the values clice cannot honor, each at its key: a
-    /// glob that does not compile or holds a backslash, an environment
-    /// variable that is not set, `default_configuration` naming no declared
-    /// tag, a zero worker count or limit (each falls back to its default
-    /// meanwhile, so the process-wide settings read from it stay runnable).
+    /// canonicalization and anchoring at the project root, rule
+    /// compilation and the include delimiters' globs. Run once per load,
+    /// after every source has been overlaid. Returns the values clice
+    /// cannot honor, each at its key: a glob that does not compile or holds
+    /// a backslash, an environment variable that is not set,
+    /// `default_configuration` naming no declared tag, a zero worker count
+    /// or limit (each falls back to its default meanwhile, so the
+    /// process-wide settings read from it stay runnable).
     std::vector<codec::rich_error> finalize(CanonicalRef project_root);
 
     /// The distinct configuration tags, in first-appearance order.

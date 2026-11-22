@@ -17,6 +17,12 @@ test("glob", async (t) => {
     await t.show("clice.toml", s.pushes("clice.toml"));
 });
 
+test("include glob", async (t) => {
+    t.disk.write("clice.toml", '[code_completion]\nangled_includes = ["acme/[a"]\n');
+    const s = await t.start();
+    await t.show("clice.toml", s.pushes("clice.toml"));
+});
+
 test("backslash", async (t) => {
     t.disk.write("clice.toml", '[[rules]]\npatterns = ["src\\\\**"]\nappend = ["-DX"]\n');
     const s = await t.start();

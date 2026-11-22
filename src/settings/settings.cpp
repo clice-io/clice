@@ -107,13 +107,10 @@ std::uint32_t WorkersSettings::max_count() const {
     return count ? *count : auto_max_count();
 }
 
-/// Compile one pattern against absolute paths: the literal directory before
-/// the first wildcard segment is anchored at the project root and resolved
-/// like every path the file table names — a symlinked directory matches the
-/// files it holds — and the wildcard tail follows verbatim. A `**`-led
-/// pattern matches anywhere and enumerates from the project root.
-static std::expected<CompiledRule::Pattern, std::string>
-    compile_pattern(llvm::StringRef written, CanonicalRef project_root) {
+/// The glob `text`, the pattern `written` once its variables are
+/// substituted.
+static std::expected<kotatsu::GlobPattern, std::string> compile_glob(llvm::StringRef written,
+                                                                     llvm::StringRef text) {
     // A backslash escapes the next character in a glob, so a Windows path
     // written with them compiles and matches nothing. A substituted path is
     // escaped with them, so they are looked for before.
@@ -123,6 +120,21 @@ static std::expected<CompiledRule::Pattern, std::string>
             "match a literal `*`, `?`, `[` or `{{` with a range such as `[*]`",
             written));
     }
+    auto glob = kotatsu::GlobPattern::create(text);
+    if(!glob) {
+        return std::unexpected(
+            std::format("invalid glob pattern '{}': {}", written, glob.error().message));
+    }
+    return std::move(*glob);
+}
+
+/// Compile one pattern against absolute paths: the literal directory before
+/// the first wildcard segment is anchored at the project root and resolved
+/// like every path the file table names — a symlinked directory matches the
+/// files it holds — and the wildcard tail follows verbatim. A `**`-led
+/// pattern matches anywhere and enumerates from the project root.
+static std::expected<CompiledRule::Pattern, std::string>
+    compile_pattern(llvm::StringRef written, CanonicalRef project_root) {
     auto pattern = substitute(written, project_root, [](llvm::StringRef value) {
         return kotatsu::GlobPattern::escape(value);
     });
@@ -140,10 +152,9 @@ static std::expected<CompiledRule::Pattern, std::string>
         }
         text += rest;
     }
-    auto glob = kotatsu::GlobPattern::create(text);
+    auto glob = compile_glob(written, text);
     if(!glob) {
-        return std::unexpected(
-            std::format("invalid glob pattern '{}': {}", written, glob.error().message));
+        return std::unexpected(std::move(glob.error()));
     }
     return CompiledRule::Pattern{.glob = std::move(*glob),
                                  .text = std::move(text),
@@ -198,6 +209,23 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
     reject_zero(inlay_hints.max_length.endif,
                 lengths.endif,
                 {"inlay_hints", "max_length", "endif"});
+
+    include_delimiters = {};
+    auto compile_globs = [&](llvm::StringRef key,
+                             llvm::ArrayRef<std::string> written,
+                             std::vector<kotatsu::GlobPattern>& globs) {
+        for(auto [element, pattern]: views::enumerate(written)) {
+            auto glob = compile_glob(pattern, pattern);
+            if(!glob) {
+                problem(std::move(glob.error()),
+                        {"code_completion", key.str(), static_cast<std::size_t>(element)});
+                continue;
+            }
+            globs.push_back(std::move(*glob));
+        }
+    };
+    compile_globs("quoted_includes", code_completion.quoted_includes, include_delimiters.quoted);
+    compile_globs("angled_includes", code_completion.angled_includes, include_delimiters.angled);
 
     CanonicalRef root = project_root;
 
