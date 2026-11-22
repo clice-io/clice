@@ -10,3 +10,7 @@ SYNTHESIZE(size)
     return [self §(synthesized)size] * 2;
 }
 @end
+
+@implementation Tower
+@synthesize depth = _depth;
+@end

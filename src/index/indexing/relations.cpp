@@ -607,9 +607,10 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         return;
     }
     // `@synthesize count = _count;` defines the accessors it synthesizes at
-    // the property's name, which the semantic map leaves to the property;
-    // those of a protocol's or a superclass's property implement its
-    // accessors.
+    // the property's name, which the semantic map leaves to the property.
+    // One its class declares nowhere, of a protocol's or a superclass's
+    // property, overrides and implements methods itself, that property's
+    // accessor among them.
     if(auto* PID = llvm::dyn_cast<clang::ObjCPropertyImplDecl>(D)) {
         if(PID->getBeginLoc().isInvalid()) {
             return;
@@ -623,8 +624,8 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
                 continue;
             }
             add_self_relation(synthesized, RelationKind::Definition, PID->getLocation());
-            if(decls::objc_class(declared->getDeclContext()) !=
-               decls::objc_class(synthesized->getDeclContext())) {
+            if(synthesized->getCanonicalDecl() == synthesized) {
+                relate_overrides(*synthesized);
                 add_pair_relation(synthesized,
                                   RelationKind::Interface,
                                   declared,

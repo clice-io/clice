@@ -17,3 +17,14 @@ __attribute__((objc_root_class))
 
 @interface Pen : Object
 @end
+
+@protocol Stacked
+@property(nonatomic) int depth;
+@end
+
+@interface Plain : Object
+- (int)§(superclass)depth;
+@end
+
+@interface Tower : Plain <Stacked>
+@end

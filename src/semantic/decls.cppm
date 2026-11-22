@@ -175,11 +175,9 @@ struct ObjCOverridden {
 
 /// The superclasses of an Objective-C method's class, nearest first, with
 /// the method of its selector it overrides there, up to the nearest that has
-/// one this unit sees, whose own overrides go on from there: an accessor a
-/// protocol's or a superclass's property synthesizes stands for that
-/// property's accessor alone; short of a class a system header declares
-/// without one. getOverriddenMethods leaves out a method only an
-/// @implementation declares.
+/// one this unit sees, whose own overrides go on from there; short of a
+/// class a system header declares without one. getOverriddenMethods leaves
+/// out a method only an @implementation declares.
 auto objc_overridden(const clang::ObjCMethodDecl& method) -> llvm::SmallVector<ObjCOverridden, 4>;
 
 /// The constructor a construction runs, as the source names it: an

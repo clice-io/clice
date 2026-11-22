@@ -769,7 +769,7 @@ auto objc_overridden(const clang::ObjCMethodDecl& method) -> llvm::SmallVector<O
             break;
         }
         overridden.push_back({.objc_class = base, .method = own});
-        if(own && !own->getCanonicalDecl()->isSynthesizedAccessorStub()) {
+        if(own) {
             break;
         }
     }
