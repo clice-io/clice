@@ -474,7 +474,7 @@ boundary observes cheaply, built with the sources. Names of at most four words.
 
 ## Never
 
-- Pin every feature on every construct: breadth is the ecosystem round's.
+- Pin every feature on every construct: breadth is the ecosystem run's.
 - Put agent-driven editor sessions in CI.
 - Gate on a coverage percentage.
 

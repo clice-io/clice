@@ -19,7 +19,7 @@ Commit all work first (`git status` clean): the reviewers read `git diff origin/
 
 - One PR is one complete, user-perceivable capability. Implementation stages order the work and isolate risk; they are commit layering, not PR boundaries.
 - The title follows the commit format of the pull-request skill.
-- The body follows `.github/pull_request_template.md`. "Tests" holds what CI does not show: the platforms and builds run outside it, an ecosystem round, measured numbers. Each push rewrites the body to the branch's final state.
+- The body follows `.github/pull_request_template.md`. "Tests" holds what CI does not show: the platforms and builds run outside it, an ecosystem run, measured numbers. Each push rewrites the body to the branch's final state.
 - Never reference local file paths, private notes, internal stage names or ledger numbers ("PR 2", "batch C", bug-list ids), or other material a reader without this machine cannot see.
 - After `gh pr edit --body-file`, read the body back and check its length: an API timeout in a `gh pr view | gh pr edit` chain writes an empty body. Never pipe the two in one command.
 - An external contributor's PR gets its title and body rewritten before merge — the title is the squash commit's subject, and the body must describe the post-review state, including fixes made on their behalf.

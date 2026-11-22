@@ -1,4 +1,4 @@
-/// CliceClient — LSP client for the case framework, the ecosystem rounds and
+/// CliceClient — LSP client for the case framework, the ecosystem jobs and
 /// the Zed suite, on vscode-languageserver-protocol.
 ///
 /// The client owns its whole lifecycle: spawn, typed requests including
