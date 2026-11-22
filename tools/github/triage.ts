@@ -43,7 +43,7 @@ export interface Proposal {
 }
 
 export interface Snapshot {
-    issues: Record<string, { title: string; state: string; labels: string[] }>;
+    issues: Record<string, { title: string; state: string; labels: string[]; updatedAt: string }>;
     digest: {
         open: number;
         untriaged: number[];
@@ -163,6 +163,7 @@ export interface Live {
     labels: string[];
     state: string;
     title: string;
+    updatedAt: string;
 }
 
 /// What apply does to one issue: skip it with the reason, or its edits and
@@ -174,18 +175,15 @@ export type Plan =
 export function plan(
     proposal: Checked,
     live: Live,
-    seen: { title: string; state: string } | undefined,
+    seen: { updatedAt: string } | undefined,
     options: { keepTitles: boolean; includeClosed: boolean },
 ): Plan {
     const liveLabels = new Set(live.labels);
     const closed = live.state !== "OPEN";
-    // The proposal was made for the snapshot's issue: a changed state, or
-    // someone else's triage meanwhile, makes it stale.
-    if (live.state !== seen?.state) {
-        return { skip: "its state changed since the snapshot" };
-    }
-    if (liveLabels.has("triaged")) {
-        return { skip: "triaged since the snapshot" };
+    // The proposal was made for the snapshot's issue: a comment, an edit or
+    // someone else's labels since make it stale.
+    if (live.updatedAt !== seen?.updatedAt) {
+        return { skip: "it changed since the snapshot (snapshot it again)" };
     }
     if (closed && !options.includeClosed) {
         return { skip: "closed" };
@@ -221,8 +219,6 @@ export function plan(
     if (!options.keepTitles && proposal.title && proposal.title !== live.title) {
         if (maintainerKind) {
             notes.push("title kept: its type came from the dropped kind");
-        } else if (live.title !== seen.title) {
-            notes.push("title kept: it changed since the snapshot");
         } else {
             title = proposal.title;
         }
@@ -298,12 +294,21 @@ async function snapshot(state: string, limit: number): Promise<void> {
             body: string;
             author: { login: string } | null;
             comments: { author: { login: string } | null; body: string }[];
-        }>(["issue", "view", String(issue.number), "--json", "number,title,body,author,comments"]);
+            labels: { name: string }[];
+            state: string;
+            updatedAt: string;
+        }>([
+            "issue",
+            "view",
+            String(issue.number),
+            "--json",
+            "number,title,body,author,comments,labels,state,updatedAt",
+        ]);
         const body = detail.body || "(no body)";
         const lines = [
             `# Issue #${detail.number}: ${detail.title}`,
-            `State: ${issue.state}  Author: ${author(detail.author)}`,
-            `Existing labels: ${names(issue).join(", ") || "(none)"}`,
+            `State: ${detail.state}  Author: ${author(detail.author)}`,
+            `Existing labels: ${names(detail).join(", ") || "(none)"}`,
             "",
             body.length > BODY_LIMIT
                 ? `${body.slice(0, BODY_LIMIT)}\n[... body truncated ...]`
@@ -326,9 +331,12 @@ async function snapshot(state: string, limit: number): Promise<void> {
         });
         fs.writeFileSync(path.join(OUT, "issues", `${detail.number}.md`), `${lines.join("\n")}\n`);
         result.issues[String(detail.number)] = {
+            // All of one read: what apply compares with must be what the
+            // issue file shows.
             title: detail.title,
-            state: issue.state,
-            labels: names(issue),
+            state: detail.state,
+            labels: names(detail),
+            updatedAt: detail.updatedAt,
         };
     }
     fs.writeFileSync(SNAPSHOT, `${JSON.stringify(result, null, 1)}\n`);
@@ -389,13 +397,12 @@ async function apply(
         if ((options.only.size > 0 && !options.only.has(number)) || options.skip.has(number)) {
             continue;
         }
-        const live = await ghJson<{ labels: { name: string }[]; state: string; title: string }>([
-            "issue",
-            "view",
-            String(number),
-            "--json",
-            "labels,state,title",
-        ]);
+        const live = await ghJson<{
+            labels: { name: string }[];
+            state: string;
+            title: string;
+            updatedAt: string;
+        }>(["issue", "view", String(number), "--json", "labels,state,title,updatedAt"]);
         const edits = plan(
             proposal,
             { ...live, labels: live.labels.map((label) => label.name) },

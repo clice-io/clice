@@ -43,7 +43,7 @@ Either way, builds and suites go through Bash `run_in_background`, which notifie
 ```bash
 id=$(box up clice-io/clice)        # ~1 min
 box push $id                       # tracked files only: `git add` new ones first
-box run $id 'pixi run build RelWithDebInfo' > /tmp/<topic>-build.log 2>&1
+box run $id 'pixi run build RelWithDebInfo' > /tmp/<topic>-build.log 2>&1 &&
 box run $id 'pixi run -e test-run test RelWithDebInfo' > /tmp/<topic>-test.log 2>&1
 ```
 
@@ -56,7 +56,7 @@ box run $id 'pixi run -e test-run test RelWithDebInfo' > /tmp/<topic>-test.log 2
 lin=$(box up clice-io/clice)
 win=$(box up clice-io/clice --os windows)    # or windows-arm, macos, macos-intel, linux-arm
 box push $lin && box push $win
-box run $lin 'pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:x86_64-w64-mingw32'
-box cp $lin $win build/RelWithDebInfo/bin/bin build/RelWithDebInfo/bin/lib --exclude '*.runfiles' --exclude '*.dSYM'
+box run $lin 'pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:x86_64-w64-mingw32' &&
+box cp $lin $win build/RelWithDebInfo/bin/bin build/RelWithDebInfo/bin/lib --exclude '*.runfiles' --exclude '*.dSYM' &&
 box run $win 'pixi run -e test-run unit-test RelWithDebInfo'
 ```

@@ -68,7 +68,12 @@ export function clean(body: string): { severity: string; text: string } {
         /!\[(P\d) Badge\]/.exec(body)?.[1] ??
         /_[^_\n]*?(Critical|Major|Minor|Trivial)_/.exec(body)?.[1] ??
         "";
-    let text = body.replace(/<!--[\s\S]*?-->/g, "");
+    // Leftmost first: a comment written inside code stays code, and a
+    // backtick inside a comment goes with it.
+    let text = body.replace(
+        new RegExp(`(${CODE.source})|<!--[\\s\\S]*?-->`, "g"),
+        (_, code: string | undefined) => code ?? "",
+    );
     text = stripDetails(text);
     text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, "");
     text = text.replace(

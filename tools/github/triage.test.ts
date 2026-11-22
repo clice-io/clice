@@ -14,8 +14,15 @@ const labels = taxonomy(
     ].join("\n"),
 );
 
-const snapshot = (issues: Snapshot["issues"]): Snapshot => ({
-    issues,
+const snapshot = (
+    issues: Record<string, { title: string; state: string; labels: string[] }>,
+): Snapshot => ({
+    issues: Object.fromEntries(
+        Object.entries(issues).map(([number, issue]) => [
+            number,
+            { ...issue, updatedAt: "2026-11-20T00:00:00Z" },
+        ]),
+    ),
     digest: { open: 0, untriaged: [], newThisWeek: [], quietWaiting: [] },
 });
 
@@ -126,36 +133,34 @@ describe("plan", () => {
         }
         return first;
     };
-    const seen = { title: "old", state: "OPEN" };
+    const seen = { updatedAt: "2026-11-20T00:00:00Z" };
+    const live = (labels: string[], title = "old") => ({
+        labels,
+        state: "OPEN",
+        title,
+        updatedAt: seen.updatedAt,
+    });
     const options = { keepTitles: false, includeClosed: false };
 
     test("an issue that changed since the snapshot is skipped", () => {
         const proposalOf = checked(["kind:bug"]);
+        const stale = { skip: "it changed since the snapshot (snapshot it again)" };
+        // A comment from the reporter, someone's labels, a new title or state:
+        // each moves the issue's updatedAt.
         expect(
-            plan(proposalOf, { labels: [], state: "CLOSED", title: "old" }, seen, options),
-        ).toEqual({
-            skip: "its state changed since the snapshot",
+            plan(proposalOf, { ...live([]), updatedAt: "2026-11-21T00:00:00Z" }, seen, options),
+        ).toEqual(stale);
+        expect(plan(proposalOf, live([]), undefined, options)).toEqual(stale);
+        expect(plan(proposalOf, live(["kind:bug", "kind:crash"]), seen, options)).toEqual({
+            skip: "several kinds kind:bug, kind:crash (resolve by hand)",
         });
-        expect(
-            plan(proposalOf, { labels: ["triaged"], state: "OPEN", title: "old" }, seen, options),
-        ).toEqual({
-            skip: "triaged since the snapshot",
-        });
-        expect(
-            plan(
-                proposalOf,
-                { labels: ["kind:bug", "kind:crash"], state: "OPEN", title: "old" },
-                seen,
-                options,
-            ),
-        ).toEqual({ skip: "several kinds kind:bug, kind:crash (resolve by hand)" });
     });
 
     test("while needs-triage is on, the proposed kind replaces the template's", () => {
         expect(
             plan(
                 checked(["kind:crash", "feature:hover"], "crash(hover): x"),
-                { labels: ["needs-triage", "kind:bug"], state: "OPEN", title: "old" },
+                live(["needs-triage", "kind:bug"]),
                 seen,
                 options,
             ),
@@ -171,7 +176,7 @@ describe("plan", () => {
         expect(
             plan(
                 checked(["kind:crash", "feature:hover"], "crash(hover): x"),
-                { labels: ["kind:bug"], state: "OPEN", title: "old" },
+                live(["kind:bug"]),
                 seen,
                 options,
             ),
@@ -186,26 +191,12 @@ describe("plan", () => {
         });
     });
 
-    test("a title someone changed since the snapshot stays", () => {
-        const result = plan(
-            checked(["kind:bug"], "bug: x"),
-            { labels: ["needs-triage"], state: "OPEN", title: "edited" },
-            seen,
-            options,
-        );
-        expect(result).toMatchObject({
-            title: undefined,
-            notes: ["title kept: it changed since the snapshot"],
-        });
-    });
-
     test("a closed issue loses its status labels and gains none", () => {
-        const closed = { title: "old", state: "CLOSED" };
         expect(
             plan(
                 checked(["kind:bug"]),
-                { labels: ["kind:bug", "status:needs-info"], state: "CLOSED", title: "old" },
-                closed,
+                { ...live(["kind:bug", "status:needs-info"]), state: "CLOSED" },
+                seen,
                 { keepTitles: false, includeClosed: true },
             ),
         ).toEqual({ add: [], remove: ["status:needs-info"], title: undefined, notes: [] });

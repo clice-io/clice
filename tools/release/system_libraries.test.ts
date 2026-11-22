@@ -119,10 +119,15 @@ describe("checkMachO", () => {
     test("an LC_RPATH into a conda env is a violation", () => {
         const check = checkMachO(
             shipped,
-            commands("@loader_path/../lib", "/Users/u/.pixi/envs/default/lib"),
+            commands(
+                "@loader_path/../lib",
+                "/Users/u/.pixi/envs/default/lib",
+                "/Users/u/Build Area/.pixi/envs/default/lib",
+            ),
         );
         expect(check.violations).toEqual([
             "LC_RPATH points into a conda/pixi env: /Users/u/.pixi/envs/default/lib",
+            "LC_RPATH points into a conda/pixi env: /Users/u/Build Area/.pixi/envs/default/lib",
         ]);
     });
 

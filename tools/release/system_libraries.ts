@@ -161,7 +161,9 @@ export function checkMachO(dylibs: string, loadCommands: string): Check {
     check.violations.push(...assertParsed(parsed, "llvm-otool -L", "dylib dependencies"));
 
     // LC_RPATH entries must not point into a conda/pixi env.
-    for (const [, rpath = ""] of loadCommands.matchAll(/cmd LC_RPATH[\s\S]*?path (\S+)/g)) {
+    for (const [, rpath = ""] of loadCommands.matchAll(
+        /cmd LC_RPATH[\s\S]*?path (.+?) \(offset \d+\)$/gm,
+    )) {
         if (CONDA_MARKERS.some((marker) => rpath.includes(marker))) {
             check.violations.push(`LC_RPATH points into a conda/pixi env: ${rpath}`);
         }

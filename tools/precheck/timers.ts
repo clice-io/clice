@@ -29,8 +29,10 @@ const TIMER =
 const LABEL = new RegExp(String.raw`^\s*//+\s*(?:${LABELS.join("|")}) \S`);
 const COMMENT = /^\s*\/\//;
 /// A zero wait is a turn of the event loop; test_jitter() is the test
-/// hook's own delay, zero without it.
-const EXEMPT = /\((?:chrono::)?milliseconds\(0\)\)|\(test_jitter\(\)\)/;
+/// hook's own delay, zero without it. Only the timer's own argument exempts
+/// it: a zero inside another call's arguments does not.
+const EXEMPT =
+    /(?:\basync::sleep|timer->start|\bsleep_for)\((?:(?:chrono::)?milliseconds\(0\)|test_jitter\(\))\)/g;
 const STATEMENT_BOUNDARY = /[;{}]\s*$|^\s*\/\//;
 
 function labelled(lines: readonly string[], index: number): boolean {
@@ -52,7 +54,7 @@ function labelled(lines: readonly string[], index: number): boolean {
 export function unlabelledTimers(file: string, text: string): string[] {
     const lines = text.split(/\r\n?|\n/);
     return lines.flatMap((line, index) =>
-        COMMENT.test(line) || !TIMER.test(line) || EXEMPT.test(line) || labelled(lines, index)
+        COMMENT.test(line) || !TIMER.test(line.replace(EXEMPT, "")) || labelled(lines, index)
             ? []
             : [`${file}:${index + 1}: ${line.trim()}`],
     );

@@ -91,8 +91,15 @@ describe("unlabelledTimers", () => {
                 "co_await async::sleep(chrono::milliseconds(0));",
                 "co_await async::sleep(milliseconds(0));",
                 "co_await async::sleep(test_jitter());",
+                "this_thread::sleep_for(test_jitter());",
+                "idle_timer->start(chrono::milliseconds(0));",
             ),
         ).toEqual([]);
+        expect(
+            unlabelled("co_await async::with_timeout(poll(chrono::milliseconds(0)), 5s);"),
+        ).toEqual([
+            "src/a.cpp:1: co_await async::with_timeout(poll(chrono::milliseconds(0)), 5s);",
+        ]);
     });
 
     test("commented timers and other names are no timers", () => {

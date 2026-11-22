@@ -32,6 +32,9 @@ describe("clean", () => {
         expect(clean("<p>use `std::vector<int>` here</p> and <b>x < 0</b>").text).toBe(
             "use `std::vector<int>` here and x < 0",
         );
+        expect(clean("Keep `<!-- Title -->` in the template.<!-- tracking `x` -->").text).toBe(
+            "Keep `<!-- Title -->` in the template.",
+        );
     });
 
     test("a CodeRabbit level is the severity", () => {
