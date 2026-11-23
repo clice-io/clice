@@ -330,6 +330,19 @@ struct ParameterFinder : clang::RecursiveASTVisitor<ParameterFinder> {
 
     bool found = false;
 
+    llvm::DenseSet<const clang::Type*> seen;
+
+    /// Each type once: the types the resolver builds share their parts. One
+    /// built by a recursion through an undecided `std::conditional` holds
+    /// each layer in both branches of the next, and a walk of its paths
+    /// doubles with every layer.
+    bool TraverseType(clang::QualType type, bool qualifier = true) {
+        if(!type.isNull() && !seen.insert(type.getTypePtr()).second) {
+            return true;
+        }
+        return RecursiveASTVisitor::TraverseType(type, qualifier);
+    }
+
     bool VisitTemplateTypeParmType(clang::TemplateTypeParmType* T) {
         found |= wanted(T->getDecl(), T->getDepth(), T->getIndex());
         return !found;

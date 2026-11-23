@@ -55,6 +55,16 @@ if(COMPAT_STD_PTHREAD)
   set_target_properties(compat_std_threads PROPERTIES CXX_SCAN_FOR_MODULES ON)
 endif()
 
+# A module of a package installed on its own (package/): CMake builds its
+# BMI in a target of its own (`compat__compat_package@synth_0`), whose
+# `--precompile` entry CMake 4.5 is the first to write to the database.
+if(COMPAT_PACKAGE)
+  find_package(compat_package REQUIRED)
+  add_library(compat_package_user STATIC src/use_package.cpp)
+  target_link_libraries(compat_package_user PRIVATE compat::compat_package)
+  set_target_properties(compat_package_user PROPERTIES CXX_SCAN_FOR_MODULES ON)
+endif()
+
 if(COMPAT_SYCL)
   add_library(compat_sycl STATIC sycl/kernel.cpp)
   target_include_directories(compat_sycl PRIVATE include)

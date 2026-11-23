@@ -138,6 +138,20 @@ bool is_unused(const FileDiagnostic& diagnostic) {
     std::unreachable();
 }
 
+/// The diagnostic's message, the notes clang put nowhere a paragraph each
+/// after it: those about the command line, or about a PCH or a module clang
+/// refused, which an editor would show apart only at a place.
+std::string message_of(const Diagnostic& diagnostic) {
+    auto message = diagnostic.message;
+    for(const auto& note: diagnostic.notes) {
+        if(note.fid.isInvalid()) {
+            message += "\n\n";
+            message += note.message;
+        }
+    }
+    return message;
+}
+
 class Presenter {
 public:
     explicit Presenter(CompilationUnit& unit) : unit(unit) {}
@@ -158,7 +172,7 @@ public:
             .id = main.id.source == DiagnosticSource::Clang ? main.id.value : 0,
             .code = main.id.diagnostic_code(),
             .link = document_uri(main.id),
-            .message = main.message,
+            .message = message_of(main),
         };
         // One from the command line stays at the top of the file.
         if(main.fid.isValid() && !place(main, diagnostic)) {
@@ -298,7 +312,8 @@ private:
                   llvm::StringRef message) {
         /// A note can point into a synthetic buffer, e.g. a macro defined
         /// on the command line, or into what a header context adds to its
-        /// host's text; there is no file to link to.
+        /// host's text; there is no file to link to. One placed nowhere is
+        /// in the message (message_of).
         if(fid.isInvalid() || unit.is_builtin_file(fid) || !range.valid()) {
             return;
         }
@@ -335,7 +350,7 @@ auto diagnostics(CompilationUnit& unit) -> std::vector<FileDiagnostic> {
                     .source = main.id.source,
                     .id = main.id.value,
                     .code = main.id.diagnostic_code(),
-                    .message = main.message,
+                    .message = message_of(main),
                 });
             }
         }

@@ -64,12 +64,12 @@ ScanResult scan_quick(llvm::StringRef content) {
             case dds::pp_if:
             case dds::pp_ifdef:
             case dds::pp_ifndef: {
-                conditional_depth++;
+                conditional_depth += 1;
                 break;
             }
             case dds::pp_endif: {
                 if(conditional_depth > 0) {
-                    conditional_depth--;
+                    conditional_depth -= 1;
                 }
                 break;
             }

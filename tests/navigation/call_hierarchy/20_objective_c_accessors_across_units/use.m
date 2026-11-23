@@ -9,6 +9,15 @@
 }
 @end
 
+@interface Counter (Actions)
+@end
+
+@implementation Counter (Actions)
+- (SEL)action {
+    return @selector(count);
+}
+@end
+
 void §(bump)bump(Counter *counter) {
     counter.count += [counter count];
 }

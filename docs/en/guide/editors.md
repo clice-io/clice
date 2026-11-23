@@ -33,9 +33,11 @@ Install the [clice extension](https://marketplace.visualstudio.com/items?itemNam
 
 The context menu of an editor clice serves holds clice's commands, below Go to Definition and its kin: **Switch Header and Source (Module Interface and Implementation)**; **Switch Compilation Context** when the file has more than one context, which the Explorer's Compilation Contexts view lists too; **Switch Build Configuration** when the rules declare configurations, which restarts the server under the one picked; and **Show Compile Command**, which opens the file's whole compile command and says where it comes from — a compilation database, the source including a header, a rule's `default_command`, a unit nearby, or clice's own. A compile that runs long shows its progress in the status bar, as it does in every editor that shows progress.
 
+Another C/C++ language extension running beside clice duplicates completion and diagnostics. Once clice is up, it offers to turn off the language features of cpptools (its debugger stays) and clangd in the workspace, and opens the Extensions view for ccls, which has no setting for them; a warning dismissed is not repeated in that window. To leave a workspace to another extension instead, set `clice.enable` to `false` in its settings: the extension starts no server there, and its commands say clice is disabled. Set to `false` in the user settings, it turns clice off everywhere but in the workspaces that set it back to `true`. A change applies at once, without reloading the window. One server serves a window, so a multi-root workspace takes the setting from its `.code-workspace` file, not from a folder's settings.
+
 ### Neovim
 
-On Neovim 0.11 or later with [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) installed, enable clice:
+[Mason](https://github.com/mason-org/mason.nvim) installs clice with `:MasonInstall clice`. On Neovim 0.11 or later with [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) installed, enable clice:
 
 ```lua
 vim.lsp.enable('clice')
@@ -45,7 +47,7 @@ nvim-lspconfig carries a copy of the config in [`editors/nvim`](https://github.c
 
 ### Zed
 
-The Zed extension lives in [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed). It runs `lsp.clice.binary.path` when set, with `lsp.clice.binary.arguments`, which must include `serve`; else `clice` from `PATH`, else downloads the newest release; `lsp.clice.settings.release_channel` set to `"pre-release"` follows the nightly builds instead.
+Install the clice extension from Zed's extensions (`zed: extensions`); its source lives in [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed). It runs `lsp.clice.binary.path` when set, with `lsp.clice.binary.arguments`, which must include `serve`; else `clice` from `PATH`, else downloads the newest release; `lsp.clice.settings.release_channel` set to `"pre-release"` follows the nightly builds instead.
 
 Zed runs its built-in clangd for C and C++ as well, which duplicates completion and diagnostics; to use clice alone:
 

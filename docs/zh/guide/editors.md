@@ -33,9 +33,11 @@ clice 会向每条编译命令所用的编译器查询其编译配置（目标�
 
 由 clice 提供服务的编辑器右键菜单中包含 clice 的命令，位于“跳转到定义”等命令下方：**Switch Header and Source (Module Interface and Implementation)**；文件有多个编译上下文时的 **Switch Compilation Context**（资源管理器的 Compilation Contexts 视图中也会列出）；规则声明了构建配置时的 **Switch Build Configuration**，它会以所选配置重启服务器；以及 **Show Compile Command**，它会打开文件完整的编译命令，并说明命令来源——编译数据库、包含该头文件的源文件、规则的 `default_command`、邻近的翻译单元，或 clice 自身的回退配置。耗时较长的编译会在状态栏显示进度，在所有支持进度显示的编辑器中都是如此。
 
+若有其他 C/C++ 语言扩展与 clice 同时运行，代码补全和诊断会重复出现。clice 启动后，会提议在当前工作区中关闭 cpptools（其调试器不受影响）和 clangd 的语言功能；对于没有相应设置的 ccls，则打开扩展视图。警告被忽略后，在该窗口中不会再次出现。若要把某个工作区留给其他扩展，可在该工作区的设置中将 `clice.enable` 设为 `false`：扩展不会在该工作区启动服务器，其命令会提示 clice 已禁用。若在用户设置中设为 `false`，clice 会在所有工作区中关闭，只有重新将其设为 `true` 的工作区除外。修改立即生效，无需重新加载窗口。每个窗口只由一个服务器提供服务，因此多根工作区（multi-root workspace）从其 `.code-workspace` 文件读取该设置，而不是从某个文件夹的设置中读取。
+
 ### Neovim
 
-在安装了 [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) 的 Neovim 0.11 或更高版本上，启用 clice：
+[Mason](https://github.com/mason-org/mason.nvim) 可以安装 clice：`:MasonInstall clice`。在安装了 [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) 的 Neovim 0.11 或更高版本上，启用 clice：
 
 ```lua
 vim.lsp.enable('clice')
@@ -45,7 +47,7 @@ nvim-lspconfig 收录了 [`editors/nvim`](https://github.com/clice-io/clice/tree
 
 ### Zed
 
-Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。若设置了 `lsp.clice.binary.path` 则运行它，参数取自 `lsp.clice.binary.arguments`，其中必须包含 `serve`；否则运行 `clice`（从 `PATH` 查找），若也没有则下载最新发布版本；将 `lsp.clice.settings.release_channel` 设为 `"pre-release"` 则改为跟随每日构建。
+从 Zed 的扩展列表（`zed: extensions`）安装 clice 扩展，其源码位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。若设置了 `lsp.clice.binary.path` 则运行它，参数取自 `lsp.clice.binary.arguments`，其中必须包含 `serve`；否则运行 `clice`（从 `PATH` 查找），若也没有则下载最新发布版本；将 `lsp.clice.settings.release_channel` 设为 `"pre-release"` 则改为跟随每日构建。
 
 Zed 还会为 C 和 C++ 运行内置的 clangd，导致代码补全和诊断重复出现；若只使用 clice：
 

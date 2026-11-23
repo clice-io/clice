@@ -10,13 +10,13 @@ Neovim 0.11 or later.
 vim.lsp.enable('clice')
 ```
 
-For this directory's config, without nvim-lspconfig or ahead of its copy, copy `lsp/clice.lua` into the `after/lsp/` directory of your config, which takes precedence over nvim-lspconfig's; or append this directory to `runtimepath`, which also dims inactive preprocessor branches (`plugin/clice.lua`). The config runs `clice` from `PATH`; to run another binary:
+For this directory's config, without nvim-lspconfig or ahead of its copy, copy `lsp/clice.lua` into the `after/lsp/` directory of your config, which takes precedence over nvim-lspconfig's; or append this directory to `runtimepath`, which also dims inactive preprocessor branches (`plugin/clice.lua`). The config runs `clice` from `PATH`, where [Mason](https://github.com/mason-org/mason.nvim) installs a release with `:MasonInstall clice`; to run another binary:
 
 ```lua
 vim.lsp.config('clice', { cmd = { '/path/to/clice', 'serve' } })
 ```
 
-Neovim runs a clice for each project root: the nearest directory above the file that holds a `clice.toml`, else a `compile_commands.json`, else a `.git` (before Neovim 0.11.3, the nearest that holds any of them).
+Neovim runs a clice for each project root: the nearest directory above the file that holds a `clice.toml`, else a `compile_commands.json`, else a `.git` (before Neovim 0.11.3, the nearest that holds any of them). A file below none of them, such as an installed package's module that go to definition opens, joins a running clice, whose database may list it.
 
 Saving `clice.toml` or `.clice/config.toml` restarts clice on Neovim 0.12, where `:lsp restart` exists; before, clice puts a diagnostic on the file saying the change applies from its next start.
 

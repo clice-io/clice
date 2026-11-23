@@ -20,8 +20,7 @@ class Builder {
 public:
     Builder(CompilationUnit& unit, const TUIndexOptions& options);
 
-    /// The TU index, into `blob`, which arrives holding what a preamble's
-    /// own index adds on top of an ordinary build when `preamble` is set.
+    /// The TU index (build_tu_index).
     std::vector<std::byte> build();
 
 private:
@@ -110,6 +109,16 @@ private:
                            RelationKind kind,
                            const clang::NamedDecl* target,
                            clang::SourceRange anchor);
+
+    /// The Interface and Implementation relations of an Objective-C method
+    /// to the methods it overrides or implements (decls::objc_overridden).
+    void relate_overrides(const clang::ObjCMethodDecl& method);
+
+    /// Those to the method of its selector a superclass has that this unit
+    /// sees no declaration of, which another unit's @implementation may
+    /// write: a symbol of that class and selector.
+    void relate_unseen_override(const clang::ObjCMethodDecl& method,
+                                const clang::ObjCInterfaceDecl& objc_class);
 
     /// The TypeDefinition relations of a value (a function's: its return
     /// value): the type it is declared with, and for a smart pointer also

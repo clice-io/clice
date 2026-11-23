@@ -982,21 +982,24 @@ struct Project {
     /// releases it. Returns whether it had failed.
     bool forget_pch_failure(llvm::StringRef pch_key);
 
-    /// Discard a pair the frontend could not consume: remove both blobs from
-    /// the store and drop the idle cache entry, so the next acquisition misses
-    /// and rebuilds instead of trusting corrupt bytes for the life of the
-    /// store.
-    void discard_pch(llvm::StringRef pch_key);
+    /// A document using the key's PCH was saved: its next build looks again
+    /// for the files this one did not find, which may have appeared where
+    /// its lookups record no place (a framework directory, a header map). A
+    /// build in flight looked before the save: it is overtaken, unless an
+    /// earlier save already waits for it.
+    void look_again(llvm::StringRef pch_key);
 
-    /// A parse reading the pair died or found it unreadable: discard it AND
-    /// count a failure of its consumption — unless the pair was gone from the
-    /// store by then: evicted under the parse, which says nothing of its bytes,
-    /// or discarded by a failure counted already. Each successful rebuild
-    /// clears the build's failure, so the consumption keeps a record of its
-    /// own; enough failures stop the key and acquisitions fail fast, so
-    /// consumers fall back to compiling without a PCH instead of rebuilding and
-    /// failing forever over failing storage. `cause` is how the parse failed,
-    /// which the key's refusal names.
+    /// A parse reading the pair died or found it unreadable: remove both
+    /// blobs from the store and drop the idle cache entry, so the next
+    /// acquisition rebuilds instead of trusting corrupt bytes for the life of
+    /// the store, AND count a failure of its consumption — unless the pair
+    /// was gone from the store by then: evicted under the parse, which says
+    /// nothing of its bytes, or discarded by a failure counted already. Each
+    /// successful rebuild clears the build's failure, so the consumption
+    /// keeps a record of its own; enough failures stop the key and
+    /// acquisitions fail fast, so consumers fall back to compiling without a
+    /// PCH instead of rebuilding and failing forever over failing storage.
+    /// `cause` is how the parse failed, which the key's refusal names.
     void pch_consume_failed(llvm::StringRef pch_key, std::string cause);
 
     /// A parse read the key's pair and completed: its consumption failures were

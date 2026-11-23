@@ -1,0 +1,31 @@
+[[answers.value.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit special members of 'Value'"
+compiles = true
+
+[answers.value.code_actions.edits]
+"main.cpp" = '''
+     int integer;
+     float real;
++    Value() = default;
++    Value(const Value&) = default;
++    Value(Value&&) = default;
++    Value& operator=(const Value&) = default;
++    Value& operator=(Value&&) = default;
+ };
+'''
+
+[[answers.variant.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit special members of 'Variant'"
+compiles = true
+
+[answers.variant.code_actions.edits]
+"main.cpp" = '''
+     int number;
+     Text text;
++    Variant(const Variant&) = delete;
++    Variant& operator=(const Variant&) = default;
++    Variant& operator=(Variant&&) = default;
+ };
+'''

@@ -1,0 +1,40 @@
+[[answers.resource.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit special members of 'Resource'"
+compiles = true
+
+[answers.resource.code_actions.edits]
+"main.cpp" = '''
+
+     int id;
++    Resource(const Resource&) = default;
++    Resource& operator=(const Resource&) = default;
+ };
+'''
+
+[[answers.assigned.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit special members of 'Assigned'"
+compiles = true
+
+[answers.assigned.code_actions.edits]
+"main.cpp" = '''
+
+     int id;
++    Assigned(const Assigned&) = default;
+ };
+'''
+
+[[answers.holder.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit special members of 'Holder'"
+compiles = true
+
+[answers.holder.code_actions.edits]
+"main.cpp" = '''
+     Pinned pinned;
+     int id;
++    Holder(const Holder&) = default;
++    Holder& operator=(const Holder&) = delete;
+ };
+'''

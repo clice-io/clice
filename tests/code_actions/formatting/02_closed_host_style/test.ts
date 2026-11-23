@@ -9,5 +9,5 @@ test(async (t) => {
     t.disk.symlink("src", "vendor/real");
     const s = await t.start();
     await s.diagnostics("widget.h");
-    await t.show("cls", s.codeActions(t.marker("cls")));
+    await t.show("cls", s.codeActions(t.marker("cls"), { only: ["refactor.rewrite.define"] }));
 });

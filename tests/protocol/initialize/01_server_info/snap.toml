@@ -46,6 +46,7 @@ value = '''
             "refactor.rewrite.define.missing",
             "refactor.rewrite.implementPureVirtuals",
             "refactor.rewrite.generateMemberwiseConstructor",
+            "refactor.rewrite.declareSpecialMembers",
             "refactor.rewrite.populateSwitch",
             "refactor.rewrite.expandDeducedType",
             "refactor.rewrite.reorderDefinitions",

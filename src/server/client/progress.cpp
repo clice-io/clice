@@ -4,6 +4,7 @@ import :feature.protocol;
 import :project.background;
 import :server.client;
 import :server.master;
+import :support.text;
 import :vfs.path;
 
 namespace clice {
@@ -23,15 +24,12 @@ void LSPClient::report_index_progress() {
                 break;
             }
             // Register a fresh work-done token; once the client acknowledges
-            // it, announce the pass. This is the create()+begin() handshake
-            // the indexer used to run inline, now driven from the transport so
-            // the indexer no longer needs a peer. The dispatch it once gated on
-            // proceeds independently; reports before the token is announced are
-            // dropped, so the first sub-second of a pass may report fewer
-            // increments than before. If a previous pass's handshake is still
-            // in flight, the token is reused: its continuation reconciles
-            // against the current pass below, so at most one create() is ever
-            // outstanding and the reporter is never replaced mid-await.
+            // it, announce the pass. The indexing does not wait on the
+            // handshake: reports before the token is announced are dropped.
+            // If a previous pass's handshake is still in flight, the token is
+            // reused: its continuation reconciles against the current pass
+            // below, so at most one create() is ever outstanding and the
+            // reporter is never replaced mid-await.
             if(st.create_inflight || st.token_active) {
                 break;
             }
@@ -92,7 +90,9 @@ void LSPClient::report_index_progress() {
         case Stage::End: {
             st.pass_active = false;
             if(st.token_active) {
-                st.reporter->end(std::format("Indexed {} files", p.dispatched));
+                auto failed = p.failed == 0 ? std::string() : std::format(", {} failed", p.failed);
+                st.reporter->end(
+                    std::format("Indexed {}{}", counted(p.indexed, "file", "files"), failed));
                 st.reporter.reset();
                 st.token_active = false;
             }

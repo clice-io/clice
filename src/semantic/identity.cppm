@@ -28,6 +28,14 @@ public:
     /// apart from its template.
     std::uint64_t entity(const clang::NamedDecl* decl);
 
+    /// The entity of the method of `selector` an Objective-C class has,
+    /// whether or not this unit sees it: another unit's @implementation may
+    /// write it alone. A class's method is named by the class and the
+    /// selector, wherever it is written.
+    std::uint64_t objc_method(const clang::ObjCInterfaceDecl& objc_class,
+                              clang::Selector selector,
+                              bool instance);
+
     /// The entity of a macro definition: its name and where the `#define`
     /// sits, as the file's portable name (path::portable) and the offset in
     /// it. A builtin or command-line macro has no file and is its name, with
@@ -66,8 +74,10 @@ private:
     class Hasher;
     class Leaves;
 
+    void add_module(Hasher& hasher, const clang::Decl* decl);
     void add_context(Hasher& hasher, const clang::Decl* decl);
     void add_self(Hasher& hasher, const clang::NamedDecl* decl);
+    void add_objc_method(Hasher& hasher, clang::Selector selector, bool instance);
     void add_function(Hasher& hasher, const clang::FunctionDecl* function);
     void add_location(Hasher& hasher, clang::SourceLocation location);
     std::uint64_t macro_history(clang::SourceLocation location);

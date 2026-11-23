@@ -20,7 +20,7 @@ Checks: >
 
 WarningsAsErrors: ""
 
-HeaderFilterRegex: "(src|tests)/.*"
+HeaderFilterRegex: "(src|unittests)/.*"
 
 CheckOptions:
   # Naming conventions matching project style

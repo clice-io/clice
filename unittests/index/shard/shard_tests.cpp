@@ -1461,8 +1461,8 @@ ZEST_CASE(DuplicateVariantRejected) {
 
 ZEST_CASE(StraySymbolIdRejected) {
     // Lookups dereference symbol ids straight into the hash table; an id
-    // past it would previously read as "no symbol", missing the occurrence
-    // or dropping the relation's target forever with no reindex triggered.
+    // past it rejects the shard, since reading it as "no symbol" would miss
+    // the occurrence or drop the relation's target with no reindex triggered.
     index::ShardBlob blob;
     blob.format_version = index::index_format_version;
     fill_content(blob, "aaaaaaaaaaaaaaaa");

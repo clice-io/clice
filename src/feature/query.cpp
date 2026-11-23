@@ -486,15 +486,16 @@ Result<DefinitionResult> definition(Context& ctx, index::Locator locator) {
         .documentation = documentation_of(ctx, *resolved),
     };
     // A symbol nothing defines answers with its declaration, as the
-    // editor's go-to-definition does.
+    // editor's go-to-definition does, and so does one a definition of no
+    // text of its own defines (what an @synthesize synthesizes): with that
+    // definition's place when nothing declares it.
     auto hash = resolved->symbol.hash;
     auto anchor = resolved->site.file;
-    auto defined = ctx.query.first_site(hash, anchor, RelationKind::Definition).has_value();
-    auto definition =
-        index::declared_text(ctx.query,
-                             hash,
-                             anchor,
-                             defined ? RelationKind::Definition : RelationKind::Declaration);
+    auto definition = index::declared_text(ctx.query, hash, anchor, RelationKind::Definition);
+    auto defined = definition.has_value();
+    if(!definition) {
+        definition = index::declared_text(ctx.query, hash, anchor, RelationKind::Declaration);
+    }
     auto entry = [](const index::Site& extent, std::string text) {
         auto lines = lines_of(extent);
         return LocationEntry{
@@ -508,6 +509,8 @@ Result<DefinitionResult> definition(Context& ctx, index::Locator locator) {
         // A macro no file defines names where it comes from.
         if(!resolved->site.file.valid()) {
             result.definition = entry(resolved->site, "");
+        } else if(auto site = ctx.query.first_site(hash, anchor, RelationKind::Definition)) {
+            result.definition = entry(*site, "");
         }
         return result;
     }

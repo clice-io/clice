@@ -212,7 +212,7 @@ jobs:
             row "Windows arm64" aarch64-w64-mingw32 zip zip
             echo
             echo "Symbol packages hold GSYM data for crash log symbolization"
-            echo "via \`scripts/symbolize.py\`. Extension users on the Marketplace"
+            echo "via \`tools/release/symbolize.ts\`. Extension users on the Marketplace"
             echo "or Open VSX pre-release channel update automatically."
           } > /tmp/notes.md
           gh release create "$TAG" --draft --prerelease --title "$TAG" \
@@ -242,12 +242,12 @@ jobs:
       prerelease: true
     secrets: inherit
 
-  # The ecosystem round over the nightly's commit, with the programs its
+  # The ecosystem run over the nightly's commit, with the programs its
   # main run built (ecosystem.yml): a stable release tags a nightly whose
-  # round shows no new failure. Dispatched, not called, so the round keeps a
-  # run history of its own, which each round compares its numbers with. Its
-  # perf jobs measure clice against the nightly before, and on Sundays
-  # against clangd.
+  # ecosystem run shows no new failure. Dispatched, not called, so
+  # ecosystem.yml keeps a run history of its own, which each of its runs
+  # compares its numbers with. Its perf jobs measure clice against the
+  # nightly before, and on Sundays against clangd.
   ecosystem:
     needs: prepare
     if: needs.prepare.outputs.publish == 'true'
@@ -256,7 +256,7 @@ jobs:
     permissions:
       actions: write
     steps:
-      - name: Dispatch the round
+      - name: Dispatch the ecosystem run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN: ${{ needs.prepare.outputs.run }}
@@ -267,10 +267,7 @@ jobs:
   # Nightlies expire after 30 days, and only the newest 25 are kept: the Zed
   # extension reads only the first page (30) of the release list, which must
   # still hold the newest stable release. Only odd-minor pre-releases are
-  # pruned; stable releases and their tags are never deleted. The release
-  # Neovim's Mason registry pins is kept too: its Renovate bot moves the pin
-  # only to stable releases, so until the first one a pruned pin would break
-  # `:MasonInstall clice`.
+  # pruned; stable releases and their tags are never deleted.
   cleanup:
     needs: prepare
     runs-on: ubuntu-latest
@@ -283,13 +280,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           CUTOFF=$(date -u -d '30 days ago' +%s)
-          PINNED=$(gh api repos/mason-org/mason-registry/contents/packages/clice/package.yaml \
-            -H "Accept: application/vnd.github.raw" \
-            | sed -n 's|.*pkg:github/clice-io/clice@\([^[:space:]]*\).*|\1|p')
-          if [ -z "$PINNED" ]; then
-            echo "::error::no clice version found in Mason's packages/clice/package.yaml"
-            exit 1
-          fi
           RANK=0
           gh release list --repo "$GITHUB_REPOSITORY" --limit 200 \
             --json tagName,isPrerelease,createdAt \
@@ -299,10 +289,6 @@ jobs:
             MINOR=$(echo "$TAG" | cut -d. -f2)
             case "$MINOR" in *[!0-9]* | "") continue ;; esac
             if [ $((MINOR % 2)) -eq 0 ]; then continue; fi
-            if [ "$TAG" = "$PINNED" ]; then
-              echo "Keeping $TAG, pinned by Mason"
-              continue
-            fi
             RANK=$((RANK + 1))
             if [ "$RANK" -gt 25 ] \
               || [ "$(date -u -d "$CREATED" +%s)" -lt "$CUTOFF" ]; then

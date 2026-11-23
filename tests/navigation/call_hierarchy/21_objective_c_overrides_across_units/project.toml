@@ -1,0 +1,6 @@
+# Objective-C without an SDK: the Apple target fixes the runtime, and the
+# sample declares its own root class.
+[units]
+"shape.m" = ["-std=gnu11", "--target=arm64-apple-macos13", "-fobjc-arc"]
+"pen.m" = ["-std=gnu11", "--target=arm64-apple-macos13", "-fobjc-arc"]
+"sub.m" = ["-std=gnu11", "--target=arm64-apple-macos13", "-fobjc-arc"]

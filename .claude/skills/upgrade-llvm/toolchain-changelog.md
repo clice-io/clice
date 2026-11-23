@@ -8,7 +8,7 @@ toolchain change; drop one once nothing can bring it back.
 
 ## What xclang owns
 
-xclang's Bazel module carries the ThinLTO cache (clice's `.bazelrc` only
+xclang's Bazel module carries the ThinLTO cache (clice's `bazel/clice.bazelrc` only
 names the directory, `--repo_env=XCLANG_THINLTO_CACHE`), `-oso_prefix` on
 macOS (`--keep-icf-stabs` only on the links that make a dSYM), stripping by
 object format, the choice of the ASan libclang (`@libclang` follows
@@ -29,10 +29,9 @@ files.
   stops.** Off a macOS host the macOS targets build against Apple's SDK,
   which xclang's module fetches only once the root module accepts its
   license: `MODULE.bazel`'s `xclang.macos_sdk(accept_license = True)`, for
-  `scripts/modules.py`, which generates every configuration of `modules/`
-  on x64 Linux. CI cross-builds arm64 Linux and both Windows targets on x64
-  Linux, x64 macOS on arm64 macOS (`build_os` in `test.yml`), and tests on
-  the target's runner. Check: `npx bazel build --platforms=@xclang//platforms:aarch64-apple-darwin //modules:demand`
+  `tools/modules/modules.ts`, which generates every configuration of `modules/`
+  on x64 Linux. CI builds every target on x64 Linux (`build_os` in `test.yml`)
+  and tests on the target's runner. Check: `npx bazel build --platforms=@xclang//platforms:aarch64-apple-darwin //modules:demand`
   on x64 Linux.
 - **Every link of clice takes minutes.** The libclang archives hold ThinLTO
   bitcode; lld redoes its code generation on every link unless its cache has
@@ -82,23 +81,17 @@ files.
   recorded by absolute path; xclang's `-oso_prefix` makes the paths relative
   to the execution root, and its `generate_dsym_file` feature links the dSYM
   `xclang_debug_symbols` converts. Check: `dsymutil -s build/RelWithDebInfo/bin/bin/clice | grep OSO`
-  names `bazel-out/...`; `scripts/symbolize.py` on a macOS crash log prints
+  names `bazel-out/...`; `tools/release/symbolize.ts` on a macOS crash log prints
   `file:line` for clice's frames.
 - **The binary links the SDK's `libc++.dylib`.** `--no-default-config`
   (conda-forge's clang habit) drops xclang's config files, which select its
   static, hermetic libc++ (hidden visibility, libc++abi merged in). Never
   pass it. The SDK's `libc++.1.dylib` still arrives through system frameworks
   (libuv → CoreFoundation → libobjc); two libc++ in one process is expected.
-  Check: `scripts/check_artifact_deps.py` (CI runs it on every platform that packages).
+  Check: `tools/release/system_libraries.ts` (CI runs it on every platform that packages).
 
 ## Windows
 
-- **Any compile for `x86_64-pc-windows-msvc` stops at
-  `cannot read configuration file`**, also `-ffreestanding` ones and clice's
-  driver queries. xclang 23.1.2.8's MSVC config files read
-  `../sdk/windows/<target>.cfg`, which only `xclang sdk fetch windows`
-  writes; 23.1.2.9's load without it. Check: `clang++ --target=x86_64-pc-windows-msvc -ffreestanding -nostdinc -fsyntax-only`
-  on an empty file exits 0 on Linux.
 - **MSVC's headers are not found unless `VCToolsInstallDir` is set or
   `cl.exe` is in `PATH`** (#714); the include paths name Visual Studio
   2010–2005. LLVM builds its Visual Studio Setup API lookup (`MSVCPaths.cpp`)
@@ -106,15 +99,6 @@ files.
   `patches/0004` builds it on MinGW until llvm/llvm-project#226794 lands.
   Check: xclang's Windows smoke test, `clang++ --target=<arch>-pc-windows-msvc -###`
   naming `VC\Tools\MSVC\` with no Visual Studio environment.
-- **An `llvm.exe clang++ ...` process left suspended forever** (0 CPU, one
-  suspended thread, parent gone), holding its working directory, so a case
-  fails deleting its workspace (`EPERM`) and the runner never exits; seen
-  when a test kills the server during a toolchain query. xclang's launcher
-  (every `clang++.exe` and other `llvm.exe` name) used to start `llvm.exe`
-  suspended and assign it to its kill-on-close job afterwards; since 23.1.2.4
-  it creates the child inside the job (`PROC_THREAD_ATTRIBUTE_JOB_LIST`).
-  Check: kill a launcher right after it starts a long-running `llvm.exe`
-  (`Stop-Process -Force`); the child must be gone.
 - **`pixi run` hangs for minutes on the Windows checkout.** A `pixi install`
   in progress holds the environment lock: wait or stop it
   (`tasklist | findstr pixi`).

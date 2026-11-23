@@ -516,7 +516,7 @@ int main() { return preamble_func(); }
                           : blob.substr(0, blob.size() / 2);  // truncation
     };
 
-    for(std::size_t shape = 0; shape < 2; ++shape) {
+    for(std::size_t shape = 0; shape < 2; shape += 1) {
         CompilationParams preamble{
             .kind = CompilationKind::Preamble,
             .input = params.input,

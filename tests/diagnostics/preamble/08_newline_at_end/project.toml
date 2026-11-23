@@ -1,0 +1,2 @@
+# Without it no file warns about its last line.
+flags = ["-Wnewline-eof"]

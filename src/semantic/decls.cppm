@@ -154,7 +154,8 @@ auto objc_selector_method(const clang::ObjCInterfaceDecl& objc_class, clang::Sel
     -> const clang::ObjCMethodDecl*;
 
 /// Where `@selector(setX:y:)` writes each piece of its selector, which
-/// clang does not locate: invalid for a piece with no name.
+/// clang does not locate: invalid for a piece with no name; none when the
+/// text does not spell the selector, which a macro writes.
 auto objc_selector_pieces(const clang::ObjCSelectorExpr& expr, const clang::ASTContext& context)
     -> llvm::SmallVector<clang::SourceLocation, 4>;
 
@@ -163,10 +164,21 @@ auto objc_selector_pieces(const clang::ObjCSelectorExpr& expr, const clang::ASTC
 auto objc_class_name(const clang::ObjCInterfaceDecl* objc_class, clang::SourceLocation location)
     -> const clang::NamedDecl*;
 
-/// The nearest superclass method an Objective-C method overrides, null for
-/// none; getOverriddenMethods leaves out one only an @implementation or a
-/// category declares.
-auto objc_overridden(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl*;
+/// A superclass of an Objective-C method's class, and its method of the
+/// method's selector this unit sees: null when none, though an
+/// @implementation of another unit may write one.
+struct ObjCOverridden {
+    const clang::ObjCInterfaceDecl* objc_class;
+
+    const clang::ObjCMethodDecl* method;
+};
+
+/// The superclasses of an Objective-C method's class, nearest first, with
+/// the method of its selector it overrides there, up to the nearest that has
+/// one this unit sees, whose own overrides go on from there; short of a
+/// class a system header declares without one. getOverriddenMethods leaves
+/// out a method only an @implementation declares.
+auto objc_overridden(const clang::ObjCMethodDecl& method) -> llvm::SmallVector<ObjCOverridden, 4>;
 
 /// The constructor a construction runs, as the source names it: an
 /// inherited constructor is an implicit declaration standing in for the

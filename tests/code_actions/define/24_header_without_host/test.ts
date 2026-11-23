@@ -8,7 +8,10 @@ answers(
     { paths: { separate: "only clice inspect shows the definitions meant for a host" } },
     async (a) => {
         for (const m of a.markers()) {
-            await a.show(m.name, a.codeActions(m, { compile: true }));
+            await a.show(
+                m.name,
+                a.codeActions(m, { only: ["refactor.rewrite.define"], compile: true }),
+            );
         }
     },
 );

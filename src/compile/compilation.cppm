@@ -384,6 +384,12 @@ public:
         return status == CompilationStatus::SetupFail;
     }
 
+    /// Whether the compile was asked to stop (CompilationParams::stop),
+    /// during the parse or since.
+    bool stopped() {
+        return params.stop->load(std::memory_order_relaxed);
+    }
+
     /// The parse went on past a fatal error: clang reported nothing after
     /// it and instantiated no more templates, so the AST stops short. A
     /// PCH or PCM that turns out unreadable halfway through, or a module

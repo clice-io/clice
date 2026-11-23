@@ -77,12 +77,30 @@ std::optional<ResolveResult> resolve_forced_include(llvm::StringRef filename,
                                                     const ResolvedSearchConfig& config,
                                                     vfs::Scope& scope);
 
-/// The arguments, quotes or brackets included, an include directive of
-/// `file` names headers by, with the command's search directories resolved
-/// once for them all. Borrows `search` and `scope`.
-class IncludeArguments {
+/// How an include directive names a header (IncludeNames::of).
+struct IncludeName {
+    /// The directories the build finds a header through.
+    enum class Found : std::uint8_t {
+        /// Next to the including file, or -iquote or -I.
+        User,
+        /// -isystem, -idirafter or a framework directory.
+        System,
+        /// The toolchain's own (SearchDir::driver): the standard library's.
+        Toolchain,
+    };
+
+    /// The path between the delimiters.
+    std::string path;
+
+    Found found = Found::User;
+};
+
+/// The names an include directive of `file` names headers by, with the
+/// command's search directories resolved once for them all. Borrows
+/// `search` and `scope`.
+class IncludeNames {
 public:
-    IncludeArguments(const SearchConfig& search, const Spelling& file, vfs::Scope& scope);
+    IncludeNames(const SearchConfig& search, const Spelling& file, vfs::Scope& scope);
 
     /// `header`'s, the header by identity and the file as the build reaches
     /// it: its path below the file's directory (where a quoted include
@@ -94,7 +112,7 @@ public:
     /// a library's internal header, which its public headers include and
     /// its users never should: libstdc++'s and glibc's `bits/`, libc++'s
     /// `__`-prefixed directories and files.
-    std::optional<std::string> of(CanonicalRef header);
+    std::optional<IncludeName> of(CanonicalRef header);
 
 private:
     const SearchConfig& search;
@@ -111,7 +129,7 @@ private:
     std::vector<CanonicalPath> resolved_dirs;
 
     /// The answer for each header asked already.
-    llvm::StringMap<std::optional<std::string>> known;
+    llvm::StringMap<std::optional<IncludeName>> known;
 };
 
 }  // namespace clice

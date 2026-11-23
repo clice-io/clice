@@ -10,7 +10,7 @@ namespace clice {
 /// convention: PCM nodes are module-unit path ids (unresolved imports take
 /// the high half of the key space), PCH nodes are the hash of the PCH's
 /// key, AST nodes are open documents' path ids, unit nodes are the units'
-/// path ids. 0xFF is reserved for map sentinels.
+/// path ids.
 enum class NodeKind : std::uint8_t {
     PCM = 1,
     PCH = 2,

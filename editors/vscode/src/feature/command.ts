@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { registerCommand } from "../commands";
 import type { ClientHandle } from "../client";
 import type { CompileCommand, CurrentContextResult } from "@clice/tools/protocol" with {
     "resolution-mode": "import",
@@ -89,6 +90,6 @@ export function registerCompileCommand(client: ClientHandle, ext: vscode.Extensi
     ext.subscriptions.push(
         changed,
         vscode.workspace.registerTextDocumentContentProvider(scheme, provider),
-        vscode.commands.registerCommand("clice.showCompileCommand", showCommand),
+        registerCommand("clice.showCompileCommand", showCommand),
     );
 }
