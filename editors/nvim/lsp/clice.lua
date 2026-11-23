@@ -217,18 +217,24 @@ return {
   filetypes = { 'c', 'cpp', 'cuda', 'objc', 'objcpp', 'opencl', 'hip' },
   root_markers = { 'clice.toml', 'compile_commands.json', '.git' },
   -- A file below no root marker, such as an installed package's module that go
-  -- to definition opens, joins a running clice: its project's database may
-  -- list the file, and a clice started for the file alone reads none.
+  -- to definition opens, joins a running clice, a project's rather than one
+  -- started for a file alone: the project's database may list the file, and a
+  -- clice started for a file alone reads none.
   -- LIMITATION: with several projects open, it joins the first one started.
   reuse_client = function(client, config)
     if client.name ~= config.name or client:is_stopped() then
       return false
     end
-    local root = config.root_dir and vim.uri_from_fname(config.root_dir)
-    return not root
-      or vim.iter(client.workspace_folders or {}):any(function(folder)
-        return folder.uri == root
-      end)
+    local function serves_project(other)
+      return #(other.workspace_folders or {}) > 0
+    end
+    if not config.root_dir then
+      return serves_project(client) or not vim.iter(vim.lsp.get_clients({ name = config.name })):any(serves_project)
+    end
+    local root = vim.uri_from_fname(config.root_dir)
+    return vim.iter(client.workspace_folders or {}):any(function(folder)
+      return folder.uri == root
+    end)
   end,
   capabilities = restarts and { experimental = { restartServer = true } } or nil,
   handlers = restarts and {

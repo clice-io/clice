@@ -204,8 +204,26 @@ local function restarted(buf, before, what)
     end, what)
 end
 
+local function outside()
+    local name = vim.fn.tempname() .. '.cpp'
+    vim.fn.writefile({ 'int outside();' }, name)
+    return name
+end
+
+-- A clice started for a file below no project before the project's own,
+-- which the files below no project opened later pass over.
+step 'open a file below no project'
+vim.cmd.edit(vim.fn.fnameescape(outside()))
+local alone = vim.api.nvim_get_current_buf()
+wait(60000, function()
+    return client_of(alone) ~= nil
+end, 'clice attached to ' .. vim.api.nvim_buf_get_name(alone))
+
 step('open ' .. scenario.file)
 local buf = open(scenario.file)
+if client_of(buf).id == client_of(alone).id then
+    fail(scenario.file .. ' joined the clice of a file below no project')
+end
 local uri = vim.uri_from_bufnr(buf)
 -- The first diagnostics come once the file compiled; a modules fixture builds
 -- its dependencies first.
@@ -252,13 +270,8 @@ if scenario.definition then
 end
 
 -- A file below no root marker, such as an installed package's module that
--- definition lands in or a preview loads, joins the running clice.
+-- definition lands in or a preview loads, joins the project's clice.
 step 'open files below no project'
-local function outside()
-    local name = vim.fn.tempname() .. '.cpp'
-    vim.fn.writefile({ 'int outside();' }, name)
-    return name
-end
 local previewed = vim.fn.bufadd(outside())
 vim.fn.bufload(previewed)
 vim.cmd.edit(vim.fn.fnameescape(outside()))
@@ -270,7 +283,7 @@ for _, other in ipairs { previewed, opened } do
         return client_of(other) ~= nil
     end, 'clice attached to ' .. name)
     if client_of(other).id ~= client_of(buf).id then
-        fail(name .. ' started a clice of its own')
+        fail(name .. ' did not join the clice of ' .. scenario.file)
     end
 end
 
