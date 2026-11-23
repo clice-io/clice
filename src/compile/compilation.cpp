@@ -452,7 +452,7 @@ public:
             }
         }
 
-        if(unit.params.stop->load()) {
+        if(unit.stopped()) {
             return false;
         }
 
@@ -1048,7 +1048,7 @@ CompilationStatus CompilationUnit::run() {
         instance->getSema().TUScope = nullptr;
     }
 
-    if(params.stop->load()) {
+    if(stopped()) {
         return CompilationStatus::Cancelled;
     }
 

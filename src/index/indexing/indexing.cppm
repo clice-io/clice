@@ -41,7 +41,11 @@ struct TUIndexOptions {
 /// self-contained shard blob per file that received entries (stored or
 /// merged into the file's disk shard). Entries of a header entered several
 /// times are one union blob. The TU index blob travels worker→server over IPC
-/// and is dismantled into the three persistent layers on arrival.
+/// and is dismantled into the three persistent layers on arrival. A compile
+/// asked to stop (CompilationUnit::stopped) before its whole-unit walks
+/// (SemanticsOptions::all_files) end gets no index, the bytes empty: the
+/// walks stop short, and a request asked to stop is answered cancelled
+/// whatever it returns.
 std::vector<std::byte> build_tu_index(CompilationUnit& unit, const TUIndexOptions& options = {});
 
 }  // namespace clice::index

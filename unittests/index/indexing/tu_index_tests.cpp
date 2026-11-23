@@ -23,6 +23,19 @@ index::TUIndex build() {
         llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
 }
 
+ZEST_CASE(StoppedCompileBuildsNone) {
+    // A compile asked to stop once parsed gets no index: its walks of the
+    // unit stop short of what the index would hold.
+    kind = CompilationKind::Whole;
+    add_focus("main.cpp", "int value;\n");
+    prepare();
+    auto stop = params.stop;
+    ZASSERT(try_compile());
+    ZEXPECT(!index::build_tu_index(*unit).empty());
+    stop->store(true);
+    ZEXPECT(index::build_tu_index(*unit).empty());
+}
+
 ZEST_CASE(TUIndexSections) {
     kind = CompilationKind::Whole;
     add_file("header.h", R"(
