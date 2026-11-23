@@ -13,6 +13,9 @@ common --cxxopt=-std=c++23 --host_cxxopt=-std=c++23
 # libc++'s std, which compiles like clice, without exceptions or RTTI.
 common --experimental_cpp_modules
 common --per_file_copt=.*/share/libc[+][+]/v1/std.*[.]cppm@-fno-rtti,-fno-exceptions
+# The macOS clice runs on, for every host: on a Mac, Bazel would take its
+# SDK's version.
+common --macos_minimum_os=13.0
 
 # clice builds without exceptions or RTTI, and its libraries are configured
 # to match.
