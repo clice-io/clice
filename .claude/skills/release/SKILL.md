@@ -56,7 +56,7 @@ that day — fix main and rerun via dispatch, with the maintainer's
 approval like any release trigger.
 
 Every GitHub release, nightly or stable, is created as a draft and
-published by `publish-clice.yml` only once all six platform archives are
+published by `publish-clice.yml` only once all eight platform archives are
 attached: drafts are hidden from anyone without push access, so no user's
 editor extension ever installs from a half-uploaded release. A failed promote job leaves
 the draft behind; `gh run rerun <id> --failed` finishes and publishes it.
@@ -104,7 +104,7 @@ Every step that tags or publishes needs the maintainer's explicit approval first
    expire 30 days after the CI run, so the tagged commit's run must be
    less than a month old — for an older commit, rerun its main workflow
    first to regenerate the packages.
-4. Verify: assets present (6 packages + 6 symbol archives + 6 vsix),
+4. Verify: assets present (8 packages + 8 symbol archives + 8 vsix),
    Marketplace and Open VSX show the new stable version.
 
 ## Plumbing changes

@@ -2,8 +2,8 @@
 //
 // Linux: clang runs faster on it than on glibc's malloc, for a little more
 // memory: on abseil a file opens to its diagnostics in 0.83 to 0.87 of the
-// time. It takes malloc over (--@mimalloc//:override), so glibc's malloc
-// serves nothing (release_free_memory).
+// time. It takes malloc over (--@mimalloc//:override), so the C library's
+// malloc, glibc's or musl's, serves nothing (release_free_memory).
 //
 // Windows: the UCRT heap returns freed memory to the system between
 // requests, so every request faulted its working set back in page by page.

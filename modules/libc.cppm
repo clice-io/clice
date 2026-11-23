@@ -1,11 +1,15 @@
 module;
 
-#if defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)
+#if defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)
 #include "linux-x64/libc.fragment.h"
-#elif defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)
+#elif defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && !defined(NDEBUG)
 #include "linux-x64-debug/libc.fragment.h"
-#elif defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)
+#elif defined(__linux__) && defined(__aarch64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)
 #include "linux-arm64/libc.fragment.h"
+#elif defined(__linux__) && defined(__x86_64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)
+#include "linux-x64-musl/libc.fragment.h"
+#elif defined(__linux__) && defined(__aarch64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)
+#include "linux-arm64-musl/libc.fragment.h"
 #elif defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)
 #include "macos-arm64/libc.fragment.h"
 #elif defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)
@@ -24,23 +28,26 @@ export module libc;
 
 export using ::fileno;
 
-#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG))
+#if (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG))
 export using ::kill;
 export using ::pid_t;
 #endif
 
-#if (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
+#if (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG))
+export using ::__errno_location;
+export using ::stderr;
+export using ::stdout;
+#endif
+
+#if (defined(__linux__) && defined(__aarch64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
 export using ::int8x16_t;
 export using ::uint8x16_t;
 #endif
 
-#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG))
-export using ::__errno_location;
+#if (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG))
 export using ::__sighandler_t;
 export using ::off_t;
 export using ::ssize_t;
-export using ::stderr;
-export using ::stdout;
 #endif
 
 #if (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG))
@@ -57,7 +64,7 @@ export using ::abs;
 export using ::mode_t;
 #endif
 
-#if defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)
+#if defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && !defined(NDEBUG)
 export using ::__assert_fail;
 #endif
 

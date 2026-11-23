@@ -560,6 +560,7 @@ exit = 0
 +
 +#include <cio.h>
 +#include <cva.h>
++#undef fake_stdout
 +
 +export module libc;
 +
@@ -795,6 +796,7 @@ exit = 0
 +
 +#include <cio.h>
 +#include <cva.h>
++#undef fake_stdout
 +
 +export module libc;
 +
@@ -1060,6 +1062,7 @@ exit = 0
 +
 +#include <cio.h>
 +#include <cva.h>
++#undef fake_stdout
 +
 +export module libc;
 +
@@ -1312,6 +1315,7 @@ exit = 0
 "merged/one/libc.fragment.h" = '''
 +#include <cio.h>
 +#include <cva.h>
++#undef fake_stdout
 '''
 "merged/one/libc.macros.h" = '''
 +#pragma once
@@ -1383,6 +1387,7 @@ exit = 0
 "merged/two/libc.fragment.h" = '''
 +#include <cio.h>
 +#include <cva.h>
++#undef fake_stdout
 '''
 "merged/two/libc.macros.h" = '''
 +#pragma once
@@ -1602,6 +1607,7 @@ exit = 0
 "bare/one/libc.fragment.h" = '''
 +#include <cio.h>
 +#include <cva.h>
++#undef fake_stdout
 '''
 "bare/one/libc.macros.h" = '''
 +#pragma once
@@ -1673,6 +1679,7 @@ exit = 0
 "bare/two/libc.fragment.h" = '''
 +#include <cio.h>
 +#include <cva.h>
++#undef fake_stdout
 '''
 "bare/two/libc.macros.h" = '''
 +#pragma once
@@ -1872,6 +1879,7 @@ exit = 0
 "merged/three/libc.fragment.h" = '''
 +#include <cio.h>
 +#include <cva.h>
++#undef fake_stdout
 '''
 "merged/three/libc.macros.h" = '''
 +#pragma once
@@ -2126,6 +2134,7 @@ exit = 0
 "bare3/one/libc.fragment.h" = '''
 +#include <cio.h>
 +#include <cva.h>
++#undef fake_stdout
 '''
 "bare3/one/libc.macros.h" = '''
 +#pragma once
@@ -2199,6 +2208,7 @@ exit = 0
 "bare3/three/libc.fragment.h" = '''
 +#include <cio.h>
 +#include <cva.h>
++#undef fake_stdout
 '''
 "bare3/three/libc.macros.h" = '''
 +#pragma once
@@ -2259,6 +2269,7 @@ exit = 0
 "bare3/two/libc.fragment.h" = '''
 +#include <cio.h>
 +#include <cva.h>
++#undef fake_stdout
 '''
 "bare3/two/libc.macros.h" = '''
 +#pragma once

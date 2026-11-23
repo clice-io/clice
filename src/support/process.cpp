@@ -128,9 +128,10 @@ void release_free_memory() {
 #ifndef __linux__
     // The system's heap still serves part of the process: the UCRT's own
     // blocks on Windows, the malloc zones other than mimalloc's on macOS. On
-    // Linux mimalloc has taken glibc's malloc over, which then holds nothing,
-    // and malloc_trim would set it up on its first call, which the pool
-    // threads release_free_memory_everywhere runs this on would race.
+    // Linux mimalloc has taken the C library's malloc over, which then holds
+    // nothing, and glibc's malloc_trim would set it up on its first call,
+    // which the pool threads release_free_memory_everywhere runs this on
+    // would race.
     sys::release_free_heap();
 #endif
 }

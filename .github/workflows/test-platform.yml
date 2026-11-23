@@ -40,6 +40,11 @@ on:
       compat:
         type: boolean
         default: false
+      # The compat scenarios of the system's GCC in an Alpine container, for
+      # the musl targets.
+      alpine:
+        type: boolean
+        default: false
       # Uploads the documented cases' cards, as cards-<shard>.
       cards:
         type: boolean
@@ -180,7 +185,7 @@ jobs:
 
       - name: Check the binary links only system libraries
         if: ${{ inputs.asset_name }}
-        run: pixi run -e default -- node tools/release/system_libraries.ts build/${{ inputs.build_type }}/bin/bin/clice.stripped
+        run: pixi run -e default -- node tools/release/system_libraries.ts build/${{ inputs.build_type }}/bin/bin/clice${{ contains(inputs.target, 'mingw32') && '.exe' || '' }}
 
       # These artifacts are what releases promote — there is no separate
       # release build — once the whole run is green.
@@ -354,3 +359,33 @@ jobs:
     with:
       os: ${{ inputs.os }}
       target: ${{ inputs.target }}
+
+  # Alpine's GCC keeps libstdc++ under <arch>-alpine-linux-musl, where no
+  # glibc system does. JavaScript actions do not run in an Alpine container
+  # on arm64 runners, so the scenarios run in one this job starts.
+  alpine:
+    needs: build
+    if: ${{ inputs.alpine }}
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: build-${{ inputs.target }}-${{ inputs.build_type }}
+          path: build/${{ inputs.build_type }}/bin/
+
+      - name: Compat on Alpine
+        run: |
+          docker run --rm -e CI -v "$PWD:/src" -w /src alpine:3.24 sh -euc '
+            apk add --no-cache bash nodejs-current npm gcc g++ cmake samurai
+            chmod +x build/${{ inputs.build_type }}/bin/bin/*
+            npm ci
+            CLICE_EXECUTABLE=$PWD/build/${{ inputs.build_type }}/bin/bin/clice \
+              npm run compat --workspace tests -- -t "^cmake ninja (gcc|cc alias) \(linux\)$"
+          '

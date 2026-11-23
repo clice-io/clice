@@ -225,7 +225,7 @@ describe("merge", () => {
   "configurations": [
     {
       "name": "linux-x64",
-      "condition": "defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)",
+      "condition": "defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)",
       "out": "linux-x64"
     },
     {

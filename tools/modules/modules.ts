@@ -36,24 +36,40 @@ export interface Configuration {
     condition: string;
 }
 
+/// glibc's headers alone have <gnu/libc-version.h>: neither musl nor clang
+/// defines a macro for musl.
+const GLIBC = "__has_include(<gnu/libc-version.h>)";
+
 export const CONFIGURATIONS: readonly Configuration[] = [
     {
         name: "linux-x64",
         buildType: "RelWithDebInfo",
         triple: "x86_64-unknown-linux-gnu",
-        condition: "defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)",
+        condition: `defined(__linux__) && defined(__x86_64__) && ${GLIBC} && defined(NDEBUG)`,
     },
     {
         name: "linux-x64-debug",
         buildType: "Debug",
         triple: "x86_64-unknown-linux-gnu",
-        condition: "defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)",
+        condition: `defined(__linux__) && defined(__x86_64__) && ${GLIBC} && !defined(NDEBUG)`,
     },
     {
         name: "linux-arm64",
         buildType: "RelWithDebInfo",
         triple: "aarch64-unknown-linux-gnu",
-        condition: "defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)",
+        condition: `defined(__linux__) && defined(__aarch64__) && ${GLIBC} && defined(NDEBUG)`,
+    },
+    {
+        name: "linux-x64-musl",
+        buildType: "RelWithDebInfo",
+        triple: "x86_64-unknown-linux-musl",
+        condition: `defined(__linux__) && defined(__x86_64__) && !${GLIBC} && defined(NDEBUG)`,
+    },
+    {
+        name: "linux-arm64-musl",
+        buildType: "RelWithDebInfo",
+        triple: "aarch64-unknown-linux-musl",
+        condition: `defined(__linux__) && defined(__aarch64__) && !${GLIBC} && defined(NDEBUG)`,
     },
     {
         name: "macos-arm64",

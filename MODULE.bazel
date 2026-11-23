@@ -11,6 +11,8 @@ bazel_dep(name = "compdb", version = "0.1.0")
 # (bazel/clice.bazelrc) packages them. kotatsu's version is 0.1.0.<n> for the
 # n-th commit of its main.
 bazel_dep(name = "kotatsu", version = "0.1.0.283")
+# kotatsu's, raised to the first version that builds for musl.
+bazel_dep(name = "cpptrace", version = "1.0.4.clice.3")
 bazel_dep(name = "croaring", version = "5.5.5.clice.1")
 bazel_dep(name = "lmdb", version = "0.9.36.clice.1")
 # mimalloc 2: on 3 clice was faster still, but held about twice glibc's

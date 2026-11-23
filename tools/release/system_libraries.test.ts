@@ -5,7 +5,9 @@ import {
     checkElf,
     checkMachO,
     checkPe,
+    checkStaticElf,
     detectFormat,
+    isDynamic,
     tidy,
 } from "./system_libraries.ts";
 
@@ -103,6 +105,59 @@ Symbol table '.dynsym' contains 75 entries:
 `;
         expect(checkElf(output, symbols).violations).toEqual([
             unparsed("NEEDED entries", "llvm-readelf -d"),
+        ]);
+    });
+});
+
+describe("checkStaticElf", () => {
+    /// An x86_64-unknown-linux-musl build's `llvm-readelf --program-headers
+    /// --wide`, cut short.
+    const headers = `
+Program Headers:
+  Type           Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align
+  PHDR           0x000040 0x0000000000200040 0x0000000000200040 0x0001f8 0x0001f8 R   0x8
+  LOAD           0x000000 0x0000000000200000 0x0000000000200000 0xd22de8 0xd22de8 R   0x1000
+  LOAD           0xd22e00 0x0000000000f23e00 0x0000000000f23e00 0x309d39d 0x309d39d R E 0x1000
+  TLS            0x3dc01a0 0x0000000003fc21a0 0x0000000003fc21a0 0x000008 0x000158 R   0x8
+  GNU_STACK      0x000000 0x0000000000000000 0x0000000000000000 0x000000 0x000000 RW  0x0
+`;
+
+    /// Its `llvm-readelf --syms --wide`, cut short: mimalloc's malloc is
+    /// mi_malloc under another name.
+    const symbols = `
+Symbol table '.symtab' contains 114011 entries:
+   Num:    Value          Size Type    Bind   Vis       Ndx Name
+   283: 0000000000f25310    70 FUNC    LOCAL  HIDDEN      5 __libc_malloc
+ 81984: 0000000000f25310    70 FUNC    GLOBAL DEFAULT     5 mi_malloc
+ 82089: 0000000000f25310    70 FUNC    GLOBAL DEFAULT     5 malloc
+`;
+
+    test("a static program has no DYNAMIC segment, a dynamic one has", () => {
+        expect(isDynamic(headers)).toBe(false);
+        expect(
+            isDynamic(`${headers}  DYNAMIC        0x419da78 0x000000000439da78 0x000000000439da78 0x000220 0x000220 RW  0x8
+`),
+        ).toBe(true);
+    });
+
+    test("the shipped program's malloc is mimalloc's", () => {
+        expect(checkStaticElf(headers, symbols)).toEqual({ violations: [], notes: [] });
+    });
+
+    test("musl's malloc is a violation", () => {
+        const musl = `
+ 81984: 0000000000f25310    70 FUNC    GLOBAL DEFAULT     5 mi_malloc
+ 82089: 0000000000f31a40   212 FUNC    GLOBAL DEFAULT     5 malloc
+`;
+        expect(checkStaticElf(headers, musl).violations).toEqual([MALLOC_NOT_OURS]);
+    });
+
+    test("a stripped program, or no segment read, fails closed", () => {
+        expect(checkStaticElf(headers, "").violations).toEqual([
+            "no malloc in the symbol table: a stripped program cannot tell whose malloc it is",
+        ]);
+        expect(checkStaticElf("", symbols).violations).toEqual([
+            unparsed("LOAD segments", "llvm-readelf --program-headers"),
         ]);
     });
 });
