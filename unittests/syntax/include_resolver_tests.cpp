@@ -395,7 +395,9 @@ ZEST_CASE(FrameworkHeaders) {
 }
 
 ZEST_CASE(FrameworkHeaderArgument) {
-    /// A framework's header is included as <Foo/Bar.h>, a private one too.
+    /// A framework's header is named Foo/Bar.h, a private one too, and is a
+    /// system header also where -F finds it, ahead of the system
+    /// directories.
     TempDir tmp;
     tmp.touch("Frameworks/Foo.framework/Headers/Bar.h");
     tmp.touch("Frameworks/Foo.framework/PrivateHeaders/Internal.h");
@@ -403,16 +405,22 @@ ZEST_CASE(FrameworkHeaderArgument) {
 
     SearchConfig config;
     config.dirs.push_back({.path = tmp.path("Frameworks"), .framework = true});
+    config.system_start_idx = 1;
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
+    IncludeNames names(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
     auto header =
         CanonicalPath(Spelling::absolute(tmp.path("Frameworks/Foo.framework/Headers/Bar.h")));
-    ZEXPECT(arguments.of(header) == std::optional<std::string>("<Foo/Bar.h>"));
+    auto bar = names.of(header);
+    ZASSERT(bar);
+    ZEXPECT(bar->path == "Foo/Bar.h");
+    ZEXPECT(bar->found == IncludeName::Found::System);
     auto internal = CanonicalPath(
         Spelling::absolute(tmp.path("Frameworks/Foo.framework/PrivateHeaders/Internal.h")));
-    ZEXPECT(arguments.of(internal) == std::optional<std::string>("<Foo/Internal.h>"));
+    auto private_header = names.of(internal);
+    ZASSERT(private_header);
+    ZEXPECT(private_header->path == "Foo/Internal.h");
 }
 
 ZEST_CASE(FirstFrameworkWins) {
@@ -455,10 +463,12 @@ ZEST_CASE(VersionedFrameworkArgument, skip = Windows) {
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    IncludeArguments arguments(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
+    IncludeNames names(config, Spelling::absolute(tmp.path("src/main.cpp")), scope);
     auto header = CanonicalPath(
         Spelling::absolute(tmp.path("Frameworks/Foo.framework/Versions/A/Headers/Bar.h")));
-    ZEXPECT(arguments.of(header) == std::optional<std::string>("<Foo/Bar.h>"));
+    auto bar = names.of(header);
+    ZASSERT(bar);
+    ZEXPECT(bar->path == "Foo/Bar.h");
 }
 
 // TODO: add tests for:

@@ -114,6 +114,8 @@
                 "dot_to_arrow": true,
                 "all_scopes": true,
                 "insert_includes": true,
+                "angled_includes": [],
+                "quoted_includes": [],
                 "insert_imports": true,
                 "limit": 100
             }
@@ -511,6 +513,22 @@
                     "type": "boolean",
                     "description": "With `all_scopes`, also offer names declared, and macros defined, in headers the file does not include yet, adding the `#include` of the header that holds them.",
                     "default": true
+                },
+                "angled_includes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Glob patterns of the headers whose `#include`, added by completion or a code action, takes angle brackets, matched against the path written between them (`fmt/core.h`) with the syntax of a rule's `patterns`: `fmt/**` matches every header below `fmt/`. A header neither this nor `quoted_includes` matches takes quotes when found next to the file or through `-iquote` or `-I`, and angle brackets when found through `-isystem`, `-idirafter` or a framework directory; one an IWYU pragma names to include instead keeps the pragma's. A header found through the toolchain's own directories, the standard library's, always takes angle brackets. A pattern is followed even where its delimiters do not find the header: angle brackets do not search the file's own directory or `-iquote`.",
+                    "default": []
+                },
+                "quoted_includes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "description": "Glob patterns of the headers whose `#include`, added by completion or a code action, takes quotes, as `angled_includes` describes. A header both match takes quotes: `angled_includes = [\"**\"]` with `quoted_includes = [\"myproj/**\"]` gives every header angle brackets but the project's own.",
+                    "default": []
                 },
                 "insert_imports": {
                     "type": "boolean",
