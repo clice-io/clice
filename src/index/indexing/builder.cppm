@@ -20,8 +20,7 @@ class Builder {
 public:
     Builder(CompilationUnit& unit, const TUIndexOptions& options);
 
-    /// The TU index, into `blob`, which arrives holding what a preamble's
-    /// own index adds on top of an ordinary build when `preamble` is set.
+    /// The TU index (build_tu_index).
     std::vector<std::byte> build();
 
 private:

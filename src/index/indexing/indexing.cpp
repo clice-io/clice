@@ -556,6 +556,9 @@ std::vector<std::byte> Builder::build() {
         project_expansions();
     }
     auto instantiations_ms = instantiations_timer.precise_ms();
+    if(unit.stopped()) {
+        return {};
+    }
 
     Timer finish_timer;
     // Build the include graph from what the index actually recorded:
