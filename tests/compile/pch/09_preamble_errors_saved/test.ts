@@ -98,8 +98,8 @@ test("saves while its build runs", async (t) => {
 });
 
 // A header another program held while the PCH built is one the build could
-// not open: nothing the build looked at changes when the program lets it
-// go, so a save looks again.
+// not open, and the error says why: nothing the build looked at changes
+// when the program lets it go, so a save looks again.
 test(
     "header held by another program",
     {
@@ -112,7 +112,10 @@ test(
         const release = await hold(path.join(t.root, "held.h"));
         const s = await t.start({ lastRule: { background_index: false } });
         try {
-            expect(await s.errors("held.cpp")).not.toEqual([]);
+            const held = await s.errors("held.cpp");
+            expect(held.map((diagnostic) => diagnostic.message)).toContainEqual(
+                expect.stringContaining("in use by another program"),
+            );
         } finally {
             await release();
         }
