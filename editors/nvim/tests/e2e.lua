@@ -220,7 +220,15 @@ wait(60000, function()
 end, 'clice attached to ' .. vim.api.nvim_buf_get_name(alone))
 
 step('open ' .. scenario.file)
-local buf = open(scenario.file)
+vim.cmd.edit(vim.fn.fnameescape(fixture_dir .. '/' .. scenario.file))
+local buf = vim.api.nvim_get_current_buf()
+-- Loaded before the fixture's clice finished its handshake, as a restored
+-- session loads its buffers.
+local early = vim.fn.bufadd(outside())
+vim.fn.bufload(early)
+wait(60000, function()
+    return client_of(buf) ~= nil
+end, 'clice attached to ' .. scenario.file)
 if client_of(buf).id == client_of(alone).id then
     fail(scenario.file .. ' joined the clice of a file below no project')
 end
@@ -277,7 +285,7 @@ vim.fn.bufload(previewed)
 vim.cmd.edit(vim.fn.fnameescape(outside()))
 local opened = vim.api.nvim_get_current_buf()
 vim.cmd.buffer(buf)
-for _, other in ipairs { previewed, opened } do
+for _, other in ipairs { early, previewed, opened } do
     local name = vim.api.nvim_buf_get_name(other)
     wait(60000, function()
         return client_of(other) ~= nil

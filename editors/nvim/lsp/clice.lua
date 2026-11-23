@@ -229,7 +229,10 @@ return {
       return #(other.workspace_folders or {}) > 0
     end
     if not config.root_dir then
-      return serves_project(client) or not vim.iter(vim.lsp.get_clients({ name = config.name })):any(serves_project)
+      -- `_uninitialized` (internal, what Neovim's own lsp.lua passes) also
+      -- lists a project's clice still starting, as in a restored session.
+      local running = vim.lsp.get_clients({ name = config.name, _uninitialized = true })
+      return serves_project(client) or not vim.iter(running):any(serves_project)
     end
     local root = vim.uri_from_fname(config.root_dir)
     return vim.iter(client.workspace_folders or {}):any(function(folder)
