@@ -11,28 +11,47 @@ namespace clice::feature {
 
 namespace {
 
-/// A function some source defines: its definition's extent and its name.
-struct DefinedFunction {
+/// A definition some source holds: its extent and its name.
+struct Definition {
     index::SymbolHash hash;
     LocalSourceRange extent;
     LocalSourceRange name;
 };
 
+/// A source's definitions; which of them are functions is asked of the
+/// index only for those enclosing a range looked up, once each.
+struct Definitions {
+    Fid file;
+    std::vector<Definition> all;
+    llvm::DenseMap<index::SymbolHash, bool> functions;
+};
+
 /// The innermost of the functions whose definition holds `range` outside
 /// their name.
-std::optional<index::SymbolHash> innermost_function(llvm::ArrayRef<DefinedFunction> functions,
+std::optional<index::SymbolHash> innermost_function(const index::IndexQuery& index,
+                                                    Definitions& defined,
                                                     LocalSourceRange range) {
-    const DefinedFunction* innermost = nullptr;
-    for(const auto& function: functions) {
-        if(function.extent.contains(range) && !function.name.contains(range) &&
-           (!innermost || innermost->extent.contains(function.extent))) {
-            innermost = &function;
+    llvm::SmallVector<const Definition*, 8> enclosing;
+    for(const auto& definition: defined.all) {
+        if(definition.extent.contains(range) && !definition.name.contains(range)) {
+            enclosing.push_back(&definition);
         }
     }
-    if(!innermost) {
-        return std::nullopt;
+    // Definitions in one file nest or are disjoint: the shorter is inside.
+    ranges::sort(enclosing, {}, [](const Definition* definition) {
+        return definition->extent.length();
+    });
+    for(auto* definition: enclosing) {
+        auto [it, inserted] = defined.functions.try_emplace(definition->hash);
+        if(inserted) {
+            auto info = index.symbol_info(definition->hash, defined.file);
+            it->second = info && index::is_function(info->kind);
+        }
+        if(it->second) {
+            return definition->hash;
+        }
     }
-    return innermost->hash;
+    return std::nullopt;
 }
 
 /// The relations of `kind` the symbol has, by their targets, those written
@@ -137,42 +156,39 @@ std::vector<CallEdge>
     return result;
 }
 
-std::vector<DefinedFunction> defined_functions(const index::IndexQuery& index,
-                                               const index::IndexSource& source) {
-    std::vector<DefinedFunction> functions;
-    source.shard->for_each_relation([&](index::SymbolHash symbol, const index::Relation& defined) {
-        if(defined.kind != RelationKind::Definition || !defined.extent().contains(defined.range)) {
-            return true;
-        }
-        if(auto info = index.symbol_info(symbol, source.file);
-           info && index::is_function(info->kind)) {
-            functions.push_back({
+Definitions definitions_of(const index::IndexSource& source) {
+    Definitions defined;
+    defined.file = source.file;
+    source.shard->for_each_relation([&](index::SymbolHash symbol, const index::Relation& relation) {
+        if(relation.kind == RelationKind::Definition &&
+           relation.extent().contains(relation.range)) {
+            defined.all.push_back({
                 .hash = symbol,
-                .extent = defined.extent(),
-                .name = defined.range,
+                .extent = relation.extent(),
+                .name = relation.range,
             });
         }
         return true;
     });
-    return functions;
+    return defined;
 }
 
 std::vector<CallEdge> referencing_functions(const index::IndexQuery& index,
                                             index::SymbolHash hash,
                                             Fid anchor) {
-    // Each file's function definitions, by their extents.
-    llvm::DenseMap<const index::Shard*, std::vector<DefinedFunction>> functions;
+    // Each file's definitions, by their extents.
+    llvm::DenseMap<const index::Shard*, Definitions> definitions;
     llvm::DenseMap<index::SymbolHash, std::vector<index::Site>> by_function;
     auto visit = [&](const index::IndexSource& source, const index::Relation& relation) {
         // An overlay's header entries come without a shard to look in.
         if(!source.shard) {
             return true;
         }
-        auto [it, inserted] = functions.try_emplace(source.shard);
+        auto [it, inserted] = definitions.try_emplace(source.shard);
         if(inserted) {
-            it->second = defined_functions(index, source);
+            it->second = definitions_of(source);
         }
-        if(auto function = innermost_function(it->second, relation.range)) {
+        if(auto function = innermost_function(index, it->second, relation.range)) {
             if(auto site = source.site(relation.range)) {
                 by_function[*function].push_back(*site);
             }
@@ -194,17 +210,17 @@ std::vector<CallEdge> referencing_functions(const index::IndexQuery& index,
 
 std::vector<std::string> enclosing_functions(const index::IndexQuery& index,
                                              llvm::ArrayRef<index::Site> sites) {
-    llvm::DenseMap<Fid, std::vector<DefinedFunction>> functions;
+    llvm::DenseMap<Fid, Definitions> definitions;
     std::vector<std::string> names;
     names.reserve(sites.size());
     for(const auto& site: sites) {
-        auto [it, inserted] = functions.try_emplace(site.file);
+        auto [it, inserted] = definitions.try_emplace(site.file);
         if(inserted) {
             if(auto source = index.serving(site.file)) {
-                it->second = defined_functions(index, *source);
+                it->second = definitions_of(*source);
             }
         }
-        auto function = innermost_function(it->second, site.range);
+        auto function = innermost_function(index, it->second, site.range);
         names.push_back(function ? index.qualified_name(*function, site.file) : std::string());
     }
     return names;

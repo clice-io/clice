@@ -66,7 +66,7 @@ std::vector<std::string> context_lines(const IndexQuery& index, llvm::ArrayRef<S
         if(!text) {
             text = std::make_unique<Text>();
             std::optional<llvm::StringRef> content;
-            if(auto source = index.serving(site.file);
+            if(auto source = index.serving(site.file, /*instantiations=*/false);
                source && !source->positions.text().empty()) {
                 content = source->positions.text();
             } else if(auto* shard = index.project().shard(site.file)) {

@@ -472,7 +472,18 @@ std::vector<IndexQuery::Located> locate(const IndexQuery& index, const Locator& 
         return defined;
     }
 
-    auto ranked = exact_search(index, query);
+    // A name some symbol spells exactly, case included, answers alone
+    // (below): its exact lookup finds the same symbols without the fuzzy
+    // ranking's trigram scan of every search segment.
+    RankedHits ranked;
+    if(query.mode == Locator::Mode::Fuzzy && !query.pattern.empty()) {
+        auto spelled = query;
+        spelled.mode = Locator::Mode::Exact;
+        ranked = exact_search(index, spelled);
+    }
+    if(ranked.hits.empty()) {
+        ranked = exact_search(index, query);
+    }
     // Spelling the name exactly, case included, decides it; otherwise every
     // match stands. A class and its constructors spell one name: asked by
     // it, the class answers. So does a template asked by its bare name: a
