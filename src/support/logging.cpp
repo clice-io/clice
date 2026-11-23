@@ -1,3 +1,9 @@
+module;
+
+#ifndef _WIN32
+#include <sys/resource.h>
+#endif
+
 module clice;
 
 import :support.logging;
@@ -655,6 +661,17 @@ void fatal(std::source_location location, std::string text) {
 void handle_crashes() {
     local(chrono::system_clock::now());
     sys::on_crash(write_crash);
+#ifndef _WIN32
+    // The stack trace is the crash's record. A core dump service
+    // (systemd-coredump, apport) reads the system's core dump whole before
+    // the process dies, seconds for one of a few GiB, while a crashed
+    // worker's requests wait. A core limit of 1 makes Linux skip a dump
+    // piped to such a service, and leaves a dump to a file no room.
+    rlimit core{};
+    ::getrlimit(RLIMIT_CORE, &core);
+    core.rlim_cur = 1;
+    ::setrlimit(RLIMIT_CORE, &core);
+#endif
 }
 
 void write_crash(const sys::Crash& crash) noexcept {
