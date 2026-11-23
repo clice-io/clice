@@ -18,7 +18,8 @@ async function hold(file: string): Promise<() => Promise<void>> {
         [
             "-NoProfile",
             "-Command",
-            `$held = [IO.File]::Open('${file.replaceAll("'", "''")}', 'Open', 'ReadWrite', 'None'); ` +
+            "$ErrorActionPreference = 'Stop'; " +
+                `$held = [IO.File]::Open('${file.replaceAll("'", "''")}', 'Open', 'ReadWrite', 'None'); ` +
                 "'held'; " +
                 "[void][Console]::In.ReadLine(); $held.Close()",
         ],
