@@ -1,6 +1,6 @@
 id = "clice"
 name = "clice zed"
-version = "0.1.2"
+version = "0.1.3"
 schema_version = 1
 authors = ["clice-io"]
 description = "C and C++ language support by clice, a language server for modern C++"
