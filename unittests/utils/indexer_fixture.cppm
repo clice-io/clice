@@ -277,7 +277,7 @@ inline IndexedTU index_file(TempDir& tmp,
         return {};
     }
     IndexedTU result;
-    result.data = std::string(as_chars(*index::build_tu_index(
+    result.data = std::string(as_chars(index::build_tu_index(
         *unit,
         {.known_variants = known, .known_instantiations = known_instantiations})));
     auto view = index::TUIndex::from_bytes(result.data);

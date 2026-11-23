@@ -20,20 +20,32 @@ ZEST_SUITE(TUIndex, Tester) {
 index::TUIndex build() {
     ZASSERT(compile());
     return index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(as_chars(*index::build_tu_index(*unit))));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
 }
 
-ZEST_CASE(StoppedCompileBuildsNone) {
-    // A compile asked to stop once parsed gets no index: its walks of the
-    // unit stop short of what the index would hold.
+ZEST_CASE(StoppedCompileStopsShort) {
+    // The index of a compile asked to stop once parsed holds nothing of the
+    // declarations its walks had not entered.
     kind = CompilationKind::Whole;
     add_focus("main.cpp", "int value;\n");
     prepare();
     auto stop = params.stop;
     ZASSERT(try_compile());
-    ZEXPECT(index::build_tu_index(*unit).has_value());
+    auto declares_value = [&] {
+        auto bytes = index::build_tu_index(*unit);
+        auto view = index::TUIndex::from_bytes(as_chars(bytes));
+        ZASSERT(view.loaded());
+        bool found = false;
+        view.for_each_symbol(
+            [&](index::SymbolHash, const index::SymbolView& symbol, llvm::ArrayRef<std::uint32_t>) {
+                found |= symbol.name == "value";
+                return !found;
+            });
+        return found;
+    };
+    ZEXPECT(declares_value());
     stop->store(true);
-    ZEXPECT(!index::build_tu_index(*unit).has_value());
+    ZEXPECT(!declares_value());
 }
 
 ZEST_CASE(TUIndexSections) {

@@ -495,7 +495,7 @@ void Builder::project_macros() {
     }
 }
 
-std::optional<std::vector<std::byte>> Builder::build() {
+std::vector<std::byte> Builder::build() {
     Timer written_timer;
     auto walked = walked_instantiations();
     // The focus-only shape is the one features share, cached on the
@@ -556,9 +556,6 @@ std::optional<std::vector<std::byte>> Builder::build() {
         project_expansions();
     }
     auto instantiations_ms = instantiations_timer.precise_ms();
-    if(unit.stopped()) {
-        return std::nullopt;
-    }
 
     Timer finish_timer;
     // Build the include graph from what the index actually recorded:
@@ -840,8 +837,7 @@ std::optional<std::vector<std::byte>> Builder::build() {
     return bytes;
 }
 
-std::optional<std::vector<std::byte>> build_tu_index(CompilationUnit& unit,
-                                                     const TUIndexOptions& options) {
+std::vector<std::byte> build_tu_index(CompilationUnit& unit, const TUIndexOptions& options) {
     Builder indexer(unit, options);
     return indexer.build();
 }

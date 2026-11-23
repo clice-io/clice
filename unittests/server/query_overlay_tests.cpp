@@ -49,13 +49,13 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     ZASSERT(compile());
 
     full_index = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(as_chars(*index::build_tu_index(*unit))));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
     ZASSERT(full_index.loaded());
 
     auto blob_path = dir.path("overlay.pch.idx");
     dir.touch("overlay.pch.idx",
               as_chars(worker::encode_preamble_index(unit->focus_file().content(),
-                                                     *index::build_tu_index(*unit),
+                                                     index::build_tu_index(*unit),
                                                      {},
                                                      {},
                                                      {},
@@ -76,7 +76,7 @@ void open_with_overlay(std::source_location location = std::source_location::cur
     auto& entry = fx.entry(session->path_id);
     auto compiled = std::make_shared<DocumentCompile>();
     compiled->index = std::make_shared<index::TUIndex>(index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(as_chars(*index::build_tu_index(*unit)))));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit)))));
     compiled->pch_key = "key";
     compiled->preamble_index = project.preamble_index("key");
     compiled->generation = fx.generation(session->path_id);
@@ -358,7 +358,7 @@ int main() { return 0; }
 )");
     ZASSERT(compile());
     full_index = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(as_chars(*index::build_tu_index(*unit))));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
     ZASSERT(full_index.loaded());
     dir.touch("main.cpp", sources.all_files.find("main.cpp")->second.content);
     merge_disk_index(dir.path("main.cpp"));
@@ -379,7 +379,7 @@ int main() { return 0; }
 )");
     ZASSERT(compile());
     full_index = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(as_chars(*index::build_tu_index(*unit))));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
     ZASSERT(full_index.loaded());
     merge_disk_index();
 
@@ -586,7 +586,7 @@ int main() {{ gen(); return 0; }}
     ZASSERT(try_compile());
 
     auto index = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(as_chars(*index::build_tu_index(*unit))));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit))));
     ZASSERT(index.loaded());
     for(std::uint32_t i = 0; i < index.path_count(); i += 1) {
         ZEXPECT(index.path(i) != host);

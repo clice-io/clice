@@ -157,7 +157,7 @@ void build_index(llvm::StringRef code,
     add_focus("main.cpp", code);
     ZASSERT(compile());
 
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
 }
 
 auto select(llvm::StringRef pos) -> std::vector<index::Occurrence> {
@@ -918,7 +918,7 @@ ZEST_CASE(PastedFragmentUses) {
         }
     )");
     ZASSERT(compile());
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
 
     auto pasted_at = [&](llvm::StringRef name) {
         std::vector<LocalSourceRange> ranges;
@@ -1016,7 +1016,7 @@ int main() {
 }
 )");
     ZASSERT(compile_with_modules());
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
 
     // The module's own unit indexes its declarations and the headers behind
     // them; an importer's index holds what it parsed.
@@ -1051,7 +1051,7 @@ int main() {
 }
 )");
     ZASSERT(compile_with_modules());
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
 
     // The focus file's index declares what it names from the module, in the
     // module's file; the header behind the module is the module's to index.
@@ -1079,7 +1079,7 @@ export int x = 1;
 module §(m)⟦§(m)foo⟧;
 )");
     ZASSERT(compile_with_modules());
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
 
     // An implementation unit's module declaration is a Declaration of the
     // module, not a Definition.
@@ -1192,7 +1192,7 @@ ZEST_CASE(CrossFileHeaderIndex) {
             }
         )");
     ZASSERT(compile());
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
 
     // The header should have its own FileIndex (separate from the focus file).
     ZASSERT(tu_index.file_indices.size() >= 1U);
@@ -1243,7 +1243,7 @@ ZEST_CASE(LocalClassAsBase) {
             struct Derived : decltype(make()) {};
         )");
     ZASSERT(compile());
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
     // Only the base relation names the header function's class in
     // main.cpp: the table lists it with both files.
     auto made = symbol_named("Made").second;
@@ -1264,7 +1264,7 @@ ZEST_CASE(KnownVariantsSkipped) {
             int user() { return shared(); }
         )");
     ZASSERT(compile());
-    auto full = *index::build_tu_index(*unit);
+    auto full = index::build_tu_index(*unit);
     auto full_view = index::TUIndex::from_bytes(as_chars(full));
     ZASSERT(full_view.loaded());
     auto focus_id = full_view.focus_file();
@@ -1295,7 +1295,7 @@ ZEST_CASE(KnownVariantsSkipped) {
     // The stored header travels as its hash alone, and the external
     // symbols only it names stay out of the table; the focus file's index,
     // every symbol it names and the internal ones still travel.
-    decode_index(*index::build_tu_index(*unit, {.known_variants = known}));
+    decode_index(index::build_tu_index(*unit, {.known_variants = known}));
     auto& view = tu_index.view;
     ZASSERT(view.section_hash(header) == full_view.section_hash(header));
     ZASSERT(view.section_blob(header).empty());
@@ -1548,7 +1548,7 @@ ZEST_CASE(ScopeCEnumerator) {
             void host(void) { enum { local_value }; }
         )c");
     ZASSERT(compile("-std=c17"));
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
 
     ZASSERT(scope("red") == static_cast<int>(index::SymbolScope::External));
     ZASSERT(scope("local_value") == static_cast<int>(index::SymbolScope::FunctionLocal));
@@ -1719,7 +1719,7 @@ ZEST_CASE(CanonicalFile) {
         int main_only();
     )");
     ZASSERT(compile());
-    decode_index(*index::build_tu_index(*unit, {.all_files = true}));
+    decode_index(index::build_tu_index(*unit, {.all_files = true}));
 
     auto focus_path = tu_index.view.focus_file();
     auto header_path = [&] {
@@ -1749,7 +1749,7 @@ ZEST_CASE(CanonicalFile) {
 
     // A focus-only build keeps no header entries: a symbol the focus file
     // merely uses has no declaring entry at all.
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
     auto used = symbol_named("header_only").second;
     ZASSERT(!has(used, index::SymbolFlags::HasDefinition));
     ZASSERT(file_of("header_only") == index::no_file);
@@ -1775,14 +1775,14 @@ int Foo::§(def)⟦§(1)find⟧(int x) const { return 0; }
     // A full build keeps the preamble entries: this proves the entry exists
     // (so the gate test below cannot pass vacuously) and that the loaded
     // fid resolves through the graph to the header's path.
-    decode_index(*index::build_tu_index(*unit, {.all_files = true}));
+    decode_index(index::build_tu_index(*unit, {.all_files = true}));
     bool found = false;
     for(auto& [path_id, index]: tu_index.file_indices) {
         found |= tu_index.view.path(path_id).ends_with("foo.h");
     }
     ZASSERT(found);
 
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
 
     // Entries resolving into the preamble are dropped: the preamble's own
     // index covers them. Only the focus file's entries remain.
@@ -1807,14 +1807,14 @@ Derived* use();
 
     // Full build: the base-specifier entries end up in the preamble header
     // and its loaded fid resolves to the header's path.
-    decode_index(*index::build_tu_index(*unit, {.all_files = true}));
+    decode_index(index::build_tu_index(*unit, {.all_files = true}));
     bool found = false;
     for(auto& [path_id, index]: tu_index.file_indices) {
         found |= tu_index.view.path(path_id).ends_with("bar.h");
     }
     ZASSERT(found);
 
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
 
     ZASSERT(tu_index.file_indices.empty());
     ZASSERT(!tu_index.focus_file_index.occurrences.empty());
@@ -1833,7 +1833,7 @@ int x = §(1)BAZ;
 )");
     ZASSERT(compile());
 
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
     ZASSERT(tu_index.file_indices.empty());
     ZASSERT(!tu_index.focus_file_index.occurrences.empty());
 }
@@ -1910,7 +1910,7 @@ ZEST_CASE(DeepExpressionChain) {
     auto index_thread = sys::Thread::start(2u << 20, [&] {
         // Mirror the stateful worker's post-compile sequence.
         scan = inactive_regions(*unit);
-        decode_index(*index::build_tu_index(*unit));
+        decode_index(index::build_tu_index(*unit));
 
         // The semantic map must also serve token classification and a
         // selection at the giant expansion's invocation on this stack:
@@ -1948,7 +1948,7 @@ ZEST_CASE(SuperQualifierRef) {
     /// trailing source path.
     params.input.arguments.insert(params.input.arguments.end() - 1, "-fms-extensions");
     ZASSERT(try_compile());
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
 
     GO_TO_DEFINITION("use", "def");
 }
@@ -2116,7 +2116,7 @@ ZEST_CASE(ClassParametersStayUnbound) {
     // Every unit shares a template's entries, so its parameter stays
     // unbound there, an open file's index included: `auto` stands for `T`.
     // What an instantiation deduces is its own record.
-    decode_index(*index::build_tu_index(*unit, {.all_files = true}));
+    decode_index(index::build_tu_index(*unit, {.all_files = true}));
     ZEXPECT(spelled_in("local") == std::vector<Spelled>{
                                        {"auto", SymbolKind::Type,     {RelationKind::Deduced}   },
                                        {"copy", SymbolKind::Variable, {RelationKind::Definition}},
@@ -2276,7 +2276,7 @@ ZEST_CASE(OccurrenceCoverage) {
     )cpp");
     triple = "x86_64-unknown-linux-gnu";
     ZASSERT(compile("-std=c++23"));
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
 
     ZEXPECT(spelled_in("offsetof") == std::vector<Spelled>{
                                           {"S",     SymbolKind::Struct, {RelationKind::Reference}},
@@ -2449,7 +2449,7 @@ ZEST_CASE(SynthesizedCallsKeepRelations) {
         }
     )");
     ZASSERT(compile("-std=c++23"));
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
 
     ZEXPECT(spelled_in("record") == std::vector<Spelled>{
                                         {"S",    SymbolKind::Struct, {RelationKind::Definition}},
@@ -2505,7 +2505,7 @@ ZEST_CASE(LibraryTemplatesUnresolved) {
     preprocessed.kind = CompilationKind::Whole;
     preprocessed.add_focus("main.ii", std::format("# 1 \"/usr/include/lib.h\" 1 3\n{}", templates));
     ZASSERT(preprocessed.compile());
-    decode_index(*index::build_tu_index(*preprocessed.unit));
+    decode_index(index::build_tu_index(*preprocessed.unit));
     ZEXPECT(fills(tu_index.focus_file_index) == 2);
 }
 
@@ -2522,7 +2522,7 @@ void refill(T t) { mark(t); }
         tester.add_focus("main.cpp", std::format("{}#include \"lib\"\n", before));
         tester.kind = CompilationKind::Whole;
         ZASSERT(tester.compile());
-        auto bytes = *index::build_tu_index(*tester.unit);
+        auto bytes = index::build_tu_index(*tester.unit);
         auto view = index::TUIndex::from_bytes(as_chars(bytes));
         ZASSERT(view.loaded());
         std::optional<std::uint64_t> hash;
@@ -2575,7 +2575,7 @@ ZEST_CASE(LibraryBodiesLeftOut) {
         {.patterns = {"**/own.h"}, .index = false},
     };
     ZASSERT(try_compile());
-    decode_index(*index::build_tu_index(*unit));
+    decode_index(index::build_tu_index(*unit));
     ZEXPECT(helpers_in("lib") == 4);
     ZEXPECT(helpers_in("own.h") == 1);
 }
@@ -2594,7 +2594,7 @@ ZEST_CASE(OpenFileBodiesIndexed) {
             {.patterns = {"**/main.cpp"}, .index = false}
         };
         ZASSERT(try_compile());
-        decode_index(*index::build_tu_index(*unit));
+        decode_index(index::build_tu_index(*unit));
         return ranges::count_if(tu_index.focus_file_index.occurrences,
                                 [&](const index::Occurrence& occurrence) {
                                     return tu_index.symbols[occurrence.target].name == "helper";
@@ -2644,7 +2644,7 @@ void store(llvm::StringRef name,
            llvm::StringRef diagnostics = {}) {
     dir.touch(name,
               as_chars(worker::encode_preamble_index(unit->focus_file().content(),
-                                                     *index::build_tu_index(*unit),
+                                                     index::build_tu_index(*unit),
                                                      links,
                                                      inactive,
                                                      conditionals,
@@ -2987,7 +2987,7 @@ void build(llvm::StringRef code,
     params.function_bodies = function_bodies;
     ZASSERT(try_compile());
     view = index::TUIndex::from_buffer(
-        llvm::MemoryBuffer::getMemBufferCopy(as_chars(*index::build_tu_index(*unit, options))));
+        llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_tu_index(*unit, options))));
     ZASSERT(view.loaded());
 }
 
