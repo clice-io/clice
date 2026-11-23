@@ -3,9 +3,10 @@ import { test } from "@clice/tools/testing";
 
 // Neovim 0.12 asks for a range of semantic tokens beside the full ones after
 // a refresh and, when the range answer comes first, applies the next delta to
-// it (neovim#42356): the server offers it no range. Before 0.12 Neovim asks
-// for none, from 0.13 it applies them right. The versions are spelled as
-// Neovim sends them: a release, a build of the release-0.12 branch, a nightly.
+// it (https://github.com/neovim/neovim/pull/42356): the server offers it no
+// range. Before 0.12 Neovim asks for none, from 0.13 it applies them right.
+// The versions are spelled as Neovim sends them: a release, a build of the
+// release-0.12 branch, a nightly.
 for (const version of ["0.12.6", "0.12.7-dev+g1a2b3c4d5e", "0.13.0-dev+gbd54353246", "0.11.5"]) {
     test(`Neovim ${version}`, async (t) => {
         const s = await t.start({ clientInfo: { name: "Neovim", version } });

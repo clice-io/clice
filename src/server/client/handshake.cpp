@@ -89,7 +89,8 @@ static protocol::PositionEncodingKind encoding_kind(PositionEncoding encoding) {
 /// Whether to offer the client semantic tokens of a range. Neovim 0.12 asks
 /// for a range beside the full tokens after a refresh, and when the range
 /// answer comes first, applies the next delta to it: the highlighting stays
-/// wrong until the file is reopened (neovim#42356, fixed in 0.13).
+/// wrong until the file is reopened. Fixed in 0.13:
+/// https://github.com/neovim/neovim/pull/42356
 static bool offers_range_tokens(const protocol::optional<protocol::ClientInfo>& client) {
     return !client || client->name != "Neovim" || !client->version ||
            !client->version->starts_with("0.12.");
