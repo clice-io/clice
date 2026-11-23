@@ -9,24 +9,35 @@ import :vfs.path;
 
 namespace clice::feature {
 
-/// Render an absolute path as an LSP URI string. On Windows the drive letter
-/// is written in lower case: LSP clients key documents by vscode-uri's
-/// lowercase-drive form, and an uppercase-drive URI from the server never
-/// matches there.
+/// Render an absolute path as an LSP URI string, its drive letter as the
+/// path writes it: a client keys documents by its own spelling (Qt Creator
+/// with the case), which the open document's and the folder's paths keep
+/// (written_path).
 inline auto to_uri(llvm::StringRef file) -> std::string {
     auto uri = lsp::URI::from_path(file);
     assert(uri && "a URI names an absolute path");
     return std::string(uri->text());
 }
 
-/// The file a `file:` URI names; nullopt for any other URI.
-inline auto to_path(llvm::StringRef uri) -> std::optional<Spelling> {
+/// The path a `file:` URI names as the client writes it: on Windows its
+/// drive letter in the URI's case, which a Spelling lowers. A document and
+/// a workspace folder are named so; nullopt for any other URI.
+inline auto written_path(llvm::StringRef uri) -> std::optional<std::string> {
     auto parsed = lsp::URI::from_string(uri);
     std::string path;
     if(!parsed || parsed->to_path(path) || !path::is_absolute(path)) {
         return std::nullopt;
     }
-    return Spelling::absolute(path);
+    return path;
+}
+
+/// The file a `file:` URI names; nullopt for any other URI.
+inline auto to_path(llvm::StringRef uri) -> std::optional<Spelling> {
+    auto written = written_path(uri);
+    if(!written) {
+        return std::nullopt;
+    }
+    return Spelling::absolute(*written);
 }
 
 /// The LSP range of a site, and the location of its file, counted in

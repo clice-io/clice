@@ -16,11 +16,12 @@ std::string join(llvm::StringRef base, const Parts&... parts) {
     return joined;
 }
 
-/// Windows accepts either separator and either drive case; LSP clients
-/// (vscode-uri) key documents by the lowercase-drive, forward-slash
-/// spelling, so every path clice keeps or emits is spelled that way. On
-/// POSIX a path is its raw bytes — '\' and "C:" are ordinary filename
-/// characters — and canonicalization must not touch it.
+/// Windows accepts either separator and either drive case, so every path
+/// clice keeps is spelled one way, with forward slashes and the drive in
+/// lower case; only the documents and folders the client names keep its
+/// own case (FileTable::show_as, FileTable::spell_root). On POSIX a path
+/// is its raw bytes — '\' and "C:" are ordinary filename characters — and
+/// canonicalization must not touch it.
 inline void canonicalize(kotatsu::buffer_ref p) {
     path::to_slash(p);
     path::lowercase_drive(p);

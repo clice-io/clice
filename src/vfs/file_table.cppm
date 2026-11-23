@@ -116,12 +116,14 @@ struct FileTable {
     /// every folder.
     std::string display(CanonicalRef identity) const;
 
-    /// An open document names its file this way until it closes.
-    void show_as(Fid fid, llvm::StringRef spelling) {
-        shown[fid] = spelling.str();
+    /// An open document names its file this way until it closes: as the
+    /// client writes it, on Windows the drive letter in the client's case,
+    /// which display() gives back for the URIs the client is sent.
+    void show_as(Fid fid, llvm::StringRef path) {
+        shown[fid] = path.str();
     }
 
-    /// The spelling the file's open document was opened under, if one is.
+    /// The path the file's open document was opened under, if one is.
     std::optional<llvm::StringRef> shown_as(Fid fid) const {
         auto it = shown.find(fid);
         return it != shown.end() ? std::optional<llvm::StringRef>(it->second) : std::nullopt;
@@ -133,11 +135,12 @@ struct FileTable {
 
     /// Files under the workspace folder `root` show under this spelling of
     /// it, its `..` segments folded away while the folded path still names
-    /// the same directory.
-    void spell_root(const Spelling& root);
+    /// the same directory, its drive letter as `root` writes it: the
+    /// client's case, for the URIs the client is sent.
+    void spell_root(llvm::StringRef root);
 
-    /// Stop showing files under a spelling spell_root recorded.
-    void unspell_root(const Spelling& root);
+    /// Stop showing files under a root spell_root recorded.
+    void unspell_root(llvm::StringRef root);
 
     llvm::DenseMap<Fid, std::string> shown;
 
@@ -149,11 +152,13 @@ struct FileTable {
 
     /// A workspace folder spell_root recorded: its identity, the spelling
     /// it was opened under, `..` folded, and the one files under it show
-    /// under — the opened one while it names the folder.
+    /// under — the opened one while it names the folder — with the drive
+    /// letter of `written`: then the root spell_root was given.
     struct Folder {
         CanonicalPath identity;
         Spelling opened;
         Spelling shown;
+        std::string written;
     };
 
     llvm::SmallVector<Folder> folders;

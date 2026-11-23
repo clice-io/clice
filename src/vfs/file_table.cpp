@@ -13,6 +13,15 @@ Spelling fold(const Spelling& path) {
     return Spelling::absolute(text);
 }
 
+/// `path` with the drive letter of `written`, a path on the same drive, in
+/// its case: a spelling writes it in lower case.
+std::string with_drive_of(std::string path, llvm::StringRef written) {
+    if(path::root(written).prefix == path::Prefix::Drive) {
+        path[0] = written[0];
+    }
+    return path;
+}
+
 /// `path` in the workspace folder holding it, spelled the way the folder
 /// shows; none outside every folder.
 std::optional<std::string> in_folder(llvm::ArrayRef<FileTable::Folder> folders,
@@ -20,10 +29,10 @@ std::optional<std::string> in_folder(llvm::ArrayRef<FileTable::Folder> folders,
     for(auto& folder: folders) {
         if(path::is_within(path, llvm::StringRef(folder.identity))) {
             auto rest = path.drop_front(folder.identity.size()).ltrim('/');
-            return Spelling(rest, folder.shown).str();
+            return with_drive_of(Spelling(rest, folder.shown).str(), folder.written);
         }
         if(path::is_within(path, llvm::StringRef(folder.shown))) {
-            return path.str();
+            return with_drive_of(path.str(), folder.written);
         }
     }
     return std::nullopt;
@@ -119,15 +128,19 @@ std::string FileTable::display(CanonicalRef identity) const {
     return in_folder(folders, identity).value_or(identity.str());
 }
 
-void FileTable::spell_root(const Spelling& root) {
-    CanonicalPath identity(root);
-    auto opened = fold(root);
-    auto shown = CanonicalPath(opened) == identity ? opened : Spelling(identity);
-    folders.push_back({std::move(identity), std::move(opened), std::move(shown)});
+void FileTable::spell_root(llvm::StringRef root) {
+    auto spelled = Spelling::absolute(root);
+    CanonicalPath identity(spelled);
+    auto opened = fold(spelled);
+    bool names_folder = CanonicalPath(opened) == identity;
+    auto shown = names_folder ? opened : Spelling(identity);
+    auto written = names_folder ? root.str() : shown.str();
+    folders.push_back(
+        {std::move(identity), std::move(opened), std::move(shown), std::move(written)});
 }
 
-void FileTable::unspell_root(const Spelling& root) {
-    auto opened = fold(root);
+void FileTable::unspell_root(llvm::StringRef root) {
+    auto opened = fold(Spelling::absolute(root));
     folders.erase(
         ranges::remove_if(folders, [&](const Folder& folder) { return folder.opened == opened; })
             .begin(),
