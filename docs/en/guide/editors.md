@@ -37,7 +37,7 @@ Another C/C++ language extension running beside clice duplicates completion and 
 
 ### Neovim
 
-On Neovim 0.11 or later with [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) installed, enable clice:
+[Mason](https://github.com/mason-org/mason.nvim) installs clice with `:MasonInstall clice`. On Neovim 0.11 or later with [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) installed, enable clice:
 
 ```lua
 vim.lsp.enable('clice')

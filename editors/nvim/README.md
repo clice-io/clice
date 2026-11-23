@@ -10,7 +10,7 @@ Neovim 0.11 or later.
 vim.lsp.enable('clice')
 ```
 
-For this directory's config, without nvim-lspconfig or ahead of its copy, copy `lsp/clice.lua` into the `after/lsp/` directory of your config, which takes precedence over nvim-lspconfig's; or append this directory to `runtimepath`, which also dims inactive preprocessor branches (`plugin/clice.lua`). The config runs `clice` from `PATH`; to run another binary:
+For this directory's config, without nvim-lspconfig or ahead of its copy, copy `lsp/clice.lua` into the `after/lsp/` directory of your config, which takes precedence over nvim-lspconfig's; or append this directory to `runtimepath`, which also dims inactive preprocessor branches (`plugin/clice.lua`). The config runs `clice` from `PATH`, where [Mason](https://github.com/mason-org/mason.nvim) installs a release with `:MasonInstall clice`; to run another binary:
 
 ```lua
 vim.lsp.config('clice', { cmd = { '/path/to/clice', 'serve' } })

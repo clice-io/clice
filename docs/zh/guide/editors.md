@@ -37,7 +37,7 @@ clice 会向每条编译命令所用的编译器查询其编译配置（目标�
 
 ### Neovim
 
-在安装了 [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) 的 Neovim 0.11 或更高版本上，启用 clice：
+[Mason](https://github.com/mason-org/mason.nvim) 可以安装 clice：`:MasonInstall clice`。在安装了 [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) 的 Neovim 0.11 或更高版本上，启用 clice：
 
 ```lua
 vim.lsp.enable('clice')
