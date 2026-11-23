@@ -577,6 +577,26 @@ With `all_scopes`, also offer names declared, and macros defined, in headers the
 
 <div class="config-option">
 
+| Option            | Type              | Default |
+| ----------------- | ----------------- | ------- |
+| `angled_includes` | `array of string` | `[]`    |
+
+Glob patterns of the headers whose `#include`, added by completion or a code action, takes angle brackets, matched against the path written between them (`fmt/core.h`) with the syntax of a rule's `patterns`: `fmt/**` matches every header below `fmt/`. A header neither this nor `quoted_includes` matches takes quotes when found next to the file or through `-iquote` or `-I`, and angle brackets when found through `-isystem`, `-idirafter` or a framework directory; one an IWYU pragma names to include instead keeps the pragma's. A header found through the toolchain's own directories, the standard library's, always takes angle brackets. A pattern is followed even where its delimiters do not find the header: angle brackets do not search the file's own directory or `-iquote`.
+
+</div>
+
+<div class="config-option">
+
+| Option            | Type              | Default |
+| ----------------- | ----------------- | ------- |
+| `quoted_includes` | `array of string` | `[]`    |
+
+Glob patterns of the headers whose `#include`, added by completion or a code action, takes quotes, as `angled_includes` describes. A header both match takes quotes: `angled_includes = ["**"]` with `quoted_includes = ["myproj/**"]` gives every header angle brackets but the project's own.
+
+</div>
+
+<div class="config-option">
+
 | Option           | Type   | Default |
 | ---------------- | ------ | ------- |
 | `insert_imports` | `bool` | `true`  |

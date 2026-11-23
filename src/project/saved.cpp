@@ -733,7 +733,8 @@ std::string Project::serialize_precompiled_records() {
 
     for(auto& e: pchs) {
         auto& st = e.second;
-        if(st.path.empty())
+        // One a save asked to look again builds again after a restart too.
+        if(st.path.empty() || st.saves_built != st.saves)
             continue;
         SavedPCH entry;
         entry.key = e.getKey().str();

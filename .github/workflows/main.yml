@@ -80,7 +80,6 @@ jobs:
               - 'unittests/**'
               - 'tools/**'
               - 'config/**'
-              - 'scripts/**'
               - 'editors/nvim/**'
               - 'editors/vscode/**'
               - 'editors/zed/**'

@@ -206,7 +206,7 @@ function entries(project: Project, units: Record<string, UnitArgs>, root: string
 
 /// Every unit of the project with its own arguments: those it lists, or
 /// every C-family source of the copy.
-function projectUnits(project: Project, files: readonly string[]): Record<string, UnitArgs> {
+export function projectUnits(project: Project, files: readonly string[]): Record<string, UnitArgs> {
     if (project.units !== undefined) {
         return project.units;
     }
@@ -246,6 +246,21 @@ export function writeDatabases(project: Project, files: readonly string[], root:
 /// under such a root.
 export function copyRoot(prefix: string): string {
     return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}é中😀-`)));
+}
+
+/// Remove copies once no process of their test runs; returns what failed.
+/// Not `fs.rmSync`: on Windows, over a directory a process still holds and
+/// a name past ASCII, it ends the calling process at once (exit 127,
+/// nothing printed), where this fails with EBUSY. Hang detection: the
+/// retries, 100 ms apart and 100 ms more each time, span a minute, for the
+/// workers of a server killed to end, which no event announces.
+export async function removeCopies(...roots: string[]): Promise<Error[]> {
+    const removed = await Promise.allSettled(
+        roots.map((root) => fs.promises.rm(root, { recursive: true, force: true, maxRetries: 35 })),
+    );
+    return removed.flatMap((result) =>
+        result.status === "rejected" ? [result.reason as Error] : [],
+    );
 }
 
 /// Copy the inputs of `dir` to `root`: markers stripped, `*.in` with

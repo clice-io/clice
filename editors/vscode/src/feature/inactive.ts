@@ -112,6 +112,8 @@ export function registerInactiveRegions(
         token: vscode.CancellationToken,
         next: DocumentSemanticsTokensEditsSignature,
     ) => Promise<vscode.SemanticTokens | vscode.SemanticTokensEdits | null | undefined>;
+    /// Undims every document, as a stopped server leaves them.
+    clear: () => void;
 } {
     // LIMITATION: with semantic highlighting off
     // (`editor.semanticHighlighting.enabled: false`), VS Code pulls no tokens,
@@ -234,6 +236,11 @@ export function registerInactiveRegions(
                 }
             }
             return reply ?? undefined;
+        },
+        clear: () => {
+            byUri.clear();
+            streams.clear();
+            vscode.window.visibleTextEditors.forEach(apply);
         },
     };
 }

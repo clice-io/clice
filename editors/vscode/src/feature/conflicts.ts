@@ -1,20 +1,37 @@
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
+import { enabled, workspaceTarget } from "../setting";
 
-/// Write to user scope and clear any workspace or folder override:
-/// those scopes outrank global settings, so a repository shipping the
-/// setting in .vscode/settings.json would silently win otherwise.
-async function overrideSetting(section: string, key: string, value: unknown) {
-    const config = vscode.workspace.getConfiguration(section);
-    await config.update(key, value, vscode.ConfigurationTarget.Global);
-    if (config.inspect(key)?.workspaceValue !== undefined) {
-        await config.update(key, undefined, vscode.ConfigurationTarget.Workspace);
-    }
+/// The setting turning an extension's language features off.
+interface Toggle {
+    section: string;
+    key: string;
+    off: unknown;
+    enables: (value: unknown) => boolean;
+}
+
+/// Whether the features are on in a folder of the window, or in the window
+/// when it has none: a folder's own value of a resource setting outranks the
+/// workspace's.
+function featuresOn(toggle: Toggle): boolean {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const scopes = folders.length === 0 ? [undefined] : folders.map((folder) => folder.uri);
+    return scopes.some((scope) =>
+        toggle.enables(vscode.workspace.getConfiguration(toggle.section, scope).get(toggle.key)),
+    );
+}
+
+/// Off in this workspace alone, its folders' own values included: the user's
+/// settings and other workspaces' keep their choice.
+async function turnOff(toggle: Toggle) {
+    await vscode.workspace
+        .getConfiguration(toggle.section)
+        .update(toggle.key, toggle.off, workspaceTarget());
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
-        const scoped = vscode.workspace.getConfiguration(section, folder.uri);
-        if (scoped.inspect(key)?.workspaceFolderValue !== undefined) {
-            await scoped.update(key, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+        const scoped = vscode.workspace.getConfiguration(toggle.section, folder.uri);
+        if (toggle.enables(scoped.get(toggle.key))) {
+            await scoped.update(toggle.key, toggle.off, vscode.ConfigurationTarget.WorkspaceFolder);
         }
     }
 }
@@ -22,45 +39,37 @@ async function overrideSetting(section: string, key: string, value: unknown) {
 interface ConflictingExtension {
     id: string;
     name: string;
-    /// Whether the installed extension currently has its language features
-    /// on; an installed-but-neutered one (cpptools with IntelliSense
-    /// disabled, kept for its debugger) coexists fine.
-    conflicts: () => boolean;
-    /// Turn the extension's language features off, or undefined when it
-    /// has no such setting and must be disabled from the Extensions view.
-    disable?: () => Thenable<unknown>;
+    /// Undefined when the extension has no such setting and must be disabled
+    /// from the Extensions view. An installed one with its language features
+    /// off (cpptools with IntelliSense disabled, kept for its debugger)
+    /// coexists fine.
+    toggle?: Toggle;
 }
 
 const known: ConflictingExtension[] = [
     {
         id: "ms-vscode.cpptools",
         name: "C/C++ (cpptools)",
-        // intelliSenseEngine is resource-scoped, so what cpptools serves
-        // here is the per-folder effective value; the unscoped value only
-        // matters when no folder is open.
-        conflicts: () => {
-            const enabled = (config: vscode.WorkspaceConfiguration) =>
-                config.get<string>("intelliSenseEngine", "default").toLowerCase() !== "disabled";
-            const folders = vscode.workspace.workspaceFolders ?? [];
-            if (folders.length === 0) {
-                return enabled(vscode.workspace.getConfiguration("C_Cpp"));
-            }
-            return folders.some((folder) =>
-                enabled(vscode.workspace.getConfiguration("C_Cpp", folder.uri)),
-            );
+        toggle: {
+            section: "C_Cpp",
+            key: "intelliSenseEngine",
+            off: "disabled",
+            enables: (value) => typeof value !== "string" || value.toLowerCase() !== "disabled",
         },
-        disable: () => overrideSetting("C_Cpp", "intelliSenseEngine", "disabled"),
     },
     {
         id: "llvm-vs-code-extensions.vscode-clangd",
         name: "clangd",
-        conflicts: () => vscode.workspace.getConfiguration("clangd").get<boolean>("enable", true),
-        disable: () => overrideSetting("clangd", "enable", false),
+        toggle: {
+            section: "clangd",
+            key: "enable",
+            off: false,
+            enables: (value) => value !== false,
+        },
     },
     {
         id: "ccls-project.ccls",
         name: "ccls",
-        conflicts: () => true,
     },
 ];
 
@@ -68,74 +77,104 @@ const ignoreKey = "ignoreConflictingExtensions";
 
 /// Other C/C++ language extensions running next to clice produce duplicate
 /// completion, hover and diagnostics. Detect the known ones and offer to
-/// turn their language features off, the way clangd handles cpptools.
-/// vscode.extensions only surfaces enabled extensions, so a hit means
-/// installed and enabled; there is no API to disable an extension, hence
-/// the settings-level switches.
+/// turn their language features off in this workspace. vscode.extensions
+/// only surfaces enabled extensions, so a hit means installed and enabled;
+/// there is no API to disable an extension, hence the settings that turn
+/// their language features off.
 export function registerConflictCheck(client: ClientHandle, ext: vscode.ExtensionContext) {
-    let prompting = false;
+    /// The extensions warned about in this window. A warning the user
+    /// dismissed is not repeated, as clice restarts or as the extension's
+    /// setting turns its features off and on again; one installed or enabled
+    /// again once gone is news.
+    const warned = new Set<string>();
 
     async function check() {
-        // Only nag while clice itself is up: disabling the working provider
-        // when clice cannot start would leave no language service at all.
-        if (prompting || !client.isRunning() || ext.globalState.get<boolean>(ignoreKey)) {
+        // Only nag while clice itself is up, and stays up: disabling the
+        // working provider when clice cannot start, or was turned off while
+        // starting, would leave no language service at all.
+        if (!client.isRunning() || !enabled() || ext.globalState.get<boolean>(ignoreKey)) {
             return;
         }
         const found = known.filter(
-            (candidate) => vscode.extensions.getExtension(candidate.id) && candidate.conflicts(),
+            (candidate) =>
+                vscode.extensions.getExtension(candidate.id) &&
+                (!candidate.toggle || featuresOn(candidate.toggle)),
         );
-        if (found.length === 0) {
+        for (const id of warned) {
+            if (!vscode.extensions.getExtension(id)) {
+                warned.delete(id);
+            }
+        }
+        const fresh = found.filter((candidate) => !warned.has(candidate.id));
+        if (fresh.length === 0) {
             return;
         }
-        prompting = true;
-        try {
-            const names = found.map((candidate) => candidate.name).join(", ");
-            const choice = await vscode.window.showWarningMessage(
-                `clice provides the C/C++ language features, and running ${names} alongside ` +
-                    "it duplicates completion and diagnostics. Disable the conflicting " +
-                    "language features?",
-                "Disable",
-                "Never ask again",
-            );
-            if (choice === "Never ask again") {
-                await ext.globalState.update(ignoreKey, true);
-                return;
-            }
-            if (choice !== "Disable") {
-                return;
-            }
-            let disabled = false;
-            for (const candidate of found) {
-                if (candidate.disable) {
-                    await candidate.disable();
+        for (const candidate of fresh) {
+            warned.add(candidate.id);
+        }
+        const names = fresh.map((candidate) => candidate.name).join(", ");
+        // A window without a workspace has only the user's settings, which
+        // turn them off in every workspace.
+        const inWorkspace = workspaceTarget() === vscode.ConfigurationTarget.Workspace;
+        const disable = inWorkspace ? "Disable in Workspace" : "Disable in User Settings";
+        const choice = await vscode.window.showWarningMessage(
+            `clice provides the C/C++ language features, and running ${names} alongside ` +
+                "it duplicates completion and diagnostics. Disable the conflicting " +
+                "language features?",
+            disable,
+            "Never ask again",
+        );
+        if (choice === "Never ask again") {
+            await ext.globalState.update(ignoreKey, true);
+            return;
+        }
+        // Turned off while the warning was up, clice leaves the others to
+        // serve.
+        if (choice !== disable || !enabled()) {
+            return;
+        }
+        let disabled = false;
+        for (const candidate of fresh) {
+            if (candidate.toggle) {
+                try {
+                    await turnOff(candidate.toggle);
                     disabled = true;
-                } else {
-                    await vscode.commands.executeCommand(
-                        "workbench.extensions.search",
-                        `@installed ${candidate.name}`,
-                    );
-                    void vscode.window.showInformationMessage(
-                        `clice: ${candidate.name} has no setting to turn its language ` +
-                            "features off — disable the extension itself from the opened " +
-                            "Extensions view.",
+                } catch (error) {
+                    // A settings file VS Code cannot edit; the next check
+                    // asks again.
+                    warned.delete(candidate.id);
+                    const message = error instanceof Error ? error.message : String(error);
+                    void vscode.window.showErrorMessage(
+                        `clice: cannot turn ${candidate.name} off: ${message}`,
                     );
                 }
-            }
-            if (disabled) {
-                // A conflicting server that already activated keeps serving
-                // until the window reloads; the settings only stop the next
-                // activation.
-                const reload = await vscode.window.showInformationMessage(
-                    "clice: conflicting language features disabled — reload the window to " +
-                        "fully apply.",
-                    "Reload Window",
+            } else {
+                await vscode.commands.executeCommand(
+                    "workbench.extensions.search",
+                    `@installed ${candidate.name}`,
                 );
-                if (reload === "Reload Window") {
-                    await vscode.commands.executeCommand("workbench.action.reloadWindow");
-                }
+                // The view's Disable disables it in every workspace.
+                void vscode.window.showInformationMessage(
+                    `clice: ${candidate.name} has no setting to turn its language ` +
+                        "features off — disable the extension itself from the opened " +
+                        (inWorkspace
+                            ? "Extensions view, with Disable (Workspace)."
+                            : "Extensions view."),
+                );
             }
-        } finally {
-            prompting = false;
+        }
+        if (disabled) {
+            // A conflicting server that already activated keeps serving
+            // until the window reloads; the settings only stop the next
+            // activation.
+            const reload = await vscode.window.showInformationMessage(
+                "clice: conflicting language features disabled — reload the window to " +
+                    "fully apply.",
+                "Reload Window",
+            );
+            if (reload === "Reload Window") {
+                await vscode.commands.executeCommand("workbench.action.reloadWindow");
+            }
         }
     }
 

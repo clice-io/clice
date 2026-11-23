@@ -70,7 +70,7 @@ tests/diagnostics/templates/01_instantiation_errors
 
 ## 附注
 
-clang 附在错误上的附注会作为相关信息随错误一起传递；不支持相关信息的客户端则会在诊断消息正文中看到这些附注。
+clang 附在错误上的附注会作为相关信息随错误一起传递；不支持相关信息的客户端则会在诊断消息正文中看到这些附注。clang 未给出位置的附注，例如它拒绝某个编译选项或不加载某个预编译头文件时附带的附注，对所有客户端都会出现在诊断消息正文中。
 
 <!-- BEGIN GENERATED ITEMS: diagnostics/notes -->
 

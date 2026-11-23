@@ -28,5 +28,5 @@ test(async (t) => {
             : [],
     );
     expect(versions).toEqual([1]);
-    await t.show("actions", s.codeActions(t.marker("size")));
+    await t.show("actions", s.codeActions(t.marker("size"), { only: ["refactor.rewrite.define"] }));
 });

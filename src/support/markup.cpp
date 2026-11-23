@@ -162,7 +162,7 @@ bool needs_leading_escape(char c, llvm::StringRef before, llvm::StringRef after,
 /// any of the markdown constructs.
 std::string render_text(llvm::StringRef input, bool starts_line) {
     std::string result;
-    for(unsigned i = 0; i < input.size(); ++i) {
+    for(unsigned i = 0; i < input.size(); i += 1) {
         if(needs_leading_escape(input[i], input.substr(0, i), input.substr(i + 1), starts_line)) {
             result.push_back('\\');
         }
@@ -257,7 +257,7 @@ std::string get_marker_for_code_block(llvm::StringRef input) {
     unsigned backticks = 0;
     for(char c: input) {
         if(c == '`') {
-            ++backticks;
+            backticks += 1;
             continue;
         }
         max_backticks = std::max(max_backticks, backticks);

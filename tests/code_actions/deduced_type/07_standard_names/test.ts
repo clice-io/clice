@@ -4,6 +4,9 @@ import { answers } from "@clice/tools/testing";
 // server compiles that header into its preamble, clice inspect does not.
 answers(async (a) => {
     for (const m of a.markers()) {
-        await a.show(m.name, a.codeActions(m, { compile: true }));
+        await a.show(
+            m.name,
+            a.codeActions(m, { only: ["refactor.rewrite.expandDeducedType"], compile: true }),
+        );
     }
 });

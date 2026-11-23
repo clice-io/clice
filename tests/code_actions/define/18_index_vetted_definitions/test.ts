@@ -12,7 +12,10 @@ answers(
     },
     async (a) => {
         for (const m of a.markers()) {
-            await a.show(m.name, a.codeActions(m, { compile: true }));
+            await a.show(
+                m.name,
+                a.codeActions(m, { only: ["refactor.rewrite.define"], compile: true }),
+            );
         }
     },
 );
@@ -36,5 +39,8 @@ test("host compiles", async (t) => {
 test("no index", async (t) => {
     const s = await t.start({ lastRule: { background_index: false } });
     await s.diagnostics("widget.h");
-    await t.show("defined_elsewhere", s.codeActions(t.marker("defined_elsewhere")));
+    await t.show(
+        "defined_elsewhere",
+        s.codeActions(t.marker("defined_elsewhere"), { only: ["refactor.rewrite.define"] }),
+    );
 });

@@ -52,16 +52,3 @@ compiles = true
 +    void advance() override;
  };
 '''
-
-[[answers.access_sections.code_actions]]
-kind = "refactor.rewrite.generateMemberwiseConstructor"
-title = "Generate a memberwise constructor for 'Pipeline'"
-compiles = true
-
-[answers.access_sections.code_actions.edits]
-"main.cpp" = '''
- struct Pipeline : Stage {
-     int state;
-+    explicit Pipeline(int state) : state(state) {}
- };
-'''

@@ -83,7 +83,8 @@ public:
 
     [[nodiscard]] Connection connect(std::function<void(Args...)> handler) {
         assert(!state->emitting && "connect during emit is not allowed");
-        auto id = state->next_id++;
+        auto id = state->next_id;
+        state->next_id += 1;
         state->slots.push_back(Slot{id, std::move(handler)});
         return Connection(state, id);
     }

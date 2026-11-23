@@ -70,6 +70,14 @@ function asError(error: unknown): Error {
     return error instanceof Error ? error : new Error(String(error));
 }
 
+/// Name a failed test with its steps on stderr, before its teardown: the
+/// runner reports a test, and the lines it logged, once it ends, and a
+/// teardown that kills the runner's worker loses both.
+export function announceFailure(test: string, error: unknown, steps?: StepRecord): void {
+    const record = steps === undefined ? "" : `steps:\n${steps.render()}\n`;
+    process.stderr.write(`${test} failed: ${asError(error).message}\n${record}`);
+}
+
 /// The end of a test: the script's own failure, what teardown found then
 /// printed after it; else every teardown failure at once.
 export function throwFailures(

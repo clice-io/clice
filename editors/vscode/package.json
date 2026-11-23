@@ -90,6 +90,12 @@
       "type": "object",
       "title": "clice",
       "properties": {
+        "clice.enable": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "markdownDescription": "Whether clice runs in this window. With `false` the extension starts no server, and its commands say clice is disabled. Set it to `false` in a workspace's settings to leave that workspace to another C/C++ extension, or in the user settings and to `true` in the workspaces clice serves. A change applies at once. One server serves the whole window: a multi-root workspace takes the value of its `.code-workspace` file, not of a folder's settings."
+        },
         "clice.executable": {
           "type": "string",
           "default": "",
@@ -216,6 +222,11 @@
         "category": "clice"
       },
       {
+        "command": "clice.refactor.rewrite.declareSpecialMembers",
+        "title": "Declare Special Members",
+        "category": "clice"
+      },
+      {
         "command": "clice.refactor.rewrite.populateSwitch",
         "title": "Add Missing Enum Cases to Switch",
         "category": "clice"
@@ -250,7 +261,7 @@
       {
         "command": "clice.switchSourceHeader",
         "key": "alt+o",
-        "when": "editorTextFocus && editorLangId in clice.languages"
+        "when": "editorTextFocus && editorLangId in clice.languages && config.clice.enable"
       }
     ],
     "semanticTokenTypes": [
@@ -1108,6 +1119,10 @@
           "when": "editorLangId in clice.languages"
         },
         {
+          "command": "clice.refactor.rewrite.declareSpecialMembers",
+          "when": "editorLangId in clice.languages"
+        },
+        {
           "command": "clice.refactor.rewrite.populateSwitch",
           "when": "editorLangId in clice.languages"
         },
@@ -1135,22 +1150,22 @@
       "editor/context": [
         {
           "command": "clice.switchSourceHeader",
-          "when": "editorLangId in clice.languages",
+          "when": "editorLangId in clice.languages && config.clice.enable",
           "group": "0_clice@1"
         },
         {
           "command": "clice.switchContext",
-          "when": "editorLangId in clice.languages && clice.contextChoices",
+          "when": "editorLangId in clice.languages && config.clice.enable && clice.contextChoices",
           "group": "0_clice@2"
         },
         {
           "command": "clice.switchConfiguration",
-          "when": "editorLangId in clice.languages && clice.configurations",
+          "when": "editorLangId in clice.languages && config.clice.enable && clice.configurations",
           "group": "0_clice@3"
         },
         {
           "command": "clice.showCompileCommand",
-          "when": "editorLangId in clice.languages",
+          "when": "editorLangId in clice.languages && config.clice.enable",
           "group": "0_clice@4"
         }
       ],

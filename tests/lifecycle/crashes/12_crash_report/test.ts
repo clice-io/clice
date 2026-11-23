@@ -6,7 +6,7 @@ import { test, type TestContext, type WorkerFault } from "@clice/tools/testing";
 // names the request it ran, which the anomaly reaches the editor's log with;
 // the worker ends as the crash would have ended it; and the crashed worker's
 // own log holds a backtrace with what offline symbolization
-// (scripts/symbolize.py) needs, the version and target line and each frame's
+// (tools/release/symbolize.ts) needs, the version and target line and each frame's
 // module with its load base, from the frame the crash interrupted, which
 // the master's log quotes so that log alone tells how the worker died.
 

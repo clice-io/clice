@@ -1,0 +1,51 @@
+[[default.user_header.code_actions]]
+kind = "quickfix"
+title = 'Add #include "widgets/button.h"'
+compiles = false
+errors = ["use of undeclared identifier 'acme_format'"]
+
+[default.user_header.code_actions.edits]
+"src/main.cpp" = '''
++#include "widgets/button.h"
+ int main() {
+     return button_width() + acme_format();
+'''
+
+[[default.system_header.code_actions]]
+kind = "quickfix"
+title = "Add #include <acme/format.h>"
+compiles = false
+errors = ["use of undeclared identifier 'button_width'"]
+
+[default.system_header.code_actions.edits]
+"src/main.cpp" = '''
++#include <acme/format.h>
+ int main() {
+     return button_width() + acme_format();
+'''
+
+[[configured.user_header.code_actions]]
+kind = "quickfix"
+title = "Add #include <widgets/button.h>"
+compiles = false
+errors = ["use of undeclared identifier 'acme_format'"]
+
+[configured.user_header.code_actions.edits]
+"src/main.cpp" = '''
++#include <widgets/button.h>
+ int main() {
+     return button_width() + acme_format();
+'''
+
+[[configured.system_header.code_actions]]
+kind = "quickfix"
+title = 'Add #include "acme/format.h"'
+compiles = false
+errors = ["use of undeclared identifier 'button_width'"]
+
+[configured.system_header.code_actions.edits]
+"src/main.cpp" = '''
++#include "acme/format.h"
+ int main() {
+     return button_width() + acme_format();
+'''

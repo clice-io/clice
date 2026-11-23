@@ -37,21 +37,17 @@ editor = ["editor", "node"]
 #                                  DEPENDENCIES                                  #
 # ============================================================================== #
 [feature.build.dependencies]
-python = ">=3.13"
 # Bazel is npm's bazelisk (package.json), which runs the release of
 # .bazelversion; bazel/workspace_status.mjs runs on it too.
 nodejs = ">=24"
-# The LLVM tools the artifact checks run (scripts/check_artifact_deps.py), of
+# The LLVM tools the package checks run (tools/release/system_libraries.ts), of
 # the xclang release MODULE.bazel builds with.
 xclang = "==23.1.5.2"
 
 # nodejs bundles npm on every platform including win-arm64. Floor 24: the tools
 # run as bare .ts (type stripping, default since node 23.6) and the
-# cache tests use JSON.rawJSON (21+). python remains only for
-# scripts/symbolize.py; the scripts/ tools are not part of the TS
-# migration.
+# cache tests use JSON.rawJSON (21+).
 [feature.test.dependencies]
-python = ">=3.13"
 nodejs = ">=24"
 # `clice format` runs the clang-format found in PATH; the format cases
 # drive it on real files.
@@ -61,7 +57,7 @@ cmake = ">=3.30"
 ninja = "*"
 
 [feature.test.target.linux-64.dependencies]
-# scripts/symbolize.py reads the release's GSYM with llvm-gsymutil, here
+# tools/release/symbolize.ts reads the release's GSYM with llvm-gsymutil, here
 # xclang's.
 xclang = "==23.1.5.2"
 
@@ -113,10 +109,10 @@ llvm-tools = "==23.1.5"
 # don't have. The activation script points DYLD_LIBRARY_PATH at this
 # env's copy instead.
 [feature.test.target.osx-64.activation]
-scripts = ["scripts/activate_asan_macos.sh"]
+scripts = ["bazel/activate_asan_macos.sh"]
 
 [feature.test.target.osx-arm64.activation]
-scripts = ["scripts/activate_asan_macos.sh"]
+scripts = ["bazel/activate_asan_macos.sh"]
 
 # ============================================================================== #
 #                                   BAZEL                                        #
@@ -130,10 +126,10 @@ cmd = "npx bazel build --config={{ type }} //:dist"
 depends-on = ["install-tests"]
 
 [feature.build.tasks.check-layers]
-cmd = "python3 scripts/check_layers.py"
+cmd = "node tools/precheck/layers.ts"
 
 [feature.build.tasks.check-timers]
-cmd = "python3 scripts/check_timers.py"
+cmd = "node tools/precheck/timers.ts"
 
 # Workspace-level (default feature) so every environment can run them —
 # the lint job uses the bare `node` env, local runs use `default`.
@@ -156,7 +152,7 @@ cmd = "node tools/docs/translations.ts report"
 cmd = "node tools/docs/translations.ts record"
 
 [tasks.docs-review]
-cmd = "node tools/docs/translations.ts review --glossary=.claude/skills/translate-docs/SKILL.md"
+cmd = "node tools/docs/translations.ts review --glossary=.claude/skills/write-docs/glossary.md"
 
 # One test at a time: many start workers and compilers of their own, and
 # running them side by side is not vetted for resource contention.
@@ -337,7 +333,6 @@ outputs = ["node_modules/.package-lock.json"]
 platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 
 [feature.format.dependencies]
-ruff = "*"
 tombi = "==1.8.5"
 stylua = "*"
 fd-find = "*"
@@ -346,20 +341,18 @@ clang-format = "==23.1.1"
 
 [feature.format.tasks]
 format-cpp = "fd -H -e cpp -e h -e cc -e hpp -e cppm -X clang-format -i"
-format-python = "ruff format ."
 format-lua = "stylua ."
 format-web = "fd -H -e js -e mjs -e ts -e css -X prettier --write"
 format-markdown = "fd -H -e md -X prettier --write"
 format-json = "fd -H -e json -E package-lock.json -E clice-config.schema.json -X prettier --write"
 format-toml = "fd -H -e toml -X tombi format"
 format-yaml = """
-fd -H -e yaml -e yml -E '*.snap.yml' -X prettier --write && \
+fd -H -e yaml -e yml -X prettier --write && \
 fd -H "^\\.clang-(format|tidy)$" -X prettier --write --parser yaml
 """
 format = {
     depends-on = [
         "format-cpp",
-        "format-python",
         "format-lua",
         "format-web",
         "format-markdown",
@@ -376,15 +369,6 @@ format-web = "fd -H -e js -e mjs -e ts -e css -X prettier.bat --write"
 format-markdown = "fd -H -e md -X prettier.bat --write"
 format-json = "fd -H -e json -E package-lock.json -E clice-config.schema.json -X prettier.bat --write"
 format-yaml = """
-fd -H -e yaml -e yml -E '*.snap.yml' -X prettier.bat --write && \
+fd -H -e yaml -e yml -X prettier.bat --write && \
 fd -H "^\\.clang-(format|tidy)$" -X prettier.bat --write --parser yaml
 """
-
-# ============================================================================== #
-#                                     LINT                                       #
-# ============================================================================== #
-[feature.format.tasks.lint-python]
-cmd = "ruff check ."
-
-[feature.build.tasks.lint]
-depends-on = ["lint-python"]

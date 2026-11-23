@@ -260,6 +260,16 @@ private:
             }
         }
         auto diagnostic = convert(level, raw);
+        // A preamble's PCH compiles the focus file's text up to the last
+        // token of its last directive, whose end clang takes for the file's,
+        // missing its final newline: the parse past the preamble reaches the
+        // file's real end.
+        if(unit.kind() == CompilationKind::Preamble &&
+           raw.getID() == clang::diag::warn_no_newline_eof &&
+           unit.focus_file().contains(diagnostic.fid)) {
+            owner.reset();
+            return;
+        }
         if(editor) {
             editor->adjust_diag(diagnostic);
         }

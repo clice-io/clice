@@ -14,10 +14,11 @@ import {
     StreamInfo,
 } from "vscode-languageclient/node";
 import { ClientHandle } from "./client";
+import { registerCommand } from "./commands";
 import { LANGUAGES } from "./languages";
 import { serverOutput, TraceChannel } from "./log";
 import { exitsWithin, retire } from "./process";
-import { getSetting, Setting, variable, workspaceDirectory } from "./setting";
+import { enabled, getSetting, Setting, variable, workspaceDirectory } from "./setting";
 import { registerAliasRedirect } from "./feature/aliases";
 import { registerCompileCommand } from "./feature/command";
 import { registerBuildConfiguration } from "./feature/configuration";
@@ -83,14 +84,33 @@ let pendingSocket: net.Socket | undefined;
 /// client mid-session and the successor must still wait for this exit.
 let child: cp.ChildProcess | undefined;
 
+/// Resolves once the server spawned last has exited. The LSP exit already
+/// told it to quit; the library tracks and kills only processes it spawned
+/// itself.
+async function retireChild(log: (line: string) => void): Promise<void> {
+    if (!child) {
+        return;
+    }
+    const previous = child;
+    await window.withProgress(
+        {
+            location: vscode.ProgressLocation.Window,
+            title: "clice: waiting for the previous server to exit",
+        },
+        () => retire(previous, { exit: 10_000, term: 5_000 }, log),
+    );
+}
+
 /// Set by deactivate: the extension host is going away, and a server
 /// started now would outlive it.
 let deactivating = false;
 
-function refuseWhenDeactivating(socket?: net.Socket): void {
-    if (deactivating) {
+/// Every start passes here, the client library's own restarts after a crash
+/// included: none while clice.enable is off.
+function refuseToStart(socket?: net.Socket): void {
+    if (deactivating || !enabled()) {
         socket?.destroy();
-        throw new Error("clice is shutting down");
+        throw new Error(deactivating ? "clice is shutting down" : "clice is disabled");
     }
 }
 
@@ -103,7 +123,7 @@ function makeServerOptions(
     channel: vscode.OutputChannel,
 ): ServerOptions {
     return async (): Promise<StreamInfo | cp.ChildProcess> => {
-        refuseWhenDeactivating();
+        refuseToStart();
         const setting = getSetting();
         if (setting.mode === "socket") {
             const socket = pendingSocket;
@@ -113,29 +133,17 @@ function makeServerOptions(
             }
             // Library-initiated restart after a crash: no validation ran.
             const fresh = await connectSocket(setting.host, setting.port);
-            refuseWhenDeactivating(fresh);
+            refuseToStart(fresh);
             return { reader: fresh, writer: fresh };
         }
         const executable = setting.executable ?? bundledExecutable(context);
         if (!executable) {
             throw new Error("no clice executable available");
         }
-        if (child) {
-            // The LSP exit already told the old server to quit; the
-            // library tracks and kills only processes it spawned itself.
-            const previous = child;
-            await window.withProgress(
-                {
-                    location: vscode.ProgressLocation.Window,
-                    title: "clice: waiting for the previous server to exit",
-                },
-                () =>
-                    retire(previous, { exit: 10_000, term: 5_000 }, (line) => {
-                        channel.appendLine(line);
-                    }),
-            );
-        }
-        refuseWhenDeactivating();
+        await retireChild((line) => {
+            channel.appendLine(line);
+        });
+        refuseToStart();
         child = cp.spawn(executable, ["serve"], { cwd: workspaceDirectory(), env: setting.env });
         child.on("error", (error) => {
             channel.appendLine(`clice spawn failed: ${error.message}`);
@@ -223,9 +231,10 @@ function takeQueuedRestart(): boolean {
     return queued;
 }
 
-// Start, or restart when running. Serves initial activation, the restart
-// command, and the settings-changed prompt alike, so a user can always
-// recover from a bad configuration without reloading the window.
+// Start, or restart when running, and stop while clice.enable is off. Serves
+// initial activation, the restart command, the settings-changed prompt and
+// clice.enable alike, so a user can always recover from a bad configuration
+// without reloading the window.
 async function startServer(context: ExtensionContext): Promise<void> {
     if (!client) {
         return;
@@ -239,7 +248,17 @@ async function startServer(context: ExtensionContext): Promise<void> {
         do {
             // Stop before validating: the LSP shutdown tells the server to
             // exit (in socket mode that is the user's external server), so
-            // validation must look at what is reachable afterwards.
+            // validation must look at what is reachable afterwards. A
+            // library-initiated restart after a crash may still be starting:
+            // renewing under it would leave it running unsupervised, so it
+            // is joined and stopped too.
+            try {
+                if (client.current.state === State.Starting) {
+                    await client.current.start();
+                }
+            } catch {
+                // A start that fails leaves nothing to stop.
+            }
             try {
                 if (client.isRunning()) {
                     await client.current.stop();
@@ -247,17 +266,20 @@ async function startServer(context: ExtensionContext): Promise<void> {
             } catch {
                 // Stopping a hung server times out; start fresh regardless.
             }
+            if (!enabled()) {
+                // No successor's spawn retires one that ignored the stop.
+                const channel = client.current.outputChannel;
+                await retireChild((line) => {
+                    channel.appendLine(line);
+                });
+                continue;
+            }
             const problem = await validateSettings(context);
             if (problem) {
                 void window.showErrorMessage(`clice: ${problem}`);
                 continue;
             }
-            // A library-initiated restart may still be starting; renewing
-            // under it would leave that attempt running unsupervised, so
-            // join it instead — start() below returns its promise.
-            if (client.current.state !== State.Starting) {
-                client.renew();
-            }
+            client.renew();
             try {
                 await client.current.start();
             } catch (error) {
@@ -295,6 +317,10 @@ const restartFeature: StaticFeature = {
     clear: () => undefined,
 };
 
+/// The value of clice.enable the server follows. VS Code also reports a change
+/// in a scope another outranks, which changes nothing.
+let following = true;
+
 /// Set while a restart is offered: a change before the user answers joins
 /// the offer instead of stacking another one, as saving on every pause would.
 let offering = false;
@@ -318,6 +344,15 @@ async function onSettingsChanged(
     event: vscode.ConfigurationChangeEvent,
     context: ExtensionContext,
 ) {
+    if (event.affectsConfiguration("clice.enable") && enabled() !== following) {
+        following = enabled();
+        // Restarted on the settings as they are now, the launch settings too.
+        await startServer(context);
+        return;
+    }
+    if (!enabled()) {
+        return;
+    }
     const launchSettings = [
         "clice.executable",
         "clice.mode",
@@ -402,9 +437,14 @@ export async function activate(context: ExtensionContext) {
     });
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("clice.restart", () => startServer(context)),
+        registerCommand("clice.restart", () => startServer(context)),
         vscode.workspace.onDidChangeConfiguration((event) => {
             void onSettingsChanged(event, context);
+        }),
+        client.onDidChangeState((event) => {
+            if (event.newState === State.Stopped) {
+                inactive.clear();
+            }
         }),
     );
 
@@ -416,6 +456,7 @@ export async function activate(context: ExtensionContext) {
     registerAliasRedirect(context);
     registerRefactorCommands(context);
 
+    following = enabled();
     await startServer(context);
 
     // Exposed for E2E tests to exercise custom requests directly.

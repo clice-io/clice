@@ -142,8 +142,8 @@ struct KeyTable {
     }
 };
 
-// Decoded symbol hashes, like resolution hashes and producer units, key
-// DenseMaps (reserved_key).
+// Decoded symbol hashes, like resolution hashes and producer units, hold no
+// reserved value (reserved_key).
 CheckResult symbols_ok(const Root& root) {
     auto& hashes = root.symbol_hashes;
     if(!strictly_ascending(hashes)) {
