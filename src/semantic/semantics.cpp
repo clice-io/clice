@@ -259,10 +259,16 @@ public:
             return true;
         }
 
-        // The instance variable a property synthesizes is declared by no
-        // code: an @synthesize naming it holds the name.
+        // What a property synthesizes is declared by no code: the instance
+        // variable, whose name an @synthesize holds, and the accessors it
+        // declares in the @implementation, at the places of the declaration
+        // they copy; an @synthesize written defines them in the index.
         if(auto* ivar = llvm::dyn_cast_if_present<clang::ObjCIvarDecl>(X);
            ivar && ivar->getSynthesize()) {
+            return true;
+        }
+        if(auto* method = llvm::dyn_cast_if_present<clang::ObjCMethodDecl>(X);
+           method && method->isSynthesizedAccessorStub()) {
             return true;
         }
 
@@ -1149,6 +1155,30 @@ void refer_selector(References& out,
     }
 }
 
+/// References to the Objective-C method a message or a `@selector` names. An
+/// accessor a property synthesizes stands for its class's declaration of it,
+/// itself when the class has none. An accessor clang declares for a property
+/// is written nowhere, and the name names the property, at its first piece;
+/// a `@selector` a macro writes has none to place it at.
+void refer_method(References& out,
+                  const clang::ObjCMethodDecl* method,
+                  RelationKind kind,
+                  llvm::ArrayRef<clang::SourceLocation> pieces) {
+    if(!method) {
+        return;
+    }
+    if(method->isSynthesizedAccessorStub()) {
+        method = method->getCanonicalDecl();
+    }
+    if(method->isImplicit() && !method->isSynthesizedAccessorStub()) {
+        if(!pieces.empty()) {
+            refer(out, method->findPropertyDecl(), kind, pieces.front());
+        }
+        return;
+    }
+    refer_selector(out, method, kind, pieces);
+}
+
 /// References to the protocols a declaration or a type lists, at their names.
 void refer_protocols(References& out, auto&& protocols, auto&& locations) {
     for(auto [protocol, location]: views::zip(protocols, locations)) {
@@ -1736,13 +1766,7 @@ void stmt_references(const clang::Stmt* S,
         OME->getSelectorLocs(pieces);
         auto kind = decls::objc_untyped(*OME) ? RelationKind::Candidate : RelationKind::Reference;
         const auto* method = decls::objc_message_target(*OME);
-        // An accessor clang declares for a property is written nowhere: the
-        // message names the property.
-        if(method && method->isImplicit()) {
-            refer(out, method->findPropertyDecl(), kind, pieces.front());
-            return;
-        }
-        refer_selector(out, method, kind, pieces);
+        refer_method(out, method, kind, pieces);
         return;
     }
 
@@ -2212,22 +2236,29 @@ llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
     if(const auto* selector =
            llvm::dyn_cast_if_present<clang::ObjCSelectorExpr>(entry.node.get<clang::Stmt>())) {
         References out;
-        for(auto parent = entry.parent; parent != Semantics::invalid;
-            parent = semantics.node(parent).parent) {
-            const auto* method = semantics.node(parent).node.get<clang::ObjCMethodDecl>();
-            const auto* objc_class = method ? decls::objc_class(method->getDeclContext()) : nullptr;
-            if(objc_class) {
-                refer_selector(out,
-                               decls::objc_selector_method(*objc_class, selector->getSelector()),
-                               RelationKind::Candidate,
-                               decls::objc_selector_pieces(*selector, method->getASTContext()));
-                break;
-            }
+        if(const auto* method = objc_selector_target(semantics, index)) {
+            refer_method(out,
+                         method,
+                         RelationKind::Candidate,
+                         decls::objc_selector_pieces(*selector, method->getASTContext()));
         }
         return out;
     }
 
     return resolve_references(entry.node, resolver);
+}
+
+const clang::ObjCMethodDecl* objc_selector_target(const Semantics& semantics, std::uint32_t index) {
+    const auto* selector = semantics.node(index).node.get<clang::ObjCSelectorExpr>();
+    for(auto parent = semantics.node(index).parent; selector && parent != Semantics::invalid;
+        parent = semantics.node(parent).parent) {
+        const auto* method = semantics.node(parent).node.get<clang::ObjCMethodDecl>();
+        if(const auto* objc_class =
+               method ? decls::objc_class(method->getDeclContext()) : nullptr) {
+            return decls::objc_selector_method(*objc_class, selector->getSelector());
+        }
+    }
+    return nullptr;
 }
 
 llvm::SmallVector<NameOccurrence, 2> resolve_occurrences(const Semantics& semantics,
