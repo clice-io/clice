@@ -10,7 +10,7 @@ const KINDS = [
 ];
 
 // A kind matches itself and the kinds below it, never a prefix of a word.
-answers({ paths: { server: "clice inspect has no kind filter" } }, async (a) => {
+answers(async (a) => {
     const f = a.marker("f");
     await a.show("all", a.codeActions(f));
     for (const kind of KINDS) {

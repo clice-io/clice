@@ -222,6 +222,11 @@
         "category": "clice"
       },
       {
+        "command": "clice.refactor.rewrite.declareSpecialMembers",
+        "title": "Declare Special Members",
+        "category": "clice"
+      },
+      {
         "command": "clice.refactor.rewrite.populateSwitch",
         "title": "Add Missing Enum Cases to Switch",
         "category": "clice"
@@ -1111,6 +1116,10 @@
         },
         {
           "command": "clice.refactor.rewrite.generateMemberwiseConstructor",
+          "when": "editorLangId in clice.languages"
+        },
+        {
+          "command": "clice.refactor.rewrite.declareSpecialMembers",
           "when": "editorLangId in clice.languages"
         },
         {

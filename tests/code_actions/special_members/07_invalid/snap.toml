@@ -1,0 +1,5 @@
+[answers.partial_base]
+code_actions = []
+
+[answers.self_containing]
+code_actions = []
