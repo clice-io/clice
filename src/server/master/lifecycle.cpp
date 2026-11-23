@@ -36,6 +36,9 @@ MasterServer::MasterServer(async::event_loop& loop, std::string requested_config
         }(*this));
     };
     polling.spawn(files.disk.end_turns(loop));
+    if(logging::perf_lines()) {
+        polling.spawn(watch_loop());
+    }
     // The notify hook is process-wide because the logging layer cannot
     // depend on the server; the composition root owns it for the server's
     // lifetime and turns reports into state (notify_log) the client is told
@@ -204,6 +207,22 @@ void MasterServer::initialize() {
     }
     if(client) {
         client->publish_settings_diagnostics();
+    }
+}
+
+async::task<> MasterServer::watch_loop() {
+    // A short sleep wakes late by as long as the loop was busy elsewhere.
+    constexpr auto interval = chrono::milliseconds(100);
+    constexpr auto reported = chrono::milliseconds(200);
+    while(true) {
+        auto start = chrono::steady_clock::now();
+        co_await async::sleep(interval, loop);
+        auto late = chrono::steady_clock::now() - start - interval;
+        if(late >= reported) {
+            LOG_PERF("loop",
+                     "phase=stall elapsed_ms={}",
+                     chrono::duration_cast<chrono::milliseconds>(late).count());
+        }
     }
 }
 

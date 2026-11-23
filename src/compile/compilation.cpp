@@ -1074,6 +1074,82 @@ CompilationStatus CompilationUnit::run() {
     return CompilationStatus::Completed;
 }
 
+/// A phase name of clang's time-trace events as a perf key: "Module Load"
+/// is module_load_ms, "InstantiateFunction" instantiate_function_ms.
+static std::string phase_key(llvm::StringRef name) {
+    std::string key;
+    for(std::size_t i = 0; i < name.size(); i += 1) {
+        char c = name[i];
+        if(!llvm::isAlnum(c)) {
+            if(!key.empty() && key.back() != '_') {
+                key += '_';
+            }
+            continue;
+        }
+        if(llvm::isUpper(c) && i > 0 && llvm::isLower(name[i - 1]) && key.back() != '_') {
+            key += '_';
+        }
+        key += llvm::toLower(c);
+    }
+    while(!key.empty() && key.back() == '_') {
+        key.pop_back();
+    }
+    return key + "_ms";
+}
+
+/// Runs a compile; with compile_phases() on, under LLVM's time-trace profiler,
+/// whose per-phase totals of a millisecond or more make a compile_detail
+/// line: how long clang spent in included files (source_ms), parsing
+/// classes and functions, instantiating templates. A phase counts once at
+/// its outermost, but phases nest in each other, so they do not add up.
+static CompilationStatus profiled(CompilationUnit& unit,
+                                  CompilationKind kind,
+                                  llvm::function_ref<CompilationStatus()> run) {
+    if(!logging::compile_phases()) {
+        return run();
+    }
+    // A granularity no phase reaches: no event is kept, only the totals.
+    llvm::timeTraceProfilerInitialize(std::numeric_limits<unsigned>::max(), "clice");
+    Timer timer;
+    auto status = run();
+    auto elapsed = timer.ms();
+    llvm::SmallString<2048> trace;
+    llvm::raw_svector_ostream stream(trace);
+    llvm::timeTraceProfilerWrite(stream);
+    llvm::timeTraceProfilerCleanup();
+    if(status == CompilationStatus::SetupFail) {
+        return status;
+    }
+
+    // The totals are the trace's "Total <phase>" events, durations in µs.
+    std::vector<std::pair<std::string, std::int64_t>> phases;
+    auto parsed = llvm::json::parse(trace);
+    if(!parsed) {
+        llvm::consumeError(parsed.takeError());
+    } else if(auto* events = parsed->getAsObject()->getArray("traceEvents")) {
+        for(auto& event: *events) {
+            auto* object = event.getAsObject();
+            auto name = object->getString("name");
+            auto duration = object->getInteger("dur");
+            if(name && duration && *duration >= 1000 && name->consume_front("Total ")) {
+                phases.emplace_back(phase_key(*name), *duration / 1000);
+            }
+        }
+    }
+    ranges::sort(phases);
+    std::string line;
+    for(auto& [key, ms]: phases) {
+        std::format_to(std::back_inserter(line), " {}={}", key, ms);
+    }
+    LOG_PERF("compile_detail",
+             "kind={} file={} total_ms={}{}",
+             kind,
+             unit.file_path(unit.focus_file().file()),
+             elapsed,
+             line);
+    return status;
+}
+
 std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
     assert(writes_output(params.kind) != params.output_file.empty() &&
            "PCH and PCM builds, and only they, write an output file");
@@ -1085,7 +1161,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
     clang::noteBottomOfStack();
 
     std::unique_ptr<CompilationUnit> unit(new CompilationUnit(std::move(params)));
-    unit->status = unit->run();
+    unit->status = profiled(*unit, unit->params.kind, [&] { return unit->run(); });
 
     // A precompiled header the build declares that clang refuses for this
     // parse — the unit's own flags conflict with the ones it was built
@@ -1110,7 +1186,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
         again.input.pch = {};
         unit.reset();
         unit.reset(new CompilationUnit(std::move(again)));
-        unit->status = unit->run();
+        unit->status = profiled(*unit, unit->params.kind, [&] { return unit->run(); });
     }
 
     // Instantiated where the preamble ends, a template misses what the focus
@@ -1135,7 +1211,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
         unit.reset();
         unit.reset(new CompilationUnit(std::move(again)));
         unit->instantiate = false;
-        unit->status = unit->run();
+        unit->status = profiled(*unit, unit->params.kind, [&] { return unit->run(); });
     }
     return unit;
 }

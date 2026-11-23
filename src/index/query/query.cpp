@@ -510,6 +510,7 @@ void IndexQuery::for_each_relation(SymbolHash hash,
             if(!completed || !seen.insert(file).second) {
                 return;
             }
+            visited += 1;
             auto source = serving(file);
             if(!source || source->kind != IndexSource::Kind::Shard) {
                 return;

@@ -115,6 +115,7 @@ std::optional<index::Site> first_block(const index::IndexQuery& index,
 std::vector<index::Site> project_definition(const index::IndexQuery& index,
                                             const index::IndexQuery::Cursor& cursor) {
     Timer timer;
+    auto visited = index.files_visited();
     auto anchor = cursor.site.file;
     std::vector<index::Site> result;
     for(auto symbol: cursor.symbols) {
@@ -156,9 +157,10 @@ std::vector<index::Site> project_definition(const index::IndexQuery& index,
     }
     index::dedup_sites(result);
     LOG_PERF("index_query",
-             "kind=definition path={} results={} elapsed_ms={:.2f}",
+             "kind=definition path={} results={} files={} elapsed_ms={:.2f}",
              cursor.site.path,
              result.size(),
+             index.files_visited() - visited,
              timer.precise_ms());
     return result;
 }
@@ -301,6 +303,7 @@ std::vector<index::Site> references(const index::IndexQuery& index,
                                     const index::IndexQuery::Cursor& cursor,
                                     bool include_declaration) {
     Timer timer;
+    auto visited = index.files_visited();
     llvm::SmallVector<RelationKind, 5> kinds{RelationKind::Reference,
                                              RelationKind::Candidate,
                                              RelationKind::Guess};
@@ -354,9 +357,10 @@ std::vector<index::Site> references(const index::IndexQuery& index,
     }
     index::dedup_sites(result);
     LOG_PERF("index_query",
-             "kind=references path={} results={} elapsed_ms={:.2f}",
+             "kind=references path={} results={} files={} elapsed_ms={:.2f}",
              cursor.site.path,
              result.size(),
+             index.files_visited() - visited,
              timer.precise_ms());
     return result;
 }
@@ -578,6 +582,8 @@ std::vector<index::Site> type_definition(const index::IndexQuery& query,
 
 std::vector<index::Site> implementation(const index::IndexQuery& query,
                                         const index::IndexQuery::Cursor& cursor) {
+    Timer timer;
+    auto visited = query.files_visited();
     auto file = cursor.site.file;
     std::vector<index::Site> sites;
     for(auto symbol: cursor.symbols) {
@@ -601,6 +607,12 @@ std::vector<index::Site> implementation(const index::IndexQuery& query,
     }
     index::dedup_sites(sites);
     std::erase_if(sites, [&](const index::Site& site) { return index::covers(site, cursor.site); });
+    LOG_PERF("index_query",
+             "kind=implementation path={} results={} files={} elapsed_ms={:.2f}",
+             cursor.site.path,
+             sites.size(),
+             query.files_visited() - visited,
+             timer.precise_ms());
     return sites;
 }
 

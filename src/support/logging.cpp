@@ -606,6 +606,11 @@ bool perf_lines() {
     return wanted;
 }
 
+bool compile_phases() {
+    const static bool wanted = env_string("CLICE_PERF").value_or("") == "compile";
+    return wanted;
+}
+
 bool lsp_trace_enabled() {
     const static bool wanted = !env_string("CLICE_LSP_TRACE").value_or("").empty();
     return wanted;
