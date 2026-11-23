@@ -170,6 +170,8 @@ export interface ServerOptions {
     cacheDir?: string;
     /// The client's capabilities; the most conservative client by default.
     capabilities?: proto.ClientCapabilities;
+    /// The client's name and version (clientInfo); none by default.
+    clientInfo?: proto.ClientInfo;
     /// The client offers this encoding before UTF-16, and the server must
     /// take it.
     positionEncoding?: Exclude<PositionEncoding, "utf-16">;
@@ -1172,7 +1174,8 @@ export class Serve extends Client {
         return this.steps.run("initialize", async () => {
             const client = this.live();
             this.recordToml("clice.toml");
-            const { capabilities, positionEncoding, foldersBeforeInitialized } = this.options;
+            const { capabilities, clientInfo, positionEncoding, foldersBeforeInitialized } =
+                this.options;
             const { lastRule } = this.options;
             const config =
                 lastRule === undefined
@@ -1189,6 +1192,7 @@ export class Serve extends Client {
                         ? undefined
                         : this.workspace.path(this.options.cacheDir),
                 capabilities,
+                clientInfo,
                 positionEncodings:
                     positionEncoding === undefined ? undefined : [positionEncoding, "utf-16"],
                 folders,
