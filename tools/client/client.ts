@@ -160,6 +160,8 @@ export interface InitializeOptions {
     /// The position encodings the client offers (general.positionEncodings)
     /// beside those capabilities; none, which leaves UTF-16, by default.
     positionEncodings?: string[] | undefined;
+    /// The client's name and version (clientInfo); none by default.
+    clientInfo?: proto.ClientInfo | undefined;
     /// The workspace folders to announce, workspace-relative; the
     /// workspace root alone when omitted, no root at all (neither folders
     /// nor rootUri) when empty, and the root through rootUri alone — a
@@ -518,6 +520,9 @@ export class CliceClient {
             rootUri: options.folders?.length === 0 ? null : wsUri,
             initializationOptions,
         };
+        if (options.clientInfo !== undefined) {
+            params.clientInfo = options.clientInfo;
+        }
         if (options.folders === undefined) {
             params.workspaceFolders = [{ uri: wsUri, name: "test" }];
         } else if (options.folders !== null) {

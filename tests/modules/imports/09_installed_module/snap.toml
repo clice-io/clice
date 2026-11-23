@@ -1,0 +1,28 @@
+[test.importer]
+errors = []
+
+[test.area.hover]
+markdown = '''
+**function** `area` · namespace `shapes`
+
+```cpp
+export int area(int width, int height)
+```
+'''
+range = "return shapes::⟦area⟧(2, 3);"
+
+[test.module]
+diagnostics = []
+
+[test.command.compile_command]
+source = "database"
+
+[test.product.hover]
+markdown = '''
+**function** `product` · namespace `shapes::detail`
+
+```cpp
+inline int product(int a, int b)
+```
+'''
+range = "return detail::⟦product⟧(width, height);"

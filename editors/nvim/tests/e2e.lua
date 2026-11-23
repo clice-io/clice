@@ -204,8 +204,34 @@ local function restarted(buf, before, what)
     end, what)
 end
 
+local function outside()
+    local name = vim.fn.tempname() .. '.cpp'
+    vim.fn.writefile({ 'int outside();' }, name)
+    return name
+end
+
+-- A clice started for a file below no project before the project's own,
+-- which the files below no project opened later pass over.
+step 'open a file below no project'
+vim.cmd.edit(vim.fn.fnameescape(outside()))
+local alone = vim.api.nvim_get_current_buf()
+wait(60000, function()
+    return client_of(alone) ~= nil
+end, 'clice attached to ' .. vim.api.nvim_buf_get_name(alone))
+
 step('open ' .. scenario.file)
-local buf = open(scenario.file)
+vim.cmd.edit(vim.fn.fnameescape(fixture_dir .. '/' .. scenario.file))
+local buf = vim.api.nvim_get_current_buf()
+-- Loaded before the fixture's clice finished its handshake, as a restored
+-- session loads its buffers.
+local early = vim.fn.bufadd(outside())
+vim.fn.bufload(early)
+wait(60000, function()
+    return client_of(buf) ~= nil
+end, 'clice attached to ' .. scenario.file)
+if client_of(buf).id == client_of(alone).id then
+    fail(scenario.file .. ' joined the clice of a file below no project')
+end
 local uri = vim.uri_from_bufnr(buf)
 -- The first diagnostics come once the file compiled; a modules fixture builds
 -- its dependencies first.
@@ -248,6 +274,24 @@ if scenario.definition then
     local target = relative(vim.uri_to_fname(definition[1].uri or definition[1].targetUri))
     if target ~= scenario.definition then
         fail('definition landed in ' .. target .. ', expected ' .. scenario.definition)
+    end
+end
+
+-- A file below no root marker, such as an installed package's module that
+-- definition lands in or a preview loads, joins the project's clice.
+step 'open files below no project'
+local previewed = vim.fn.bufadd(outside())
+vim.fn.bufload(previewed)
+vim.cmd.edit(vim.fn.fnameescape(outside()))
+local opened = vim.api.nvim_get_current_buf()
+vim.cmd.buffer(buf)
+for _, other in ipairs { early, previewed, opened } do
+    local name = vim.api.nvim_buf_get_name(other)
+    wait(60000, function()
+        return client_of(other) ~= nil
+    end, 'clice attached to ' .. name)
+    if client_of(other).id ~= client_of(buf).id then
+        fail(name .. ' did not join the clice of ' .. scenario.file)
     end
 end
 

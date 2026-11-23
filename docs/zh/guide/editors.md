@@ -37,7 +37,7 @@ clice 会向每条编译命令所用的编译器查询其编译配置（目标�
 
 ### Neovim
 
-在安装了 [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) 的 Neovim 0.11 或更高版本上，启用 clice：
+[Mason](https://github.com/mason-org/mason.nvim) 可以安装 clice：`:MasonInstall clice`。在安装了 [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) 的 Neovim 0.11 或更高版本上，启用 clice：
 
 ```lua
 vim.lsp.enable('clice')
@@ -47,7 +47,7 @@ nvim-lspconfig 收录了 [`editors/nvim`](https://github.com/clice-io/clice/tree
 
 ### Zed
 
-Zed 扩展位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。若设置了 `lsp.clice.binary.path` 则运行它，参数取自 `lsp.clice.binary.arguments`，其中必须包含 `serve`；否则运行 `clice`（从 `PATH` 查找），若也没有则下载最新发布版本；将 `lsp.clice.settings.release_channel` 设为 `"pre-release"` 则改为跟随每日构建。
+从 Zed 的扩展列表（`zed: extensions`）安装 clice 扩展，其源码位于 [`editors/zed`](https://github.com/clice-io/clice/tree/main/editors/zed)。若设置了 `lsp.clice.binary.path` 则运行它，参数取自 `lsp.clice.binary.arguments`，其中必须包含 `serve`；否则运行 `clice`（从 `PATH` 查找），若也没有则下载最新发布版本；将 `lsp.clice.settings.release_channel` 设为 `"pre-release"` 则改为跟随每日构建。
 
 Zed 还会为 C 和 C++ 运行内置的 clangd，导致代码补全和诊断重复出现；若只使用 clice：
 

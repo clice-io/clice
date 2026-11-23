@@ -65,11 +65,11 @@ Download the latest binary from the [releases page](https://github.com/clice-io/
 
 **Release channels:**
 
-| Channel        | Version                           | Where to get it                                                                                                                                                                                                     |
-| -------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Stable**     | even minor, e.g. `v1.0.0`         | [releases page](https://github.com/clice-io/clice/releases) + [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) + [Open VSX](https://open-vsx.org/extension/clice-io/clice) |
-| **Nightly**    | odd minor, e.g. `v1.1.2026112002` | [GitHub pre-releases](https://github.com/clice-io/clice/releases) + Marketplace and Open VSX pre-release channel (`Switch to Pre-Release Version` on the extension page)                                            |
-| **Per-commit** | untagged                          | artifacts on the [latest green `main` CI runs](https://github.com/clice-io/clice/actions/workflows/main.yml?query=branch%3Amain+is%3Asuccess)                                                                       |
+| Channel        | Version                           | Where to get it                                                                                                                                                                                                                                                               |
+| -------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Stable**     | even minor, e.g. `v1.0.0`         | [releases page](https://github.com/clice-io/clice/releases) + [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) + [Open VSX](https://open-vsx.org/extension/clice-io/clice) + [Mason](https://mason-registry.dev/registry/list#clice) |
+| **Nightly**    | odd minor, e.g. `v1.1.2026112002` | [GitHub pre-releases](https://github.com/clice-io/clice/releases) + Marketplace and Open VSX pre-release channel (`Switch to Pre-Release Version` on the extension page)                                                                                                      |
+| **Per-commit** | untagged                          | artifacts on the [latest green `main` CI runs](https://github.com/clice-io/clice/actions/workflows/main.yml?query=branch%3Amain+is%3Asuccess)                                                                                                                                 |
 
 The versioning rule is the VS Code Marketplace convention: **even minor = stable, odd minor = pre-release**. Nightly patch numbers encode the UTC build time as `YYYYMMDDHH` (year, month, day, hour — e.g. `2026071902` is 2026-07-19 02:00 UTC), so newer is always higher; a nightly is published only when `main` gained commits, and only the newest 25 nightlies, none older than 30 days, are kept. Every published binary is the exact one that passed the full test suites — releases promote CI builds rather than rebuilding.
 
@@ -79,13 +79,13 @@ Each release also ships `*.symbols` packages: if clice crashes, attach the newes
 
 ### Editor Setup
 
-| Editor                         | Setup                                                                                                                  |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| **VS Code**                    | Install the [clice extension](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) from the Marketplace |
-| **Cursor, VSCodium, Windsurf** | Install the [clice extension](https://open-vsx.org/extension/clice-io/clice) from Open VSX                             |
-| **Neovim**                     | With [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) on Neovim 0.11 or later: `vim.lsp.enable('clice')`     |
-| **Zed**                        | Load `editors/zed` as a local extension                                                                                |
-| **Other**                      | Any LSP client works — point it at `clice serve`                                                                       |
+| Editor                         | Setup                                                                                                                                                                                                                                                                                                 |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **VS Code**                    | Install the [clice extension](https://marketplace.visualstudio.com/items?itemName=clice-io.clice) from the Marketplace                                                                                                                                                                                |
+| **Cursor, VSCodium, Windsurf** | Install the [clice extension](https://open-vsx.org/extension/clice-io/clice) from Open VSX                                                                                                                                                                                                            |
+| **Neovim**                     | Install clice with [Mason](https://github.com/mason-org/mason.nvim) (`:MasonInstall clice`) and the [clice config](https://github.com/clice-io/clice/tree/main/editors/nvim) with [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig), then on Neovim 0.11 or later: `vim.lsp.enable('clice')` |
+| **Zed**                        | Install the [clice extension](https://zed.dev/extensions/clice) from Zed's extensions                                                                                                                                                                                                                 |
+| **Other**                      | Any LSP client works — point it at `clice serve`                                                                                                                                                                                                                                                      |
 
 ### Project Setup
 
