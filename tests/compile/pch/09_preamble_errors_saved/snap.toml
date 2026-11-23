@@ -1,0 +1,28 @@
+["error in a header".broken]
+errors = [
+    {
+        at = '#include ⟦"bad.h"⟧',
+        severity = "error",
+        message = "In included file: expected expression",
+        source = "clang",
+        code = "err_expected_expression",
+    },
+]
+
+["framework header appears".missing]
+errors = [
+    {
+        at = "#include ⟦<Gen/gen.h>⟧",
+        severity = "error",
+        message = "'Gen/gen.h' file not found",
+        source = "clang",
+        code = "err_pp_file_not_found",
+    },
+    {
+        at = "return ⟦generated⟧() + other();",
+        severity = "error",
+        message = "use of undeclared identifier 'generated'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]

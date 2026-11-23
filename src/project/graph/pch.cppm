@@ -62,6 +62,14 @@ struct PCHEntry : Precompiled<FailureRecord> {
     /// (Project::pch_consume_failed); none since one read them.
     std::optional<FailureRecord> consumes;
 
+    /// The saves of documents using the PCH, each asking to look again for
+    /// the files the build did not find (Project::look_again).
+    std::uint32_t saves = 0;
+
+    /// How many saves had asked when the build of `path` started: one
+    /// asking since rebuilds it.
+    std::uint32_t saves_built = 0;
+
     /// The blob while held, else opened again (memory-mapped, no
     /// deserialization). Returns nullptr when the blob is missing or
     /// unreadable — consumers degrade (no overlay, no preamble links) and the
