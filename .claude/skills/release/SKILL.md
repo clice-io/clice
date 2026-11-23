@@ -104,7 +104,7 @@ Every step that tags or publishes needs the maintainer's explicit approval first
    expire 30 days after the CI run, so the tagged commit's run must be
    less than a month old — for an older commit, rerun its main workflow
    first to regenerate the packages.
-4. Verify: assets present (6 packages + 6 symbol archives + 6 vsix),
+4. Verify: assets present (8 packages + 8 symbol archives + 8 vsix),
    Marketplace and Open VSX show the new stable version.
 
 ## Plumbing changes
