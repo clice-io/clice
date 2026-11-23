@@ -1,16 +1,19 @@
-/// Assert a packaged clice binary only depends on system dynamic libraries,
-/// and that on Linux and macOS its malloc is mimalloc's.
+/// Assert that clice's program, as a package holds it once stripped, only
+/// depends on system dynamic libraries, and that on Linux and macOS its
+/// malloc is mimalloc's. It reads the program before stripping, which drops
+/// symbols alone: a static program's symbol table is what tells its malloc.
 ///
-/// It inspects the shipped binary's dynamic dependencies and rejects
-/// anything that resolves into a conda/pixi env instead of the OS: such a
-/// binary loads on the build machine and in every test job, which run inside
-/// that env, and fails anywhere else.
+/// It inspects the program's dynamic dependencies and rejects anything that
+/// resolves into a conda/pixi env instead of the OS: such a binary loads on
+/// the build machine and in every test job, which run inside that env, and
+/// fails anywhere else. A static program (the musl targets) loads nothing.
 ///
 /// mimalloc takes malloc over on Linux and macOS (src/mimalloc.cc,
-/// --@mimalloc//:override): an ELF binary defines and exports malloc, so
-/// that the C library's own calls reach it too, and a Mach-O one defines it
-/// rather than importing it from libSystem, and registers mimalloc's malloc
-/// zone, which serves the system libraries. A release that lost it allocates
+/// --@mimalloc//:override): a dynamic ELF program defines and exports
+/// malloc, so that the C library's own calls reach it too, a static one
+/// defines it as mimalloc's mi_malloc, and a Mach-O one defines it rather
+/// than importing it from libSystem, and registers mimalloc's malloc zone,
+/// which serves the system libraries. A release that lost it allocates
 /// through the system's malloc and runs as every test does.
 ///
 /// Windows (MinGW) binaries must not import a toolchain's runtime DLLs:
@@ -153,6 +156,38 @@ export function checkElf(dynamic: string, symbols: string): Check {
     return check;
 }
 
+/// Whether an ELF program has a dynamic section, from its
+/// `llvm-readelf --program-headers --wide`: a static one has no DYNAMIC
+/// segment.
+export function isDynamic(programHeaders: string): boolean {
+    return /^\s+DYNAMIC\s+0x/m.test(programHeaders);
+}
+
+/// A static ELF program's check, from its `llvm-readelf --program-headers
+/// --wide` and `llvm-readelf --syms --wide`: mimalloc's malloc is an alias of
+/// mi_malloc, which musl's is not.
+export function checkStaticElf(programHeaders: string, symbols: string): Check {
+    const check: Check = { violations: [], notes: [] };
+    const loads = [...programHeaders.matchAll(/^\s+LOAD\s+0x/gm)].length;
+    check.violations.push(
+        ...assertParsed(loads, "llvm-readelf --program-headers", "LOAD segments"),
+    );
+    const address = (name: string) =>
+        new RegExp(
+            `^\\s*\\d+:\\s+([0-9a-f]+)\\s+\\d+\\s+FUNC\\s+GLOBAL\\s+\\S+\\s+\\d+\\s+${name}$`,
+            "m",
+        ).exec(symbols)?.[1];
+    const malloc = address("malloc");
+    if (malloc === undefined) {
+        check.violations.push(
+            "no malloc in the symbol table: a stripped program cannot tell whose malloc it is",
+        );
+    } else if (malloc !== address("mi_malloc")) {
+        check.violations.push(MALLOC_NOT_OURS);
+    }
+    return check;
+}
+
 /// A Mach-O binary's check, from its `llvm-otool -L`, `llvm-otool -l` and
 /// `llvm-nm -u`.
 export function checkMachO(dylibs: string, loadCommands: string, undefinedSymbols: string): Check {
@@ -286,12 +321,16 @@ function main(): number {
             `${binary}: unrecognized object file magic ${Buffer.from(magic).toString("hex")}`,
         );
     }
+    const programHeaders =
+        format === "elf" ? run("llvm-readelf", "--program-headers", "--wide", binary) : "";
     const check =
         format === "elf"
-            ? checkElf(
-                  run("llvm-readelf", "-d", binary),
-                  run("llvm-readelf", "--dyn-syms", "--wide", binary),
-              )
+            ? isDynamic(programHeaders)
+                ? checkElf(
+                      run("llvm-readelf", "-d", binary),
+                      run("llvm-readelf", "--dyn-syms", "--wide", binary),
+                  )
+                : checkStaticElf(programHeaders, run("llvm-readelf", "--syms", "--wide", binary))
             : format === "macho"
               ? checkMachO(
                     run("llvm-otool", "-L", binary),

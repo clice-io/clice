@@ -121,6 +121,26 @@ std::string export_text(const Exports& exports) {
     return text;
 }
 
+/// The #undef of each macro of `interface` named like a name it exports
+/// (musl's `#define stdout (stdout)`), which the using-declaration would
+/// read expanded; its importers replay the macro.
+std::string undefine_exported(const Interface& interface, llvm::ArrayRef<InterfaceExport> exports) {
+    llvm::StringSet<> names;
+    for(auto& entry: exports) {
+        auto name = llvm::StringRef(entry.name);
+        auto separator = name.rfind("::");
+        names.insert(separator == llvm::StringRef::npos ? name : name.drop_front(separator + 2));
+    }
+    std::string text;
+    llvm::StringSet<> undefined;
+    for(auto& macro: interface.macros) {
+        if(names.contains(macro.name) && undefined.insert(macro.name).second) {
+            text += std::format("#undef {}\n", macro.name);
+        }
+    }
+    return text;
+}
+
 /// A module unit `wrap` wrote: its global module fragment and its exports.
 struct Wrapper {
     std::string fragment;
@@ -522,6 +542,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
             entry.include_roots.push_back(root.first().str());
         }
         ranges::sort(entry.include_roots);
+        unit += undefine_exported(*module, module->kept_exports);
         Exports exports;
         auto unnamed = export_names(exports, module->aliases, module->kept_exports);
         result.files.push_back({entry.source, unit_text(unit, entry.name, exports, unnamed)});
@@ -587,6 +608,7 @@ std::expected<Wrapping, std::string> wrap(const Partition& partition,
             module.include_roots.push_back(entry.first().str());
         }
         ranges::sort(module.include_roots);
+        unit += undefine_exported(interface, interface.exports);
 
         Exports exports;
         auto unnamed = export_names(exports, interface.aliases, interface.exports);

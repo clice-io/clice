@@ -980,6 +980,7 @@ exit = 0
 +
 +#include <cio.h>
 +#include <cva.h>
++#undef fake_stdout
 +
 +export module libc;
 +

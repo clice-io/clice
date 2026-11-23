@@ -56,7 +56,7 @@ that day — fix main and rerun via dispatch, with the maintainer's
 approval like any release trigger.
 
 Every GitHub release, nightly or stable, is created as a draft and
-published by `publish-clice.yml` only once all six platform archives are
+published by `publish-clice.yml` only once all eight platform archives are
 attached: drafts are hidden from anyone without push access, so no user's
 editor extension ever installs from a half-uploaded release. A failed promote job leaves
 the draft behind; `gh run rerun <id> --failed` finishes and publishes it.

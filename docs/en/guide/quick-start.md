@@ -14,6 +14,8 @@ See [Editor Setup](./editors.md) for per-editor instructions: official plugins f
 
 Download the latest binary from the [Releases](https://github.com/clice-io/clice/releases) page.
 
+On Linux, the `linux-gnu` packages need glibc 2.17 or newer. The `linux-musl` ones are static programs, which run on any Linux: on Alpine and other musl systems, and on NixOS and Guix without patching.
+
 ### Build from Source
 
 See [build from source](./build.md) for detailed instructions.
