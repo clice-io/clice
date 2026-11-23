@@ -327,15 +327,9 @@ async::task<> BackgroundIndex::run_pass() {
 
     if(reindexes.queued() == 0) {
         LOG_DEBUG("Background indexing: queue exhausted");
-        // Nothing to index, yet the search index may be owed the full build
-        // a previous session never reached — until it runs, every search
-        // scans the symbol records — or a run of the entries it left
-        // pending, or the start-up scan met a damaged record, which only a
-        // save discards (a damaged database the save discarded queues
-        // every unit, and the save starts their pass).
-        if(index.damaged() || index.search_update_due(index::SearchRebuild::Idle)) {
-            co_await project.save(index::SearchRebuild::Idle);
-        }
+        // A damaged database the save discards queues every unit, and the
+        // save starts their pass.
+        co_await project.save_owed();
         co_return;
     }
 

@@ -8,23 +8,28 @@ namespace clice::index {
 
 /// Layout and scoring version of the search segments, apart from the index
 /// format they are derived from: a bump rebuilds the search index alone.
-constexpr std::uint32_t search_format_version = 4;
+constexpr std::uint32_t search_format_version = 5;
 
 /// One segment of the persisted search index. Its first entries, as many as
 /// it has qualities, are the symbols it offers, in quality order (ties by
 /// hash); the rest are the scopes above them it does not offer, so the
-/// qualified names of its symbols resolve within it. The arenas hold the
-/// names back to back with one end offset per entry; posting arenas hold
-/// posting lists over the entries (write_postings) the same way — over the
-/// offered entries, or over all of them for the scope structure.
+/// qualified names of its symbols resolve within it. The arenas hold their
+/// strings back to back with one end offset each; posting arenas hold
+/// posting lists (write_postings) the same way — over the names for the
+/// tokens, over the offered entries, or over all of them for the scope
+/// structure.
 template <template <typename> typename Seq>
 struct SearchIndexBlobOf {
     std::uint32_t format_version = 0;
     std::uint32_t search_version = 0;
 
     Seq<std::uint64_t> hashes;
+    /// The entries' names, each once — most names repeat: overrides,
+    /// constructors, test bodies — ascending by lowercase name, then name.
     Seq<char> names;
     Seq<std::uint32_t> name_ends;
+    /// Each entry's name, an index into the names.
+    Seq<std::uint32_t> name_of;
     Seq<char> args;
     Seq<std::uint32_t> args_ends;
     /// The entry of the nearest enclosing symbol a qualified name spells,
@@ -32,11 +37,15 @@ struct SearchIndexBlobOf {
     /// the index.
     Seq<std::uint32_t> parents;
     Seq<float> qualities;
-    /// All entries sorted by lowercase name, then name, then entry.
-    Seq<std::uint32_t> by_lower_name;
+    /// All entries sorted by name, then entry: each name's entries end at
+    /// its position in `name_entry_ends`.
+    Seq<std::uint32_t> by_name;
+    Seq<std::uint32_t> name_entry_ends;
     /// The offered entries sorted by hash.
     Seq<std::uint32_t> by_hash;
 
+    /// The tokens of the offered entries' names, ascending, each with the
+    /// names carrying it.
     Seq<std::uint32_t> token_keys;
     Seq<std::uint32_t> token_ends;
     Seq<std::uint8_t> token_postings;

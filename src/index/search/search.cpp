@@ -29,6 +29,12 @@ void append_postings(std::vector<std::uint8_t>& arena,
     ends.push_back(static_cast<std::uint32_t>(arena.size()));
 }
 
+/// The order of a segment's names: by lowercase name, then name.
+bool names_before(llvm::StringRef lhs, llvm::StringRef rhs) {
+    auto lower = lhs.compare_insensitive(rhs);
+    return lower != 0 ? lower < 0 : lhs < rhs;
+}
+
 bool reserved_name(llvm::StringRef name) {
     return name.size() > 1 && name[0] == '_' && (name[1] == '_' || llvm::isUpper(name[1]));
 }
@@ -141,8 +147,20 @@ std::vector<std::byte> encode_segment(llvm::ArrayRef<Node> nodes,
     blob.args_ends.reserve(total);
     blob.parents.reserve(total);
     blob.qualities.reserve(count);
-    std::vector<std::string> lower_names;
-    lower_names.reserve(total);
+    blob.name_of.reserve(total);
+    // Each name once, by lowercase name, then name.
+    std::vector<llvm::StringRef> names;
+    names.reserve(total);
+    for(std::uint32_t id = 0; id < total; id += 1) {
+        names.push_back(entry_of(id).name);
+    }
+    ranges::sort(names, names_before);
+    names.erase(ranges::unique(names).begin(), names.end());
+    for(auto name: names) {
+        blob.names += name;
+        blob.name_ends.push_back(static_cast<std::uint32_t>(blob.names.size()));
+    }
+    auto name_count = static_cast<std::uint32_t>(names.size());
     for(std::uint32_t id = 0; id < total; id += 1) {
         auto& entry = entry_of(id);
         if(id < count) {
@@ -154,41 +172,46 @@ std::vector<std::byte> encode_segment(llvm::ArrayRef<Node> nodes,
             blob.qualities.push_back(nodes[members[id]].quality);
         }
         blob.hashes.push_back(entry.hash);
-        blob.names += entry.name;
-        blob.name_ends.push_back(static_cast<std::uint32_t>(blob.names.size()));
+        blob.name_of.push_back(static_cast<std::uint32_t>(
+            ranges::lower_bound(names, llvm::StringRef(entry.name), names_before) - names.begin()));
         blob.args += entry.args;
         blob.args_ends.push_back(static_cast<std::uint32_t>(blob.args.size()));
         auto scope = nodes[members[id]].scope;
         blob.parents.push_back(scope == no_entry ? no_entry : id_of.find(scope)->second);
-        lower_names.push_back(llvm::StringRef(entry.name).lower());
     }
 
-    blob.by_lower_name.resize(total);
-    std::iota(blob.by_lower_name.begin(), blob.by_lower_name.end(), 0u);
-    ranges::sort(blob.by_lower_name, [&](std::uint32_t lhs, std::uint32_t rhs) {
-        if(lower_names[lhs] != lower_names[rhs]) {
-            return lower_names[lhs] < lower_names[rhs];
-        }
-        if(entry_of(lhs).name != entry_of(rhs).name) {
-            return entry_of(lhs).name < entry_of(rhs).name;
-        }
-        return lhs < rhs;
-    });
+    blob.by_name.resize(total);
+    std::iota(blob.by_name.begin(), blob.by_name.end(), 0u);
+    ranges::stable_sort(blob.by_name, {}, [&](std::uint32_t id) { return blob.name_of[id]; });
+    blob.name_entry_ends.assign(name_count, 0);
+    for(auto name: blob.name_of) {
+        blob.name_entry_ends[name] += 1;
+    }
+    std::partial_sum(blob.name_entry_ends.begin(),
+                     blob.name_entry_ends.end(),
+                     blob.name_entry_ends.begin());
     blob.by_hash.resize(count);
     std::iota(blob.by_hash.begin(), blob.by_hash.end(), 0u);
     ranges::sort(blob.by_hash, [&](std::uint32_t lhs, std::uint32_t rhs) {
         return entry_of(lhs).hash < entry_of(rhs).hash;
     });
 
-    // Every (token, id) pair, token-major, ordered by token with each
-    // token's ids left ascending as they arrive: an LSD radix sort over the
-    // token's three bytes, every pass stable.
+    // Every (token, name) pair, token-major, ordered by token with each
+    // token's names left ascending as they arrive: an LSD radix sort over
+    // the token's three bytes, every pass stable.
     std::vector<std::uint64_t> pairs;
     llvm::SmallVector<NameToken, 64> tokens;
+    std::vector<bool> offered_name(name_count);
     for(std::uint32_t id = 0; id < count; id += 1) {
-        name_tokens(entry_of(id).name, tokens);
+        offered_name[blob.name_of[id]] = true;
+    }
+    for(std::uint32_t name = 0; name < name_count; name += 1) {
+        if(!offered_name[name]) {
+            continue;
+        }
+        name_tokens(names[name], tokens);
         for(auto token: tokens) {
-            pairs.push_back(std::uint64_t(token) << 32 | id);
+            pairs.push_back(std::uint64_t(token) << 32 | name);
         }
     }
     std::vector<std::uint64_t> sorted(pairs.size());
@@ -213,7 +236,7 @@ std::vector<std::byte> encode_segment(llvm::ArrayRef<Node> nodes,
             ids.push_back(static_cast<std::uint32_t>(pairs[at]));
         }
         blob.token_keys.push_back(token);
-        append_postings(blob.token_postings, blob.token_ends, ids, count);
+        append_postings(blob.token_postings, blob.token_ends, ids, name_count);
     }
 
     llvm::DenseMap<std::uint32_t, Bitmap> children;
@@ -656,7 +679,35 @@ struct SearchIndex::Segment {
     }
 
     llvm::StringRef name(std::uint32_t entry) const {
-        return slice(columns->names, columns->name_ends, entry);
+        return slice(columns->names, columns->name_ends, columns->name_of[entry]);
+    }
+
+    /// The distinct names.
+    std::uint32_t name_count() const {
+        return static_cast<std::uint32_t>(columns->name_ends.size());
+    }
+
+    /// The entries carrying names `first` up to `last`, ascending within
+    /// each name.
+    llvm::ArrayRef<std::uint32_t> named(std::uint32_t first, std::uint32_t last) const {
+        auto& ends = columns->name_entry_ends;
+        auto begin = first == 0 ? 0 : ends[first - 1];
+        return llvm::ArrayRef<std::uint32_t>(columns->by_name.data(), columns->by_name.size())
+            .slice(begin, ends[last - 1] - begin);
+    }
+
+    /// The offered entries carrying any of `names`.
+    Bitmap offered_named(const Bitmap& names) const {
+        Bitmap entries;
+        for(auto name: names) {
+            for(auto entry: named(name, name + 1)) {
+                if(entry >= count()) {
+                    break;
+                }
+                entries.add(entry);
+            }
+        }
+        return entries;
     }
 
     llvm::StringRef arguments(std::uint32_t entry) const {
@@ -699,13 +750,13 @@ struct SearchIndex::Segment {
         return it->second;
     }
 
-    /// The entries carrying a token, null when none does.
+    /// The names carrying a token, null when none does.
     const Bitmap* token(NameToken key) const {
         auto i = sorted_find(columns->token_keys, key);
         if(!i) {
             return nullptr;
         }
-        return &cached(token_cache, columns->token_postings, columns->token_ends, *i, count());
+        return &cached(token_cache, columns->token_postings, columns->token_ends, *i, name_count());
     }
 
     /// The direct members of a container, the top level for no_entry.
@@ -798,17 +849,23 @@ struct SearchIndex::Segment {
         return *it;
     }
 
-    /// The entries whose lowercase name is `lower`, in by_lower_name order.
+    /// The entries whose lowercase name is `lower`, by name.
     llvm::ArrayRef<std::uint32_t> lower_range(llvm::StringRef lower) const {
-        auto project = [&](std::uint32_t entry) {
-            return name(entry).lower();
-        };
-        auto& entries = columns->by_lower_name;
-        auto range = ranges::equal_range(entries, lower.str(), {}, project);
-        return {range.begin(), range.end()};
+        auto& ends = columns->name_ends;
+        auto range = ranges::equal_range(
+            views::iota(0u, name_count()),
+            lower,
+            [](llvm::StringRef lhs, llvm::StringRef rhs) {
+                return lhs.compare_insensitive(rhs) < 0;
+            },
+            [&](std::uint32_t name) { return slice(columns->names, ends, name); });
+        if(range.empty()) {
+            return {};
+        }
+        return named(*range.begin(), *range.begin() + static_cast<std::uint32_t>(range.size()));
     }
 
-    /// Every posting list of `tokens` intersected, none when a token has
+    /// The names carrying every token of `tokens`, none when a token has
     /// no postings at all.
     std::optional<Bitmap> intersection(llvm::ArrayRef<NameToken> tokens) const {
         llvm::SmallVector<const Bitmap*, 16> lists;
@@ -858,9 +915,10 @@ std::expected<void, llvm::StringRef> SearchIndex::Segment::check() const {
 
     auto total = hashes.size();
     auto count = columns->qualities.size();
-    if(count > total || columns->name_ends.size() != total || columns->args_ends.size() != total ||
-       columns->parents.size() != total || columns->by_lower_name.size() != total ||
-       by_hash.size() != count) {
+    auto names = columns->name_ends.size();
+    if(count > total || columns->name_of.size() != total || columns->args_ends.size() != total ||
+       columns->parents.size() != total || columns->by_name.size() != total ||
+       columns->name_entry_ends.size() != names || by_hash.size() != count) {
         return std::unexpected("entry columns do not line up");
     }
     if(!monotone_ends(columns->name_ends, columns->names.size()) ||
@@ -872,13 +930,15 @@ std::expected<void, llvm::StringRef> SearchIndex::Segment::check() const {
             return std::unexpected("parent outside the entries");
         }
     }
-    // FIXME: by_lower_name is range-checked but not checked for its order: a
-    // blob out of lowercase-name order loads, and lower_range's binary search
-    // misses entries silently.
-    for(auto entry: columns->by_lower_name) {
-        if(entry >= total) {
-            return std::unexpected("name order outside the entries");
-        }
+    // FIXME: the entries' names and their order are range-checked, not
+    // checked against each other: a blob whose names are out of order, or
+    // whose name order lists an entry under another name, loads, and
+    // lookups miss entries silently. Checking them reads every name of
+    // every segment at each load, which is most of a warm query's time.
+    if(ranges::any_of(columns->name_of, [&](std::uint32_t name) { return name >= names; }) ||
+       !covering_ends(columns->name_entry_ends, total) ||
+       ranges::any_of(columns->by_name, [&](std::uint32_t entry) { return entry >= total; })) {
+        return std::unexpected("name columns outside the names and entries");
     }
     for(std::uint32_t i = 0; i < count; i += 1) {
         auto entry = by_hash[i];
@@ -948,15 +1008,6 @@ bool SearchIndex::replace(std::uint32_t runs,
     }
     run_ends.push_back(static_cast<std::uint32_t>(segments.size()));
     index_runs();
-    return true;
-}
-
-bool SearchIndex::rebind(std::uint32_t segment, std::unique_ptr<llvm::MemoryBuffer> bytes) {
-    auto& held = *segments[segment];
-    if(!rebind_buffer(held.buffer, std::move(bytes))) {
-        return false;
-    }
-    held.columns = &codec::blob::view_verified<SearchIndexBlob>(as_bytes(held.buffer->getBuffer()));
     return true;
 }
 
@@ -1296,7 +1347,8 @@ SearchResult SearchIndex::search(const Locator& query,
             for(auto at: open) {
                 auto& segment = *segments[at];
                 scan(at,
-                     segment.intersection(tokens).value_or(Bitmap{}) | segment.long_names(),
+                     segment.offered_named(segment.intersection(tokens).value_or(Bitmap{})) |
+                         segment.long_names(),
                      false);
             }
             break;
@@ -1316,7 +1368,8 @@ SearchResult SearchIndex::search(const Locator& query,
             for(auto at: open) {
                 auto& segment = *segments[at];
                 scan(at,
-                     segment.intersection(tokens).value_or(Bitmap{}) | segment.long_names(),
+                     segment.offered_named(segment.intersection(tokens).value_or(Bitmap{})) |
+                         segment.long_names(),
                      false);
             }
             if(top.full() || !ranker.has_typo_matches()) {
@@ -1326,13 +1379,13 @@ SearchResult SearchIndex::search(const Locator& query,
             typo_tokens(query.pattern, alternatives);
             for(auto at: open) {
                 auto& segment = *segments[at];
-                Bitmap candidates = segment.long_names();
+                Bitmap names;
                 for(auto& alternative: alternatives) {
                     if(auto some = segment.intersection(alternative.tokens)) {
-                        candidates |= *some;
+                        names |= *some;
                     }
                 }
-                scan(at, candidates, true);
+                scan(at, segment.offered_named(names) | segment.long_names(), true);
             }
             break;
         }

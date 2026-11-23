@@ -20,9 +20,13 @@ constexpr std::size_t lmdb_small_mapsize = 256ull << 20;
 /// size tracks the data high-water mark, so the reservation is generous —
 /// unless the address space is capped (`ulimit -v` on HPC and sandboxed
 /// hosts), where it would not fit. On Windows the mapping extends the file
-/// to the whole mapsize — a 64 GiB file (sparse or not) alarms users and
-/// feeds backup and sync tools at its logical size. Either way the map
-/// then starts small and grows on demand instead.
+/// to the whole mapsize, on disk too: a 64 GiB file alarms users and feeds
+/// backup and sync tools. Either way the map then starts small and grows
+/// on demand instead. The file is not marked sparse to save the disk past
+/// the data: Windows keeps no page of a sparse file's mapping cached once
+/// the process mapping it ends, so every `clice query` would read what it
+/// touches from the disk again (a definition on Unreal's index: 3.7 s, not
+/// 0.3 s).
 std::size_t default_mapsize() {
 #ifdef _WIN32
     return lmdb_small_mapsize;
@@ -32,6 +36,18 @@ std::size_t default_mapsize() {
         return lmdb_small_mapsize;
     }
     return generous;
+#endif
+}
+
+/// The map a writer reopens a file of `declared` bytes with. A Windows
+/// writable map extends the file to the map's size: there the pages and an
+/// eighth more, elsewhere the default, which takes no disk.
+std::size_t writer_mapsize(std::uint64_t declared) {
+#ifdef _WIN32
+    return std::max<std::size_t>(lmdb_small_mapsize, declared + declared / 8 + (64ull << 20));
+#else
+    (void)declared;
+    return default_mapsize();
 #endif
 }
 
@@ -62,6 +78,19 @@ llvm::SmallString<64> encode_key(BlobKind kind, llvm::StringRef key) {
     encoded.append(key);
     return encoded;
 }
+
+/// Whether a kind's values are stored beside the database, a file each,
+/// the B-tree keeping an empty value under the key: a search segment is
+/// written whole once and read in place, and its hundreds of megabytes
+/// would need a run of contiguous pages the free pages of a long-lived
+/// file seldom have.
+bool stored_beside(char prefix) {
+    return prefix == kind_prefix(BlobKind::SearchSegment);
+}
+
+/// The infix naming a value's file beside the database file, before the
+/// hexadecimal of its encoded key.
+constexpr llvm::StringLiteral beside_infix = "-beside-";
 
 /// The environment's self-description, stored under a key no kind prefix
 /// can produce. LMDB files are not portable across word sizes or byte
@@ -101,9 +130,27 @@ bool is_corruption(int rc) {
            rc == MDB_PAGE_NOTFOUND;
 }
 
+/// The files beside the database at `path` (stored_beside), a write's
+/// unfinished ones included.
+std::vector<std::string> files_beside(llvm::StringRef path) {
+    std::vector<std::string> found;
+    auto prefix = std::string(path::filename(path)) + beside_infix.str();
+    if(auto entries = fs::Directory::open(path::parent(path))) {
+        for(const auto& entry: *entries) {
+            if(entry && llvm::StringRef(entry->name).starts_with(prefix)) {
+                found.push_back(path::join(path::parent(path), entry->name));
+            }
+        }
+    }
+    return found;
+}
+
 void remove_database_files(llvm::StringRef path) {
     fs::remove(path);
     fs::remove(path.str() + "-lock");
+    for(auto& file: files_beside(path)) {
+        fs::remove(file);
+    }
 }
 
 /// The environment settings every open of the file uses.
@@ -231,20 +278,14 @@ int cover_declared_pages(MDB_env* env) {
 
 /// Why mapping `extra` more bytes would fail, if it would: past the
 /// address space cap (`ulimit -v`), or past the free disk a Windows file
-/// without sparse support allocates the whole mapping from.
+/// allocates the whole mapping from.
 std::optional<std::string> growth_refused(MDB_env* env, std::uint64_t extra) {
 #ifdef _WIN32
-    mdb_filehandle_t fd;
-    mdb_env_get_fd(env, &fd);
-    if(auto sparse = fs::File::borrow(fd).is_sparse(); sparse && *sparse) {
-        return std::nullopt;
-    }
     const char* path = nullptr;
     mdb_env_get_path(env, &path);
     auto space = fs::volume(path::parent(path));
     if(space && space->available < extra) {
-        return std::format("{} free on its volume, which does not support sparse files",
-                           format_bytes(space->available));
+        return std::format("{} free on its volume", format_bytes(space->available));
     }
     return std::nullopt;
 #else
@@ -259,17 +300,6 @@ std::optional<std::string> growth_refused(MDB_env* env, std::uint64_t extra) {
     }
     return std::nullopt;
 #endif
-}
-
-/// Without the sparse attribute Windows backs the whole mapsize with real
-/// disk (CreateFileMapping allocates eagerly), so the file is marked
-/// sparse before LMDB first maps it. Best effort: on a volume without
-/// sparse support each mapsize is simply committed up front, which the
-/// small default keeps tolerable.
-void make_sparse(llvm::StringRef path) {
-    if(auto file = fs::File::open(path, {.read = true, .write = true, .create = true})) {
-        file->set_sparse();
-    }
 }
 
 /// Why the disk under the database at `path` has no room for the lock
@@ -305,6 +335,10 @@ public:
     ~LmdbDatabase() override {
         retire_old_snapshot();
         mdb_txn_abort(txn);
+        std::optional<std::uint64_t> declared;
+        if(env && !read_only() && !condemned) {
+            declared = coverage(env).declared;
+        }
         mdb_env_close(env);
         // Condemned = corruption observed at read time; deleting under the
         // writer lock lets the next open start from an empty database.
@@ -314,6 +348,10 @@ public:
         // A shrink cancelled between the copy and the swap leaves its copy.
         if(!read_only()) {
             fs::remove(path + "-compact");
+        }
+        if(declared) {
+            remove_retired();
+            trim_file(*declared);
         }
     }
 
@@ -325,7 +363,7 @@ public:
             note_error(rc);
             return {};
         }
-        return blob_of(value);
+        return blob_of(encoded, value);
     }
 
     bool contains(BlobKind kind, llvm::StringRef key) override {
@@ -356,14 +394,60 @@ public:
             return std::unexpected(std::format("{} failed: {}", stage, mdb_strerror(rc)));
         };
         clear_dead_readers(env);
+        // A value stored beside is in its file before the commit naming it;
+        // the files of a write that does not commit go with it.
+        std::vector<std::string> written;
+        bool committed = false;
+        auto unwritten = llvm::make_scope_exit([&] {
+            if(!committed) {
+                for(auto& file: written) {
+                    fs::remove(file);
+                }
+            }
+        });
+        // In key order: a transaction dirtying more pages than LMDB keeps in
+        // memory spills some to the file, and a later put landing on a
+        // spilled page brings it back to write it again.
+        std::vector<std::pair<std::string, const Blob*>> ordered;
+        ordered.reserve(puts.size());
+        for(auto& blob: puts) {
+            ordered.emplace_back(encode_key(blob.kind, blob.key), &blob);
+        }
+        ranges::stable_sort(ordered, {}, &std::pair<std::string, const Blob*>::first);
+        for(auto& [encoded, blob]: ordered) {
+            if(stored_beside(encoded.front())) {
+                auto file = beside(encoded);
+                if(auto error = write_beside(file, as_chars(blob->bytes))) {
+                    return std::unexpected(
+                        std::format("writing {} failed: {}", file, error.message()));
+                }
+                written.push_back(std::move(file));
+            }
+        }
+        if(!written.empty()) {
+            auto directory = fs::Directory::open(path::parent(path));
+            if(auto error = directory ? directory->sync() : directory.error()) {
+                return std::unexpected(
+                    std::format("syncing the files beside the index "
+                                "database failed: {}",
+                                error.message()));
+            }
+        }
         MDB_txn* wtxn = nullptr;
         if(int rc = mdb_txn_begin(env, nullptr, 0, &wtxn)) {
             return fail_all(rc, "begin");
         }
-        for(auto& blob: puts) {
-            auto encoded = encode_key(blob.kind, blob.key);
+        for(auto& [encoded, blob]: ordered) {
             auto mk = to_val(encoded);
-            auto mv = to_val(as_chars(blob.bytes));
+            auto mv = stored_beside(encoded.front()) ? MDB_val{} : to_val(as_chars(blob->bytes));
+            // Putting a value back unchanged copies its leaf and overflow
+            // pages all the same.
+            if(MDB_val held;
+               mdb_get(wtxn, dbi, &mk, &held) == 0 &&
+               llvm::StringRef(static_cast<const char*>(held.mv_data), held.mv_size) ==
+                   llvm::StringRef(static_cast<const char*>(mv.mv_data), mv.mv_size)) {
+                continue;
+            }
             if(int rc = mdb_put(wtxn, dbi, &mk, &mv, 0)) {
                 mdb_txn_abort(wtxn);
                 return fail_all(rc, "put");
@@ -380,9 +464,19 @@ public:
         if(int rc = mdb_txn_commit(wtxn)) {
             return fail_all(rc, "commit");
         }
+        committed = true;
         if(int rc = cover_declared_pages(env)) {
             LOG_WARN("Cannot extend the index database over its pages: {}", mdb_strerror(rc));
         }
+        if(int rc = commit_tick()) {
+            LOG_WARN("Cannot advance the index database past its write: {}", mdb_strerror(rc));
+        }
+        for(auto& [kind, key]: removes) {
+            if(auto encoded = encode_key(kind, key); stored_beside(encoded.front())) {
+                retired.push_back(beside(encoded));
+            }
+        }
+        remove_retired();
         return {};
     }
 
@@ -394,8 +488,9 @@ public:
     }
 
     void for_each(BlobKind kind, llvm::function_ref<bool(llvm::StringRef, ReadBlob)> fn) override {
-        scan(kind,
-             [&](llvm::StringRef key, const MDB_val& value) { return fn(key, blob_of(value)); });
+        scan(kind, [&](llvm::StringRef key, const MDB_val& value) {
+            return fn(key, blob_of(encode_key(kind, key), value));
+        });
     }
 
     std::uint32_t count(BlobKind kind) override {
@@ -454,7 +549,7 @@ public:
         return Growth::Grown;
     }
 
-    Copy write_compact_copy() override {
+    Copy write_compact_copy(const std::atomic<bool>& abandon) override {
         if(!OpenLock::acquire(path, OpenLock::Kind::Exclusive, /*wait=*/false)) {
             return Copy::Busy;
         }
@@ -479,16 +574,27 @@ public:
             }
         }
         auto copy = path + "-compact";
-        if(int rc = mdb_env_copy2(env, copy.c_str(), MDB_CP_COMPACT)) {
-            note_error(rc);
-            LOG_WARN("Cannot write a compact copy of the index database: {}", mdb_strerror(rc));
-            fs::remove(copy);
-            return Copy::Failed;
+        // Appended in key order, the copy fills its pages: it takes no more
+        // than the live ones.
+        auto mapsize = live ? (live->pages - live->free_pages) * live->page_size : 0;
+        std::uint64_t declared = 0;
+        if(auto copied = append_copy(copy,
+                                     mapsize + mapsize / 8 + (64ull << 20),
+                                     abandon,
+                                     declared);
+           copied != Copy::Written) {
+            remove_database_files(copy);
+            return copied;
         }
-        // LMDB writes the copy without syncing it, while the swap renames
-        // it over the file whose commits it syncs.
-        auto written = fs::File::open(copy);
-        if(auto error = written ? written->sync() : written.error()) {
+        // The copy commits without syncing, while the swap renames it over
+        // the file whose commits it syncs; a Windows map extended it to the
+        // whole map, which it is cut back from first.
+        auto written = fs::File::open(copy, {.read = true, .write = true});
+        auto error = written ? written->resize(declared) : written.error();
+        if(!error) {
+            error = written->sync();
+        }
+        if(error) {
             LOG_WARN("Cannot sync the compact copy of the index database: {}", error.message());
             fs::remove(copy);
             return Copy::Failed;
@@ -525,7 +631,13 @@ public:
         if(!replaced) {
             fs::remove(copy);
         }
-        if(!reopen(info.me_mapsize)) {
+        // The old map would extend the compact file back to its old size on
+        // Windows.
+        std::size_t mapsize = info.me_mapsize;
+        if(auto status = fs::status(path); replaced && status) {
+            mapsize = writer_mapsize(status->size);
+        }
+        if(!reopen(mapsize)) {
             return Swap::Lost;
         }
         return replaced ? Swap::Replaced : Swap::Kept;
@@ -541,6 +653,27 @@ public:
 
     std::optional<PageUsage> usage() override {
         return usage_of(txn);
+    }
+
+    /// Queue the files beside that no record of the read snapshot names —
+    /// a write that did not finish, a session that ended before it removed
+    /// them — for removal.
+    void retire_orphans() {
+        for(auto& file: files_beside(path)) {
+            llvm::StringRef name(file);
+            auto hex = name.substr(name.rfind(beside_infix) + beside_infix.size());
+            std::string encoded;
+            bool named = false;
+            if(!hex.ends_with(".partial") && llvm::tryGetFromHex(hex, encoded)) {
+                auto key = to_val(encoded);
+                MDB_val value;
+                named = mdb_get(txn, dbi, &key, &value) == 0;
+            }
+            if(!named) {
+                retired.push_back(file);
+            }
+        }
+        remove_retired();
     }
 
 private:
@@ -575,10 +708,110 @@ private:
         return usage;
     }
 
+    /// Every record of the read snapshot, in key order, into a fresh
+    /// environment at `copy`: appended, each page fills before the next
+    /// starts, where LMDB's own compact copy keeps the pages as full as
+    /// random writes left them (two thirds, on a large index).
+    Copy append_copy(const std::string& copy,
+                     std::size_t mapsize,
+                     const std::atomic<bool>& abandon,
+                     std::uint64_t& declared) {
+        // Commits of a few thousand records keep the dirty pages of one
+        // transaction small; between them the copy may be given up.
+        constexpr std::uint32_t batch = 4096;
+        remove_database_files(copy);
+        MDB_env* target = nullptr;
+        MDB_txn* source = nullptr;
+        MDB_txn* write = nullptr;
+        MDB_cursor* cursor = nullptr;
+        auto close = llvm::make_scope_exit([&] {
+            mdb_cursor_close(cursor);
+            mdb_txn_abort(source);
+            mdb_txn_abort(write);
+            mdb_env_close(target);
+        });
+        auto fail = [&](int rc, bool read) {
+            if(read) {
+                note_error(rc);
+            }
+            LOG_WARN("Cannot write a compact copy of the index database: {}", mdb_strerror(rc));
+            return Copy::Failed;
+        };
+        if(int rc = mdb_env_create(&target)) {
+            return fail(rc, false);
+        }
+        mdb_env_set_mapsize(target, mapsize);
+        if(int rc =
+               mdb_env_open(target, copy.c_str(), MDB_NOSUBDIR | MDB_NOLOCK | MDB_NOSYNC, 0644)) {
+            return fail(rc, false);
+        }
+        if(int rc = mdb_txn_begin(env, nullptr, MDB_RDONLY, &source)) {
+            return fail(rc, true);
+        }
+        if(int rc = mdb_cursor_open(source, dbi, &cursor)) {
+            return fail(rc, true);
+        }
+        MDB_dbi into = 0;
+        std::uint32_t pending = 0;
+        MDB_val key;
+        MDB_val value;
+        int rc = mdb_cursor_get(cursor, &key, &value, MDB_FIRST);
+        for(; rc == 0; rc = mdb_cursor_get(cursor, &key, &value, MDB_NEXT)) {
+            if(!write) {
+                if(abandon.load(std::memory_order_relaxed)) {
+                    return Copy::Abandoned;
+                }
+                if(int begun = mdb_txn_begin(target, nullptr, 0, &write)) {
+                    return fail(begun, false);
+                }
+                if(int opened = mdb_dbi_open(write, nullptr, 0, &into)) {
+                    return fail(opened, false);
+                }
+            }
+            if(int put = mdb_put(write, into, &key, &value, MDB_APPEND)) {
+                return fail(put, false);
+            }
+            if(++pending == batch) {
+                pending = 0;
+                if(int committed = mdb_txn_commit(std::exchange(write, nullptr))) {
+                    return fail(committed, false);
+                }
+            }
+        }
+        if(rc != MDB_NOTFOUND) {
+            return fail(rc, true);
+        }
+        if(write) {
+            if(int committed = mdb_txn_commit(std::exchange(write, nullptr))) {
+                return fail(committed, false);
+            }
+        }
+        declared = coverage(target).declared;
+        return Copy::Written;
+    }
+
+    /// Cut the closed database's file back to the pages it declares — a
+    /// Windows writer's map extended it to the map's size — while no other
+    /// process holds it open.
+    void trim_file(std::uint64_t declared) {
+        auto exclusive = OpenLock::acquire(path, OpenLock::Kind::Exclusive, /*wait=*/false);
+        if(!exclusive || opened_elsewhere(path)) {
+            return;
+        }
+        auto file = fs::File::open(path, {.read = true, .write = true});
+        if(!file) {
+            return;
+        }
+        if(auto status = file->status(); status && status->size > declared) {
+            if(auto error = file->resize(declared)) {
+                LOG_WARN("Cannot shrink the index database file: {}", error.message());
+            }
+        }
+    }
+
     /// Open the environment again after swap_compact_copy() closed it; false,
     /// the handle unusable, when that fails (logged).
     bool reopen(std::size_t mapsize) {
-        make_sparse(path);
         int rc = mdb_env_create(&env);
         if(rc == 0) {
             configure(env, mapsize);
@@ -600,6 +833,92 @@ private:
         }
         generation += 1;
         return true;
+    }
+
+    /// The value of `encoded` in the read snapshot: one stored beside is
+    /// its file, mapped read-only and immortal like a copy.
+    ReadBlob blob_of(llvm::StringRef encoded, const MDB_val& value) const {
+        if(!stored_beside(encoded.front())) {
+            return blob_of(value);
+        }
+        auto file = llvm::MemoryBuffer::getFile(beside(encoded),
+                                                /*IsText=*/false,
+                                                /*RequiresNullTerminator=*/false);
+        if(!file) {
+            LOG_WARN("The index database names a file beside it that does not open: {}",
+                     file.getError().message());
+            return {};
+        }
+        return {.buffer = std::move(*file)};
+    }
+
+    /// Commit the meta record again, unchanged. LMDB reuses the pages a
+    /// commit frees two commits on, the meta page before the newest staying
+    /// a whole tree to fall back on: a commit of one small record after
+    /// each write makes the next write the second one, reusing what this
+    /// one freed instead of growing the file. It syncs like any commit,
+    /// the fall-back it leaves being its own tree.
+    int commit_tick() {
+        MDB_txn* tick = nullptr;
+        if(int rc = mdb_txn_begin(env, nullptr, 0, &tick)) {
+            return rc;
+        }
+        auto mk = to_val(meta_key);
+        MDB_val current;
+        int rc = mdb_get(tick, dbi, &mk, &current);
+        std::string bytes;
+        if(rc == 0) {
+            bytes.assign(static_cast<const char*>(current.mv_data), current.mv_size);
+            auto mv = to_val(bytes);
+            rc = mdb_put(tick, dbi, &mk, &mv, 0);
+        }
+        if(rc != 0) {
+            mdb_txn_abort(tick);
+            return rc;
+        }
+        return mdb_txn_commit(tick);
+    }
+
+    /// The file a value stored beside the database lives in.
+    std::string beside(llvm::StringRef encoded) const {
+        return path + beside_infix.str() + llvm::toHex(encoded, /*LowerCase=*/true);
+    }
+
+    /// Write `bytes` into `file` whole and durably, under a temporary name
+    /// until they are.
+    static std::error_code write_beside(const std::string& file, llvm::StringRef bytes) {
+        auto partial = file + ".partial";
+        std::error_code error;
+        {
+            auto opened =
+                fs::File::open(partial, {.write = true, .truncate = true, .create = true});
+            if(!opened) {
+                return opened.error();
+            }
+            error = opened->write(bytes);
+            if(!error) {
+                error = opened->sync();
+            }
+        }
+        if(!error) {
+            error = fs::rename(partial, file);
+        }
+        if(error) {
+            fs::remove(partial);
+        }
+        return error;
+    }
+
+    /// Remove the files beside of records a commit removed, while no other
+    /// process has the database open: a reader's snapshot may name them.
+    void remove_retired() {
+        if(retired.empty() || !OpenLock::acquire(path, OpenLock::Kind::Exclusive, /*wait=*/false)) {
+            return;
+        }
+        std::erase_if(retired, [](const std::string& file) {
+            auto removed = fs::remove(file);
+            return removed || removed.error() == std::errc::no_such_file_or_directory;
+        });
     }
 
     /// A value of the read snapshot as a ReadBlob. LMDB keeps bytes
@@ -655,6 +974,12 @@ private:
     std::pair<std::size_t, std::size_t> growth() const {
         MDB_envinfo info;
         mdb_env_info(env, &info);
+#ifdef _WIN32
+        // The file takes the whole map: past a gigabyte it grows by quarters.
+        if(info.me_mapsize >= 1ull << 30) {
+            return {info.me_mapsize, info.me_mapsize + info.me_mapsize / 4};
+        }
+#endif
         return {info.me_mapsize, std::max<std::size_t>(info.me_mapsize * 2, lmdb_small_mapsize)};
     }
 
@@ -700,6 +1025,10 @@ private:
     /// A reader's lock on the `-open` file, held as long as the database
     /// is open; the writer holds none.
     std::optional<OpenLock> open_lock;
+
+    /// The files beside of records the writer's commits removed, left while
+    /// another process had the database open.
+    std::vector<std::string> retired;
 };
 
 enum class MetaCheck : std::uint8_t {
@@ -814,18 +1143,15 @@ std::expected<std::unique_ptr<LmdbDatabase>, std::string> open_lmdb_env(llvm::St
     std::string why;
     while(true) {
         // Giving up must not leave behind a file this attempt created
-        // (make_sparse and mdb_env_open both create on demand): a later
-        // session would misread the abandoned uninitialized placeholder as
-        // corruption and log a spurious rebuild.
+        // (mdb_env_open creates it on demand): a later session would
+        // misread the abandoned uninitialized placeholder as corruption and
+        // log a spurious rebuild.
         bool created = !read_only && !fs::exists(path);
         auto discard_created = [&] {
             if(created) {
                 remove_database_files(path);
             }
         };
-        if(!read_only) {
-            make_sparse(path);
-        }
         MDB_env* env = nullptr;
         if(int rc = mdb_env_create(&env)) {
             discard_created();
@@ -968,7 +1294,12 @@ std::expected<std::unique_ptr<LmdbDatabase>, std::string> open_lmdb_env(llvm::St
                     std::format("Cannot validate the index database at {}", path));
             }
         }
-        return std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), std::move(open_lock));
+        auto database =
+            std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), std::move(open_lock));
+        if(!read_only) {
+            database->retire_orphans();
+        }
+        return database;
     }
 }
 

@@ -174,6 +174,43 @@ ZEST_CASE(NoContextsNoRewrite) {
 
 };  // ZEST_SUITE(ContextChoices)
 
+ZEST_SUITE(SavePacing) {
+
+ZEST_CASE(SavesComeFurtherApart) {
+    // A checkpoint saves once the shards changed since the last save are a
+    // quarter of those stored, or half an hour after it; one with no index
+    // changes saves at once.
+    TempDir tmp;
+    for(std::uint32_t i = 0; i < 10; i += 1) {
+        tmp.touch(std::format("u{}.cpp", i), std::format("int u{0}() {{ return {0}; }}\n", i));
+    }
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    ZEXPECT(f.project.save_due());
+    auto merge = [&](std::uint32_t i) {
+        ZASSERT(f.merge(index_file(tmp, tmp.path(std::format("u{}.cpp", i))).data));
+    };
+    merge(0);
+    ZEXPECT(f.project.save_due());
+    for(std::uint32_t i = 1; i < 8; i += 1) {
+        merge(i);
+    }
+    f.save();
+    ZASSERT(f.project.database->count(index::BlobKind::Shard) == 8u);
+    merge(8);
+    ZEXPECT(!f.project.save_due());
+    merge(9);
+    ZEXPECT(f.project.save_due());
+    f.save();
+    merge(0);
+    ZEXPECT(!f.project.save_due());
+    f.project.saved_at -= chrono::minutes(31);
+    ZEXPECT(f.project.save_due());
+}
+
+};  // ZEST_SUITE(SavePacing)
+
 /// A database reporting its pages as `pages`, `free` of them free, and
 /// recording the compact copies written and what their swaps did;
 /// `forced_copy` and `forced_swap` stand in for their results. A lost
@@ -205,9 +242,9 @@ struct FreeSpace final : ForwardingDatabase {
         return usage;
     }
 
-    Copy write_compact_copy() override {
+    Copy write_compact_copy(const std::atomic<bool>& abandon) override {
         copies += 1;
-        return forced_copy ? *forced_copy : real->write_compact_copy();
+        return forced_copy ? *forced_copy : real->write_compact_copy(abandon);
     }
 
     Swap swap_compact_copy() override {
@@ -288,15 +325,31 @@ struct ShrinkProject {
 ZEST_SUITE(ShrinkDatabase) {
 
 ZEST_CASE(ShrinkThresholds) {
-    // A quarter of the file free, and 64 MB at least.
+    // A quarter of the file free and 64 MB at least, or 1 GB.
     auto due = [](std::uint64_t pages, std::uint64_t free) {
-        return shrink_due({.page_size = 4096, .pages = pages, .free_pages = free});
+        return shrink_due({.page_size = 4096, .pages = pages, .free_pages = free}, ShrinkAt::Idle);
     };
     ZEXPECT(due(1 << 16, 1 << 14));
     ZEXPECT(!due(1 << 16, (1 << 14) - 1));
     ZEXPECT(!due(1 << 15, (1 << 14) - 1));
     ZEXPECT(due(1 << 20, 1 << 18));
     ZEXPECT(!due(1 << 20, (1 << 18) - 1));
+    ZEXPECT(due(1 << 24, 1 << 18));
+    ZEXPECT(!due(1 << 24, (1 << 18) - 1));
+}
+
+ZEST_CASE(ShrinkThresholdsAtBatchEnd) {
+    // A tenth of the file free and 64 MB at least, or 1 GB.
+    auto due = [](std::uint64_t pages, std::uint64_t free) {
+        return shrink_due({.page_size = 4096, .pages = pages, .free_pages = free},
+                          ShrinkAt::BatchEnd);
+    };
+    ZEXPECT(due(10 << 14, 1 << 14));
+    ZEXPECT(!due(10 << 14, (1 << 14) - 1));
+    ZEXPECT(!due(1 << 15, (1 << 14) - 1));
+    ZEXPECT(due(10 << 18, 1 << 18));
+    ZEXPECT(!due(10 << 18, (1 << 18) - 1));
+    ZEXPECT(due(1 << 24, 1 << 18));
 }
 
 ZEST_CASE(ShrinkKeepsIndex) {
@@ -395,6 +448,32 @@ ZEST_CASE(SaveWaitsForShrink) {
     ZEXPECT(again.project.index.search_index()
                 .search(*index::Locator::parse("second_value"), 10, {})
                 .hits.size() == 1u);
+}
+
+ZEST_CASE(AbandonedShrinkTriesAgain) {
+    // A copy a shutdown gave up is no failure: the next idle save copies.
+    ShrinkProject p;
+    auto& space = p.spy();
+    space.forced_copy = index::BlobDatabase::Copy::Abandoned;
+    p.shrink();
+    ZEXPECT(!p.f.project.shrink_failed);
+    ZEXPECT(!space.swapped);
+    space.forced_copy.reset();
+    p.shrink();
+    ZEXPECT(space.copies == 2u);
+    ZEXPECT(space.swapped == index::BlobDatabase::Swap::Replaced);
+    ZEXPECT(p.hits("first_local") == 1u);
+}
+
+ZEST_CASE(RunWithoutIdleShrink) {
+    // A run ending with its indexing leaves the file to a server's idle time.
+    ShrinkProject p;
+    auto& space = p.spy();
+    p.f.project.shrinks_when_idle = false;
+    auto task = p.f.project.save(index::SearchRebuild::Idle);
+    p.f.loop.schedule(task);
+    p.f.loop.run();
+    ZEXPECT(space.copies == 0u);
 }
 
 ZEST_CASE(IdleSaveShrinks) {

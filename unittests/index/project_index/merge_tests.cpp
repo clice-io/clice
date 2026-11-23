@@ -35,6 +35,10 @@ std::string strip_content_hashes(llvm::StringRef data) {
 
 ZEST_SUITE(ProjectIndexMerge) {
 
+/// The cases' files, and the cache store a case opens there: declared
+/// before the fixture, it outlives the project holding the store's database
+/// open, which Windows cannot delete.
+TempDir tmp;
 IndexerFixture fx;
 async::event_loop& loop = fx.loop;
 Project& project = fx.project;
@@ -69,7 +73,6 @@ ZEST_CASE(MergeRejectsGarbage) {
 ZEST_CASE(LocalListedWithoutEntries) {
     // A unit lists an internal symbol in files whose stored entries never
     // name it: the index records only what the shards hold.
-    TempDir tmp;
     tmp.touch("shared.h", "");
     tmp.touch("main.cpp", R"(#include "shared.h"
 int use() { return 1; }
@@ -94,7 +97,6 @@ int use() { return 1; }
 }
 
 ZEST_CASE(MergeIgnoresDiskDrift) {
-    TempDir tmp;
     tmp.touch("main.cpp", "int value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
 
@@ -125,7 +127,6 @@ ZEST_CASE(MergeIgnoresDiskDrift) {
 }
 
 ZEST_CASE(MergeHitWritesNothing) {
-    TempDir tmp;
     tmp.touch("main.cpp", "int steady() { return 1; }\n");
     auto src = tmp.path("main.cpp");
     open_store(tmp, project);
@@ -149,7 +150,6 @@ ZEST_CASE(MergeHitWritesNothing) {
 }
 
 ZEST_CASE(SharedHeaderVariants) {
-    TempDir tmp;
     tmp.touch("shared.h",
               "#pragma once\n#ifdef MODE\nint mode_fn();\n#endif\n"
               "inline int shared_fn() { return 1; }\n");
@@ -190,7 +190,6 @@ ZEST_CASE(SharedHeaderVariants) {
 }
 
 ZEST_CASE(KnownVariantByHash) {
-    TempDir tmp;
     tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 1; }\n");
     tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
     tmp.touch("b.cpp", "#include \"shared.h\"\nint b() { return shared_fn(); }\n");
@@ -238,7 +237,6 @@ ZEST_CASE(KnownVariantByHash) {
 ZEST_CASE(KnownVariantsFromManifest) {
     // Without a scanned include graph, the files a TU's last manifest names
     // still offer their stored variants.
-    TempDir tmp;
     tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 1; }\n");
     tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
     auto a = index_file(tmp, tmp.path("a.cpp"));
@@ -264,7 +262,6 @@ ZEST_CASE(CopiedHeaderSentWhole) {
     // The same header at another path — an install moved, a vendored copy —
     // is no variant its unit's last index knows there: its entries travel
     // in full and merge.
-    TempDir tmp;
     llvm::StringRef header = "#pragma once\ninline int shared_fn() { return 1; }\n";
     tmp.touch("old/shared.h", header);
     tmp.touch("new/shared.h", header);
@@ -281,7 +278,6 @@ ZEST_CASE(CopiedHeaderSentWhole) {
 }
 
 ZEST_CASE(HeaderRegenerationReplaces) {
-    TempDir tmp;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
     auto src = tmp.path("main.cpp");
@@ -315,7 +311,6 @@ ZEST_CASE(HeaderRegenerationReplaces) {
 }
 
 ZEST_CASE(RebuildRequeuesPinnedOwner) {
-    TempDir tmp;
     tmp.touch("gen.h",
               "#pragma once\n#ifdef MODE\nint gen_mode();\n#endif\n"
               "inline int gen_fn() { return 1; }\n");
@@ -357,7 +352,6 @@ ZEST_CASE(RebuildRequeuesPinnedOwner) {
 }
 
 ZEST_CASE(RejectsCorruptSection) {
-    TempDir tmp;
     tmp.touch("cor.h", "#pragma once\ninline int cor() { return 1; }\n");
     tmp.touch("cor_main.cpp", "#include \"cor.h\"\nint use_cor() { return cor(); }\n");
 
@@ -401,7 +395,6 @@ ZEST_CASE(RejectsCorruptSection) {
 }
 
 ZEST_CASE(HashlessRemergeHits) {
-    TempDir tmp;
     tmp.touch("pcm.cpp", "int hashless_fn() { return 7; }\n");
     auto src = tmp.path("pcm.cpp");
     auto indexed = index_file(tmp, src);
@@ -424,7 +417,6 @@ ZEST_CASE(HashlessRemergeHits) {
 }
 
 ZEST_CASE(DropPendsUnitNames) {
-    TempDir tmp;
     tmp.touch("main.cpp",
               "static int lonely_helper() { return 1; }\n"
               "int main() { return lonely_helper(); }\n");
@@ -447,7 +439,6 @@ ZEST_CASE(IncludeResolutionsPerUnit) {
     // Two units resolve one `#include` of a shared header to different
     // files: the header's edges name both, and a unit leaving takes only
     // its own.
-    TempDir tmp;
     tmp.touch("shared.h", "#pragma once\n#include \"config.h\"\nint shared_value();\n");
     tmp.touch("a/config.h", "#pragma once\n");
     tmp.touch("b/config.h", "#pragma once\n");

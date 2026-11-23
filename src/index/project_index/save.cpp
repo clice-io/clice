@@ -321,25 +321,10 @@ async::task<bool> ProjectIndex::rebind_views(BlobDatabase& db,
     };
     co_await rebind(shard_records);
     co_await rebind(instantiation_records);
-    // The search index borrows the snapshot, but for the segments no batch
-    // committed yet, which own their bytes.
-    if(search.index.loaded()) {
-        for(std::uint32_t i = 0; i < header.search_segments.size() && !damage; i += 1) {
-            auto key = number_key(header.search_segments[i]);
-            if(ranges::any_of(search.writes,
-                              [&](const BlobDatabase::Blob& blob) { return blob.key == key; })) {
-                continue;
-            }
-            auto blob = db.read(BlobKind::SearchSegment, key);
-            if(!blob || !search.index.rebind(i, std::move(blob.buffer))) {
-                LOG_ERROR("The index database lost a search segment its header lists");
-                damage = true;
-            }
-        }
-    }
-    // A view left unrebound — a shard that diverged and the ones after it,
-    // a lost search index — still borrows the old snapshot: it stays, and
-    // the caller discards the index before anything reads them.
+    // A view left unrebound — a shard that diverged and the ones after it —
+    // still borrows the old snapshot: it stays, and the caller discards the
+    // index before anything reads them. The search segments are files of
+    // their own, borrowing no snapshot.
     if(db.corrupted() || damage) {
         co_return false;
     }

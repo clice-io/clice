@@ -185,6 +185,38 @@ ZEST_CASE(DamagedPosting) {
     ZEXPECT(built.damaged());
 }
 
+ZEST_CASE(RepeatedNamesStoredOnce) {
+    // Symbols sharing a name share its entry in the names and its tokens,
+    // each found as before.
+    Corpus corpus;
+    corpus.add("A", SymbolKind::Struct);
+    corpus.add("B", SymbolKind::Struct);
+    corpus.add("A::Run", SymbolKind::Method);
+    corpus.add("B::Run", SymbolKind::Method);
+    corpus.add("run", SymbolKind::Function);
+    corpus.add("Runner", SymbolKind::Struct);
+    auto segments = index::build_search_segments(corpus.snapshot);
+    ZASSERT(segments.size() == 1u);
+    auto blob = codec::blob::from_bytes<index::SearchIndexBlob>(segments.front());
+    ZASSERT(blob);
+    ZEXPECT(blob->names == "ABRunrunRunner");
+    auto built = corpus.build();
+    ZEXPECT(names(corpus, built, "Run") == (Names{"Run", "Run", "run", "Runner"}));
+    ZEXPECT(names(corpus, built, "B::Run") == (Names{"Run"}));
+    ZEXPECT(!built.damaged());
+
+    // An entry naming no name is no segment.
+    auto hostile = *blob;
+    hostile.name_of[0] = static_cast<std::uint32_t>(hostile.name_ends.size());
+    auto bytes = index::encode(hostile);
+    std::vector<std::unique_ptr<llvm::MemoryBuffer>> damaged;
+    damaged.push_back(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
+    SearchIndex loaded;
+    ZASSERT(loaded.replace(0, std::move(damaged)));
+    ZEXPECT(names(corpus, loaded, "Run").empty());
+    ZEXPECT(loaded.damaged());
+}
+
 ZEST_CASE(PostingListRoundTrip) {
     // Empty, single, sparse, dense and full sets, ids at both ends of the
     // universe, and universes too small for low bits.

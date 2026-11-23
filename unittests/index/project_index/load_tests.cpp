@@ -157,9 +157,9 @@ ZEST_CASE(RunsAcrossSessions) {
     ZEXPECT(hits("new_local") == 1u);
 }
 
-ZEST_CASE(RunsSpanManySegments) {
-    // Runs of more symbols than a segment holds persist, reload and give
-    // way as whole runs.
+ZEST_CASE(RunOfManySymbolsIsOneSegment) {
+    // A run of tens of thousands of symbols persists as one segment,
+    // reloads and gives way whole.
     TempDir tmp;
     auto enumeration = [](llvm::StringRef name, llvm::StringRef prefix) {
         std::string text = std::format("enum {} {{", name);
@@ -187,7 +187,7 @@ ZEST_CASE(RunsSpanManySegments) {
         f.list_units(tmp, {{"first.cpp"}, {"second.cpp"}});
         ZASSERT(f.merge(index_file(tmp, tmp.path("first.cpp")).data));
         f.save(index::SearchRebuild::Idle);
-        ZASSERT(stored(f) == 2u);
+        ZASSERT(stored(f) == 1u);
         ZEXPECT(hits(f, R"("f0")") == 1u);
         ZEXPECT(hits(f, R"("f19999")") == 1u);
     }
@@ -201,10 +201,10 @@ ZEST_CASE(RunsSpanManySegments) {
     ZASSERT(f.merge(index_file(tmp, tmp.path("second.cpp")).data));
     f.save(index::SearchRebuild::Never);
     ZASSERT(f.project.index.search_index().run_count() == 2u);
-    ZEXPECT(stored(f) == 4u);
+    ZEXPECT(stored(f) == 2u);
     f.save(index::SearchRebuild::Idle);
     ZEXPECT(f.project.index.search_index().run_count() == 1u);
-    ZEXPECT(stored(f) == 3u);
+    ZEXPECT(stored(f) == 1u);
     ZEXPECT(hits(f, R"("f0")") == 1u);
     ZEXPECT(hits(f, R"("s19999")") == 1u);
 }

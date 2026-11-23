@@ -24,9 +24,11 @@
 #define ZEXPECT(...) ZEST_CHECK(check, __VA_ARGS__)
 #define ZASSERT(...) ZEST_CHECK(check_fatal, __VA_ARGS__)
 #define MDB_NOSUBDIR	0x4000
+#define MDB_NOSYNC		0x10000
 #define MDB_RDONLY		0x20000
 #define MDB_NOTLS		0x200000
-#define MDB_CP_COMPACT	0x01
+#define MDB_NOLOCK		0x400000
+#define MDB_APPEND	0x20000
 #define MDB_NOTFOUND	(-30798)
 #define MDB_PAGE_NOTFOUND	(-30797)
 #define MDB_CORRUPTED	(-30796)

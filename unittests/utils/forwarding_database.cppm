@@ -49,8 +49,8 @@ struct ForwardingDatabase : index::BlobDatabase {
         return real->grow();
     }
 
-    Copy write_compact_copy() override {
-        return real->write_compact_copy();
+    Copy write_compact_copy(const std::atomic<bool>& abandon) override {
+        return real->write_compact_copy(abandon);
     }
 
     Swap swap_compact_copy() override {
