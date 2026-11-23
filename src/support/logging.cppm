@@ -255,7 +255,8 @@ void link_session_log(std::string_view logging_dir, std::string_view session_dir
 bool file_logger(std::string_view dir);
 
 /// Write a crash's stack trace to the log file and to stderr, but the
-/// pool's: from main, before any other thread starts.
+/// pool's, and leave the system no core dump to take: from main, before any
+/// other thread starts.
 void handle_crashes();
 
 /// What handle_crashes writes for a crash, for a handler that writes its
