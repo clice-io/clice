@@ -18,7 +18,8 @@ async function hold(file: string): Promise<() => Promise<void>> {
         [
             "-NoProfile",
             "-Command",
-            `$held = [IO.File]::Open('${file}', 'Open', 'ReadWrite', 'None'); 'held'; ` +
+            `$held = [IO.File]::Open('${file.replaceAll("'", "''")}', 'Open', 'ReadWrite', 'None'); ` +
+                "'held'; " +
                 "[void][Console]::In.ReadLine(); $held.Close()",
         ],
         { stdio: ["pipe", "pipe", "inherit"] },
@@ -110,12 +111,10 @@ test(
     },
     async (t) => {
         const release = await hold(path.join(t.root, "held.h"));
-        const s = await t.start({ lastRule: { background_index: false } });
+        let s: Serve;
         try {
-            const held = await s.errors("held.cpp");
-            expect(held.map((diagnostic) => diagnostic.message)).toContainEqual(
-                expect.stringContaining("in use by another program"),
-            );
+            s = await t.start({ lastRule: { background_index: false } });
+            await t.show("held", s.errors("held.cpp"));
         } finally {
             await release();
         }

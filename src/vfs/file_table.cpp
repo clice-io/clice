@@ -13,15 +13,6 @@ Spelling fold(const Spelling& path) {
     return Spelling::absolute(text);
 }
 
-/// `path` with the drive letter of `written`, a path on the same drive, in
-/// its case: a spelling writes it in lower case.
-std::string with_drive_of(std::string path, llvm::StringRef written) {
-    if(path::root(written).prefix == path::Prefix::Drive) {
-        path[0] = written[0];
-    }
-    return path;
-}
-
 /// `path` in the workspace folder holding it, spelled the way the folder
 /// shows; none outside every folder.
 std::optional<std::string> in_folder(llvm::ArrayRef<FileTable::Folder> folders,
@@ -29,10 +20,10 @@ std::optional<std::string> in_folder(llvm::ArrayRef<FileTable::Folder> folders,
     for(auto& folder: folders) {
         if(path::is_within(path, llvm::StringRef(folder.identity))) {
             auto rest = path.drop_front(folder.identity.size()).ltrim('/');
-            return with_drive_of(Spelling(rest, folder.shown).str(), folder.written);
+            return path::with_drive_of(Spelling(rest, folder.shown).str(), folder.written);
         }
         if(path::is_within(path, llvm::StringRef(folder.shown))) {
-            return with_drive_of(path.str(), folder.written);
+            return path::with_drive_of(path.str(), folder.written);
         }
     }
     return std::nullopt;

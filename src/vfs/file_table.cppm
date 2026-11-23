@@ -108,12 +108,12 @@ struct FileTable {
     std::string display(Fid fid) const;
 
     /// display() of the file a worker or an index names by its identity,
-    /// interned first, so that an open document shows its own spelling.
+    /// interned first, so that an open document shows under its own name.
     std::string display_identity(llvm::StringRef identity);
 
-    /// A path by its identity, under the spelling of the workspace folder
-    /// it lies in (a folder opened through a symlink) or as it is outside
-    /// every folder.
+    /// A path by its identity, under the path the workspace folder it lies
+    /// in shows under (a folder opened through a symlink) or as it is
+    /// outside every folder.
     std::string display(CanonicalRef identity) const;
 
     /// An open document names its file this way until it closes: as the
@@ -133,10 +133,10 @@ struct FileTable {
         shown.erase(fid);
     }
 
-    /// Files under the workspace folder `root` show under this spelling of
-    /// it, its `..` segments folded away while the folded path still names
-    /// the same directory, its drive letter as `root` writes it: the
-    /// client's case, for the URIs the client is sent.
+    /// Files under the workspace folder the client writes as `root` show
+    /// under that path, its `..` segments folded away while the folded path
+    /// still names the same directory: the URIs the client is sent keep the
+    /// drive letter's case it wrote.
     void spell_root(llvm::StringRef root);
 
     /// Stop showing files under a root spell_root recorded.

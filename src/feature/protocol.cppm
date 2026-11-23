@@ -10,16 +10,16 @@ import :vfs.path;
 namespace clice::feature {
 
 /// Render an absolute path as an LSP URI string, its drive letter as the
-/// path writes it: a client keys documents by its own spelling (Qt Creator
-/// with the case), which the open document's and the folder's paths keep
-/// (written_path).
+/// path writes it: a client keys documents by the paths it writes (Qt
+/// Creator with the case), which the open document's and the folder's
+/// paths keep (written_path).
 inline auto to_uri(llvm::StringRef file) -> std::string {
     auto uri = lsp::URI::from_path(file);
     assert(uri && "a URI names an absolute path");
     return std::string(uri->text());
 }
 
-/// The path a `file:` URI names as the client writes it: on Windows its
+/// The path a `file:` URI names as the client writes it: its spelling, the
 /// drive letter in the URI's case, which a Spelling lowers. A document and
 /// a workspace folder are named so; nullopt for any other URI.
 inline auto written_path(llvm::StringRef uri) -> std::optional<std::string> {
@@ -28,7 +28,7 @@ inline auto written_path(llvm::StringRef uri) -> std::optional<std::string> {
     if(!parsed || parsed->to_path(path) || !path::is_absolute(path)) {
         return std::nullopt;
     }
-    return path;
+    return path::with_drive_of(Spelling::absolute(path).str(), path);
 }
 
 /// The file a `file:` URI names; nullopt for any other URI.

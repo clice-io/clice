@@ -9,7 +9,6 @@ import :server.master;
 import :server.served_project;
 import :support.logging;
 import :support.version;
-import :vfs.path;
 
 namespace clice {
 

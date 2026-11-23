@@ -27,6 +27,15 @@ inline void canonicalize(kotatsu::buffer_ref p) {
     path::lowercase_drive(p);
 }
 
+/// `path` with the drive letter of `written`, a path on the same drive, in
+/// the case `written` has it: canonicalization lowers it.
+inline std::string with_drive_of(std::string path, llvm::StringRef written) {
+    if(path::root(written).prefix == path::Prefix::Drive) {
+        path[0] = written[0];
+    }
+    return path;
+}
+
 }  // namespace path
 
 struct FileTable;
