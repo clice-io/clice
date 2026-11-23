@@ -13,7 +13,9 @@ bazel_dep(name = "compdb", version = "0.1.0")
 bazel_dep(name = "kotatsu", version = "0.1.0.283")
 bazel_dep(name = "croaring", version = "5.5.5.clice.1")
 bazel_dep(name = "lmdb", version = "0.9.36.clice.1")
-bazel_dep(name = "mimalloc", version = "3.5.3.clice.1")
+# mimalloc 2: on 3 clice was faster still, but held about twice glibc's
+# memory once idle.
+bazel_dep(name = "mimalloc", version = "2.5.3.clice.2")
 bazel_dep(name = "simdjson", version = "5.1.1.clice.1")
 
 # The C++ toolchain on every platform and the LLVM/Clang libraries clice

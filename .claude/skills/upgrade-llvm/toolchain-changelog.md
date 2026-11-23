@@ -33,6 +33,16 @@ files.
   on x64 Linux. CI builds every target on x64 Linux (`build_os` in `test.yml`)
   and tests on the target's runner. Check: `npx bazel build --platforms=@xclang//platforms:aarch64-apple-darwin //modules:demand`
   on x64 Linux.
+- **A bazelrc setting for one target OS never reaches the releases.**
+  `--enable_platform_specific_config` picks a `common:<os>` line by the
+  host, and CI builds every target on Linux: the line
+  `common:macos --@mimalloc//:override=true` reached only builds run on a
+  Mac, so the macOS releases allocated through libmalloc. A setting that
+  depends on the target is a `select()` on its constraints: the registry's
+  mimalloc takes malloc over on Linux and macOS alone, and clice sets the
+  flag for every target. Check: on Linux, `npx bazel aquery --platforms=@xclang//platforms:aarch64-apple-darwin 'mnemonic("CppCompile", @mimalloc//:mimalloc)'`
+  lists `-DMI_MALLOC_OVERRIDE`; `tools/release/system_libraries.ts` fails a
+  Linux or macOS package whose malloc is the system's.
 - **Every link of clice takes minutes.** The libclang archives hold ThinLTO
   bitcode; lld redoes its code generation on every link unless its cache has
   it. The cache directory is one path per OS (`.bazelrc`: the path is in the

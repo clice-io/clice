@@ -84,10 +84,12 @@ async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::
                                                                std::string cwd,
                                                                std::string path = {});
 
-/// Hand freed heap back to the system. glibc keeps the pages of large freed
-/// arenas — an AST, a TU's index, the master's merge buffers — so without
-/// this a process's RSS only ever grows; mimalloc returns them a second
-/// after they were freed (src/mimalloc.cc), or at this collect.
+/// Hand freed heap back to the system: the allocator's collect of this
+/// thread's heap (src/mimalloc.cc), and the system heap's trim where the
+/// system libraries still allocate from it. In a program without the
+/// allocator (the unit tests) glibc keeps the pages of large freed arenas —
+/// an AST, a TU's index, the master's merge buffers — so without this a
+/// process's RSS only ever grows.
 void release_free_memory();
 
 /// release_free_memory on every thread of libuv's pool, then on this one.

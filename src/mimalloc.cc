@@ -1,4 +1,9 @@
-// The Windows and macOS executables allocate through mimalloc.
+// The executables allocate through mimalloc.
+//
+// Linux: clang runs faster on it than on glibc's malloc, for a little more
+// memory: on abseil a file opens to its diagnostics in 0.83 to 0.87 of the
+// time. It takes malloc over (--@mimalloc//:override), so glibc's malloc
+// serves nothing (release_free_memory).
 //
 // Windows: the UCRT heap returns freed memory to the system between
 // requests, so every request faulted its working set back in page by page.
@@ -20,12 +25,11 @@
 // itself (--@mimalloc//:override), its malloc zone the system libraries'
 // allocations too.
 //
-// FIXME: on Windows two of mimalloc's process-attach hooks run its post-init
-// (`_mi_options_post_init`), and the second run writes the newline the first
-// left in its delayed-output buffer to stderr: every process starts with a
-// stray newline there, which keeps an editor's stderr pipe from switching to
-// non-blocking until the editor reads it (logging::PipeOutput). Fix it in
-// the registry's mimalloc: the post-init runs once.
+// FIXME: on Windows two of mimalloc's process-attach hooks, its constructor
+// and its TLS callback, both run its start-up, and every process starts with
+// a stray newline on stderr, which keeps an editor's stderr pipe from
+// switching to non-blocking until the editor reads it (logging::PipeOutput).
+// Fix it in the registry's mimalloc: its start-up runs once.
 
 #ifdef _WIN32
 #include <cstddef>
@@ -71,11 +75,11 @@ const bool purge = [] {
 
 #endif
 
-/// A page a thread left when it ended goes to the thread that frees into it,
-/// whose collects return it: otherwise it waits for an allocation of its
+/// A segment a thread left when it ended goes to the thread that frees into
+/// it, whose collects return it: otherwise it waits for an allocation of its
 /// size, and an idle process keeps it for good.
 const bool reclaim = [] {
-    mi_option_set(mi_option_page_reclaim_on_free, 1);
+    mi_option_set(mi_option_abandoned_reclaim_on_free, 1);
     return true;
 }();
 
