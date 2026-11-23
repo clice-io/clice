@@ -7,8 +7,6 @@ import :vfs.path;
 
 namespace clice::vfs {
 
-namespace {
-
 llvm::SmallString<64> fold(llvm::StringRef name) {
     llvm::SmallString<64> folded;
     for(char c: name) {
@@ -16,6 +14,8 @@ llvm::SmallString<64> fold(llvm::StringRef name) {
     }
     return folded;
 }
+
+namespace {
 
 /// Whether the entry `name` opens in `listing` is a directory; nullopt
 /// when it opens none.
@@ -49,12 +49,14 @@ bool Listing::contains_file(llvm::StringRef name) const {
 std::shared_ptr<const Listing> list(llvm::StringRef dir) {
     auto listing = std::make_shared<Listing>();
     listing->dir = dir.str();
-    auto before = fs::status(dir);
     auto entries = fs::Directory::open(dir);
     if(!entries) {
-        LOG_DEBUG("readdir failed for '{}': {}", dir, entries.error().message());
+        if(entries.error() != std::errc::no_such_file_or_directory) {
+            LOG_DEBUG("readdir failed for '{}': {}", dir, entries.error().message());
+        }
         return listing;
     }
+    auto before = entries->status();
     // Folding where the volume would match case anyway only costs a stat.
     listing->case_sensitive = fs::case_sensitive(dir).value_or(false);
     for(auto& entry: *entries) {
@@ -75,7 +77,7 @@ std::shared_ptr<const Listing> list(llvm::StringRef dir) {
     if(!before) {
         return listing;
     }
-    auto after = fs::status(dir);
+    auto after = entries->status();
     if(after && before->mtime == after->mtime) {
         auto mtime_ns = Stamp::of(*after).mtime_ns;
         if(stable_mtime(mtime_ns)) {
@@ -93,25 +95,56 @@ std::shared_ptr<const Listing> DirCache::kept(llvm::StringRef dir) const {
     return it->second;
 }
 
+/// The listing of `dir` the cache keeps, when one stat confirms it.
+static std::shared_ptr<const Listing> confirmed(const DirCache& cache, llvm::StringRef dir) {
+    auto kept = cache.kept(dir);
+    if(!kept) {
+        return nullptr;
+    }
+    auto status = fs::status(dir);
+    return status && Stamp::of(*status).mtime_ns == kept->mtime_ns ? kept : nullptr;
+}
+
 const Listing& Scope::list(llvm::StringRef dir) {
     if(auto it = held.find(dir); it != held.end()) {
         return *it->second;
     }
-
-    if(auto kept = cache.kept(dir)) {
-        if(auto status = fs::status(dir); status && Stamp::of(*status).mtime_ns == kept->mtime_ns) {
+    if(!operation) {
+        if(auto kept = confirmed(cache, dir)) {
             return *held.try_emplace(dir, std::move(kept)).first->second;
         }
+        auto listing = vfs::list(dir);
+        adopt(dir, listing);
+        return *listing;
     }
 
-    auto listing = vfs::list(dir);
-    adopt(dir, listing);
-    return *listing;
+    if(auto it = operation->held.find(dir); it != operation->held.end()) {
+        return *held.try_emplace(dir, it->second).first->second;
+    }
+    {
+        std::lock_guard guard(shared->lock);
+        if(auto it = shared->listed.find(dir); it != shared->listed.end()) {
+            return *held.try_emplace(dir, it->second).first->second;
+        }
+    }
+    auto listing = confirmed(cache, dir);
+    if(!listing) {
+        listing = vfs::list(dir);
+    }
+    std::lock_guard guard(shared->lock);
+    auto& first = shared->listed.try_emplace(dir, std::move(listing)).first->second;
+    return *held.try_emplace(dir, first).first->second;
 }
 
 void Scope::adopt(llvm::StringRef dir, std::shared_ptr<const Listing> listing) {
     cache.listings[dir] = listing;
     held[dir] = std::move(listing);
+}
+
+void Scope::take(SharedListings& shared) {
+    for(auto& entry: shared.listed) {
+        adopt(entry.getKey(), entry.second);
+    }
 }
 
 }  // namespace clice::vfs

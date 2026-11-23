@@ -4,6 +4,7 @@ import :command.argument;
 import :command.table;
 import :command.toolchains.clang;
 import :support.prelude;
+import :support.process;
 
 namespace clice {
 
@@ -40,17 +41,22 @@ std::vector<std::string> cl_driver_mode(llvm::StringRef driver, CompilerFamily f
 /// one does not.
 std::string visual_studio_bin(llvm::StringRef program);
 
-/// cl and clang-cl: asked to preprocess a file naming their macros, the
-/// driver tells the C++ standard it compiles in — what `/std:c++latest`
-/// means moves from one version to the next — and cl its version, where
-/// clang's own detection would take the newest toolset installed. clang's
-/// own driver in cl mode, which sets the windows-msvc target itself, then
-/// builds the job in that standard and version. clang-cl's version is the
-/// one that detection finds, from the toolset its flags select
-/// (`/winsysroot`), as it does here.
-async::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> args,
-                                                    const Command& command,
-                                                    llvm::StringRef input,
-                                                    std::string cwd);
+/// What cl or clang-cl is asked of `args`, a command of `command`: to
+/// preprocess (`/EP`) a file holding `cl_query_source`, the input that goes
+/// last, in the command's `/std:` and driver mode alone. The driver tells
+/// the C++ standard it compiles in — what `/std:c++latest` means moves from
+/// one version to the next — and cl its version, where clang's own
+/// detection would take the newest toolset installed.
+std::vector<std::string> cl_question(llvm::ArrayRef<std::string> args, const Command& command);
+
+/// The job clang's own driver in cl mode, which sets the windows-msvc
+/// target itself, builds for `args`, a command of `command` run in `cwd`,
+/// in the standard and version of `answer`, what the driver answered
+/// `cl_question`. clang-cl's version is the one that detection finds, from
+/// the toolset its flags select (`/winsysroot`), as it does here.
+std::expected<Job, std::string> read_cl_answer(llvm::ArrayRef<std::string> args,
+                                               const Command& command,
+                                               const ProgramOutput& answer,
+                                               llvm::StringRef cwd);
 
 }  // namespace clice

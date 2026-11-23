@@ -91,10 +91,14 @@ ZEST_CASE(IdentityHashes) {
     database.add_command("/fake", "r.cpp", "clang++ -std=c++20 -frandom-seed=r.o r.cpp"sv);
     ZEXPECT(hash_of("a.cpp") == hash_of("r.cpp"));
 
-    /// The input slot's position is part of the identity.
+    /// The input slot's position is part of the identity where a `-x`
+    /// follows it, which sets the language of what comes after alone.
     database.add_command("/fake", "p1.cpp", "clang++ p1.cpp -Wall"sv);
     database.add_command("/fake", "p2.cpp", "clang++ -Wall p2.cpp"sv);
-    ZEXPECT(hash_of("p1.cpp") != hash_of("p2.cpp"));
+    ZEXPECT(hash_of("p1.cpp") == hash_of("p2.cpp"));
+    database.add_command("/fake", "p3.c", "clang -x c p3.c -x c++"sv);
+    database.add_command("/fake", "p4.c", "clang -x c -x c++ p4.c"sv);
+    ZEXPECT(hash_of("p3.c") != hash_of("p4.c"));
 
     ZEXPECT(commands.command_hash_hex(database.candidate_entries(fake("a.cpp")).front().command)
                 .size() == 16U);

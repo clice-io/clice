@@ -12,6 +12,7 @@ import :support.failure;
 import :support.logging;
 import :support.process;
 import :support.text;
+import :vfs.dir_cache;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -88,36 +89,9 @@ bool names_search_dir(unsigned id) {
            id == clang_options::OPT_internal_externc_isystem;
 }
 
-/// clice's own counterpart of a path another clang's job or the command
-/// names, if it has one: the job's resource directory (`job_resource_dir`)
-/// and its builtin headers, or another clang's builtin header directory a
-/// search option names (the command's `-isystem <clang>/lib/clang/23/include`,
-/// zig's lib/include). The rest of a resource tree stays external —
-/// sanitizer ignorelists under share/, runtime libraries under lib/: the
-/// driver verified those files exist there, clice's tree ships include/
-/// alone, and cc1 aborts the process on an ignorelist it cannot open.
-std::optional<std::string> ours_for(unsigned id,
-                                    llvm::StringRef value,
-                                    llvm::StringRef job_resource_dir) {
-    llvm::StringRef rest = value;
-    if(!job_resource_dir.empty() && job_resource_dir != resource_dir() &&
-       rest.consume_front(job_resource_dir) &&
-       (rest.empty() || rest.front() == '/' || rest.front() == '\\')) {
-        rest = rest.ltrim("/\\");
-        if(rest.empty()) {
-            return resource_dir().str();
-        }
-        if(rest == "include" || rest.starts_with("include/") || rest.starts_with("include\\")) {
-            return path::join(resource_dir(), rest);
-        }
-        return std::nullopt;
-    }
-    auto builtin_headers = path::join(resource_dir(), "include");
-    if(names_search_dir(id) && value.rtrim("/\\") != builtin_headers &&
-       fs::exists(path::join(value, "__stddef_max_align_t.h"))) {
-        return builtin_headers;
-    }
-    return std::nullopt;
+/// Whether `dir` holds a clang's builtin headers.
+bool holds_builtin_headers(llvm::StringRef dir) {
+    return fs::exists(path::join(dir, "__stddef_max_align_t.h"));
 }
 
 /// The files under `dir`, by their paths relative to it, `/`-separated.
@@ -133,73 +107,42 @@ std::vector<std::string> files_under(const Spelling& dir) {
     return names;
 }
 
-/// What the compiles of a job whose search list is `search` do not see of
-/// the builtin headers of another compiler in its `shadowed` directories,
-/// clang's own placed right before each: those clang has as well, and past
-/// the directory, the copies of one whose own does not #include_next, which
-/// that compiler never reaches (newlib's stdatomic.h behind GCC's).
-std::shared_ptr<const vfs::HiddenFiles> hidden_files(const SearchConfig& search,
-                                                     llvm::ArrayRef<Spelling> shadowed) {
-    std::map<std::string, std::set<std::string>> hidden;
-    for(auto& dir: shadowed) {
-        // The search list keeps one spelling of a directory the job names
-        // twice (by a symlink, through `..`), as clang does: the files of
-        // the other are never looked up.
-        auto found = ranges::find(search.dirs, dir.str(), &SearchDir::path);
-        if(found == search.dirs.end()) {
-            continue;
-        }
-        for(auto& name: files_under(dir)) {
-            if(builtin_header(name) == BuiltinHeader::None) {
-                continue;
-            }
-            hidden[dir.str()].insert(name);
-            // A module map is no header: clang reads the one of every
-            // directory it searches, #include_next or not.
-            if(llvm::StringRef(name).ends_with(".modulemap")) {
-                continue;
-            }
-            std::optional<bool> defers;
-            for(auto& later: llvm::make_range(std::next(found), search.dirs.end())) {
-                if(!fs::is_file(path::join(later.path, name))) {
-                    continue;
-                }
-                if(!defers) {
-                    auto text = vfs::read_text(path::join(dir, name));
-                    defers = !text || text->contains("include_next");
-                }
-                if(!*defers) {
-                    hidden[later.path].insert(name);
-                }
-            }
-        }
+/// Whether the frontend takes `arg` as the command writes it, the driver
+/// passing it on untouched to cc1, so the query need not see it: clang's
+/// `-W`, `-w` and `-pedantic`, and `-fmodule-name=`, which outside header
+/// modules (normalize drops it with them) names only `__MODULE__`. Targets
+/// setting their warnings or their module names apart would each ask the
+/// compiler (Chromium names every target's module). One a driver translates
+/// (cl's `/W4`, `-Wframe-larger-than=`) the query sees, as it does every
+/// option of a compiler whose flags clang takes only after flags_for_clang
+/// (GCC's `-Werror=shadow`).
+bool frontend_takes_as_written(const Arg& arg, CompilerFamily family) {
+    if(cl_mode(family) || family == CompilerFamily::GCC || family == CompilerFamily::NVCC) {
+        return false;
     }
-    if(hidden.empty()) {
-        return nullptr;
+    if(arg.cls == ArgClass::Semantic) {
+        return arg.opt_id == clang_options::OPT_fmodule_name_EQ;
     }
-    auto files = std::make_shared<vfs::HiddenFiles>();
-    for(auto& [dir, names]: hidden) {
-        files->dirs.push_back({
-            .path = dir,
-            .names = {names.begin(), names.end()}
-        });
-    }
-    return files;
+    auto opt = clang_options::table().option(arg.opt_id);
+    return arg.cls == ArgClass::Diagnostics && opt &&
+           opt->has_visibility_flag(clang_options::CC1Option);
 }
 
 /// Which args feed the query (and its key): everything that may change
 /// driver behavior. User-content never does, nor does the command's
-/// action; unknown tokens feed it only as NVCC query tokens (junk from the
-/// CDB must not fail an otherwise good query).
+/// action, nor what the frontend takes as written; unknown tokens feed it
+/// only as NVCC query tokens (junk from the CDB must not fail an otherwise
+/// good query).
 bool in_query_view(const Arg& arg, CompilerFamily family) {
     switch(arg.cls) {
         case ArgClass::Semantic: {
             // The query picks its own action; the command's (-fsyntax-only)
             // would go unused, an error under -Werror.
             auto opt = clang_options::table().option(arg.opt_id);
-            return !opt || !opt->matches(clang_options::OPT_Action_Group);
+            return (!opt || !opt->matches(clang_options::OPT_Action_Group)) &&
+                   !frontend_takes_as_written(arg, family);
         }
-        case ArgClass::Diagnostics: return true;
+        case ArgClass::Diagnostics: return !frontend_takes_as_written(arg, family);
         case ArgClass::Unknown:
             return family == CompilerFamily::NVCC && is_nvcc_query_flag(arg.spelling);
         case ArgClass::UserContent:
@@ -372,6 +315,33 @@ Toolchain::QueryArgv Toolchain::query_argv(const Command& command) {
     return out;
 }
 
+std::optional<std::string> Toolchain::ours_for(unsigned id,
+                                               llvm::StringRef value,
+                                               llvm::StringRef job_resource_dir) {
+    llvm::StringRef rest = value;
+    if(!job_resource_dir.empty() && job_resource_dir != resource_dir() &&
+       rest.consume_front(job_resource_dir) &&
+       (rest.empty() || rest.front() == '/' || rest.front() == '\\')) {
+        rest = rest.ltrim("/\\");
+        if(rest.empty()) {
+            return resource_dir().str();
+        }
+        if(rest == "include" || rest.starts_with("include/") || rest.starts_with("include\\")) {
+            return path::join(resource_dir(), rest);
+        }
+        return std::nullopt;
+    }
+    auto builtin_headers = path::join(resource_dir(), "include");
+    if(!names_search_dir(id) || value.rtrim("/\\") == builtin_headers) {
+        return std::nullopt;
+    }
+    auto [known, inserted] = builtin_header_dirs.try_emplace(value);
+    if(inserted) {
+        known->second = holds_builtin_headers(value);
+    }
+    return known->second ? std::optional(builtin_headers) : std::nullopt;
+}
+
 Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) {
     std::vector<std::string> tokens(job.args.begin() + 2, job.args.end());
     drop_sycl_integration_files(tokens);
@@ -473,7 +443,72 @@ Toolchain::Frontend Toolchain::frontend(const Job& job, const Command& command) 
             result.shadowed.push_back(commands.intern(dir));
             spelled.emplace_back(dir, base);
         }
-        result.hidden = hidden_files(extract_search_config(result.args, base), spelled);
+        result.hidden = hidden_files(extract_search_config(result.args, base, files), spelled);
+    }
+    return result;
+}
+
+std::shared_ptr<const vfs::HiddenFiles> Toolchain::hidden_files(const SearchConfig& search,
+                                                                llvm::ArrayRef<Spelling> shadowed) {
+    vfs::Scope scope(files.dirs);
+    std::map<std::string, std::set<std::string>> hidden;
+    for(auto& dir: shadowed) {
+        // The search list keeps one spelling of a directory the job names
+        // twice (by a symlink, through `..`), as clang does: the files of
+        // the other are never looked up.
+        auto found = ranges::find(search.dirs, dir.str(), &SearchDir::path);
+        if(found == search.dirs.end()) {
+            continue;
+        }
+        auto [known, inserted] = shadowed_headers.try_emplace(dir.str());
+        auto& headers = known->second;
+        if(inserted) {
+            for(auto& name: files_under(dir)) {
+                if(builtin_header(name) != BuiltinHeader::None) {
+                    headers.names.push_back(std::move(name));
+                }
+            }
+        }
+        if(headers.names.empty()) {
+            continue;
+        }
+        hidden[dir.str()].insert(headers.names.begin(), headers.names.end());
+        // Read off the directories' listings: a clang-cl job searches a
+        // dozen directories past its clang's builtin headers, hundreds of
+        // them.
+        for(auto& later: llvm::make_range(std::next(found), search.dirs.end())) {
+            auto& listing = scope.list(later.path);
+            for(auto& name: headers.names) {
+                // A module map is no header: clang reads the one of every
+                // directory it searches, #include_next or not.
+                if(llvm::StringRef(name).ends_with(".modulemap") ||
+                   !listing.contains(llvm::StringRef(name).split('/').first)) {
+                    continue;
+                }
+                auto file = path::join(later.path, name);
+                if(!scope.list(path::parent(file)).contains_file(path::filename(file))) {
+                    continue;
+                }
+                auto [defers, unread] = headers.defers.try_emplace(name);
+                if(unread) {
+                    auto text = vfs::read_text(path::join(dir, name));
+                    defers->second = !text || text->contains("include_next");
+                }
+                if(!defers->second) {
+                    hidden[later.path].insert(name);
+                }
+            }
+        }
+    }
+    if(hidden.empty()) {
+        return nullptr;
+    }
+    auto result = std::make_shared<vfs::HiddenFiles>();
+    for(auto& [dir, names]: hidden) {
+        result->dirs.push_back({
+            .path = dir,
+            .names = {names.begin(), names.end()}
+        });
     }
     return result;
 }
@@ -509,12 +544,12 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
         }
     };
     stage(query.args.take_front(query.forwarded));
-    /// The command's own user content never fed the query. It goes where
-    /// the driver puts it, before what -Xclang passes on: CMake's
-    /// `-Xclang -include -Xclang cmake_pch.hxx` follows the -includes of
-    /// the command's flags.
+    /// The command's own user content never fed the query, nor did what the
+    /// frontend takes as written. They go where the driver puts them, before
+    /// what -Xclang passes on: CMake's `-Xclang -include -Xclang
+    /// cmake_pch.hxx` follows the -includes of the command's flags.
     for(auto& arg: command.args) {
-        if(arg.cls != ArgClass::UserContent) {
+        if(arg.cls != ArgClass::UserContent && !frontend_takes_as_written(arg, command.family)) {
             continue;
         }
         auto& staged_arg = staged.emplace_back(local(arg));
@@ -535,8 +570,8 @@ struct Toolchain::QueryAdmission {
 
     Kind kind;
     std::string key;
-    /// Ready: the query to run.
-    QuerySpec spec;
+    /// Ready: whether the query runs in the command's directory.
+    bool cwd_sensitive = false;
     /// CoolingDown: the cached failure.
     std::string error;
 };
@@ -556,17 +591,22 @@ Toolchain::QueryAdmission Toolchain::admit_query(CommandID id, InputKind input) 
         admission.error = failed_it->second.record.cause;
         return admission;
     }
+    admission.kind = QueryAdmission::Kind::Ready;
+    admission.cwd_sensitive = pk.cwd_sensitive;
+    return admission;
+}
 
+QuerySpec Toolchain::query_spec(const QueryAdmission& admission, CommandID id, InputKind input) {
     auto& command = commands.get(id);
     auto argv = query_argv(command);
-    admission.kind = QueryAdmission::Kind::Ready;
-    admission.spec.argv = std::move(argv.argv);
-    admission.spec.command = &command;
-    admission.spec.slot = argv.slot;
-    admission.spec.kind = input.value;
-    admission.spec.cwd =
-        query_cwd(pk.cwd_sensitive ? command.directory : llvm::StringRef(commands.project_root()));
-    return admission;
+    return {
+        .argv = std::move(argv.argv),
+        .command = &command,
+        .slot = argv.slot,
+        .kind = input.value,
+        .cwd = query_cwd(admission.cwd_sensitive ? command.directory
+                                                 : llvm::StringRef(commands.project_root())),
+    };
 }
 
 void Toolchain::commit_query(llvm::StringRef key,
@@ -628,9 +668,11 @@ std::expected<Toolchain::ResolvedCommand, std::string> Toolchain::resolve(Comman
                       input.value);
         }
 
-        auto [ended] = async::run(query_one(admission.spec));
+        auto spec = query_spec(admission, id, input);
+        QueryBatch batch;
+        auto [ended] = async::run(query_one(spec, batch));
         auto& result = *ended;
-        commit_query(admission.key, id, input, result, !result && !driver_found(admission.spec));
+        commit_query(admission.key, id, input, result, !result && !driver_found(spec));
         if(!result) {
             if(runs_compiler) {
                 LOG_WARN(
@@ -690,11 +732,9 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs, WarmOptions options) {
             pending[it->second].chosen |= chosen;
             continue;
         }
-        pending.push_back({std::move(admission.key),
-                           ref.command,
-                           ref.language,
-                           std::move(admission.spec),
-                           chosen});
+        auto spec = query_spec(admission, ref.command, ref.language);
+        pending.push_back(
+            {std::move(admission.key), ref.command, ref.language, std::move(spec), chosen});
     }
 
     if(pending.empty()) {
@@ -717,9 +757,10 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs, WarmOptions options) {
 
     // The query is moved into the coroutine frame as a parameter, so the
     // argument references stay valid for the coroutine's whole lifetime.
-    auto make_task = [](Pending p, async::semaphore& drivers) -> async::task<QueryResult> {
+    auto make_task =
+        [](Pending p, async::semaphore& drivers, QueryBatch& batch) -> async::task<QueryResult> {
         auto running = co_await drivers.scoped_acquire();
-        auto result = co_await query_one(p.spec);
+        auto result = co_await query_one(p.spec, batch);
         bool missing = !result && !driver_found(p.spec);
         co_return QueryResult{std::move(p.key),
                               p.command,
@@ -733,10 +774,11 @@ void Toolchain::warm(llvm::ArrayRef<CommandRef> refs, WarmOptions options) {
         // A database whose commands key thousands of queries would otherwise
         // run thousands of drivers at once.
         async::semaphore drivers(sys::parallelism());
+        QueryBatch batch;
         std::vector<async::task<QueryResult>> tasks;
         tasks.reserve(pending.size());
         for(auto& p: pending) {
-            tasks.push_back(make_task(std::move(p), drivers));
+            tasks.push_back(make_task(std::move(p), drivers, batch));
         }
 
         co_return co_await async::when_all(std::move(tasks));
@@ -841,16 +883,68 @@ std::vector<const char*> Toolchain::render_for_clang(const CommandRef& ref,
     return argv;
 }
 
+void Toolchain::learn_search_dirs(llvm::ArrayRef<CommandRef> refs) {
+    struct Dir {
+        llvm::StringRef value;
+        bool known = false;
+        std::optional<CanonicalPath> identity;
+        bool builtin_headers = false;
+    };
+    llvm::StringSet<> seen;
+    std::vector<Dir> dirs;
+    for(auto& ref: refs) {
+        for(auto& arg: commands.get(ref.command).args) {
+            if(!names_search_dir(arg.opt_id) && arg.opt_id != clang_options::OPT_iquote &&
+               arg.opt_id != clang_options::OPT__SLASH_imsvc) {
+                continue;
+            }
+            for(llvm::StringRef value: arg.values) {
+                if(!path::is_absolute(value) || !seen.insert(value).second) {
+                    continue;
+                }
+                bool known = files.knows(Spelling::absolute(value));
+                if(!known || !builtin_header_dirs.contains(value)) {
+                    dirs.push_back({.value = value, .known = known});
+                }
+            }
+        }
+    }
+    auto learn = [&]() -> async::task<> {
+        constexpr std::size_t batch = 256;
+        async::task_group<> learning;
+        for(std::size_t first = 0; first < dirs.size(); first += batch) {
+            learning.spawn([](llvm::MutableArrayRef<Dir> dirs) -> async::task<> {
+                co_await async::queue([&] {
+                    for(auto& dir: dirs) {
+                        if(!dir.known) {
+                            dir.identity.emplace(Spelling::absolute(dir.value));
+                        }
+                        dir.builtin_headers = holds_builtin_headers(dir.value);
+                    }
+                });
+            }(llvm::MutableArrayRef(dirs).slice(first, std::min(batch, dirs.size() - first))));
+        }
+        co_await learning.join();
+    };
+    async::run(learn());
+    for(auto& dir: dirs) {
+        if(dir.identity) {
+            files.intern(Spelling::absolute(dir.value), *dir.identity);
+        }
+        builtin_header_dirs.try_emplace(dir.value, dir.builtin_headers);
+    }
+}
+
 SearchConfig Toolchain::search_config(const CommandRef& ref) {
     auto& command = commands.get(ref.command);
     llvm::StringRef directory = command.directory;
     auto resolution = resolve(ref.command, ref.language);
     if(!resolution) {
-        return extract_search_config(command.args, directory);
+        return extract_search_config(command.args, directory, files);
     }
     auto [it, inserted] = search_configs.try_emplace(resolution->id);
     if(inserted) {
-        it->second = extract_search_config(resolved(resolution->id).args, directory);
+        it->second = extract_search_config(resolved(resolution->id).args, directory, files);
         it->second.hidden = resolved(resolution->id).frontend->hidden;
         // A directory the command names is the user's, however the driver
         // passes it on: clang-cl's /imsvc reaches cc1 as -internal-isystem.
@@ -864,7 +958,7 @@ SearchConfig Toolchain::search_config(const CommandRef& ref) {
         for(auto& dir: it->second.dirs) {
             dir.driver = dir.driver && !named.contains(dir.path);
             if(dir.driver) {
-                files.disk.add_package(CanonicalPath(Spelling::absolute(dir.path)).str());
+                files.disk.add_package(files.resolve(files.intern(Spelling::absolute(dir.path))));
             }
         }
     }

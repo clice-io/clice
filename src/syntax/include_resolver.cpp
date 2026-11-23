@@ -6,13 +6,43 @@ import :vfs.path;
 
 namespace clice {
 
-ResolvedSearchConfig resolve_search_config(const SearchConfig& config, vfs::Scope& scope) {
+void NameIndex::add(const vfs::Listing& listing) {
+    if(!added.insert(&listing).second) {
+        return;
+    }
+    for(auto& entry: listing.entries) {
+        exact[entry.getKey()].push_back(&listing);
+    }
+    for(auto& entry: listing.folded) {
+        folded[entry.getKey()].push_back(&listing);
+    }
+}
+
+void NameIndex::holders(llvm::StringRef name,
+                        llvm::SmallVectorImpl<const vfs::Listing*>& out) const {
+    if(auto it = exact.find(name); it != exact.end()) {
+        out.append(it->second.begin(), it->second.end());
+    }
+    if(auto it = folded.find(vfs::fold(name)); it != folded.end()) {
+        out.append(it->second.begin(), it->second.end());
+    }
+}
+
+ResolvedSearchConfig resolve_search_config(const SearchConfig& config,
+                                           vfs::Scope& scope,
+                                           const NameIndex* names) {
     ResolvedSearchConfig resolved;
     resolved.angled_start_idx = config.angled_start_idx;
     resolved.hidden = config.hidden;
+    resolved.names = names;
     resolved.dirs.reserve(config.dirs.size());
     for(auto& dir: config.dirs) {
-        resolved.dirs.push_back({dir.path, &scope.list(dir.path), dir.framework});
+        auto& listing = scope.list(dir.path);
+        resolved.dirs.push_back({dir.path, &listing, dir.framework});
+        resolved.frameworks |= dir.framework;
+        if(names) {
+            resolved.positions.try_emplace(&listing, resolved.dirs.size() - 1);
+        }
     }
     return resolved;
 }
@@ -108,6 +138,41 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     };
 
     auto [framework, framework_rest] = filename.split('/');
+    // The search through the index of names: the directories from `start`
+    // on whose listing holds the name, or its first component, in order.
+    // None when the index cannot tell: no index, framework directories, a
+    // name a listing can match beyond what it lists (non-ASCII), one
+    // climbing out (`../x.h`).
+    auto search_indexed = [&](unsigned start) -> std::optional<std::optional<ResolveResult>> {
+        auto first = filename.take_until([](char c) { return c == '/' || c == '\\'; });
+        if(!config.names || config.frameworks || !llvm::isASCII(first) || first == "." ||
+           first == "..") {
+            return std::nullopt;
+        }
+        llvm::SmallVector<const vfs::Listing*, 4> holders;
+        config.names->holders(first, holders);
+        llvm::SmallVector<unsigned, 4> candidates;
+        for(auto* listing: holders) {
+            if(auto it = config.positions.find(listing);
+               it != config.positions.end() && it->second >= start) {
+                candidates.push_back(it->second);
+            }
+        }
+        ranges::sort(candidates);
+        for(auto i: candidates) {
+            auto& dir = config.dirs[i];
+            if(check_in_dir(dir.path,
+                            dir.listing,
+                            filename,
+                            is_simple,
+                            config.hidden.get(),
+                            scope)) {
+                make_candidate(dir.path, filename);
+                return ResolveResult{candidate, i};
+            }
+        }
+        return std::optional<ResolveResult>();
+    };
     auto search_from = [&](unsigned start) -> std::optional<ResolveResult> {
         // clang takes the first framework directory holding the framework:
         // a header it lacks is not looked for in the framework of a later
@@ -117,6 +182,9 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
         // Frameworks/Sub.framework, stays unresolved here. Only the SDK's
         // umbrella frameworks rely on it; their headers never change, and
         // the compile itself, being clang's, finds them.
+        if(auto indexed = search_indexed(start)) {
+            return std::move(*indexed);
+        }
         bool framework_found = false;
         for(unsigned i = start; i < config.dirs.size(); i += 1) {
             auto& dir = config.dirs[i];
@@ -151,26 +219,40 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
     }
 
     // 3. Quoted include: try includer's directory first.
+    if(!is_angled && includer_listing) {
+        if(auto beside = resolve_beside(filename, *includer_listing, includer_dir, config, scope)) {
+            return beside;
+        }
+    }
+
+    // 4. Search directories from appropriate start index.
+    return search_from(is_angled ? config.angled_start_idx : 0);
+}
+
+std::optional<ResolveResult> resolve_beside(llvm::StringRef filename,
+                                            const vfs::Listing& includer_listing,
+                                            llvm::StringRef includer_dir,
+                                            const ResolvedSearchConfig& config,
+                                            vfs::Scope& scope) {
     // LIMITATION: under MSVC compatibility (clang-cl's default,
     // -fms-compatibility) clang goes on to the directories of every file on
     // the include stack, up to the source file, before the search
     // directories; this looks next to the includer alone, so a header found
     // that way, which clang flags with -Wmicrosoft-include, stays unresolved
     // and gets no host when opened alone. Only legacy MSVC code relies on it.
-    if(!is_angled && includer_listing) {
-        if(check_in_dir(includer_dir,
-                        includer_listing,
-                        filename,
-                        is_simple,
-                        config.hidden.get(),
-                        scope)) {
-            make_candidate(includer_dir, filename);
-            return ResolveResult{.path = candidate};
-        }
+    bool is_simple =
+        filename.find('/') == llvm::StringRef::npos && filename.find('\\') == llvm::StringRef::npos;
+    if(!check_in_dir(includer_dir,
+                     &includer_listing,
+                     filename,
+                     is_simple,
+                     config.hidden.get(),
+                     scope)) {
+        return std::nullopt;
     }
-
-    // 4. Search directories from appropriate start index.
-    return search_from(is_angled ? config.angled_start_idx : 0);
+    llvm::SmallString<256> candidate(includer_dir);
+    path::push(candidate, filename);
+    return ResolveResult{.path = candidate};
 }
 
 std::optional<ResolveResult> resolve_include(llvm::StringRef filename,

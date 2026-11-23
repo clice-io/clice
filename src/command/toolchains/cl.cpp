@@ -76,56 +76,47 @@ std::string visual_studio_bin(llvm::StringRef program) {
 #endif
 }
 
-async::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> args,
-                                                    const Command& command,
-                                                    llvm::StringRef input,
-                                                    std::string cwd) {
-    auto family = command.family;
-    if(auto error = fs::write_file(input, cl_query_source)) {
-        co_return std::unexpected(
-            std::format("Failed to write {}: {}", input.str(), error.message()));
-    }
+std::vector<std::string> cl_question(llvm::ArrayRef<std::string> args, const Command& command) {
     // cl hears only the command's `/std:` (and the driver mode that makes
     // a `clang` clang-cl): its other flags are spelled for clang's cl mode
     // (`/WX` arrives as -Werror, which cl rejects), and a standard or
     // version set in clang's spelling (a rule's `-std=c++23`) is clang's
     // to read, not cl's.
-    std::vector<std::string> query = {args[0], "/nologo", "/EP"};
+    std::vector<std::string> question = {args[0], "/nologo", "/EP"};
     // clang-cl shows the job it runs, which names its resource directory:
     // clang's own driver would take one of its own version beside it.
-    if(family == CompilerFamily::ClangCL) {
-        query.push_back("-v");
+    if(command.family == CompilerFamily::ClangCL) {
+        question.push_back("-v");
     }
-    bool names_version = false;
     for(auto& arg: command.args) {
         if(arg.opt_id == clang_options::OPT__SLASH_std ||
            arg.opt_id == clang_options::OPT_driver_mode) {
-            render_driver_arg(arg, family, [&](std::string_view part) {
-                query.emplace_back(part);
+            render_driver_arg(arg, command.family, [&](std::string_view part) {
+                question.emplace_back(part);
             });
         }
-        auto id = effective_option(arg);
-        names_version = names_version || id == clang_options::OPT_fms_compatibility_version ||
-                        id == clang_options::OPT_fmsc_version;
     }
-    query.push_back(input.str());
-    auto output = co_await execute(std::move(query), cwd);
-    if(!output) {
-        co_return std::unexpected(std::move(output.error()));
-    }
-    if(!output->failure.empty()) {
+    return question;
+}
+
+std::expected<Job, std::string> read_cl_answer(llvm::ArrayRef<std::string> args,
+                                               const Command& command,
+                                               const ProgramOutput& answer,
+                                               llvm::StringRef cwd) {
+    auto family = command.family;
+    if(!answer.failure.empty()) {
         // cl reports its errors on stdout, clang-cl on stderr.
-        auto last_line = llvm::StringRef(output->err.empty() ? output->out : output->err).rtrim();
+        auto last_line = llvm::StringRef(answer.err.empty() ? answer.out : answer.err).rtrim();
         last_line = last_line.substr(last_line.rfind('\n') + 1);
-        co_return std::unexpected(std::format("{}: {}", output->failure, last_line.str()));
+        return std::unexpected(std::format("{}: {}", answer.failure, last_line.str()));
     }
-    auto parsed = parse_cl_output(output->out);
+    auto parsed = parse_cl_output(answer.out);
 
     auto mode = cl_driver_mode(args[0], family);
     if(!reads_clang_config(family)) {
         mode.push_back(no_clang_config.str());
     }
-    auto clang_job = parse_clang_job(output->err);
+    auto clang_job = parse_clang_job(answer.err);
     if(auto it = ranges::find(clang_job, "-resource-dir");
        it != clang_job.end() && std::next(it) != clang_job.end()) {
         mode.insert(mode.end(), {"-resource-dir", *std::next(it)});
@@ -135,15 +126,20 @@ async::task<std::expected<Job, std::string>> ask_cl(llvm::ArrayRef<std::string> 
     flags.insert(flags.end(), taken.begin(), taken.end());
     auto job = ask_clang(flags, mode, cwd);
     if(!job) {
-        co_return job;
+        return job;
     }
     if(!names_standard(command.args) && !parsed.standard.empty()) {
         job->args.push_back("-std=" + parsed.standard);
     }
+    bool names_version = ranges::any_of(command.args, [](const auto& arg) {
+        auto id = effective_option(arg);
+        return id == clang_options::OPT_fms_compatibility_version ||
+               id == clang_options::OPT_fmsc_version;
+    });
     if(family == CompilerFamily::MSVC && !names_version && !parsed.version.empty()) {
         job->args.push_back("-fms-compatibility-version=" + parsed.version);
     }
-    co_return job;
+    return job;
 }
 
 }  // namespace clice

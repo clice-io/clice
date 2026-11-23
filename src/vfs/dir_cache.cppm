@@ -43,6 +43,10 @@ struct Listing {
     bool contains_file(llvm::StringRef name) const;
 };
 
+/// `name` with ASCII letters lowered, as a listing matching names
+/// case-insensitively keeps them (Listing::folded).
+llvm::SmallString<64> fold(llvm::StringRef name);
+
 /// List `dir`: the pre/post-stat pairing discipline of file reads, on the
 /// directory. A missing directory lists as empty. Safe to call from any
 /// thread.
@@ -65,11 +69,25 @@ struct DirCache {
     std::shared_ptr<const Listing> kept(llvm::StringRef dir) const;
 };
 
+/// What the threads of one operation list while the operation's scope
+/// stays as it is: a directory one of them lists the others take.
+struct SharedListings {
+    std::mutex lock;
+    llvm::StringMap<std::shared_ptr<const Listing>> listed;
+};
+
 /// The listings one operation (a scan, a rescan, one request) sees: each
 /// directory is validated or listed at most once, and the listing holds for
 /// the rest of the operation.
 struct Scope {
     explicit Scope(DirCache& cache) : cache(cache) {}
+
+    /// The scope a thread of `operation`'s operation lists through: it reads
+    /// what `operation` holds, then what the other threads listed into
+    /// `shared`, and lists the rest there. `operation` and the cache stay as
+    /// they are until the threads are done and `operation` takes `shared`.
+    Scope(const Scope& operation, SharedListings& shared) :
+        cache(operation.cache), operation(&operation), shared(&shared) {}
 
     /// The listing of `dir` for this operation.
     const Listing& list(llvm::StringRef dir);
@@ -77,8 +95,13 @@ struct Scope {
     /// Take a listing `dir` was just listed into (vfs::list, run elsewhere).
     void adopt(llvm::StringRef dir, std::shared_ptr<const Listing> listing);
 
+    /// Take what the threads over this scope listed.
+    void take(SharedListings& shared);
+
     DirCache& cache;
     llvm::StringMap<std::shared_ptr<const Listing>> held;
+    const Scope* operation = nullptr;
+    SharedListings* shared = nullptr;
 };
 
 }  // namespace clice::vfs

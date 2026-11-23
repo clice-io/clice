@@ -375,6 +375,28 @@ ZEST_CASE(FlagHearsChange) {
     ZASSERT(heard == 1);
 }
 
+ZEST_CASE(RotatingFlagsTakeTurns) {
+    // Flags watched in rotation share a tick's budget: a tick past it looks
+    // at one of them, the next tick at the next, until each is reached.
+    Fixture f;
+    std::vector<std::shared_ptr<const vfs::Flag>> flags;
+    for(int i = 0; i < 3; i += 1) {
+        auto name = std::format("build/{}.rsp", i);
+        f.file(name, "-DA\n");
+        flags.push_back(f.disk.watch(f.tmp.path(name), {}, vfs::DiskState::Pace::Rotating));
+        f.rewrite(name, "-DB\n");
+    }
+    auto seen = [&] {
+        return ranges::count_if(flags, [](const std::shared_ptr<const vfs::Flag>& flag) {
+            return flag->hash == llvm::xxh3_64bits("-DB\n");
+        });
+    };
+    for(int tick = 1; tick <= 3; tick += 1) {
+        f.disk.tick(Clock::duration::zero());
+        ZASSERT(seen() == tick);
+    }
+}
+
 ZEST_CASE(EnvironmentInstallMakesDue) {
     // An install rewrites the environment's history: everything installed
     // in it falls due.

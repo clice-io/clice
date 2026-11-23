@@ -4,6 +4,7 @@ import :command.argument;
 import :command.table;
 import :command.toolchains.clang;
 import :support.prelude;
+import :support.process;
 
 namespace clice {
 
@@ -28,9 +29,39 @@ struct QuerySpec {
     std::string cwd;
 };
 
+/// What the queries run together share: each one's bound, and the answers
+/// cl and clang-cl gave. They are asked a command's `/std:` and driver mode
+/// alone (`cl_question`), which a database's commands share whatever else
+/// they say (Unreal's each name their module's `/imsvc` directories): a
+/// question is asked once.
+class QueryBatch {
+public:
+    QueryBatch();
+
+    /// How long a query may run before it is stopped.
+    const chrono::milliseconds bound;
+
+    /// What the driver of `question`, a `cl_question`, run in `cwd`, answers
+    /// over `input`, an empty file of the query's language it fills with
+    /// `cl_query_source`; a query of the batch asking the same over a file of
+    /// the same language waits for the answer its run gets instead.
+    async::task<std::expected<ProgramOutput, std::string>> ask_cl(std::vector<std::string> question,
+                                                                  llvm::StringRef input,
+                                                                  std::string cwd);
+
+private:
+    struct Answer {
+        async::event ready;
+
+        std::expected<ProgramOutput, std::string> output;
+    };
+
+    llvm::StringMap<std::shared_ptr<Answer>> answers;
+};
+
 /// The job the driver runs for the query's command, over an empty file of
 /// the query's language.
-async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec);
+async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec, QueryBatch& batch);
 
 /// Whether the query's driver is found where it would run.
 bool driver_found(const QuerySpec& spec);

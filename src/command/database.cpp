@@ -76,6 +76,182 @@ std::string json_problem(simdjson::error_code error) {
     return message.take_front(message.find("This is a fatal")).trim().rtrim('.').str();
 }
 
+/// The text of the string `value` of the database `json`: a view of the
+/// database's own bytes when it holds no escape, else unescaped into
+/// `storage`. simdjson's own get_string writes every string of the document
+/// into one buffer, as large as the database by its end. `error` says why
+/// there is none.
+std::optional<std::string_view> string_of(auto&& value,
+                                          llvm::StringRef json,
+                                          simdjson::ondemand::parser& parser,
+                                          std::string& storage,
+                                          simdjson::error_code& error) {
+    simdjson::ondemand::raw_json_string raw;
+    if((error = value.get_raw_json_string().get(raw))) {
+        return std::nullopt;
+    }
+    const char* first = raw.raw();
+    const char* end = json.data() + json.size();
+    auto* quote = static_cast<const char*>(std::memchr(first, '"', end - first));
+    if(!std::memchr(first, '\\', quote - first)) {
+        return std::string_view(first, quote - first);
+    }
+    const char* last = first;
+    for(; *last != '"'; last += 1) {
+        if(*last == '\\') {
+            last += 1;
+        }
+    }
+    storage.resize(last - first + json_padding);
+    auto* out = reinterpret_cast<std::uint8_t*>(storage.data());
+    std::string_view text;
+    if((error = parser.unescape(raw, out).get(text))) {
+        return std::nullopt;
+    }
+    return text;
+}
+
+/// The response files a command line or response file text names: its
+/// `@`-tokens, quotes taken off. Close enough to read ahead by.
+void named_responses(llvm::StringRef text, std::vector<std::string>& names) {
+    for(auto at = text.find('@'); at != llvm::StringRef::npos; at = text.find('@', at + 1)) {
+        if(at != 0 && !llvm::isSpace(text[at - 1]) && text[at - 1] != '"') {
+            continue;
+        }
+        auto rest = text.drop_front(at + 1);
+        auto name = rest.consume_front("\"") ? rest.take_until([](char c) { return c == '"'; })
+                                             : rest.take_until(llvm::isSpace);
+        names.emplace_back(name.trim('"'));
+    }
+}
+
+/// A path the load will intern, its identity resolved ahead, and a
+/// response file's content read ahead.
+struct Resolved {
+    std::string path;
+    std::optional<CanonicalPath> identity;
+    std::optional<ObservedFile> content;
+};
+
+/// Read the response files the entries of the database `json` name, and
+/// those they name in turn, and resolve their identities and those of the
+/// files the entries compile, on the thread pool before the load reads and
+/// interns them one by one: a cold disk serves reads made together far
+/// faster, and an identity is a system call each, which on Windows costs as
+/// much as the rest of the load (Unreal names two response files from each
+/// of its 40000 commands). The response files' contents are kept for the
+/// load, whose one thread would read each again (Normalizer::read_responses).
+std::deque<Resolved> read_ahead(llvm::StringRef json,
+                                simdjson::padded_string_view padded,
+                                const Spelling& database_dir) {
+    simdjson::ondemand::parser parser;
+    simdjson::ondemand::document doc;
+    simdjson::ondemand::array entries;
+    if(parser.iterate(padded).get(doc) || doc.get_array().get(entries)) {
+        return {};
+    }
+    // A deque: the rounds add to it while earlier tasks fill its files.
+    std::deque<Resolved> resolved;
+    // The response files of the round at hand, and the directory the
+    // command naming each runs in, which names nested ones are relative to
+    // as well.
+    std::vector<std::pair<std::size_t, Spelling>> responses;
+    llvm::StringSet<> seen;
+    std::vector<std::string> names;
+    std::string directory_storage, file_storage, command_storage, argument_storage;
+    simdjson::error_code error;
+    auto add = [&](std::string path) -> std::optional<std::size_t> {
+        if(!seen.insert(path).second) {
+            return std::nullopt;
+        }
+        resolved.push_back({.path = std::move(path)});
+        return resolved.size() - 1;
+    };
+    for(auto element: entries) {
+        simdjson::ondemand::object entry;
+        if(element.get_object().get(entry)) {
+            return {};
+        }
+        auto directory = string_of(entry["directory"], json, parser, directory_storage, error);
+        auto file = string_of(entry["file"], json, parser, file_storage, error);
+        if(!directory || !file) {
+            return {};
+        }
+        auto base = Spelling(*directory, database_dir);
+        add(Spelling(*file, base).str());
+        names.clear();
+        if(auto command = string_of(entry["command"], json, parser, command_storage, error)) {
+            named_responses(*command, names);
+        } else if(simdjson::ondemand::array arguments;
+                  !entry["arguments"].get_array().get(arguments)) {
+            for(auto argument: arguments) {
+                auto text = string_of(argument, json, parser, argument_storage, error);
+                if(text && text->starts_with('@')) {
+                    names.emplace_back(text->substr(1));
+                }
+            }
+        }
+        for(auto& name: names) {
+            if(auto index = add(Spelling(name, base).str())) {
+                responses.emplace_back(*index, base);
+            }
+        }
+    }
+    auto read_all = [&]() -> async::task<> {
+        // The identities of the files read in no round, in batches: one task
+        // a file costs as much as the call it makes.
+        constexpr std::size_t batch = 256;
+        llvm::DenseSet<std::size_t> read;
+        for(auto& [index, directory]: responses) {
+            read.insert(index);
+        }
+        async::task_group<> resolving;
+        std::vector<Resolved*> unread;
+        for(std::size_t index = 0; index < resolved.size(); index += 1) {
+            if(!read.contains(index)) {
+                unread.push_back(&resolved[index]);
+            }
+        }
+        for(std::size_t first = 0; first < unread.size(); first += batch) {
+            resolving.spawn([](llvm::ArrayRef<Resolved*> files) -> async::task<> {
+                co_await async::queue([&] {
+                    for(auto* file: files) {
+                        file->identity.emplace(Spelling::absolute(file->path));
+                    }
+                });
+            }(llvm::ArrayRef(unread).slice(first, std::min(batch, unread.size() - first))));
+        }
+        while(!responses.empty()) {
+            std::vector<std::vector<std::string>> nested(responses.size());
+            async::task_group<> reads;
+            for(auto [response, named]: views::zip(responses, nested)) {
+                reads.spawn([](Resolved& file, std::vector<std::string>& named) -> async::task<> {
+                    co_await async::queue([&] {
+                        file.identity.emplace(Spelling::absolute(file.path));
+                        if(auto read = vfs::read_observed(file.path)) {
+                            named_responses(read->text, named);
+                            file.content = std::move(*read);
+                        }
+                    });
+                }(resolved[response.first], named));
+            }
+            co_await reads.join();
+            std::vector<std::pair<std::size_t, Spelling>> next;
+            for(auto [response, named]: views::zip(responses, nested)) {
+                for(auto& name: named) {
+                    if(auto index = add(Spelling(name, response.second).str())) {
+                        next.emplace_back(*index, response.second);
+                    }
+                }
+            }
+            responses = std::move(next);
+        }
+        co_await resolving.join();
+    };
+    async::run(read_all());
+    return resolved;
+}
+
 }  // namespace
 
 std::string per_file_option(const CommandTable& commands,
@@ -227,6 +403,19 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // The padding is the text's own spaces: simdjson reads past a string's
     // end in wide blocks, and a string's spare capacity is no memory to read.
     auto padded = simdjson::pad(json_buf);
+    Timer ahead;
+    auto resolved = read_ahead(json_buf, padded, Spelling::absolute(path).parent());
+    llvm::DenseMap<Fid, ObservedFile> read_responses;
+    for(auto& file: resolved) {
+        auto fid = file_table.intern(Spelling::absolute(file.path), *file.identity);
+        if(file.content) {
+            read_responses.try_emplace(fid, std::move(*file.content));
+        }
+    }
+    LOG_DEBUG("Compilation database {}: resolved {} files ahead in {:.0f} ms",
+              path,
+              resolved.size(),
+              ahead.precise_ms());
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(padded).get(doc)) {
@@ -288,7 +477,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     Normalizer normalizer{.commands = command_table,
                           .files = file_table,
                           .inputs = &source.inputs,
-                          .unreadable = &unreadable};
+                          .unreadable = &unreadable,
+                          .read_responses = std::move(read_responses)};
 
     // A file several entries name, through links, is spelled as the first
     // names it, whose command is its default.
@@ -305,37 +495,12 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // found at the first such entry, maps the entries so spelled.
     std::optional<fs::cygwin::MountTable> table;
 
-    // An entry's strings: views of the database's own bytes when they hold
-    // no escape, else unescaped into the entry's storage. simdjson's own
-    // get_string writes every string of the document into one buffer, as
-    // large as the database by its end.
+    // An entry's strings (string_of), each value's storage its own.
     std::string dir_storage, file_storage, command_storage, arg_storage;
     // Why the last read of an entry's value failed.
     simdjson::error_code read_error{};
-    auto text_of = [&](auto&& value, std::string& storage) -> std::optional<std::string_view> {
-        simdjson::ondemand::raw_json_string raw;
-        if((read_error = value.get_raw_json_string().get(raw))) {
-            return std::nullopt;
-        }
-        const char* first = raw.raw();
-        const char* end = json_buf.data() + json_buf.size();
-        auto* quote = static_cast<const char*>(std::memchr(first, '"', end - first));
-        if(!std::memchr(first, '\\', quote - first)) {
-            return std::string_view(first, quote - first);
-        }
-        const char* last = first;
-        for(; *last != '"'; last += 1) {
-            if(*last == '\\') {
-                last += 1;
-            }
-        }
-        storage.resize(last - first + json_padding);
-        auto* out = reinterpret_cast<std::uint8_t*>(storage.data());
-        std::string_view text;
-        if((read_error = json_parser.unescape(raw, out).get(text))) {
-            return std::nullopt;
-        }
-        return text;
+    auto text_of = [&](auto&& value, std::string& storage) {
+        return string_of(value, json_buf, json_parser, storage, read_error);
     };
 
     // The tokens of the entry at hand, their storage kept for the next.
@@ -343,6 +508,12 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     llvm::SmallVector<std::string_view> views;
     llvm::StringMap<Spelling> working_dirs;
     llvm::DenseMap<SharedKey, CommandID> shared;
+    // How many commands were read in full, and of them how many had no key;
+    // the time keying them and reading them took.
+    std::size_t read_commands = 0;
+    std::size_t keyless = 0;
+    double keying_ms = 0;
+    double reading_ms = 0;
     std::uint32_t index = 0;
     std::uint32_t skipped = 0;
     bool broken = false;
@@ -483,12 +654,18 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
 
         kotatsu::string_list_ref tokens =
             command ? normalizer.split(*command, views, args) : kotatsu::string_list_ref(args);
-        auto key = normalizer.shared_key(working, file_ref, tokens);
+        Timer keying;
+        auto key = normalizer.shared_key(working, file_ref, path_id, tokens);
+        keying_ms += keying.precise_ms();
         std::optional<CommandID> normalized;
         if(auto known = key ? shared.find(*key) : shared.end(); known != shared.end()) {
             normalized = known->second;
         } else {
+            Timer reading;
             normalized = normalizer.normalize(working, path_id, tokens);
+            reading_ms += reading.precise_ms();
+            read_commands += 1;
+            keyless += key ? 0 : 1;
             // The command of a precompiled header's writer keeps its output.
             if(key && normalized && !command_table.pch_output(*normalized)) {
                 shared.try_emplace(*key, *normalized);
@@ -506,6 +683,14 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     if(broken) {
         return std::nullopt;
     }
+    LOG_DEBUG(
+        "Compilation database {}: keyed its commands in {:.0f} ms, read {} of them in full "
+        "({} without a key) in {:.0f} ms",
+        path,
+        keying_ms,
+        read_commands,
+        keyless,
+        reading_ms);
     if(skipped != 0) {
         LOG_GUIDANCE("{} of the compilation database {} {} skipped; the log names {}",
                      counted(skipped, "entry", "entries"),

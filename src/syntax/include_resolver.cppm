@@ -26,18 +26,48 @@ struct ResolvedSearchDir {
     bool framework = false;
 };
 
+/// The search directories an operation's configurations search, by the
+/// names they hold: an include looks in the few directories holding its
+/// name rather than in each of a search list hundreds long (Unreal's are).
+struct NameIndex {
+    /// Index the entries of `listing`, once.
+    void add(const vfs::Listing& listing);
+
+    /// The listings that may hold an entry `name`: those holding it, and
+    /// those matching names case-insensitively that hold it in another case.
+    void holders(llvm::StringRef name, llvm::SmallVectorImpl<const vfs::Listing*>& out) const;
+
+    llvm::DenseSet<const vfs::Listing*> added;
+
+    llvm::StringMap<llvm::SmallVector<const vfs::Listing*, 1>> exact;
+
+    /// Names folded (vfs::fold), of the listings matching case-insensitively.
+    llvm::StringMap<llvm::SmallVector<const vfs::Listing*, 1>> folded;
+};
+
 /// Pre-resolved version of SearchConfig — all directory lookups are resolved
 /// to direct pointers, eliminating StringMap lookups during include resolution.
 struct ResolvedSearchConfig {
     llvm::SmallVector<ResolvedSearchDir> dirs;
     unsigned angled_start_idx = 0;
     std::shared_ptr<const vfs::HiddenFiles> hidden;
+
+    /// The names `dirs` hold, and where in `dirs` each of their listings
+    /// stands first; null for a configuration searched in order.
+    const NameIndex* names = nullptr;
+    llvm::DenseMap<const vfs::Listing*, unsigned> positions;
+
+    /// Whether any of `dirs` is a framework directory, which the index does not serve.
+    bool frameworks = false;
 };
 
 /// Pre-resolve a SearchConfig against the operation's listings. Call once
 /// per config, then reuse the result for all resolve_include() calls with
-/// that config.
-ResolvedSearchConfig resolve_search_config(const SearchConfig& config, vfs::Scope& scope);
+/// that config. With `names`, which holds the listings of its directories
+/// once they are added (NameIndex::add), the index serves its lookups.
+ResolvedSearchConfig resolve_search_config(const SearchConfig& config,
+                                           vfs::Scope& scope,
+                                           const NameIndex* names = nullptr);
 
 /// Resolve an include directive using pre-resolved config and includer listing.
 ///
@@ -59,6 +89,15 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
                                              std::optional<unsigned> found_dir_idx,
                                              const ResolvedSearchConfig& config,
                                              vfs::Scope& scope);
+
+/// A quoted include found next to its includer, in the directory
+/// `includer_dir` listed as `includer_listing`, where clang looks before
+/// the search directories; none when it is not there.
+std::optional<ResolveResult> resolve_beside(llvm::StringRef filename,
+                                            const vfs::Listing& includer_listing,
+                                            llvm::StringRef includer_dir,
+                                            const ResolvedSearchConfig& config,
+                                            vfs::Scope& scope);
 
 /// Convenience overload: resolves config and includer_dir on the fly.
 /// Use for tests and one-off calls where pre-resolution overhead doesn't matter.

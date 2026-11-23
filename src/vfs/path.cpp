@@ -35,6 +35,10 @@ llvm::StringRef path::local(llvm::StringRef name,
 }
 
 Spelling::Spelling(llvm::StringRef text, const Spelling& base) {
+    if(path::spelled_already(text)) {
+        this->text = text;
+        return;
+    }
     path::resolve(this->text, text, base.text, path::DotDot::Keep);
     path::canonicalize(this->text);
 }

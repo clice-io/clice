@@ -8,6 +8,7 @@ import :command.toolchains.gcc;
 import :support.logging;
 import :support.process;
 import :vfs.cygwin;
+import :vfs.file_table;
 import :vfs.path;
 
 namespace clice {
@@ -237,13 +238,13 @@ void add_printed_dirs(Job& job, llvm::ArrayRef<GCCSearchDir> printed, llvm::Stri
     }
     auto args = ranges::to<std::vector>(parsed_args | views::transform(&LocalArg::view));
     auto base = cwd.empty() ? Spelling::cwd() : Spelling::absolute(cwd);
-    llvm::StringSet<> named;
-    for(auto& dir: extract_search_config(args, base).dirs) {
-        named.insert(dir.identity());
+    FileTable dirs;
+    llvm::DenseSet<std::pair<Fid, unsigned>> named;
+    for(auto& dir: extract_search_config(args, base, dirs).dirs) {
+        named.insert({dirs.intern(Spelling::absolute(dir.path)), dir.framework});
     }
     for(auto& dir: printed) {
-        SearchDir searched{.path = Spelling(dir.path, base).str(), .framework = dir.framework};
-        if(!named.contains(searched.identity())) {
+        if(!named.contains({dirs.intern(Spelling(dir.path, base)), dir.framework})) {
             job.args.insert(
                 job.args.end(),
                 {dir.framework ? "-internal-iframework" : "-internal-isystem", dir.path});

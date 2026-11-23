@@ -1,6 +1,7 @@
 module clice;
 
 import :support.logging;
+import :vfs.dir_cache;
 import :vfs.file_system;
 import :vfs.path;
 
@@ -92,29 +93,36 @@ constexpr unsigned list_after = 8;
 /// it would not pay for all of them.
 constexpr std::size_t list_limit = 4096;
 
-/// The statuses of a directory's entries, links left out; empty when it
-/// is remote, cannot be listed or holds too many.
-llvm::StringMap<fs::Status> list_statuses(llvm::StringRef dir) {
-    llvm::StringMap<fs::Status> entries;
+/// Whether `dir` lists in full into `entries`, the statuses of its
+/// entries but links, and `folded`, every name with ASCII letters lowered;
+/// not when it is remote, cannot be listed or holds too many, which leaves
+/// both empty. A directory that is not there lists in full as empty: the
+/// subdirectory of an include (`HAL/Platform.h`) most of the directories
+/// searched for it lack.
+bool list_statuses(llvm::StringRef dir,
+                   llvm::StringMap<fs::Status>& entries,
+                   llvm::StringSet<>& folded) {
     auto listed = fs::Directory::open(dir);
     if(!listed) {
-        return entries;
+        return listed.error() == std::errc::no_such_file_or_directory;
     }
     if(auto volume = listed->volume(); !volume || volume->remote) {
-        return entries;
+        return false;
     }
     std::size_t count = 0;
     for(auto& entry: *listed | views::take(list_limit + 1)) {
         count += 1;
         if(!entry || count > list_limit) {
             entries.clear();
-            return entries;
+            folded.clear();
+            return false;
         }
+        folded.insert(fold(entry->name));
         if(auto status = entry->status(); status && status->type != fs::FileType::Symlink) {
             entries.try_emplace(entry->name, *status);
         }
     }
-    return entries;
+    return true;
 }
 
 #endif
@@ -542,7 +550,13 @@ llvm::vfs::Status to_llvm(const fs::Status& status, llvm::StringRef name) {
 
 std::expected<fs::Status, std::error_code> StatusBatch::status(llvm::StringRef path) {
 #ifdef _WIN32
-    auto dir = path::parent(path);
+    // Windows takes a path's `.` and `..` off its spelling before it looks
+    // at the disk, as normalize() folds them: clang asks for `detail/..`
+    // before it opens `detail/../profiling.h`, a name no listing of
+    // `detail` holds.
+    std::string normal(path);
+    path::normalize(normal);
+    auto dir = path::parent(normal);
     auto& directory = directories[dir];
     if(!directory.listed) {
         directory.asked += 1;
@@ -557,10 +571,15 @@ std::expected<fs::Status, std::error_code> StatusBatch::status(llvm::StringRef p
             return status;
         }
         directory.listed = true;
-        directory.entries = list_statuses(dir);
+        directory.complete = list_statuses(dir, directory.entries, directory.folded);
     }
-    if(auto it = directory.entries.find(path::filename(path)); it != directory.entries.end()) {
+    auto name = path::filename(normal);
+    if(auto it = directory.entries.find(name); it != directory.entries.end()) {
         return it->second;
+    }
+    if(directory.complete && llvm::isASCII(name) && !name.contains('~') &&
+       !directory.folded.contains(fold(name))) {
+        return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
     }
 #endif
     return fs::status(path);

@@ -238,6 +238,11 @@ private:
     CanonicalPath root;
 
     llvm::DenseMap<std::uint32_t, std::uint64_t> command_hashes;
+
+    /// Each interned value as render_identity() spells it, relative to the
+    /// root: the commands of a project name the same paths over and over
+    /// (Unreal's 2,300 commands, 18,000 directories, 1.3 million times).
+    llvm::DenseMap<const char*, const char*> portable_values;
 };
 
 }  // namespace clice
