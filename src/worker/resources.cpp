@@ -16,7 +16,8 @@ MemoryState memory_state(std::span<const sys::ProcessStats> workers) {
 #endif
     return {.headroom = memory->available,
             .reserve = memory_reserve(memory->limit, macos),
-            .limit = memory->limit};
+            .limit = memory->limit,
+            .source = memory->source};
 }
 
 std::uint64_t memory_reserve(std::uint64_t limit, bool macos) {

@@ -6830,6 +6830,7 @@ using ::kotatsu::sys::EnvChange;
 using ::kotatsu::sys::EnvVar;
 using ::kotatsu::sys::ExitStatus;
 using ::kotatsu::sys::Memory;
+using ::kotatsu::sys::MemorySource;
 using ::kotatsu::sys::OS;
 using ::kotatsu::sys::Priority;
 using ::kotatsu::sys::ProcessStats;
