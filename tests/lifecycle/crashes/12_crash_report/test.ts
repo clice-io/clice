@@ -153,16 +153,17 @@ test(
         const s = await t.start({});
         await s.diagnostics("main.cpp");
         const { stateful, stateless } = (await s.stats()).workers;
-        const limits = [s.client.child.pid, ...stateful, ...stateless].map((pid) => {
+        const refused = [s.client.child.pid, ...stateful, ...stateless].map((pid) => {
             const [, soft, hard] =
                 /^Max core file size\s+(\S+)\s+(\S+)/m.exec(
                     fs.readFileSync(`/proc/${String(pid)}/limits`, "utf8"),
                 ) ?? [];
+            const filter = fs.readFileSync(`/proc/${String(pid)}/coredump_filter`, "utf8");
             // A hard limit of 0, inherited, leaves no room for 1.
-            return soft === (hard === "0" ? "0" : "1");
+            return soft === (hard === "0" ? "0" : "1") && Number.parseInt(filter, 16) === 0;
         });
         // The master and the worker that compiled the file at least.
         expect(stateful.length + stateless.length).toBeGreaterThan(0);
-        expect(limits).toEqual(limits.map(() => true));
+        expect(refused).toEqual(refused.map(() => true));
     },
 );

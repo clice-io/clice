@@ -667,13 +667,16 @@ void handle_crashes() {
     // the process dies, seconds for one of a few GiB, while a crashed
     // worker's requests wait. A core limit of 1 makes Linux skip a dump
     // piped to such a service, and leaves a dump to a file no room.
-    // LIMITATION: under a hard core limit of 0 (`ulimit -c 0`, a hardened
-    // limits.conf) the limit cannot rise to 1, and a service that ignores
-    // the limit still takes the dump.
     rlimit core{};
     ::getrlimit(RLIMIT_CORE, &core);
     core.rlim_cur = 1;
     ::setrlimit(RLIMIT_CORE, &core);
+#endif
+#ifdef __linux__
+    // A hard core limit of 0 (`ulimit -c 0`, a hardened limits.conf) keeps
+    // the limit 0, which Linux does not apply to a piped dump: with no
+    // mapping in the filter, the dump holds none of the memory.
+    fs::write_file("/proc/self/coredump_filter", "0");
 #endif
 }
 
