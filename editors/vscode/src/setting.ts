@@ -10,6 +10,19 @@ export interface Setting {
     env: NodeJS.ProcessEnv;
 }
 
+/// Whether clice runs in this window.
+export function enabled(): boolean {
+    return vscode.workspace.getConfiguration("clice").get<boolean>("enable", true);
+}
+
+/// Where a choice for this workspace is written: its settings, or the user's
+/// in a window without a workspace, which has none.
+export function workspaceTarget(): vscode.ConfigurationTarget {
+    return vscode.workspace.name === undefined
+        ? vscode.ConfigurationTarget.Global
+        : vscode.ConfigurationTarget.Workspace;
+}
+
 /// The directory the server starts in and a relative clice.executable
 /// resolves against: the first workspace folder, not wherever VS Code
 /// happened to be started from — when it exists (a .code-workspace may

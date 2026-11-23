@@ -1,6 +1,7 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { State } from "vscode-languageclient/node";
+import { registerCommand } from "../commands";
 import type { ClientHandle } from "../client";
 import type {
     LinkedBuild,
@@ -121,7 +122,7 @@ export function registerBuildConfiguration(client: ClientHandle, ext: vscode.Ext
     }
 
     ext.subscriptions.push(
-        vscode.commands.registerCommand("clice.switchConfiguration", select),
+        registerCommand("clice.switchConfiguration", select),
         // A (re)started server may run another configuration; a stopped
         // one has none (the request fails).
         client.onDidChangeState((event) => {

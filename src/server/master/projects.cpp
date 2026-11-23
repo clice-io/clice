@@ -28,7 +28,8 @@ static void add_progress(BackgroundIndex::Progress& into,
                          const BackgroundIndex::Progress& progress) {
     into.total += progress.total;
     into.completed += progress.completed;
-    into.dispatched += progress.dispatched;
+    into.indexed += progress.indexed;
+    into.failed += progress.failed;
 }
 
 ServedProject* MasterServer::compiling_project(Fid path_id) {

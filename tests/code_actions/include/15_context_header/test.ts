@@ -10,5 +10,8 @@ test(async (t) => {
     await s.indexed();
     await s.diagnostics("utils.h");
     expect((await s.stats()).synthesizedContexts).toBe(1);
-    await t.show("helper", s.codeActions(t.marker("helper"), { compile: true }));
+    await t.show(
+        "helper",
+        s.codeActions(t.marker("helper"), { only: ["quickfix"], compile: true }),
+    );
 });

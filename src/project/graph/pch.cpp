@@ -81,6 +81,9 @@ std::pair<Check, llvm::StringRef> pair_state(Project& project, llvm::StringRef p
     if(!inputs_hold(project.file_table, entry.inputs)) {
         return {Check::InputsChanged, "a file it read changed"};
     }
+    if(entry.saves_built != entry.saves) {
+        return {Check::InputsChanged, "a save asked to look again for the files it did not find"};
+    }
     return {Check::Holds, {}};
 }
 
@@ -184,6 +187,12 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
 
     LOG_DEBUG("Building PCH for {}, bound={}, key={}", bp.file, bp.preamble_bound, pch_key);
 
+    // The saves that asked to look again before the build looks.
+    std::uint32_t saves = 0;
+    if(auto it = project.pchs.find(pch_key); it != project.pchs.end()) {
+        saves = it->second.saves;
+    }
+
     // A crash is recorded on the key; its consumers book it on their
     // documents when they find it there. A background index unit waiting on
     // a precompiled header the build declares leaves the interactive work
@@ -264,6 +273,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
                   std::move(blob),
                   std::move(*pch_path),
                   project.read_inputs(*built, before));
+    entry.saves_built = saves;
     entry.bound = request.params.preamble_bound;
     entry.whole_file = bp.whole_file;
     entry.base = request.base;
@@ -612,24 +622,6 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
     co_return built;
 }
 
-void Project::discard_pch(llvm::StringRef pch_key) {
-    auto it = pchs.find(pch_key);
-    if(it == pchs.end()) {
-        return;
-    }
-    // An in-flight rebuild owns the entry; its commit publishes a fresh
-    // pair in place of the discarded one, so only an idle entry is
-    // dropped.
-    // FIXME: the rebuild in flight is not restarted: a save that retries a PCH
-    // which kept its preamble's errors gets that rebuild's result, still missing
-    // a header created after the build looked for it.
-    if(!graph.is_compiling(pch_node(pch_key))) {
-        forget_pairs(*this, pch_key);
-    } else {
-        store->invalidate("pch", it->second.blob);
-    }
-}
-
 const FailureRecord* Project::pch_build_crash(llvm::StringRef pch_key) {
     auto it = pchs.find(pch_key);
     auto* failed = it != pchs.end() ? it->second.standing_failure(file_table) : nullptr;
@@ -641,16 +633,43 @@ bool Project::forget_pch_failure(llvm::StringRef pch_key) {
     return it != pchs.end() && std::exchange(it->second.failure, std::nullopt).has_value();
 }
 
-void Project::pch_consume_failed(llvm::StringRef pch_key) {
-    if(auto it = pchs.find(pch_key);
-       it != pchs.end() && !it->second.blob.empty() && store->lookup("pch", it->second.blob)) {
-        auto& consumes = it->second.consumes;
-        if(!consumes) {
-            consumes.emplace();
-        }
-        consumes->fail(pch_consume_policy, {}, {}, FailureRecord::Clock::now());
+void Project::look_again(llvm::StringRef pch_key) {
+    // A build in flight makes anew the entry an eviction erased.
+    if(!pchs.contains(pch_key) && !graph.is_compiling(pch_node(pch_key))) {
+        return;
     }
-    discard_pch(pch_key);
+    auto& entry = pchs[pch_key];
+    bool asked = entry.saves != entry.saves_built;
+    entry.saves += 1;
+    mark_precompiled_dirty();
+    // While a save waits for a build, the next ones leave that build alone:
+    // restarting it at each would keep a file saved every second, its
+    // header still missing, from ever getting its PCH.
+    if(!asked) {
+        graph.invalidate(pch_node(pch_key));
+    }
+}
+
+void Project::pch_consume_failed(llvm::StringRef pch_key) {
+    auto it = pchs.find(pch_key);
+    if(it == pchs.end()) {
+        return;
+    }
+    auto& entry = it->second;
+    if(!entry.blob.empty() && store->lookup("pch", entry.blob)) {
+        if(!entry.consumes) {
+            entry.consumes.emplace();
+        }
+        entry.consumes->fail(pch_consume_policy, {}, {}, FailureRecord::Clock::now());
+    }
+    // An in-flight rebuild owns the entry; its commit publishes a fresh
+    // pair in place of the discarded one, so only an idle entry is
+    // dropped.
+    if(!graph.is_compiling(pch_node(pch_key))) {
+        forget_pairs(*this, pch_key);
+    } else {
+        store->invalidate("pch", entry.blob);
+    }
 }
 
 void Project::pch_consume_succeeded(llvm::StringRef pch_key) {

@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { registerCommand } from "../commands";
 import type { ClientHandle } from "../client";
 import type { CounterpartsResult } from "@clice/tools/protocol" with {
     "resolution-mode": "import",
@@ -54,7 +55,5 @@ export function registerCounterparts(client: ClientHandle, ext: vscode.Extension
         }
     }
 
-    ext.subscriptions.push(
-        vscode.commands.registerCommand("clice.switchSourceHeader", switchSourceHeader),
-    );
+    ext.subscriptions.push(registerCommand("clice.switchSourceHeader", switchSourceHeader));
 }

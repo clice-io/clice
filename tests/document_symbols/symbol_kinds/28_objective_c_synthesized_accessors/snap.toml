@@ -1,0 +1,82 @@
+[answers.outline]
+document_symbols = [
+    { name = "Object", kind = "Class", at = "@interface ⟦Object⟧", detail = "class" },
+    {
+        name = "Sized",
+        kind = "Interface",
+        at = "@protocol ⟦Sized⟧",
+        detail = "protocol",
+        children = [
+            { name = "size", kind = "Property", at = "@property(nonatomic) int ⟦size⟧;", detail = "int" },
+            { name = "size", kind = "Method", at = "- (int)⟦size⟧;", detail = "-(int)" },
+        ],
+    },
+    {
+        name = "Box",
+        kind = "Class",
+        at = "@interface ⟦Box⟧ : Object <Sized>",
+        detail = "class : Object",
+        children = [
+            { name = "count", kind = "Property", at = "@property(nonatomic) int ⟦count⟧;", detail = "int" },
+            { name = "count", kind = "Method", at = "- (int)⟦count⟧;", detail = "-(int)" },
+        ],
+    },
+    {
+        name = "Box",
+        kind = "Class",
+        at = "@implementation ⟦Box⟧",
+        detail = "class implementation",
+        children = [
+            { name = "twice", kind = "Method", at = "- (int)⟦twice⟧ {", detail = "-(int)" },
+        ],
+    },
+]
+
+[answers.extents]
+document_symbols = [
+    {
+        name = "Object",
+        kind = "Class",
+        at = "@interface ⟦Object⟧",
+        range = "⟦__attribute__((objc_root_class)) … @end⟧ (3 lines)",
+    },
+    {
+        name = "Sized",
+        kind = "Interface",
+        at = "@protocol ⟦Sized⟧",
+        range = "⟦@protocol Sized … @end⟧ (4 lines)",
+        children = [
+            {
+                name = "size",
+                kind = "Property",
+                at = "@property(nonatomic) int ⟦size⟧;",
+                range = "⟦@property(nonatomic) int size⟧;",
+            },
+            { name = "size", kind = "Method", at = "- (int)⟦size⟧;", range = "⟦- (int)size;⟧" },
+        ],
+    },
+    {
+        name = "Box",
+        kind = "Class",
+        at = "@interface ⟦Box⟧ : Object <Sized>",
+        range = "⟦@interface Box : Object <Sized> … @end⟧ (4 lines)",
+        children = [
+            {
+                name = "count",
+                kind = "Property",
+                at = "@property(nonatomic) int ⟦count⟧;",
+                range = "⟦@property(nonatomic) int count⟧;",
+            },
+            { name = "count", kind = "Method", at = "- (int)⟦count⟧;", range = "⟦- (int)count;⟧" },
+        ],
+    },
+    {
+        name = "Box",
+        kind = "Class",
+        at = "@implementation ⟦Box⟧",
+        range = "⟦@implementation Box … @end⟧ (7 lines)",
+        children = [
+            { name = "twice", kind = "Method", at = "- (int)⟦twice⟧ {", range = "⟦- (int)twice { … }⟧ (3 lines)" },
+        ],
+    },
+]

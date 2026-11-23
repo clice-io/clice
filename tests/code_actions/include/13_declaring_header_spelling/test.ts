@@ -12,6 +12,9 @@ answers(
         },
     },
     async (a) => {
-        await a.show("shadowed", a.codeActions(a.marker("shadowed"), { compile: true }));
+        await a.show(
+            "shadowed",
+            a.codeActions(a.marker("shadowed"), { only: ["quickfix"], compile: true }),
+        );
     },
 );

@@ -1,0 +1,17 @@
+[answers.setter]
+definition = ["@synthesize ⟦count⟧ = _count;"]
+
+[answers.protocol]
+definition = ["@synthesize ⟦count⟧ = _count;"]
+
+[answers.superclass]
+definition = ["@synthesize ⟦width⟧ = _width;"]
+
+[answers.macro_body]
+definition = ["⟦SYNTHESIZE_DEPTH⟧"]
+
+[answers.selector]
+definition = ["@synthesize ⟦count⟧ = _count;"]
+
+[answers.subclass]
+definition = ["@synthesize ⟦count⟧ = _count;"]

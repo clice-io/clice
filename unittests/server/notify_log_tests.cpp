@@ -18,7 +18,7 @@ ZEST_CASE(BoundedRetention) {
     auto saved_level = logging::options.stderr_level;
     logging::options.stderr_level = logging::Level::Off;
 
-    for(int i = 0; i < 130; i++) {
+    for(int i = 0; i < 130; i += 1) {
         LOG_GUIDANCE("notify retention probe {}", i);
     }
 

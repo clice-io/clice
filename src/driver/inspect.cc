@@ -950,7 +950,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
             if(errors > 0 && resolution.synthesized) {
                 auto in_host = check();
                 if(in_host->completed()) {
-                    // The verdict rests on both compiles, the includer chain
+                    // The decision rests on both compiles, the includer chain
                     // the context embeds among what the host's read.
                     auto read =
                         intern_inputs(files, in_host->deps(), in_host->started_at().count());

@@ -304,8 +304,8 @@ struct SemanticsOptions {
 };
 
 /// The semantic map of the focus file, built once after a successful
-/// parse and serving every consumer that used to run its own traversal:
-/// selection, semantic tokens, hover and the TU index build.
+/// parse: selection, the features answering from the AST and the TU index
+/// build read it rather than traverse the AST themselves.
 ///
 /// It stores only structure — the recorded nodes and which spelled token
 /// belongs to which node. Everything semantic (referenced decls, relations,
@@ -433,6 +433,11 @@ private:
 llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
                                                    std::uint32_t index,
                                                    types::TemplateResolver* resolver = nullptr);
+
+/// The Objective-C method the `@selector` of node `index` names: the one of
+/// its selector the class answers whose method it is written in
+/// (decls::objc_selector_method); null outside a method.
+const clang::ObjCMethodDecl* objc_selector_target(const Semantics& semantics, std::uint32_t index);
 
 /// The references of node `index` that a token spells, as name occurrences.
 llvm::SmallVector<NameOccurrence, 2>

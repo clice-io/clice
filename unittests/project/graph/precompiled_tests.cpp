@@ -109,6 +109,34 @@ ZEST_CASE(WholeFileLoadsUnindexed) {
     ZEXPECT(whole->second.index_path.empty());
 }
 
+ZEST_CASE(LookedAgainNotRecorded) {
+    // A PCH a save asked to look again for the files it did not find goes
+    // unrecorded: a restart before its rebuild builds it again too.
+    TempDir tmp;
+
+    {
+        IndexerFixture f;
+        open_store(tmp, f.project);
+        for(auto key: {"kept", "asked"}) {
+            auto pending = f.project.store->begin_store("pch", key);
+            ZASSERT(!fs::write_file(pending.tmp_path, "pch-bytes"));
+            ZASSERT(f.project.store->commit(std::move(pending)));
+            auto& st = f.project.pchs[key];
+            st.blob = key;
+            st.path = std::string(key) + ".pch";
+            st.whole_file = true;
+        }
+        f.project.look_again("asked");
+        f.save();
+    }
+
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    ZEXPECT(f.project.pchs.size() == std::size_t(1));
+    ZEXPECT(f.project.pchs.contains("kept"));
+}
+
 ZEST_CASE(OlderRecordsLoad) {
     // Records an older binary wrote have no `trials`, but its header modes:
     // the PCH and PCM entries beside them still load.

@@ -94,7 +94,7 @@ void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out) {
     const auto* record = ctx.node.get<clang::CXXRecordDecl>();
     // A class still being typed has no closing brace for the overrides to
     // go before.
-    if(!record || !record->isThisDeclarationADefinition() || record->isDependentType() ||
+    if(!record->isThisDeclarationADefinition() || record->isDependentType() ||
        record->getNumBases() == 0 || !record->isAbstract() ||
        record->getBraceRange().getEnd().isInvalid()) {
         return;

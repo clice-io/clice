@@ -1,0 +1,25 @@
+[test."$ clice lint --jobs 2"]
+stdout = '''
+${WS}/main.cpp:3:27: warning: 12345 is a magic number; consider replacing it with a named constant [cppcoreguidelines-avoid-magic-numbers]
+${WS}/main.cpp:6:20: warning: 4321 is a magic number; consider replacing it with a named constant [cppcoreguidelines-avoid-magic-numbers]
+Linted 1 translation unit in #s: 2 findings.
+'''
+exit = 1
+
+[test."main.cpp"]
+diagnostics = [
+    {
+        at = "auto values = std::vector{⟦12345⟧};",
+        severity = "warning",
+        message = "12345 is a magic number; consider replacing it with a named constant",
+        source = "clang-tidy",
+        code = "cppcoreguidelines-avoid-magic-numbers",
+    },
+    {
+        at = "return value * ⟦4321⟧;",
+        severity = "warning",
+        message = "4321 is a magic number; consider replacing it with a named constant",
+        source = "clang-tidy",
+        code = "cppcoreguidelines-avoid-magic-numbers",
+    },
+]

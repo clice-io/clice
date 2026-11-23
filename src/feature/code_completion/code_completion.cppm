@@ -9,10 +9,12 @@ import :support.json;
 import :support.prelude;
 import :syntax.dependency_graph;
 import :syntax.position;
+import :syntax.include_resolver;
 import :syntax.scan;
 import :syntax.source_text;
 import :vfs.dir_cache;
 import :vfs.ids;
+import :vfs.path;
 
 namespace clice::feature {
 
@@ -82,6 +84,35 @@ struct CodeCompletionOptions {
                   "defined, in headers the file does not include yet, adding "
                   "the `#include` of the header that holds them.")
     bool insert_includes = true;
+
+    KANNOTATE(&angled_includes,
+              description =
+                  "Glob patterns of the headers whose `#include`, added by "
+                  "completion or a code action, takes angle brackets, "
+                  "matched against the path written between them "
+                  "(`fmt/core.h`) with the syntax of a rule's `patterns`: "
+                  "`fmt/**` matches every header below `fmt/`. A header "
+                  "neither this nor `quoted_includes` matches takes quotes "
+                  "when found next to the file or through `-iquote` or "
+                  "`-I`, and angle brackets when found through `-isystem`, "
+                  "`-idirafter` or a framework directory; one an IWYU "
+                  "pragma names to include instead keeps the pragma's. A "
+                  "header found through the toolchain's own directories, "
+                  "the standard library's, always takes angle brackets. A "
+                  "pattern is followed even where its delimiters do not "
+                  "find the header: angle brackets do not search the "
+                  "file's own directory or `-iquote`.")
+    std::vector<std::string> angled_includes;
+
+    KANNOTATE(&quoted_includes,
+              description =
+                  "Glob patterns of the headers whose `#include`, added by "
+                  "completion or a code action, takes quotes, as "
+                  "`angled_includes` describes. A header both match takes "
+                  R"(quotes: `angled_includes = ["**"]` with )"
+                  R"(`quoted_includes = ["myproj/**"]` gives every header )"
+                  "angle brackets but the project's own.")
+    std::vector<std::string> quoted_includes;
 
     KANNOTATE(&insert_imports,
               description =
@@ -190,10 +221,31 @@ auto code_complete(CompilationParams params,
 /// reads of the files its compile loads where a name is typed (TypedNames).
 constexpr inline std::size_t scope_candidate_limit = 100;
 
+/// The delimiters the user includes some headers with
+/// (`code_completion.quoted_includes` and `angled_includes`), compiled:
+/// glob patterns matching the path written between them.
+struct IncludeDelimiters {
+    std::vector<kotatsu::GlobPattern> quoted;
+    std::vector<kotatsu::GlobPattern> angled;
+
+    /// Whether an include of `path` (`fmt/core.h`) takes angle brackets:
+    /// none when no pattern matches it, quotes when both lists do.
+    std::optional<bool> angled_for(llvm::StringRef path) const;
+};
+
+/// The argument, quotes or brackets included, of an `#include` of `header`
+/// in the file `names` names headers for: angle brackets for one of the
+/// toolchain's own headers, else the delimiters `delimiters` asks for, else
+/// those of the directories finding it (IncludeName::Found). None where no
+/// include names it.
+std::optional<std::string> include_argument(IncludeNames& names,
+                                            const IncludeDelimiters& delimiters,
+                                            CanonicalRef header);
+
 /// A completion's reply finished (Completion): an item naming what the
 /// file does not include yet takes the `#include` of the header declaring
-/// it, at `include`; one whose header is unknown goes. The list is then cut
-/// to `limit`.
+/// it, at `include`, with the delimiters `delimiters` asks for; one whose
+/// header is unknown goes. The list is then cut to `limit`.
 auto finish_completion(protocol::CompletionList list,
                        const IncludePlace& include,
                        llvm::ArrayRef<ScopeCandidate> candidates,
@@ -201,6 +253,7 @@ auto finish_completion(protocol::CompletionList list,
                        const DependencyGraph& graph,
                        Fid file,
                        const SearchConfig& search,
+                       const IncludeDelimiters& delimiters,
                        std::uint32_t limit) -> protocol::CompletionList;
 
 /// The buffer of an open translation unit, which may declare another module

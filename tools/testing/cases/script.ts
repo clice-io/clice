@@ -42,6 +42,12 @@ export type Registered =
           fn: (a: AnswersContext) => Promise<void>;
       };
 
+/// The name the runner gives a test: its own, or its kind's for an unnamed
+/// one.
+export function testName(registered: Registered): string {
+    return registered.name === "" ? registered.kind : registered.name;
+}
+
 let sink: Registered[] | null = null;
 
 function register(entry: Registered): void {

@@ -10,6 +10,8 @@
 
 A C/C++ language server written in modern C++, and more than a language server. Like clangd and ccls it is built on LLVM/Clang, but it is redesigned from the ground up to solve the problems their architecture has left unsolved for years. See [What is clice?](https://docs.clice.io/clice/guide/what-is-clice)
 
+The story behind clice and how it was built: [clice v1.0 Released: Welcome to Modern C++](https://ykiko.me/en/articles/2105384023094834022/).
+
 ## Language Server
 
 - **Multi-process compilation** — Compiles run in a pool of isolated worker processes, as in a modern browser. A compile that crashes or leaks on a corner case or on half-typed code costs one worker, not the server: navigation and highlighting keep working, and memory and compile priorities are managed across the pool.
@@ -69,7 +71,7 @@ Download the latest binary from the [releases page](https://github.com/clice-io/
 | **Nightly**    | odd minor, e.g. `v1.1.2026112002` | [GitHub pre-releases](https://github.com/clice-io/clice/releases) + Marketplace and Open VSX pre-release channel (`Switch to Pre-Release Version` on the extension page)                                            |
 | **Per-commit** | untagged                          | artifacts on the [latest green `main` CI runs](https://github.com/clice-io/clice/actions/workflows/main.yml?query=branch%3Amain+is%3Asuccess)                                                                       |
 
-The versioning rule is the VS Code Marketplace convention: **even minor = stable, odd minor = pre-release**. Nightly patch numbers encode the UTC build time as `YYYYMMDDHH` (year, month, day, hour — e.g. `2026071902` is 2026-07-19 02:00 UTC), so newer is always higher; a nightly is published only when `main` gained commits, and only the newest 25 nightlies, none older than 30 days, are kept, besides the one Neovim's Mason registry installs. Every published binary is the exact one that passed the full test suites — releases promote CI builds rather than rebuilding.
+The versioning rule is the VS Code Marketplace convention: **even minor = stable, odd minor = pre-release**. Nightly patch numbers encode the UTC build time as `YYYYMMDDHH` (year, month, day, hour — e.g. `2026071902` is 2026-07-19 02:00 UTC), so newer is always higher; a nightly is published only when `main` gained commits, and only the newest 25 nightlies, none older than 30 days, are kept. Every published binary is the exact one that passed the full test suites — releases promote CI builds rather than rebuilding.
 
 For the freshest bits, every green [`main` CI run](https://github.com/clice-io/clice/actions/workflows/main.yml?query=branch%3Amain+is%3Asuccess) attaches installable artifacts (binaries and platform vsix) to its run page, so a fix can be tried the moment it merges (GitHub login required for artifact downloads).
 

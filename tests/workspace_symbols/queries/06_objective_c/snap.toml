@@ -14,6 +14,7 @@ workspace_symbols = [
 
 [answers.setX]
 workspace_symbols = [
+    { name = "setX:", kind = "Method", at = "main.m │ @synthesize ⟦x⟧ = _x;", container = "Shape" },
     { name = "setX:y:", kind = "Method", at = "main.m │ - (void)⟦setX⟧:(int)x y:(int)y {", container = "Shape" },
 ]
 

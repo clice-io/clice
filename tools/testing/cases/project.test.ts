@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { describe, expect, test } from "vitest";
-import { materialize, mergeProjects, readProject, writeDatabases } from "./project.ts";
+import { materialize, mergeProjects, posix, readProject, writeDatabases } from "./project.ts";
 
 describe("mergeProjects", () => {
     test("lists add up, the rest is replaced", () => {
@@ -28,7 +28,7 @@ describe("materialize", () => {
             expect(files).toEqual(["flags.rsp", "main.cpp"]);
             expect(fs.readFileSync(path.join(root, "main.cpp"), "utf8")).toBe("int value;\n");
             expect(fs.readFileSync(path.join(root, "flags.rsp"), "utf8")).toBe(
-                `-I${root}/include\n`,
+                `-I${posix(root)}/include\n`,
             );
             const database = JSON.parse(
                 fs.readFileSync(path.join(root, "compile_commands.json"), "utf8"),

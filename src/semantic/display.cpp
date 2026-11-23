@@ -241,8 +241,7 @@ auto identifier_of(const clang::Expr* expr) -> llvm::StringRef {
 
 namespace {
 
-/// The bare declaration name, printed with the hand-rolled switch the bare
-/// form historically used. It diverges from DeclarationName::print where
+/// The bare declaration name. It diverges from DeclarationName::print where
 /// a deduction guide prints the plain template name.
 std::string bare_name(const clang::NamedDecl* decl, const Options& options) {
     llvm::SmallString<128> result;

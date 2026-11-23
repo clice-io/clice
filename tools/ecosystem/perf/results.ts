@@ -38,7 +38,7 @@ export interface RunResult {
     /// tokens): the times compare only where both servers did the work.
     sizes: Record<string, number>;
     /// Single measures: seconds a churn took to settle, its CPU seconds,
-    /// the files an index round counted, megabytes on disk.
+    /// the files an index pass counted, megabytes on disk.
     values: Record<string, number>;
     /// The server's process tree: its peaks, at the end, each role's peak,
     /// its CPU seconds.

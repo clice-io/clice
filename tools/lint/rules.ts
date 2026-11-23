@@ -6,8 +6,8 @@ import type { Rule } from "eslint";
 import type * as ESTree from "estree";
 
 /// The kinds of timer that stand in for no event, as the comment allowing
-/// one names them; scripts/check_timers.py takes the same for the C++.
-const LABELS = ["Hang detection:", "Time is the feature:", "No event:"];
+/// one names them; tools/precheck/timers.ts takes them for the C++.
+export const LABELS = ["Hang detection:", "Time is the feature:", "No event:"];
 
 const TIMER_FUNCTIONS = new Set(["setTimeout", "setInterval"]);
 /// A hang bound shorter than this fails a test on a loaded machine.

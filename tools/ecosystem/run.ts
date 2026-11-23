@@ -1,5 +1,6 @@
-/// A round over the real projects of ecosystem/, one job at a time;
-/// ecosystem/README.md states what each kind of job does and what fails it.
+/// The jobs of an ecosystem run over the real projects of ecosystem/, one at
+/// a time; ecosystem/README.md states what each kind of job does and what
+/// fails it.
 ///
 /// Usage:
 ///   node tools/ecosystem/run.ts --jobs
@@ -17,7 +18,7 @@
 ///                        sample (repeatable)
 ///   --only <list>        sweep only these requests
 ///   --seed <text>        what picks the sampled files (default: today's date)
-///   --previous <file>    the previous round's results.json, for the comparison
+///   --previous <file>    the previous run's results.json, for the comparison
 ///   perf:
 ///   --scenario <name>    run only these scenarios of the job (repeatable)
 ///   --clangd <path>      a clangd instead of the pinned release
@@ -26,7 +27,7 @@
 ///   --drop-caches        drop the OS file cache before every cold run
 ///                        (Linux and macOS, through sudo)
 ///
-/// --jobs prints every job of a round on every platform, the name of its
+/// --jobs prints every job of a run on every platform, the name of its
 /// artifacts and the system packages it needs, as JSON.
 /// CLICE_EXECUTABLE names the clice under test.
 

@@ -1,0 +1,51 @@
+[answers.twice]
+call_hierarchy = [
+    { name = "twice", kind = "Method", at = "- (int)⟦twice⟧ {", detail = "Box::twice" },
+]
+incoming_calls = []
+outgoing_calls = [
+    {
+        name = "size",
+        kind = "Method",
+        at = "@synthesize ⟦size⟧ = _size;",
+        detail = "Box::size",
+        sites = ["return [self ⟦size⟧] * 2;"],
+    },
+]
+
+[answers.message]
+call_hierarchy = [
+    { name = "size", kind = "Method", at = "@synthesize ⟦size⟧ = _size;", detail = "Box::size" },
+]
+incoming_calls = [
+    {
+        name = "twice",
+        kind = "Method",
+        at = "- (int)⟦twice⟧ {",
+        detail = "Box::twice",
+        sites = ["return [self ⟦size⟧] * 2;"],
+    },
+]
+outgoing_calls = []
+
+[answers.circle]
+call_hierarchy = [
+    { name = "size", kind = "Method", at = "- (int)⟦size⟧ {", detail = "Circle::size" },
+]
+incoming_calls = []
+outgoing_calls = []
+
+[answers.derived]
+call_hierarchy = [
+    { name = "count", kind = "Method", at = "- (int)⟦count⟧ {", detail = "Derived::count" },
+]
+incoming_calls = [
+    {
+        name = "tally",
+        kind = "Function",
+        at = "int ⟦tally⟧(Root *root) {",
+        detail = "tally(Root *root)",
+        sites = ["return [root ⟦count⟧];"],
+    },
+]
+outgoing_calls = []

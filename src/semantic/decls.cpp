@@ -712,12 +712,17 @@ auto objc_selector_pieces(const clang::ObjCSelectorExpr& expr, const clang::ASTC
         token = token_after(token->getLocation());
     }
     llvm::SmallVector<clang::SourceLocation, 4> pieces;
-    for(unsigned slot = 0; slot < std::max(1U, selector.getNumArgs()) && token; slot += 1) {
-        if(token->is(clang::tok::raw_identifier)) {
+    for(unsigned slot = 0; slot < std::max(1U, selector.getNumArgs()); slot += 1) {
+        auto name = selector.getNameForSlot(slot);
+        if(name.empty()) {
+            pieces.emplace_back();
+        } else if(token && token->is(clang::tok::raw_identifier) &&
+                  token->getRawIdentifier() == name) {
             pieces.push_back(token->getLocation());
             token = token_after(token->getLocation());
         } else {
-            pieces.emplace_back();
+            // A macro writes it: the text here does not spell it.
+            return {};
         }
         if(selector.getNumArgs() != 0 && token && token->is(clang::tok::colon)) {
             token = token_after(token->getLocation());
@@ -751,16 +756,24 @@ auto objc_class_name(const clang::ObjCInterfaceDecl* objc_class, clang::SourceLo
     return objc_class;
 }
 
-auto objc_overridden(const clang::ObjCMethodDecl& method) -> const clang::ObjCMethodDecl* {
+auto objc_overridden(const clang::ObjCMethodDecl& method) -> llvm::SmallVector<ObjCOverridden, 4> {
+    llvm::SmallVector<ObjCOverridden, 4> overridden;
     const auto* objc_class = decls::objc_class(method.getDeclContext());
     for(const auto* base = objc_class ? objc_class->getSuperClass() : nullptr;
         base && base->hasDefinition();
         base = base->getSuperClass()) {
-        if(const auto* own = own_method(*base, method.getSelector(), method.isInstanceMethod())) {
-            return own;
+        const auto* own = own_method(*base, method.getSelector(), method.isInstanceMethod());
+        // No unit of the project writes the @implementation of a class a
+        // system header declares.
+        if(!own && base->getASTContext().getSourceManager().isInSystemHeader(base->getLocation())) {
+            break;
+        }
+        overridden.push_back({.objc_class = base, .method = own});
+        if(own) {
+            break;
         }
     }
-    return nullptr;
+    return overridden;
 }
 
 auto constructor_of(const clang::CXXConstructExpr* construct) -> const clang::CXXConstructorDecl* {
@@ -856,7 +869,7 @@ auto only_instantiation(clang::ParmVarDecl* decl) -> clang::ParmVarDecl* {
             return nullptr;
         if(Param == decl)
             break;
-        ++ParamIdx;
+        ParamIdx += 1;
     }
     if(ParamIdx >= InstantiatedFunction->getNumParams()) {
         return nullptr;

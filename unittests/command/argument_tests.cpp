@@ -89,7 +89,7 @@ ZEST_CASE(AliasAndDashDash) {
     unsigned count = 0;
     for(auto& result: clang_options::table().parse(args, options)) {
         if(result.has_value()) {
-            ++count;
+            count += 1;
         }
     }
     ZASSERT(count == 2u);

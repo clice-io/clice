@@ -22,7 +22,7 @@ export default defineConfig({
     test: {
         root: import.meta.dirname,
         include: ["cases.ts"],
-        globalSetup: ["summary.ts"],
+        globalSetup: ["summary.ts", "../cases/warm.ts"],
         pool: "forks",
         // Every case is a suite of its own: without this, vitest runs them
         // one after another and only a case's own tests side by side.

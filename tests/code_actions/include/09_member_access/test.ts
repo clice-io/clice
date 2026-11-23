@@ -4,6 +4,6 @@ import { answers } from "@clice/tools/testing";
 // count from lib.h; inspect answers from the standard library mapping alone.
 answers({ indexing: true }, async (a) => {
     for (const m of a.markers()) {
-        await a.show(m.name, a.codeActions(m, { compile: true }));
+        await a.show(m.name, a.codeActions(m, { only: ["quickfix"], compile: true }));
     }
 });

@@ -276,7 +276,7 @@ struct CommandRequest {
     /// The file is open in the editor (see self_contained).
     bool open = false;
 
-    /// The self-containment verdict the resolution takes over the stored
+    /// The self-containment result the resolution takes over the stored
     /// one: the one the compile asking has just found, which a change of
     /// what its check read meanwhile drops from the store.
     std::optional<bool> self_contained;

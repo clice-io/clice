@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as vscode from "vscode";
 import { LANGUAGES } from "../languages";
+import { enabled } from "../setting";
 
 const languages = new Set(LANGUAGES);
 
@@ -53,7 +54,7 @@ let redirecting = false;
 /// buffer per file. An editor showing such a second name is replaced by the
 /// one already open, at the same selection.
 async function redirect(editor: vscode.TextEditor | undefined) {
-    if (!editor || redirecting) {
+    if (!editor || redirecting || !enabled()) {
         return;
     }
     const opened = editor.document;

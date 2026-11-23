@@ -38,6 +38,19 @@ static std::vector<feature::FileDiagnostic>
     return diagnostics;
 }
 
+/// Whether the diagnostic says the compile did not find a file, or took
+/// another in its place: a file appearing later may be the one it meant.
+static bool misses_file(const feature::FileDiagnostic& diagnostic) {
+    namespace diag = clang::diag;
+    return ranges::contains(
+        std::array<std::uint32_t, 5>{diag::err_pp_file_not_found,
+                                     diag::err_pp_file_not_found_angled_include_not_fatal,
+                                     diag::err_pp_file_not_found_typo_not_fatal,
+                                     diag::err_pp_error_opening_file,
+                                     diag::err_module_not_found},
+        diagnostic.id);
+}
+
 /// The imports of a module several units provide, each resolved to the
 /// nearest of them (scan_imports).
 static std::vector<feature::ModuleChoice> module_choices(const Imports& imports,
@@ -162,18 +175,24 @@ void ServedProject::retry_after_save(Session& session) {
         retry |= project.forget_module_failure(modules[i]);
         add_imports(modules[i]);
     }
-    // A PCH that kept its preamble's errors misses the same lookups as a
-    // failed build: a save rebuilds it.
+    // A PCH that did not find a file its preamble names stands while
+    // nothing its lookups looked at changes, yet some look at no place a file
+    // appears in: a save looks again. What the key's PCH found decides, as
+    // another document's save may have rebuilt it since; one evicted leaves
+    // what the document compiled with.
     if(auto compiled = latest(path_id); compiled && compiled->pch_key) {
+        auto& key = *compiled->pch_key;
         if(compiled->pch_failed) {
-            retry |= project.forget_pch_failure(*compiled->pch_key);
-        } else if(auto& preamble = compiled->preamble_index;
-                  preamble && ranges::any_of(preamble_diagnostics(*preamble),
-                                             [](const feature::FileDiagnostic& diagnostic) {
-                                                 return diagnostic.level >= DiagnosticLevel::Error;
-                                             })) {
-            project.discard_pch(*compiled->pch_key);
-            retry = true;
+            retry |= project.forget_pch_failure(key);
+        } else {
+            auto preamble = project.preamble_index(key);
+            if(!preamble) {
+                preamble = compiled->preamble_index;
+            }
+            if(preamble && ranges::any_of(preamble_diagnostics(*preamble), misses_file)) {
+                project.look_again(key);
+                retry = true;
+            }
         }
     }
     if(retry) {
@@ -393,9 +412,9 @@ struct ServedProject::CompileAttempt {
     /// The command the send compiles under, the include trees the header's
     /// host search needs taken first: a header compiles under the host every
     /// process finds for it. `first`: the send that may be the
-    /// self-containment check; `verdict`: the check's, for the send in the
-    /// host's context it steers.
-    async::task<std::optional<Result>> command(bool first, std::optional<bool> verdict);
+    /// self-containment check; `self_contained`: the check's result, for the
+    /// send in the host's context it steers.
+    async::task<std::optional<Result>> command(bool first, std::optional<bool> self_contained);
 
     /// The modules the buffer imports, built: an import whose build failed is
     /// left to the parse, which reports it on the import next to the file's
@@ -541,7 +560,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
         Inputs inputs;
     };
     std::optional<Comparison> comparison;
-    // The alone compile's verdict only steers the host's: an attempt ending
+    // The alone compile's result only steers the host's: an attempt ending
     // before the host's compile answers leaves the result unknown, for the
     // next attempt to check again.
     auto unfinished = llvm::make_scope_exit([&] {
@@ -605,7 +624,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
                 continue;
             }
         } else if(comparison) {
-            // The verdict rests on both compiles: a change to what either
+            // The decision rests on both compiles: a change to what either
             // read compares again.
             auto alone = std::exchange(comparison, std::nullopt);
             auto inputs = std::move(alone->inputs);
@@ -632,7 +651,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
 }
 
 async::task<std::optional<Result>>
-    ServedProject::CompileAttempt::command(bool first, std::optional<bool> verdict) {
+    ServedProject::CompileAttempt::command(bool first, std::optional<bool> self_contained) {
     params = {};
     params.indexing.known_instantiations = known_instantiations;
     params.indexing.function_bodies = project.rules.function_body_rules();
@@ -647,7 +666,7 @@ async::task<std::optional<Result>>
         path_id,
         [&] {
             auto request = served.command_request(path_id);
-            request.self_contained = verdict;
+            request.self_contained = self_contained;
             return request;
         },
         [&] { return ticket.fresh(); });

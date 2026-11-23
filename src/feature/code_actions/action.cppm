@@ -43,6 +43,7 @@ void define(const Context& ctx, std::vector<CodeAction>& out);
 void define_missing(const Context& ctx, std::vector<CodeAction>& out);
 void implement_pure_virtuals(const Context& ctx, std::vector<CodeAction>& out);
 void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out);
+void special_members(const Context& ctx, std::vector<CodeAction>& out);
 void populate_switch(const Context& ctx, std::vector<CodeAction>& out);
 void expand_deduced_type(const Context& ctx, std::vector<CodeAction>& out);
 void reorder_definitions(const Context& ctx, std::vector<CodeAction>& out);

@@ -67,7 +67,7 @@ perf("endurance", { configuration: "clang" }, async (p) => {
     const files = await p.pick({ sources: 20, headers: 10 });
     await p.index(rawHashSet);
     await p.soak(rawHashSet, { edits: 300 });
-    await p.idle(rawHashSet, { rounds: 15 });
+    await p.idle(rawHashSet, { edits: 15 });
     await p.long([...files.slice(0, 10), ...files.slice(20, 25)], { minutes: 45 });
 });
 

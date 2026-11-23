@@ -143,9 +143,8 @@ void memberwise_constructor(const Context& ctx, std::vector<CodeAction>& out) {
     const auto* record = ctx.node.get<clang::CXXRecordDecl>();
     // A class still being typed has no closing brace for the constructor
     // to go before.
-    if(!record || !record->isThisDeclarationADefinition() || record->isInvalidDecl() ||
-       record->isUnion() || record->isLambda() || record->getName().empty() ||
-       record->getBraceRange().getEnd().isInvalid()) {
+    if(!record->isThisDeclarationADefinition() || record->isInvalidDecl() || record->isUnion() ||
+       record->getName().empty() || record->getBraceRange().getEnd().isInvalid()) {
         return;
     }
     // A base without a usable default constructor would need its own

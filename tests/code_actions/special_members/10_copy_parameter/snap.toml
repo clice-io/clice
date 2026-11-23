@@ -1,0 +1,13 @@
+[[answers.wrapper.code_actions]]
+kind = "refactor.rewrite.declareSpecialMembers"
+title = "Declare the implicit special members of 'Wrapper'"
+compiles = true
+
+[answers.wrapper.code_actions.edits]
+"main.cpp" = '''
+     Legacy legacy;
+     int id;
++    Wrapper(Wrapper&) = default;
++    Wrapper& operator=(Wrapper&) = default;
+ };
+'''
