@@ -114,16 +114,25 @@ async::task<std::expected<ProgramOutput, std::string>> execute(std::vector<std::
 
 extern "C" {
 
-    // Set by the allocator of the Windows and macOS executables
-    // (src/mimalloc.cc), which no other program links: its own collect.
+    // Set by the executables' allocator (src/mimalloc.cc), which no other
+    // program links: its own collect.
     void (*clice_allocator_collect)() = nullptr;
 }
 
 void release_free_memory() {
-    sys::release_free_heap();
-    if(clice_allocator_collect) {
-        clice_allocator_collect();
+    if(!clice_allocator_collect) {
+        sys::release_free_heap();
+        return;
     }
+    clice_allocator_collect();
+#ifndef __linux__
+    // The system's heap still serves part of the process: the UCRT's own
+    // blocks on Windows, the malloc zones other than mimalloc's on macOS. On
+    // Linux mimalloc has taken glibc's malloc over, which then holds nothing,
+    // and malloc_trim would set it up on its first call, which the pool
+    // threads release_free_memory_everywhere runs this on would race.
+    sys::release_free_heap();
+#endif
 }
 
 async::task<> release_free_memory_everywhere() {

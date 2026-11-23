@@ -1,6 +1,13 @@
 import * as path from "node:path";
 import { describe, expect, test } from "vitest";
-import { checkElf, checkMachO, checkPe, detectFormat, tidy } from "./system_libraries.ts";
+import {
+    MALLOC_NOT_OURS,
+    checkElf,
+    checkMachO,
+    checkPe,
+    detectFormat,
+    tidy,
+} from "./system_libraries.ts";
 
 const bytes = (hex: string) => Buffer.from(hex, "hex");
 
@@ -41,15 +48,36 @@ Dynamic section at offset 0x419da78 contains 31 entries:
   0x0000000000000015 (DEBUG)        0x0
 `;
 
+    /// A Linux x64 build's `llvm-readelf --dyn-syms --wide`, cut short: mimalloc
+    /// defines malloc and its kin.
+    const symbols = `
+Symbol table '.dynsym' contains 364 entries:
+   Num:    Value          Size Type    Bind   Vis       Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT   UND 
+   300: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND fopen@GLIBC_2.2.5
+   349: 0000000000e88040    74 FUNC    GLOBAL DEFAULT    14 malloc
+   363: 0000000000e86e60   156 FUNC    GLOBAL DEFAULT    14 free
+`;
+
     test("the shipped binary depends on glibc alone", () => {
-        expect(checkElf(shipped)).toEqual({ violations: [], notes: [] });
+        expect(checkElf(shipped, symbols)).toEqual({ violations: [], notes: [] });
+    });
+
+    test("malloc imported from glibc is a violation", () => {
+        const imported = `
+Symbol table '.dynsym' contains 75 entries:
+   Num:    Value          Size Type    Bind   Vis       Ndx Name
+    22: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND free@GLIBC_2.2.5
+    36: 0000000000000000     0 FUNC    GLOBAL DEFAULT   UND malloc@GLIBC_2.2.5
+`;
+        expect(checkElf(shipped, imported).violations).toEqual([MALLOC_NOT_OURS]);
     });
 
     test("a C++ runtime or any other library is a violation", () => {
         const output = `${shipped}  0x0000000000000001 (NEEDED)       Shared library: [libstdc++.so.6]
   0x0000000000000001 (NEEDED)       Shared library: [libz.so.1]
 `;
-        expect(checkElf(output).violations).toEqual([
+        expect(checkElf(output, symbols).violations).toEqual([
             "unexpected NEEDED dependency: libstdc++.so.6",
             "unexpected NEEDED dependency: libz.so.1",
         ]);
@@ -60,7 +88,7 @@ Dynamic section at offset 0x419da78 contains 31 entries:
   0x000000000000000f (RPATH)        Library rpath: [/opt/conda/lib]
   0x000000000000001d (RUNPATH)      Library runpath: [$ORIGIN/../lib]
 `;
-        expect(checkElf(output)).toEqual({
+        expect(checkElf(output, symbols)).toEqual({
             violations: [],
             notes: [
                 "RUNPATH references a conda/pixi env: /home/u/.pixi/envs/default/lib",
@@ -73,7 +101,7 @@ Dynamic section at offset 0x419da78 contains 31 entries:
         const output = `  0x0000000000000001 (NEEDED)       0x1234
   0x0000000000000015 (DEBUG)        0x0
 `;
-        expect(checkElf(output).violations).toEqual([
+        expect(checkElf(output, symbols).violations).toEqual([
             unparsed("NEEDED entries", "llvm-readelf -d"),
         ]);
     });
@@ -85,6 +113,12 @@ describe("checkMachO", () => {
 \t/usr/lib/libxcselect.dylib (compatibility version 1.0.0, current version 1.0.0)
 \t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)
 \t/usr/lib/libz.1.dylib (compatibility version 1.0.0, current version 1.2.12)
+`;
+    /// An arm64 build's `llvm-nm -u`, cut short: mimalloc defines malloc and
+    /// registers its zone.
+    const imports = `_malloc_default_zone
+_malloc_zone_register
+_memcpy
 `;
     const commands = (...rpaths: string[]) =>
         [
@@ -101,7 +135,24 @@ describe("checkMachO", () => {
         ].join("\n");
 
     test("the shipped binary depends on system dylibs alone", () => {
-        expect(checkMachO(shipped, commands())).toEqual({ violations: [], notes: [] });
+        expect(checkMachO(shipped, commands(), imports)).toEqual({ violations: [], notes: [] });
+    });
+
+    test("malloc imported from libSystem is a violation", () => {
+        const system = `_calloc
+_free
+_malloc
+_malloc_default_zone
+_realloc
+`;
+        expect(checkMachO(shipped, commands(), system).violations).toEqual([MALLOC_NOT_OURS]);
+    });
+
+    test("no mimalloc zone, or no imports read at all, is a violation", () => {
+        expect(checkMachO(shipped, commands(), "_malloc_default_zone\n").violations).toEqual([
+            MALLOC_NOT_OURS,
+        ]);
+        expect(checkMachO(shipped, commands(), "").violations).toEqual([MALLOC_NOT_OURS]);
     });
 
     test("a dylib outside the system or the SDK's libc++ is a violation", () => {
@@ -109,7 +160,7 @@ describe("checkMachO", () => {
 \t/usr/lib/libc++.1.dylib (compatibility version 1.0.0, current version 1700.255.0)
 \t/usr/lib/libc++abi.dylib (compatibility version 1.0.0, current version 1700.255.0)
 `;
-        expect(checkMachO(output, commands()).violations).toEqual([
+        expect(checkMachO(output, commands(), imports).violations).toEqual([
             "non-system dylib dependency: @rpath/libLLVM.dylib",
             "C++ runtime dylib dependency: /usr/lib/libc++.1.dylib",
             "C++ runtime dylib dependency: /usr/lib/libc++abi.dylib",
@@ -124,6 +175,7 @@ describe("checkMachO", () => {
                 "/Users/u/.pixi/envs/default/lib",
                 "/Users/u/Build Area/.pixi/envs/default/lib",
             ),
+            imports,
         );
         expect(check.violations).toEqual([
             "LC_RPATH points into a conda/pixi env: /Users/u/.pixi/envs/default/lib",
@@ -132,7 +184,7 @@ describe("checkMachO", () => {
     });
 
     test("no dependency under the header fails closed", () => {
-        expect(checkMachO("/tmp/clice/bin/clice:\n", commands()).violations).toEqual([
+        expect(checkMachO("/tmp/clice/bin/clice:\n", commands(), imports).violations).toEqual([
             unparsed("dylib dependencies", "llvm-otool -L"),
         ]);
     });
