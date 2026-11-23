@@ -854,7 +854,7 @@ ZEST_CASE(ClosingFitsFileToPages) {
     auto store = open_store(tmp, "lmdb");
     auto file = path::join(index::database_directory(store, {}), "index.mdb");
     auto db = sparse_database(store);
-    ZASSERT(db->write_compact_copy(keep, {}) == index::BlobDatabase::Copy::Written);
+    ZASSERT(db->write_compact_copy(keep) == index::BlobDatabase::Copy::Written);
     ZASSERT(db->swap_compact_copy() == index::BlobDatabase::Swap::Replaced);
     auto usage = db->usage();
     ZASSERT(usage);
