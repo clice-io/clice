@@ -3,9 +3,9 @@ name: vscode
 # Single parameterized pipeline for every extension build the project ships:
 #   source: none     — universal vsix without the server binary (PR check);
 #                      the extension falls back to the clice.executable setting.
-#   source: package  — six platform vsix embedding the release packages from
+#   source: package  — eight platform vsix embedding the release packages from
 #                      publish-clice.yml (release, nightly, and dry runs).
-#   source: build    — six platform vsix embedding the test-suite binaries
+#   source: build    — eight platform vsix embedding the test-suite binaries
 #                      already built by the test jobs, debug info stripped,
 #                      so a fix is installable the moment its CI run is green.
 on:
@@ -57,6 +57,12 @@ jobs:
             ext: tar.gz
           - vsce_target: linux-arm64
             triple: aarch64-unknown-linux-gnu
+            ext: tar.gz
+          - vsce_target: alpine-x64
+            triple: x86_64-unknown-linux-musl
+            ext: tar.gz
+          - vsce_target: alpine-arm64
+            triple: aarch64-unknown-linux-musl
             ext: tar.gz
           - vsce_target: darwin-arm64
             triple: aarch64-apple-darwin
@@ -148,7 +154,7 @@ jobs:
           retention-days: 7
 
   # Publishing runs apart from the packaging matrix: the Marketplace
-  # intermittently throws internal errors (TF400898) when six publishes for
+  # intermittently throws internal errors (TF400898) when eight publishes for
   # one extension land concurrently, and parallel release uploads race on
   # the same release. Packaging stays parallel above; this single job
   # uploads and publishes the collected vsix files one at a time.
@@ -160,7 +166,7 @@ jobs:
     needs: publish-vscode
     if: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.release_tag != '' }}
     runs-on: ubuntu-latest
-    # Each registry's retries take up to 8 min a vsix: six vsix to one
+    # Each registry's retries take up to 8 min a vsix: eight vsix to one
     # registry failing past them, and the other's turn after it.
     timeout-minutes: 90
     steps:

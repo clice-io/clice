@@ -72,24 +72,28 @@ cc_library(
     deps = ["@libclang//:" + lib for lib in LLVM_LIBRARIES],
 )
 
-# The canonical target triples: the release assets are named after them, and
-# the version carries the one of the build.
+# The canonical target triples, by the os, cpu and C library of their
+# platforms: the release assets are named after them, and the version
+# carries the one of the build.
 TRIPLES = {
-    "linux_x86_64": "x86_64-unknown-linux-gnu",
-    "linux_aarch64": "aarch64-unknown-linux-gnu",
-    "macos_x86_64": "x86_64-apple-darwin",
-    "macos_aarch64": "aarch64-apple-darwin",
-    "windows_x86_64": "x86_64-w64-mingw32",
-    "windows_aarch64": "aarch64-w64-mingw32",
+    "x86_64-unknown-linux-gnu": ("linux", "x86_64", "glibc"),
+    "aarch64-unknown-linux-gnu": ("linux", "aarch64", "glibc"),
+    "x86_64-unknown-linux-musl": ("linux", "x86_64", "musl"),
+    "aarch64-unknown-linux-musl": ("linux", "aarch64", "musl"),
+    "x86_64-apple-darwin": ("macos", "x86_64", "macosx"),
+    "aarch64-apple-darwin": ("macos", "aarch64", "macosx"),
+    "x86_64-w64-mingw32": ("windows", "x86_64", "mingw"),
+    "aarch64-w64-mingw32": ("windows", "aarch64", "mingw"),
 }
 
 [config_setting(
-    name = setting,
+    name = triple,
     constraint_values = [
-        "@platforms//os:" + setting.split("_", 1)[0],
-        "@platforms//cpu:" + setting.split("_", 1)[1],
+        "@platforms//os:" + os,
+        "@platforms//cpu:" + cpu,
+        "@xclang//platforms/libc:" + libc,
     ],
-) for setting in TRIPLES]
+) for triple, (os, cpu, libc) in TRIPLES.items()]
 
 # Stamped from bazel/workspace_status.mjs: the one source whose compile a new
 # version reruns (src/support/version.cppm).
@@ -97,7 +101,7 @@ genrule(
     name = "version_cpp",
     outs = ["version.cpp"],
     cmd = select({
-        ":" + setting: """
+        ":" + triple: """
 version=$$(sed -n 's/^STABLE_CLICE_VERSION //p' bazel-out/stable-status.txt)
 commit=$$(sed -n 's/^STABLE_CLICE_COMMIT //p' bazel-out/stable-status.txt)
 cat > $@ <<EOF
@@ -112,7 +116,7 @@ extern const std::string_view target = "%s";
 }  // namespace clice
 EOF
 """ % triple
-        for setting, triple in TRIPLES.items()
+        for triple in TRIPLES
     }),
     stamp = 1,
 )

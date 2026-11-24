@@ -55,6 +55,8 @@ jobs:
           # then fail the run rather than promote a downgrade.
           PACKAGES="package-clice.x86_64-unknown-linux-gnu.tar.gz
                     package-clice.aarch64-unknown-linux-gnu.tar.gz
+                    package-clice.x86_64-unknown-linux-musl.tar.gz
+                    package-clice.aarch64-unknown-linux-musl.tar.gz
                     package-clice.aarch64-apple-darwin.tar.gz
                     package-clice.x86_64-apple-darwin.tar.gz
                     package-clice.x86_64-w64-mingw32.zip
@@ -206,6 +208,8 @@ jobs:
             }
             row "Linux x64" x86_64-unknown-linux-gnu tar.gz tar.xz
             row "Linux arm64" aarch64-unknown-linux-gnu tar.gz tar.xz
+            row "Linux x64, musl" x86_64-unknown-linux-musl tar.gz tar.xz
+            row "Linux arm64, musl" aarch64-unknown-linux-musl tar.gz tar.xz
             row "macOS arm64" aarch64-apple-darwin tar.gz tar.xz
             row "macOS x64" x86_64-apple-darwin tar.gz tar.xz
             row "Windows x64" x86_64-w64-mingw32 zip zip

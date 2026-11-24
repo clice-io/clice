@@ -14,6 +14,8 @@ clice 实现了[语言服务器协议](https://microsoft.github.io/language-serv
 
 从 [Releases](https://github.com/clice-io/clice/releases) 页面下载最新二进制文件。
 
+在 Linux 上，`linux-gnu` 包需要 glibc 2.17 或更新的版本。`linux-musl` 包是静态程序，在任何 Linux 上都能运行：Alpine 等 musl 系统上可以直接用，NixOS 和 Guix 上也不用修补。
+
 ### 从源码构建
 
 详细步骤参见[从源码构建](./build.md)。
