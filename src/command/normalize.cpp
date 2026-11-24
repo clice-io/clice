@@ -48,33 +48,47 @@ CompilerFamily with_driver_mode(CompilerFamily family,
     return family;
 }
 
+/// Whether `option`, read with the options `visibility` names, takes `next`
+/// as its value: `-o out.o`, `-include config.h`, `-x c++`; as well when
+/// the two alone do not parse.
+bool takes_next(llvm::StringRef option, llvm::StringRef next, unsigned visibility) {
+    std::array<std::string_view, 2> pair = {option, next};
+    auto options = cli::ParseOptions{.dash_dash_parsing = true, .visibility = visibility};
+    for(auto& parsed: clang_options::table().parse(pair, options)) {
+        return !parsed || parsed->next_index > 1;
+    }
+    return false;
+}
+
 using ParsedArgs = std::vector<std::expected<cli::ParsedArg, cli::Error>>;
 
-/// `staged` with what its `-Xclang` options pass on read by cc1's options,
-/// which clang's driver passes their values to together, in order. The
+/// `staged` with what its options `through` pass on — clang-cl's `/clang:`
+/// to clang's driver, `-Xclang` to cc1 — read by the options `visibility`
+/// names: the driver passes all their values on together, in order. The
 /// command keeps them as written but for an option clice manages itself or
-/// the compile never takes, which goes as its driver spelling does
+/// the compile never takes, which goes as its own spelling does
 /// (classify_option). CMake passes a target's precompiled header to cc1
 /// directly, `-Xclang -include-pch -Xclang <pch>` in its units' commands,
 /// `-Xclang -emit-pch` in the one building it: the file on disk may come
 /// from GCC or another clang, so a unit loads clice's own build of it
 /// instead (Project::pch_writer). Bazel's module rules (xclang's) embed a
-/// module's sources in it (`-fmodules-embed-all-files`).
-ParsedArgs read_xclang(ParsedArgs staged, CommandTable& commands) {
-    llvm::SmallVector<std::size_t> xclang;
+/// module's sources in it (`-fmodules-embed-all-files`). Unreal's clang-cl
+/// commands write a dependency file each through `/clang:-MF<file>`.
+ParsedArgs
+    read_passed(ParsedArgs staged, CommandTable& commands, unsigned through, unsigned visibility) {
+    llvm::SmallVector<std::size_t> passing;
     llvm::SmallVector<std::string_view> passed;
     for(std::size_t i = 0; i < staged.size(); i += 1) {
-        if(staged[i] && is_xclang_option(staged[i]->id)) {
-            xclang.push_back(i);
+        if(staged[i] && staged[i]->id == through) {
+            passing.push_back(i);
             passed.push_back(staged[i]->values[0]);
         }
     }
-    // The option an argument reads as in place of the -Xclang options it
-    // starts, which go.
+    // The option an argument reads as in place of the options passing it
+    // on it starts, which go.
     std::vector<std::optional<cli::ParsedArg>> read(staged.size());
     std::vector<bool> gone(staged.size());
-    auto cc1 = cli::ParseOptions{.visibility = clang_options::CC1Option};
-    for(auto& option: clang_options::table().parse(passed, cc1)) {
+    for(auto& option: clang_options::table().parse(passed, {.visibility = visibility})) {
         // An option missing its value, which only the last can be.
         if(!option) {
             break;
@@ -91,9 +105,9 @@ ParsedArgs read_xclang(ParsedArgs staged, CommandTable& commands) {
             continue;
         }
         for(auto k = option->index; k < option->next_index; k += 1) {
-            gone[xclang[k]] = true;
+            gone[passing[k]] = true;
         }
-        read[xclang[option->index]] = std::move(*option);
+        read[passing[option->index]] = std::move(*option);
     }
     ParsedArgs result;
     for(std::size_t i = 0; i < staged.size(); i += 1) {
@@ -221,7 +235,14 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     /// Two passes: the staging pass keeps every parse result alive, so the
     /// classification pass can decide input pairing (which /Tc-/Tp names
     /// the entry file) before it lays down arguments.
-    auto staged = read_xclang(parse_arguments(parse_args, family, parse_options), commands);
+    auto staged = read_passed(parse_arguments(parse_args, family, parse_options),
+                              commands,
+                              clang_options::OPT_Xclang,
+                              clang_options::CC1Option);
+    staged = read_passed(std::move(staged),
+                         commands,
+                         clang_options::OPT__SLASH_clang,
+                         family_visibility(CompilerFamily::Clang));
 
     /// Relative paths of the command resolve where the compile runs: the
     /// entry directory, moved by `-working-directory`.
@@ -411,12 +432,31 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
                          "-fdeps-target=",
                          "-fdiagnostics-add-output=",
                          "-fprofile-note="};
+    std::array joined_dependencies = {"-MF", "-MT", "-MQ", "-MJ"};
+    // After `/` or `-`; a longer name ahead of one it starts with.
+    std::array<llvm::StringRef, 15> cl_outputs = {"Fo",
+                                                  "Fd",
+                                                  "Fa",
+                                                  "Fe",
+                                                  "Fi",
+                                                  "Fm",
+                                                  "FR",
+                                                  "Fr",
+                                                  "doc",
+                                                  "sourceDependencies:directives",
+                                                  "sourceDependencies",
+                                                  "clang:-MF",
+                                                  "clang:-MT",
+                                                  "clang:-MQ",
+                                                  "clang:-MJ"};
+    auto visibility = family_visibility(family);
     std::string text(directory.str());
     // Paths read through a mount table normalize otherwise.
     text += mounts ? '\1' : '\2';
     std::size_t files = 0;
     bool value_next = false;
-    for(llvm::StringRef token: command_line) {
+    for(std::size_t i = 0; i < command_line.size(); i += 1) {
+        llvm::StringRef token = command_line[i];
         text += '\0';
         if(token.starts_with("@")) {
             return std::nullopt;
@@ -424,19 +464,52 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
         if(value_next) {
             value_next = false;
             text += "\x01value";
-        } else if(token == file) {
+            continue;
+        }
+        if(token == file) {
             files += 1;
             text += "\x01file";
-        } else if(cl_mode(family)) {
-            text +=
-                token.starts_with("/Fo") || token.starts_with("-Fo") ? token.take_front(3) : token;
-        } else if(ranges::contains(separate, token)) {
+            continue;
+        }
+        if(cl_mode(family)) {
+            // cl's own outputs, and the dependency files of clang's options
+            // passed through `/clang:` (Unreal's `/clang:-MF<file>`); not a
+            // path another option takes, which a POSIX host spells with a `/`
+            // (`/imsvc /docker/include`).
+            auto output = ranges::find_if(cl_outputs, [&](llvm::StringRef name) {
+                return (token.starts_with("/") || token.starts_with("-")) &&
+                       token.drop_front().starts_with(name);
+            });
+            if(output == cl_outputs.end() ||
+               (i > first + 1 && takes_next(command_line[i - 1], token, visibility))) {
+                text += token;
+                continue;
+            }
+            text += token.take_front(output->size() + 1);
+            // The value apart: `/Fo: <file>`, `/sourceDependencies <file>`,
+            // `/clang:-MF /clang:<file>`, which the driver reads together.
+            if(i + 1 < command_line.size()) {
+                llvm::StringRef next = command_line[i + 1];
+                value_next = output->starts_with("clang:")
+                                 ? token.size() == output->size() + 1 &&
+                                       (next.starts_with("/") || next.starts_with("-")) &&
+                                       next.drop_front().starts_with("clang:")
+                                 : takes_next(token, next, visibility);
+            }
+            continue;
+        }
+        if(ranges::contains(separate, token)) {
             value_next = true;
             text += token;
         } else if(auto prefix = ranges::find_if(
                       joined,
                       [&](llvm::StringRef prefix) { return token.starts_with(prefix); });
                   prefix != joined.end()) {
+            text += *prefix;
+        } else if(auto prefix = ranges::find_if(
+                      joined_dependencies,
+                      [&](llvm::StringRef prefix) { return token.starts_with(prefix); });
+                  prefix != joined_dependencies.end()) {
             text += *prefix;
         } else if((token.starts_with("-Wp,-MD,") || token.starts_with("-Wp,-MMD,")) &&
                   token.count(',') == 2) {

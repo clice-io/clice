@@ -104,7 +104,11 @@ ZEST_CASE(SharedKeys) {
     ZEXPECT(same("clang++ -std=c++20 -o {0}.o -c {0}.cpp"));
     ZEXPECT(same("g++ -MD -MF {0}.d -frandom-seed={0}.o -c {0}.cpp -o {0}.o"));
     ZEXPECT(same("gcc -Wp,-MMD,.{0}.o.d -c -o {0}.o {0}.cpp"));
+    ZEXPECT(same("clang++ -MD -MF{0}.d -MT{0}.o -c {0}.cpp -o {0}.o"));
     ZEXPECT(same("cl /std:c++20 /Fo{0}.obj /c {0}.cpp"));
+    ZEXPECT(same("cl /std:c++20 /Fo: {0}.obj /Fd{0}.pdb /sourceDependencies {0}.json /c {0}.cpp"));
+    ZEXPECT(same("clang-cl /std:c++20 /clang:-MD /clang:-MF{0}.d /Fo{0}.obj /c {0}.cpp"));
+    ZEXPECT(same("clang-cl /std:c++20 /clang:-MD /clang:-MF /clang:{0}.d /c {0}.cpp"));
     ZEXPECT(
         same("g++ -std=c++20 -fmodules-ts -fmodule-mapper={0}.modmap -fdeps-format=p1689r5 "
              "-fdeps-file={0}.ddi -fdeps-target={0}.o -c {0}.cpp -o {0}.o"));
@@ -116,6 +120,10 @@ ZEST_CASE(SharedKeys) {
     ZEXPECT((key("a.cpp", "gcc -Wp,-MMD,a.d,-DA -c a.cpp") !=
              key("b.cpp", "gcc -Wp,-MMD,b.d,-DA -c b.cpp")));
     ZEXPECT((key("a.cpp", "clang++ -std=c++17 a.cpp") != key("b.cpp", "clang++ -std=c++20 b.cpp")));
+    ZEXPECT((key("a.cpp", "clang-cl /clang:-std=c++17 /c a.cpp") !=
+             key("b.cpp", "clang-cl /clang:-std=c++20 /c b.cpp")));
+    ZEXPECT((key("a.cpp", "clang-cl /imsvc /docker/a /c a.cpp") !=
+             key("b.cpp", "clang-cl /imsvc /docker/b /c b.cpp")));
 
     /// Commands reading files of their own, or naming theirs twice, have none.
     ZEXPECT(!key("a.cpp", "clang++ @a.rsp a.cpp").has_value());
@@ -190,12 +198,18 @@ ZEST_CASE(LeftOutOptionsShare) {
                          "d.cpp",
                          "cl /std:c++20 /c /Fod.obj /Fdd.pdb /Fad.asm /FRd.sbr /Fed.exe "
                          "/sourceDependencies d.json /showIncludes /showFilenames d.cpp"sv);
+    database.add_command("/fake", "e.cpp", "clang-cl /std:c++20 /c e.cpp"sv);
+    database.add_command("/fake",
+                         "f.cpp",
+                         "clang-cl /std:c++20 /c /clang:-MD /clang:-MFf.d /clang:-MT "
+                         "/clang:f.obj f.cpp"sv);
     auto command = [&](llvm::StringRef file) {
         return database.candidate_entries(fake(file)).front().command;
     };
     ZEXPECT(command("a.cpp") == command("b.cpp"));
     ZEXPECT(join_command(commands.render_full(command("b.cpp"))) == "clang++ -std=c++20 -fPIC");
     ZEXPECT(command("c.cpp") == command("d.cpp"));
+    ZEXPECT(command("e.cpp") == command("f.cpp"));
 };
 
 ZEST_CASE(ModuleEmbeddingDiscarded) {
