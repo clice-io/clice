@@ -1056,7 +1056,7 @@ tests/navigation/constructor_calls/06_conversion_casts
 
 模板中尚未确定的构造会跳转到它可能调用的各个构造函数
 
-在模板内部，实参依赖模板参数的 `Box(T{}, T{})`、`Box<T>(value, value)`、`Widget(size)`、`Widget{size, size}` 和 `new Widget(size)` 会调用该类中接受相应个数实参的某个构造函数，构造函数模板也在其中，展开的参数包则可对应任意个数：这些类名会跳往每一个这样的构造函数，以及实例化实际调用的构造函数，特化自己的构造函数也包括在内。`T(size)` 则指代模板参数，无论实例化构造的是什么。
+在模板内部，实参依赖模板参数的 `Box(T{}, T{})`、`Box<T>(value, value)`、`Widget(size)`、`Widget{size, size}` 和 `new Widget(size)` 会调用该类中接受相应个数实参的某个构造函数（构造函数模板也在其中；形参包或展开的参数包可对应任意个数；`initializer_list` 构造函数接受任意长度的花括号列表），或调用它继承的构造函数：这些类名会跳往每一个这样的构造函数，以及实例化实际调用的构造函数，特化自己的构造函数也包括在内。`T(size)` 则指代模板参数，无论实例化构造的是什么。
 
 ```case
 tests/navigation/constructor_calls/07_templates
