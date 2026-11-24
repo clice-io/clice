@@ -739,21 +739,45 @@ suite("clice E2E", function () {
 
         // VS Code asks for code actions on its own a moment after the cursor
         // moves or the file's diagnostics change, and that request replaces
-        // the command's still waiting for the file's compile, which then
-        // applies nothing: the command asks once the file is compiled.
+        // the command's still waiting, which then applies nothing: the
+        // command asks once the file's diagnostics are in and VS Code's own
+        // request after them is answered.
         const uri = uriOf(refactor.file);
-        const diagnosed = until(
-            [vscode.languages.onDidChangeDiagnostics],
-            () => vscode.languages.getDiagnostics(uri).length > 0,
-            `diagnostics of ${refactor.file}`,
-        );
+        let changes = 0;
+        let answered = -1;
+        const seen = new vscode.EventEmitter<void>();
+        const watch = vscode.languages.onDidChangeDiagnostics((event) => {
+            if (event.uris.some((each) => each.toString() === uri.toString())) {
+                changes += 1;
+                seen.fire();
+            }
+        });
+        const middleware = client().current.middleware;
+        const provide = middleware.provideCodeActions;
+        assert.ok(provide, "the extension has a code action middleware");
+        middleware.provideCodeActions = async (document, range, context, token, next) => {
+            const after = changes;
+            const actions = await provide(document, range, context, token, next);
+            if (
+                document.uri.toString() === uri.toString() &&
+                context.triggerKind === vscode.CodeActionTriggerKind.Automatic
+            ) {
+                answered = Math.max(answered, after);
+                seen.fire();
+            }
+            return actions;
+        };
         const source = await vscode.workspace.openTextDocument(uri);
         try {
             const cursor = source.positionAt(source.getText().indexOf(refactor.at));
             await vscode.window.showTextDocument(source, {
                 selection: new vscode.Range(cursor, cursor),
             });
-            await diagnosed;
+            await until(
+                [seen.event],
+                () => vscode.languages.getDiagnostics(uri).length > 0 && answered === changes,
+                `VS Code's own code actions of ${refactor.file} after its diagnostics`,
+            );
             await sync();
             const edited = until(
                 [vscode.workspace.onDidChangeTextDocument],
@@ -766,6 +790,9 @@ suite("clice E2E", function () {
                 `the edit did not add ${refactor.adds}:\n${source.getText()}`,
             );
         } finally {
+            middleware.provideCodeActions = provide;
+            watch.dispose();
+            seen.dispose();
             await vscode.window.showTextDocument(source);
             await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
         }
