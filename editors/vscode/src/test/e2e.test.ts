@@ -647,15 +647,19 @@ suite("clice E2E", function () {
         assert.ok(offered.some((action) => action.kind === "source.clice.context"));
 
         // A provider of another language registered while VS Code asks, as
-        // an extension activating then registers one.
+        // an extension activating then registers one. A request VS Code
+        // dropped lists nothing too: the action added to the answer shows
+        // it took the answer.
         const middleware = client().current.middleware;
         const provide = middleware.provideCodeActions;
         assert.ok(provide, "the extension has a code action middleware");
-        middleware.provideCodeActions = (document, range, context, token, next) => {
+        const added = vscode.CodeActionKind.Source.append("e2e");
+        middleware.provideCodeActions = async (document, range, context, token, next) => {
             vscode.languages
                 .registerCodeActionsProvider("markdown", { provideCodeActions: () => [] })
                 .dispose();
-            return provide(document, range, context, token, next);
+            const actions = (await provide(document, range, context, token, next)) ?? [];
+            return [...actions, new vscode.CodeAction("added by the test", added)];
         };
         try {
             const listed = await vscode.commands.executeCommand<vscode.CodeAction[]>(
@@ -663,6 +667,10 @@ suite("clice E2E", function () {
                 opened().uri,
                 new vscode.Range(0, 0, 0, 0),
                 vscode.CodeActionKind.Source.value,
+            );
+            assert.ok(
+                listed.some((action) => action.kind?.value === added.value),
+                "VS Code took the answer",
             );
             assert.ok(
                 !listed.some((action) => action.kind?.value.startsWith("source.clice.")),
