@@ -1,0 +1,5 @@
+# deep.h nests brackets past the limit deep.cpp is given: clang ends that
+# parse with a fatal error inside deep.h.
+[units]
+"main.cpp" = []
+"deep.cpp" = ["-fbracket-depth=10"]
