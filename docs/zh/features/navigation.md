@@ -922,7 +922,7 @@ tests/navigation/implicit_targets/08_implicit_conversions
 
 显式类型转换会跳转到它调用的构造函数或转换运算符
 
-在 `static_cast`、C 风格强制转换的括号或函数式类型转换的类型名上执行“跳转到定义”，会跳往所选中的构造函数或调用的用户定义转换运算符。
+在 `static_cast` 上、在 C 风格强制转换或以类名写出的函数式类型转换的括号上，或在函数式类型转换的内置类型（`double(m)`）上执行“跳转到定义”，会跳往所选中的构造函数或调用的用户定义转换运算符。
 
 ```case
 tests/navigation/implicit_targets/09_casts
@@ -954,6 +954,126 @@ tests/navigation/implicit_targets/10_range_for
 
 ```case
 tests/navigation/implicit_targets/11_coroutine_keywords
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## 以类名写出的构造
+
+调用构造函数的类名，在类型相关功能以外的所有功能中都代表该构造函数；类型相关功能给出的则是该类。
+
+<!-- BEGIN GENERATED ITEMS: navigation/constructor_calls -->
+
+<!-- BEGIN CAPABILITY: supported clice#1152 -->
+
+**初始化列表**
+
+委托初始化器或基类初始化器中的类名会跳转到它调用的构造函数
+
+在 `Widget() : Widget(1, 2)` 或 `: Base(size)` 的类名上执行跳转到定义、跳转到声明、悬停、文档高亮与查找引用，得到的都是该初始化器调用的构造函数；跳转到类型定义得到的则是该类。初始化器的圆括号仍会跳往该构造函数，但不会再算作第二处引用。
+
+```case
+tests/navigation/constructor_calls/01_initializers
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**临时对象**
+
+临时对象的类名会跳转到它调用的构造函数
+
+`Widget(1)`、`Widget(2, 3)`、`Widget{4}` 和 `Widget()` 都以类名调用构造函数：在类名上执行跳转到定义、跳转到声明、悬停、文档高亮与查找引用，得到的都是所调用的构造函数，跳转到类型定义得到的则是该类；限定名与模板的特化同样如此。
+
+```case
+tests/navigation/constructor_calls/02_temporaries
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`new` 表达式**
+
+`new` 所分配对象的类名会跳转到它运行的构造函数
+
+在 `new Widget(1)`、`new Widget{2}` 和 `new Widget` 中，类名给出的是构造该对象的构造函数，跳转到类型定义给出的则是该类。数组的元素类型只指代该类本身。
+
+```case
+tests/navigation/constructor_calls/03_new_expressions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**别名与推导**
+
+经别名或模板实参推导写出的构造会跳转到其构造函数
+
+`Alias(1)` 调用别名所指类的构造函数，`Box(2)` 调用由其实参推导出的特化的构造函数：二者都会跳往该构造函数，跳转到类型定义则跳往该类型。`Box c(3)` 声明了一个变量，其声明符就是这次调用：`Box` 指代该类，圆括号则跳往构造函数。
+
+```case
+tests/navigation/constructor_calls/04_aliases_and_deduction
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**继承构造函数**
+
+以类名调用继承来的构造函数时，类名会跳转到基类的构造函数
+
+`Derived(1)` 中的 `Derived` 通过 `using Base::Base` 继承构造函数，这次调用运行的是 `Base` 声明的构造函数：类名会跳往该构造函数，跳转到类型定义则跳往它所构造的类 `Derived`。
+
+```case
+tests/navigation/constructor_calls/05_inherited_constructors
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**经转换函数的类型转换**
+
+经转换函数完成的函数式类型转换，其类型名指代该类型
+
+`Target(source)` 中，若 `Source` 借助 `operator Target()` 转换为 `Target`，写出的就是类型 `Target`，而它也是该转换函数的名称：类名跳往该类，圆括号则与 C 风格强制转换的括号一样，跳往该转换函数。
+
+```case
+tests/navigation/constructor_calls/06_conversion_casts
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**模板中的构造**
+
+模板中尚未确定的构造会跳转到它可能调用的各个构造函数
+
+在模板内部，实参依赖模板参数的 `Box(T{}, T{})`、`Box<T>(value, value)`、`Widget(size)`、`Widget{size, size}` 和 `new Widget(size)` 会调用该类中接受相应个数实参的某个构造函数，构造函数模板也在其中，展开的参数包则可对应任意个数：这些类名会跳往每一个这样的构造函数，以及实例化实际调用的构造函数，特化自己的构造函数也包括在内。`T(size)` 则指代模板参数，无论实例化构造的是什么。
+
+```case
+tests/navigation/constructor_calls/07_templates
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**仅写出类型的名称**
+
+调用的构造函数未在代码中写出时，类名会跳转到该类
+
+聚合体的 `Point{1, 2}`，以及类中未声明构造函数的 `Plain()`，都会跳往该类；只写出类型的名称也是如此：形参的类型、所声明变量 `Widget d(1)` 中的类型（其调用就是声明符）、类型转换的目标类型以及模板实参。
+
+```case
+tests/navigation/constructor_calls/08_types_alone
 ```
 
 <!-- END CAPABILITY -->
@@ -1026,26 +1146,12 @@ tests/navigation/implicit_construction/04_aggregates
 
 **成员初始化列表**
 
-成员初始化器的圆括号会跳转到选中的基类或成员构造函数
+成员初始化器的圆括号会跳转到该成员的构造函数
 
-初始化列表所调用的基类构造函数与成员构造函数，可从各个初始化器的左圆括号跳往。初始化器中的名称本身会解析到基类类型或成员变量，因此要跳往构造函数需在圆括号上触发。
+成员初始化器运行的构造函数可从该初始化器的左圆括号跳往；初始化器中的名称指代该成员。
 
 ```case
 tests/navigation/implicit_construction/05_member_initializers
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**委托构造函数**
-
-委托构造函数的圆括号会跳转到目标构造函数
-
-委托构造函数的目标构造函数可从委托调用的左圆括号跳往。构造函数名本身会解析到所属类类型，因此要跳往目标构造函数需在圆括号上触发。
-
-```case
-tests/navigation/implicit_construction/06_delegating_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -1414,6 +1520,20 @@ tests/navigation/type_hierarchy/04_template_bases
 
 ```case
 tests/navigation/type_hierarchy/09_dependent_bases
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**构造函数名称**
+
+构造函数的名称会打开其所构造类的类型层次结构
+
+在构造函数的声明上，或在调用构造函数的类名（`Widget(1)`）上请求类型层次结构，打开的都是该类；类名调用的是继承来的构造函数时，打开的也是这个类本身。
+
+```case
+tests/navigation/type_hierarchy/12_constructor_names
 ```
 
 <!-- END CAPABILITY -->
