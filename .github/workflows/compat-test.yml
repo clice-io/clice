@@ -148,14 +148,16 @@ jobs:
           done
           exit 1
 
+      # ziglang.org turns CI downloads away: the action fetches from its
+      # community mirrors once, then from the Actions cache. Its cache of
+      # zig's own builds would save a new entry on every run.
       - name: Install zig
         if: runner.os == 'Linux'
         timeout-minutes: 5
-        run: |
-          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/zig.tar.xz" \
-            https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz
-          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/zig-x86_64-linux-0.14.1" >> "$GITHUB_PATH"
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
+          use-cache: false
 
       - name: Download binaries
         if: steps.release.outputs.tag == ''
