@@ -457,6 +457,27 @@ ZEST_CASE(WindowsSpellingsCollapse) {
             pool.find(Spelling::absolute("C:/a/b.h")));
 }
 
+ZEST_CASE(ClientDriveCaseShown) {
+    // Qt Creator writes the drive in upper case and keys a document's
+    // version by its path, case and all: the URIs going back to it name the
+    // open document, and the files under its folder, in its case.
+    TempDir tmp;
+    tmp.touch("ws/main.cpp", "");
+    tmp.touch("ws/inc/h.h", "");
+    auto upper = [&](llvm::StringRef rel) {
+        auto path = Spelling::absolute(tmp.path(rel)).str();
+        path[0] = llvm::toUpper(path[0]);
+        return path;
+    };
+    FileTable pool;
+    pool.spell_root(upper("ws"));
+    auto main = pool.intern(Spelling::absolute(upper("ws/main.cpp")));
+    pool.show_as(main, upper("ws/main.cpp"));
+    auto header = pool.intern(Spelling::absolute(tmp.path("ws/inc/h.h")));
+    ZEXPECT(pool.display(main) == upper("ws/main.cpp"));
+    ZEXPECT(pool.display(header) == upper("ws/inc/h.h"));
+}
+
 ZEST_CASE(DriveRootSpelled) {
     // A subst drive opened at its root: the folder's spelling ends in its
     // separator, and the rest of a path joins it without a second one.
