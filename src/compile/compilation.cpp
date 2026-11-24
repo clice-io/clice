@@ -1094,8 +1094,10 @@ static CompilationStatus profiled(CompilationUnit& unit,
     Timer timer;
     auto status = run();
     auto elapsed = timer.ms();
-    // A parse stopped halfway leaves them open too.
-    if(status != CompilationStatus::Completed) {
+    // A parse stopped halfway leaves them open too, and so may a fatal error
+    // (brackets nested too deep, a module that fails to load), past which
+    // the compile instantiates nothing anyway.
+    if(status != CompilationStatus::Completed || unit.fatal_error()) {
         llvm::timeTraceProfilerCleanup();
         return status;
     }

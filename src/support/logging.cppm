@@ -66,10 +66,10 @@ import :support.prelude;
 /// preamble_index_ms/flush_ms/state_write_ms for a pch, flush_ms for a
 /// pcm, index_ms/teardown_ms for a unit's compile), "compile_detail" (with
 /// CLICE_PERF=compile, compile_phases(): where a compile's time went inside
-/// clang, any but a completion's, the totals of LLVM's time-trace phases —
-/// source_ms in included files, parse_class_ms, instantiate_function_ms,
-/// ... — each counted at its outermost; phases nest in each other and do
-/// not add up), "loop" (phase=stall: the master's event loop held up 200
+/// clang, one that ran to its end and not a completion's, the totals of
+/// LLVM's time-trace phases — source_ms in included files, parse_class_ms,
+/// instantiate_function_ms, ... — each counted at its outermost; phases
+/// nest in each other and do not add up), "loop" (phase=stall: the master's event loop held up 200
 /// ms or more, every request waiting), "index_query" (master-side index
 /// lookups: kind=definition|declaration|references|implementation|search,
 /// file_visits = how many times the lookup's relation walks looked into a
@@ -364,10 +364,11 @@ void reset_anomaly_for_testing();
 /// Whether perf lines (LOG_PERF) are written: CLICE_PERF set.
 bool perf_lines();
 
-/// Whether each compile but a completion's also writes where its time
-/// went inside clang ("compile_detail"): CLICE_PERF=compile. LLVM's
-/// time-trace profiler the totals come from slows every compile by about a
-/// twentieth, which the measurements plain CLICE_PERF serves must not pay.
+/// Whether each compile that runs to its end, but a completion's, also
+/// writes where its time went inside clang ("compile_detail"):
+/// CLICE_PERF=compile. LLVM's time-trace profiler the totals come from
+/// slows every compile by about a twentieth, which the measurements plain
+/// CLICE_PERF serves must not pay.
 bool compile_phases();
 
 /// Whether the server traces its editor's LSP messages: CLICE_LSP_TRACE
