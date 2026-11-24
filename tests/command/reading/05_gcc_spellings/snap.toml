@@ -1,5 +1,5 @@
-["cross gcc"."$ clice command convert -- riscv32-wch-elf-gcc -march=rv32imc_zba_xw -mabi=ilp32 -msmall-data-limit=8 -c main.c"]
-stdout = "riscv32-wch-elf-gcc --no-default-config --target=riscv32-wch-elf -fno-delayed-template-parsing -resource-dir ${RESOURCE} -march=rv32imc_zba -mabi=ilp32 ${WS}/main.c"
+["cross gcc"."$ clice command convert -- riscv32-wch-elf-gcc -march=rv32imc_zba_xw -mabi=ilp32 -trigraphs -c main.c"]
+stdout = "riscv32-wch-elf-gcc --no-default-config --target=riscv32-wch-elf -fno-delayed-template-parsing -resource-dir ${RESOURCE} -march=rv32imc_zba -mabi=ilp32 -trigraphs ${WS}/main.c"
 stderr = '''
 warning: Cannot ask the compiler for its default settings: the compiler riscv32-wch-elf-gcc is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
 warning: clang takes no RISC-V extension xw (LLVM has none, or an experimental one): it reads -march=rv32imc_zba_xw without it
