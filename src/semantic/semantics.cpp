@@ -2446,12 +2446,11 @@ llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
     auto out = resolve_references(entry.node, resolver);
     /// Widget(1) / new const Widget(1) / : Base(1)
     /// ^~~~ the class gives way to the constructor its name calls
-    if(auto calls = named_calls(semantics, index); !calls.empty()) {
-        for(auto& reference: out) {
-            reference.outranked = ranges::any_of(calls, [&](const Reference& call) {
-                return call.location == reference.location;
-            });
-        }
+    auto calls = named_calls(semantics, index);
+    for(auto& reference: out) {
+        reference.outranked = ranges::any_of(calls, [&](const Reference& call) {
+            return call.location == reference.location;
+        });
     }
     if(const auto* construct = entry.node.get<clang::CXXConstructExpr>();
        construct && calling_name(semantics, index).isValid()) {
@@ -2498,12 +2497,7 @@ References named_calls(const Semantics& semantics, std::uint32_t index) {
     if(owner == Semantics::invalid) {
         return {};
     }
-    auto calls = named_calls(semantics.node(owner).node);
-    auto implied = ranges::remove_if(calls, [](const Reference& call) {
-        return call.kind.is_one_of(RelationKind::Implied);
-    });
-    calls.erase(implied.begin(), implied.end());
-    return calls;
+    return named_calls(semantics.node(owner).node);
 }
 
 clang::SourceLocation calling_name(const Semantics& semantics, std::uint32_t index) {
@@ -2529,12 +2523,8 @@ clang::SourceLocation calling_name(const Semantics& semantics, std::uint32_t ind
     if(!construction || construction->construct != construct) {
         return {};
     }
-    for(const auto& call: named_calls(semantics.node(owner).node)) {
-        if(call.kind.is_one_of(RelationKind::Reference)) {
-            return call.location;
-        }
-    }
-    return {};
+    auto calls = named_calls(semantics.node(owner).node);
+    return calls.empty() ? clang::SourceLocation() : calls.front().location;
 }
 
 bool is_written(const Semantics& semantics, std::uint32_t index) {

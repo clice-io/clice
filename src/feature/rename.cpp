@@ -84,29 +84,24 @@ bool renamable(SymbolKind kind) {
     }
 }
 
-bool is_constructor(const index::IndexQuery& query, index::SymbolHash symbol, Fid file) {
-    auto info = query.symbol_info(symbol, file);
-    return info && index::name_form(info->flags) == index::NameForm::Constructor;
-}
-
-/// The symbols the name under a cursor writes: a type's name calling a
-/// constructor writes the type — the class, an alias of it, a class
-/// inheriting the constructor — the constructor being what it calls.
-llvm::SmallVector<index::SymbolHash, 1> written_symbols(const index::IndexQuery& query,
-                                                        const index::IndexQuery::Cursor& cursor) {
-    llvm::SmallVector<index::SymbolHash, 1> written;
-    for(auto symbol: cursor.symbols) {
-        if(!is_constructor(query, symbol, cursor.site.file)) {
-            written.push_back(symbol);
-            continue;
-        }
-        for(auto type: feature::named_types(query, cursor, symbol)) {
-            if(!ranges::contains(written, type.symbol)) {
-                written.push_back(type.symbol);
-            }
-        }
+/// What the instantiations resolve the name at `offset` to
+/// (IndexQuery::instantiated_at), but the constructors they call by a
+/// type's name, which tell nothing of the type the name writes.
+std::optional<index::IndexQuery::Cursor> instantiated_names(const index::IndexQuery& query,
+                                                            Fid file,
+                                                            std::uint32_t offset) {
+    auto cursor = query.instantiated_at(file, offset);
+    if(!cursor) {
+        return std::nullopt;
     }
-    return written;
+    llvm::erase_if(cursor->symbols, [&](index::SymbolHash symbol) {
+        auto info = query.symbol_info(symbol, file);
+        return info && index::name_form(info->flags) == index::NameForm::Constructor;
+    });
+    if(cursor->symbols.empty()) {
+        return std::nullopt;
+    }
+    return cursor;
 }
 
 bool function_like(SymbolKind kind) {
@@ -372,7 +367,8 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
     auto offset = resolved.site.range.begin;
     auto cursor = query.symbol_at(file, offset);
     if(cursor) {
-        cursor->symbols = written_symbols(query, *cursor);
+        cursor->symbols = ranges::to<llvm::SmallVector<index::SymbolHash, 1>>(
+            written_symbols(query, *cursor) | views::transform(&index::IndexQuery::Target::symbol));
     }
     // A dependent name in a template (`value.print()`) is what its
     // instantiations resolve it to, whatever the resolver guesses.
@@ -381,7 +377,7 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
             return query.relates_at(file, cursor->site.range, symbol, RelationKind::Guess);
         });
     if(!cursor || guessed) {
-        cursor = serving.instantiated_at(file, offset);
+        cursor = instantiated_names(serving, file, offset);
         if(!cursor) {
             return std::unexpected(
                 guessed ? "no instantiation the index saw resolves the name here; rename from a "
@@ -574,11 +570,9 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     };
     auto shared_with = [&](const index::Site& site, std::uint32_t offset) -> std::optional<Shared> {
         auto file = site.file;
-        // The constructor an instantiation calls by a type's name tells
-        // nothing of the type the name writes.
-        if(auto instantiated = serving.instantiated_at(file, offset)) {
+        if(auto instantiated = instantiated_names(serving, file, offset)) {
             for(auto symbol: instantiated->symbols) {
-                if(!is_constructor(serving, symbol, file) && other_of_old_name(symbol, file)) {
+                if(other_of_old_name(symbol, file)) {
                     return Shared{.symbol = symbol, .certain = true};
                 }
             }
@@ -591,7 +585,8 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
             return std::nullopt;
         }
         std::optional<Shared> candidate;
-        for(auto symbol: written_symbols(query, *cursor)) {
+        for(auto symbol: written_symbols(query, *cursor) |
+                             views::transform(&index::IndexQuery::Target::symbol)) {
             if(!other_of_old_name(symbol, file)) {
                 continue;
             }

@@ -451,8 +451,8 @@ llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
 /// The constructors the type node `index` writes calls by its name, when
 /// it is the type a construction is written with — `Widget` of `Widget(1)`,
 /// `new Widget(1)` and `: Widget(1)`, inside a template the constructors
-/// the construction may call — each referenced at the name; none for any
-/// other node.
+/// the construction may call — each referenced at the name, which the
+/// construction's parenthesis leads to; none for any other node.
 llvm::SmallVector<Reference, 2> named_calls(const Semantics& semantics, std::uint32_t index);
 
 /// Where the construction node `index` holds is written when the name of the

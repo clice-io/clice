@@ -25,6 +25,13 @@ compiles = true
 
 …
 
+ struct Traits {
+-    using Base = ::Base;
++    using Base = ::Root;
+ };
+
+…
+
  void build() {
 -    auto a = Base(1);
 +    auto a = Root(1);
@@ -33,7 +40,7 @@ compiles = true
 -    auto* d = new Base(4);
 +    auto* d = new Root(4);
      construct(5);
- }
+     construct_member<Traits>();
 '''
 
 [answers.call.rename]
@@ -63,6 +70,13 @@ compiles = true
 
 …
 
+ struct Traits {
+-    using Base = ::Base;
++    using Base = ::Root;
+ };
+
+…
+
  void build() {
 -    auto a = Base(1);
 +    auto a = Root(1);
@@ -71,7 +85,7 @@ compiles = true
 -    auto* d = new Base(4);
 +    auto* d = new Root(4);
      construct(5);
- }
+     construct_member<Traits>();
 '''
 
 [answers.alias_call.rename]
@@ -131,3 +145,6 @@ compiles = true
 +    auto e = v2::Legacy(value);
  }
 '''
+
+[answers.dependent.rename]
+error = "what the name here refers to differs from one instantiation or macro expansion to the next; rename from a declaration"
