@@ -1037,19 +1037,13 @@ ZEST_CASE(OrphanWrittenAgainStays) {
     auto store = open_store(tmp, "lmdb");
     auto file = path::join(index::database_directory(store, {}), "index.mdb");
     auto key = index::number_key(std::uint32_t(4));
-    std::unique_ptr<index::BlobDatabase> db;
+    auto db = index::open_database(store, {}).value_or(nullptr);
+    ZASSERT(db != nullptr);
+    ZASSERT(db->write({blob(index::BlobKind::SearchSegment, key, large_value('a'))}, {}));
     {
         ForeignReader reader(file);
-        {
-            auto first = index::open_database(store, {}).value_or(nullptr);
-            ZASSERT(first != nullptr);
-            ZASSERT(
-                first->write({blob(index::BlobKind::SearchSegment, key, large_value('a'))}, {}));
-            ZASSERT(first->write(
-                {
-            },
-                {{index::BlobKind::SearchSegment, key}}));
-        }
+        ZASSERT(db->write({}, {{index::BlobKind::SearchSegment, key}}));
+        db.reset();
         ZASSERT(value_files(file).size() == 1u);
         db = index::open_database(store, {}).value_or(nullptr);
         ZASSERT(db != nullptr);
