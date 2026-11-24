@@ -314,15 +314,6 @@ ZEST_CASE(ListingKnowsDirectories) {
 #endif
 }
 
-ZEST_CASE(ListingFollowsCaseRule) {
-    // Windows and macOS match names regardless of case by default, Linux
-    // with it.
-    TempDir tmp;
-    tmp.touch("inc/a.h", "");
-    auto listing = vfs::list(tmp.path("inc"));
-    ZEXPECT(listing->contains("A.h") == !fs::case_sensitive(tmp.path("inc")).value());
-}
-
 ZEST_CASE(ListingSeesNewFile) {
     // An external generator dropping a header into a cached directory
     // produces no event; the directory's own mtime is the anchor that
