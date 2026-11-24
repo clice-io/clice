@@ -61,7 +61,7 @@ A system header's function bodies, and the instantiations of its templates, are 
 
 ### Storage
 
-All index data — records, shards, unit manifests, the name search — lives in one LMDB database. Each blob is encoded canonically and compactly, validated once when read, then used in place from the memory map, with no deserialization step. The database records files inside the project by their paths relative to the project root, so a moved checkout finds its index current. A save writes the changes in one transaction; a record that fails its checks means damaged storage, and the next save discards the database and indexes again. LMDB never returns freed pages, so once indexing is idle and much of the file is free, the writer replaces it with a compact copy.
+All index data — records, shards, unit manifests — lives in one LMDB database, the name search's segments in files beside it. Each blob is encoded canonically and compactly, validated once when read, then used in place from the memory map, with no deserialization step. The database records files inside the project by their paths relative to the project root, so a moved checkout finds its index current. A save writes the changes in one transaction; a record that fails its checks means damaged storage, and the next save discards the database and indexes again. LMDB never returns freed pages, so when much of the file is free once indexing is idle, or at the end of a `clice index` or `clice lint --index` run, the writer replaces it with a compact copy.
 
 A unit's **manifest** keeps its context once — which files it saw, through which include tree — so shards need not repeat it. Staleness checks and reconciliation (a unit gone from the database, a changed command, a changed dependency) run from the manifests.
 
@@ -71,7 +71,7 @@ Find references, for instance: the occurrence under the cursor gives the symbol;
 
 ### Name Search
 
-Searching by name (`workspace/symbol`, `clice query` locators) runs over a search index derived from the records, persisted beside them in segments. Its tokens are trigrams along the paths a fuzzy match can take through a name's words (`gsh` and `symhash` both reach `getSymbolHash`), so intersecting a query's trigrams selects every candidate the matcher could accept, and only those are scored; shorter queries key a name's first words, and a pass tolerating a typo fills a result left short. Entries are kept in quality order, so the scan stops once the rest cannot enter the result. Each save adds what changed as a new segment run, folding small runs into larger ones, so a symbol is rewritten a logarithmic number of times.
+Searching by name (`workspace/symbol`, `clice query` locators) runs over a search index derived from the records, persisted beside them in segments. Its tokens are trigrams along the paths a fuzzy match can take through a name's words (`gsh` and `symhash` both reach `getSymbolHash`), so intersecting a query's trigrams selects every candidate the matcher could accept, and only those are scored; shorter queries key a name's first words, and a pass tolerating a typo fills a result left short. Entries are kept in quality order, so the scan stops once the rest cannot enter the result. Each save adds what changed as a new segment, folding small segments into larger ones, so a symbol is rewritten a logarithmic number of times.
 
 ### Staleness
 
