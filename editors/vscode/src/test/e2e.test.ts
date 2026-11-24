@@ -201,6 +201,18 @@ suite("clice E2E", function () {
                 .getConfiguration("clice")
                 .update("executable", path.resolve(executable), vscode.ConfigurationTarget.Global);
         }
+        // VS Code drops a source action request when any code action provider
+        // comes or goes meanwhile and one serving the file sits the request
+        // out, as the snippets' does; the AI features register theirs for
+        // every file as the account resolves. Turned off, clice's alone serve
+        // the file.
+        const settings = vscode.workspace.getConfiguration();
+        await settings.update(
+            "editor.snippets.codeActions.enabled",
+            false,
+            vscode.ConfigurationTarget.Global,
+        );
+        await settings.update("chat.disableAIFeatures", true, vscode.ConfigurationTarget.Global);
     });
 
     suiteTeardown(function () {
@@ -634,16 +646,31 @@ suite("clice E2E", function () {
         });
         assert.ok(offered.some((action) => action.kind === "source.clice.context"));
 
-        const listed = await vscode.commands.executeCommand<vscode.CodeAction[]>(
-            "vscode.executeCodeActionProvider",
-            opened().uri,
-            new vscode.Range(0, 0, 0, 0),
-            vscode.CodeActionKind.Source.value,
-        );
-        assert.ok(
-            !listed.some((action) => action.kind?.value.startsWith("source.clice.")),
-            "VS Code lists no clice source action",
-        );
+        // A provider of another language registered while VS Code asks, as
+        // an extension activating then registers one.
+        const middleware = client().current.middleware;
+        const provide = middleware.provideCodeActions;
+        assert.ok(provide, "the extension has a code action middleware");
+        middleware.provideCodeActions = (document, range, context, token, next) => {
+            vscode.languages
+                .registerCodeActionsProvider("markdown", { provideCodeActions: () => [] })
+                .dispose();
+            return provide(document, range, context, token, next);
+        };
+        try {
+            const listed = await vscode.commands.executeCommand<vscode.CodeAction[]>(
+                "vscode.executeCodeActionProvider",
+                opened().uri,
+                new vscode.Range(0, 0, 0, 0),
+                vscode.CodeActionKind.Source.value,
+            );
+            assert.ok(
+                !listed.some((action) => action.kind?.value.startsWith("source.clice.")),
+                "VS Code lists no clice source action",
+            );
+        } finally {
+            middleware.provideCodeActions = provide;
+        }
     });
 
     test("completion", async function () {
@@ -702,12 +729,24 @@ suite("clice E2E", function () {
                 : [];
         assert.deepStrictEqual([...commands].sort(), [...advertised].sort());
 
-        const source = await vscode.workspace.openTextDocument(uriOf(refactor.file));
+        // VS Code asks for code actions on its own a moment after the cursor
+        // moves or the file's diagnostics change, and that request replaces
+        // the command's still waiting for the file's compile, which then
+        // applies nothing: the command asks once the file is compiled.
+        const uri = uriOf(refactor.file);
+        const diagnosed = until(
+            [vscode.languages.onDidChangeDiagnostics],
+            () => vscode.languages.getDiagnostics(uri).length > 0,
+            `diagnostics of ${refactor.file}`,
+        );
+        const source = await vscode.workspace.openTextDocument(uri);
         try {
             const cursor = source.positionAt(source.getText().indexOf(refactor.at));
             await vscode.window.showTextDocument(source, {
                 selection: new vscode.Range(cursor, cursor),
             });
+            await diagnosed;
+            await sync();
             const edited = until(
                 [vscode.workspace.onDidChangeTextDocument],
                 (event) => event?.document === source && event.contentChanges.length > 0,
