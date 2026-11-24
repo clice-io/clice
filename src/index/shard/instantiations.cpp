@@ -441,10 +441,6 @@ void InstantiationShard::set_live(llvm::ArrayRef<UseHash> live) {
     }
 }
 
-bool InstantiationShard::has_dead_uses() const {
-    return !live_records.empty();
-}
-
 llvm::ArrayRef<SymbolHash> InstantiationShard::keys() const {
     if(!buffer) {
         return {};

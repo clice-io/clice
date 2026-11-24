@@ -40,7 +40,8 @@ struct IndexSource {
 
     /// What the instantiations and macro expansions of the text resolve,
     /// beside the shard: an open buffer's own compile's, and the stored
-    /// ones while the buffer is the stored text; empty when none serves.
+    /// ones while the buffer is the stored text; empty when none serves,
+    /// or while `instantiations_pending`.
     llvm::SmallVector<const InstantiationShard*, 2> instantiations;
 
     /// What the entries handed out with the source come from: the shard's
@@ -291,7 +292,7 @@ public:
     /// (clauses 1 and 3), else by its shard while the buffer is
     /// byte-identical to the text the shard indexed (clause 4), both in
     /// buffer coordinates; by nothing while the buffer moved on from both.
-    /// Without `instantiations` a disk shard's instantiation shard stays
+    /// Without `instantiations` a closed file's instantiation shard stays
     /// unread until a walk of its relations reaches it.
     std::optional<IndexSource> serving(Fid file, bool instantiations = true) const;
 

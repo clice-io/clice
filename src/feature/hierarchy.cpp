@@ -216,7 +216,7 @@ std::vector<std::string> enclosing_functions(const index::IndexQuery& index,
     for(const auto& site: sites) {
         auto [it, inserted] = definitions.try_emplace(site.file);
         if(inserted) {
-            if(auto source = index.serving(site.file)) {
+            if(auto source = index.serving(site.file, /*instantiations=*/false)) {
                 it->second = definitions_of(*source);
             }
         }

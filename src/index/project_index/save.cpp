@@ -45,6 +45,7 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     // snapshot off the loop would end it.
     llvm::SmallVector<Fid> marked(compact.begin(), compact.end());
     ranges::sort(marked);
+    compact.clear();
     for(auto file: marked) {
         auto* current = shard(file);
         if(!current) {
@@ -57,7 +58,8 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
             requeue_owners(file, report);
             continue;
         }
-        if(!current->has_dead_variants()) {
+        if(ranges::all_of(current->variants(),
+                          [&](std::uint64_t hash) { return ranges::contains(live, hash); })) {
             continue;
         }
         auto bytes = merge_shards(*current, live, {});
@@ -94,11 +96,13 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
             gone_runs = !is_current(*key.producer);
             return !gone_runs;
         });
-        if(!held->has_dead_uses() && !gone_runs) {
+        auto live = live_uses(file);
+        if(!gone_runs && ranges::all_of(held->uses(), [&](std::uint64_t use) {
+               return ranges::contains(live, use);
+           })) {
             continue;
         }
-        auto bytes =
-            merge_instantiations(*held, live_uses(file), is_current, nullptr, {}, std::nullopt);
+        auto bytes = merge_instantiations(*held, live, is_current, nullptr, {}, std::nullopt);
         if(!bytes) {
             replace_instantiations(file, {});
             report.add_index_changed(file);
@@ -109,11 +113,6 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         assert(replacement.loaded() && "a freshly written instantiation blob must verify");
         replace_instantiations(file, std::move(replacement));
     }
-    // Cleared only now: a shard the compaction above read first is masked
-    // by its file's live variants and uses only while the file is marked
-    // (shard, instantiation_shard), and the compaction finds the dead ones
-    // by that mask.
-    compact.clear();
     drop_fileless_symbols();
 
     // The names of internal linkage the compacted shards declare, for the
