@@ -124,6 +124,8 @@ ZEST_CASE(SharedKeys) {
              key("b.cpp", "clang-cl /clang:-std=c++20 /c b.cpp")));
     ZEXPECT((key("a.cpp", "clang-cl /imsvc /docker/a /c a.cpp") !=
              key("b.cpp", "clang-cl /imsvc /docker/b /c b.cpp")));
+    ZEXPECT((key("a.cpp", "/docker/a/clang-cl /c a.cpp") !=
+             key("b.cpp", "/docker/b/clang-cl /c b.cpp")));
 
     /// Commands reading files of their own, or naming theirs twice, have none.
     ZEXPECT(!key("a.cpp", "clang++ @a.rsp a.cpp").has_value());

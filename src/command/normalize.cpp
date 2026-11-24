@@ -483,14 +483,15 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
         }
         if(cl_mode(family)) {
             // cl's own outputs, and the dependency files of clang's options
-            // passed through `/clang:` (Unreal's `/clang:-MF<file>`); not a
-            // path another option takes, which a POSIX host spells with a `/`
-            // (`/imsvc /docker/include`).
+            // passed through `/clang:` (Unreal's `/clang:-MF<file>`); not the
+            // program or a path another option takes, which a POSIX host
+            // spells with a `/` (`/docker/bin/clang-cl`,
+            // `/imsvc /docker/include`).
             auto output = ranges::find_if(cl_outputs, [&](llvm::StringRef name) {
                 return (token.starts_with("/") || token.starts_with("-")) &&
                        token.drop_front().starts_with(name);
             });
-            if(output == cl_outputs.end() ||
+            if(i <= first || output == cl_outputs.end() ||
                (i > first + 1 && takes_next(command_line[i - 1], token, visibility))) {
                 text += token;
                 continue;
