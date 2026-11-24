@@ -254,6 +254,23 @@ void Builder::add_specialized_type(const clang::NamedDecl* decl, clang::SourceRa
     relate(fid, decl, {.kind = RelationKind::TypeDefinition, .range = range}, target);
 }
 
+void Builder::add_constructed_type(const Semantics& semantics,
+                                   std::uint32_t index,
+                                   const NameOccurrence& type,
+                                   clang::SourceRange name) {
+    for(const auto& call: named_calls(semantics, index)) {
+        const auto* constructor = llvm::cast<clang::CXXConstructorDecl>(call.decl);
+        if(call.location == type.location &&
+           decls::normalize(type.decl) != decls::normalize(constructor->getParent())) {
+            auto [fid, range] = *unit.written_range(name);
+            relate(fid,
+                   constructor,
+                   {.kind = RelationKind::TypeDefinition, .range = range},
+                   type.decl);
+        }
+    }
+}
+
 void Builder::add_call_relation(const clang::NamedDecl* decl,
                                 RelationKind kind,
                                 const clang::NamedDecl* target,
@@ -469,9 +486,10 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         return;
     }
 
-    // Constructions are call edges too, but only written ones — an
-    // implicit copy or elided temporary has no paren/brace form and
-    // would flood the constructor's callers.
+    // Constructions are call edges too, but only written ones — at the
+    // type's name that calls the constructor, else at the paren or brace;
+    // an implicit copy or elided temporary has neither and would flood the
+    // constructor's callers.
     // LIMITATION: a factory forwarding its arguments to a constructor
     // (`make<Widget>(800, 600)`) constructs inside its own instantiation,
     // which records no written construction: the constructor's references
@@ -481,17 +499,6 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
         const auto* constructor = decls::constructor_of(CCE);
         if(auto name = calling_name(semantics, index); name.isValid()) {
             call(constructor, name);
-            // A class inheriting the constructor is the type its name
-            // constructs.
-            const auto* constructed = CCE->getType()->getAsCXXRecordDecl();
-            if(constructed &&
-               decls::normalize(constructed) != decls::normalize(constructor->getParent())) {
-                auto [fid, range] = *unit.written_range(unit.seen_name(name).range);
-                relate(fid,
-                       constructor,
-                       {.kind = RelationKind::TypeDefinition, .range = range},
-                       constructed);
-            }
             return;
         }
         if(CCE->getParenOrBraceRange().isValid()) {

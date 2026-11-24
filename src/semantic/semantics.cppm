@@ -448,10 +448,17 @@ llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
                                                    std::uint32_t index,
                                                    types::TemplateResolver* resolver = nullptr);
 
-/// Where the construction of node `index` is written when the name of the
-/// class it constructs calls its constructor — `Widget` of `Widget(1)`,
+/// The constructors the type node `index` writes calls by its name, when
+/// it is the type a construction is written with — `Widget` of `Widget(1)`,
+/// `new Widget(1)` and `: Widget(1)`, inside a template the constructors
+/// the construction may call — each referenced at the name; none for any
+/// other node.
+llvm::SmallVector<Reference, 2> named_calls(const Semantics& semantics, std::uint32_t index);
+
+/// Where the construction node `index` holds is written when the name of the
+/// type it constructs calls its constructor — `Widget` of `Widget(1)`,
 /// `new Widget(1)` and `: Widget(1)` — rather than at its parenthesis or
-/// brace; invalid for any other node.
+/// brace; invalid when no name calls it.
 clang::SourceLocation calling_name(const Semantics& semantics, std::uint32_t index);
 
 /// The Objective-C method the `@selector` of node `index` names: the one of

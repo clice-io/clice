@@ -46,6 +46,8 @@ modifiers = ["member", "dependent", "constructor"]
 highlights = [
     { at = "⟦Widget⟧(int size);", kind = "text" },
     { at = "return ⟦Widget⟧(size);", kind = "text" },
+    { at = "return new ⟦Widget⟧(size);", kind = "text" },
+    { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
     { at = "return T⟦(⟧size);", kind = "text" },
 ]
 
@@ -61,6 +63,121 @@ range = "return ⟦Widget⟧(size);"
 
 [cards.dependent.semantic_token]
 text = "Widget"
+type = "method"
+modifiers = ["member", "dependent", "constructor"]
+
+[cards.braced]
+highlights = [
+    { at = "⟦Widget⟧(int width, int height);", kind = "text" },
+    { at = "return ⟦Widget⟧{size, size};", kind = "text" },
+    { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
+]
+
+[cards.braced.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int width, int height)
+```
+'''
+range = "return ⟦Widget⟧{size, size};"
+
+[cards.braced.semantic_token]
+text = "Widget"
+type = "method"
+modifiers = ["member", "dependent", "constructor"]
+
+[cards.templated]
+highlights = [
+    { at = "⟦Any⟧(U value);", kind = "text" },
+    { at = "return ⟦Any⟧(value);", kind = "text" },
+]
+
+[cards.templated.hover]
+markdown = '''
+**method** `Any` · struct `Any`
+
+```cpp
+template <typename U> Any(U value)
+```
+'''
+range = "return ⟦Any⟧(value);"
+
+[cards.templated.semantic_token]
+text = "Any"
+type = "method"
+modifiers = ["member", "template", "dependent", "constructor"]
+
+[cards.allocated]
+highlights = [
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "return ⟦Widget⟧(size);", kind = "text" },
+    { at = "return new ⟦Widget⟧(size);", kind = "text" },
+    { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
+    { at = "return T⟦(⟧size);", kind = "text" },
+]
+
+[cards.allocated.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "return new ⟦Widget⟧(size);"
+
+[cards.allocated.semantic_token]
+text = "Widget"
+type = "method"
+modifiers = ["member", "dependent", "constructor"]
+
+[cards.expanded]
+highlights = [
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "⟦Widget⟧(int width, int height);", kind = "text" },
+    { at = "return ⟦Widget⟧(size);", kind = "text" },
+    { at = "return ⟦Widget⟧{size, size};", kind = "text" },
+    { at = "return new ⟦Widget⟧(size);", kind = "text" },
+    { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
+    { at = "return T⟦(⟧size);", kind = "text" },
+]
+
+[cards.expanded.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "return ⟦Widget⟧(sizes...);"
+
+[cards.expanded.semantic_token]
+text = "Widget"
+type = "method"
+modifiers = ["member", "dependent", "constructor"]
+
+[cards.specialized]
+highlights = [
+    { at = "⟦Wide⟧(T value);", kind = "text" },
+    { at = "⟦Wide⟧(int first, int second = 0);", kind = "text" },
+    { at = "Narrow(T value) : ⟦Wide⟧<T>(value) {}", kind = "text" },
+]
+
+[cards.specialized.hover]
+markdown = '''
+**method** `Wide` · struct `Wide<T>`
+
+```cpp
+Wide(T value)
+```
+'''
+range = "Narrow(T value) : ⟦Wide⟧<T>(value) {}"
+
+[cards.specialized.semantic_token]
+text = "Wide"
 type = "method"
 modifiers = ["member", "dependent", "constructor"]
 
@@ -102,7 +219,57 @@ references = ["⟦Box⟧(T first, T second);", "Box() : ⟦Box⟧(T{}, T{}) {}",
 definition = ["⟦Widget⟧(int size);"]
 declaration = ["⟦Widget⟧(int size);"]
 type_definition = ["struct ⟦Widget⟧ {"]
-references = ["⟦Widget⟧(int size);", "return ⟦Widget⟧(size);", "return T⟦(⟧size);"]
+references = [
+    "⟦Widget⟧(int size);",
+    "return ⟦Widget⟧(size);",
+    "return new ⟦Widget⟧(size);",
+    "return ⟦Widget⟧(sizes...);",
+    "return T⟦(⟧size);",
+]
+
+[navigation.braced]
+definition = ["⟦Widget⟧(int width, int height);"]
+declaration = ["⟦Widget⟧(int width, int height);"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = ["⟦Widget⟧(int width, int height);", "return ⟦Widget⟧{size, size};", "return ⟦Widget⟧(sizes...);"]
+
+[navigation.templated]
+definition = ["⟦Any⟧(U value);"]
+declaration = ["⟦Any⟧(U value);"]
+type_definition = ["struct ⟦Any⟧ {"]
+references = ["⟦Any⟧(U value);", "return ⟦Any⟧(value);"]
+
+[navigation.allocated]
+definition = ["⟦Widget⟧(int size);"]
+declaration = ["⟦Widget⟧(int size);"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = [
+    "⟦Widget⟧(int size);",
+    "return ⟦Widget⟧(size);",
+    "return new ⟦Widget⟧(size);",
+    "return ⟦Widget⟧(sizes...);",
+    "return T⟦(⟧size);",
+]
+
+[navigation.expanded]
+definition = ["⟦Widget⟧(int size);", "⟦Widget⟧(int width, int height);"]
+declaration = ["⟦Widget⟧(int size);", "⟦Widget⟧(int width, int height);"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = [
+    "⟦Widget⟧(int size);",
+    "⟦Widget⟧(int width, int height);",
+    "return ⟦Widget⟧(size);",
+    "return ⟦Widget⟧{size, size};",
+    "return new ⟦Widget⟧(size);",
+    "return ⟦Widget⟧(sizes...);",
+    "return T⟦(⟧size);",
+]
+
+[navigation.specialized]
+definition = ["⟦Wide⟧(T value);", "⟦Wide⟧(int first, int second = 0);"]
+declaration = ["⟦Wide⟧(T value);", "⟦Wide⟧(int first, int second = 0);"]
+type_definition = ["struct ⟦Wide⟧ {", "struct ⟦Wide⟧<int> {"]
+references = ["⟦Wide⟧(T value);", "⟦Wide⟧(int first, int second = 0);", "Narrow(T value) : ⟦Wide⟧<T>(value) {}"]
 
 [navigation.parameter]
 definition = ["template <typename ⟦T⟧> @-2"]
@@ -139,6 +306,57 @@ Widget(int size)
 ```
 '''
 range = "return ⟦Widget⟧(size);"
+
+["index cards".braced.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int width, int height)
+```
+'''
+range = "return ⟦Widget⟧{size, size};"
+
+["index cards".templated.hover]
+markdown = '''
+**method** `Any` · struct `Any`
+
+```cpp
+template <typename U>
+    Any(U value)
+```
+'''
+range = "return ⟦Any⟧(value);"
+
+["index cards".allocated.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "return new ⟦Widget⟧(size);"
+
+["index cards".expanded.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int width, int height)
+```
+'''
+range = "return ⟦Widget⟧(sizes...);"
+
+["index cards".specialized.hover]
+markdown = '''
+**method** `Wide` · struct `Wide`
+
+```cpp
+Wide(T value)
+```
+'''
+range = "Narrow(T value) : ⟦Wide⟧<T>(value) {}"
 
 ["index cards".parameter.hover]
 markdown = '''

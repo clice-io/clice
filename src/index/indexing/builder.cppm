@@ -132,6 +132,15 @@ private:
     /// the pattern's own, which carries no range.
     void add_specialized_type(const clang::NamedDecl* decl, clang::SourceRange name);
 
+    /// A construction written with an alias's name, or a class's calling a
+    /// constructor it inherits, constructs another type than the
+    /// constructor's class: at the name, `type`, which node `index` writes,
+    /// a TypeDefinition relation of each constructor the name calls spans it.
+    void add_constructed_type(const Semantics& semantics,
+                              std::uint32_t index,
+                              const NameOccurrence& type,
+                              clang::SourceRange name);
+
     /// A call edge, recorded at the call expression's location.
     void add_call_relation(const clang::NamedDecl* decl,
                            RelationKind kind,

@@ -77,7 +77,7 @@ modifiers = ["global", "template"]
 [navigation.alias]
 definition = ["⟦Widget⟧(int size);"]
 declaration = ["⟦Widget⟧(int size);"]
-type_definition = ["struct ⟦Widget⟧ {"]
+type_definition = ["struct ⟦Widget⟧ {", "using ⟦Alias⟧ = Widget;"]
 references = ["⟦Widget⟧(int size);", "auto a = ⟦Alias⟧(1);"]
 
 [navigation.deduced]

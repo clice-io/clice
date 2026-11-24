@@ -1,6 +1,7 @@
 module clice;
 
 import :feature.hierarchy;
+import :feature.navigation;
 import :feature.protocol;
 import :feature.rename;
 import :index.query.locate;
@@ -81,6 +82,31 @@ bool renamable(SymbolKind kind) {
         case SymbolKind::Protocol: return true;
         default: return false;
     }
+}
+
+bool is_constructor(const index::IndexQuery& query, index::SymbolHash symbol, Fid file) {
+    auto info = query.symbol_info(symbol, file);
+    return info && index::name_form(info->flags) == index::NameForm::Constructor;
+}
+
+/// The symbols the name under a cursor writes: a type's name calling a
+/// constructor writes the type — the class, an alias of it, a class
+/// inheriting the constructor — the constructor being what it calls.
+llvm::SmallVector<index::SymbolHash, 1> written_symbols(const index::IndexQuery& query,
+                                                        const index::IndexQuery::Cursor& cursor) {
+    llvm::SmallVector<index::SymbolHash, 1> written;
+    for(auto symbol: cursor.symbols) {
+        if(!is_constructor(query, symbol, cursor.site.file)) {
+            written.push_back(symbol);
+            continue;
+        }
+        for(auto type: feature::named_types(query, cursor, symbol)) {
+            if(!ranges::contains(written, type.symbol)) {
+                written.push_back(type.symbol);
+            }
+        }
+    }
+    return written;
 }
 
 bool function_like(SymbolKind kind) {
@@ -344,9 +370,12 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
     auto query = serving.written_only();
     auto file = resolved.site.file;
     auto offset = resolved.site.range.begin;
+    auto cursor = query.symbol_at(file, offset);
+    if(cursor) {
+        cursor->symbols = written_symbols(query, *cursor);
+    }
     // A dependent name in a template (`value.print()`) is what its
     // instantiations resolve it to, whatever the resolver guesses.
-    auto cursor = query.symbol_at(file, offset);
     bool guessed =
         cursor && ranges::all_of(cursor->symbols, [&](index::SymbolHash symbol) {
             return query.relates_at(file, cursor->site.range, symbol, RelationKind::Guess);
@@ -545,9 +574,11 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     };
     auto shared_with = [&](const index::Site& site, std::uint32_t offset) -> std::optional<Shared> {
         auto file = site.file;
+        // The constructor an instantiation calls by a type's name tells
+        // nothing of the type the name writes.
         if(auto instantiated = serving.instantiated_at(file, offset)) {
             for(auto symbol: instantiated->symbols) {
-                if(other_of_old_name(symbol, file)) {
+                if(!is_constructor(serving, symbol, file) && other_of_old_name(symbol, file)) {
                     return Shared{.symbol = symbol, .certain = true};
                 }
             }
@@ -560,7 +591,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
             return std::nullopt;
         }
         std::optional<Shared> candidate;
-        for(auto symbol: cursor->symbols) {
+        for(auto symbol: written_symbols(query, *cursor)) {
             if(!other_of_old_name(symbol, file)) {
                 continue;
             }
@@ -665,6 +696,12 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         return offsets;
     };
 
+    // A constructor is called by a name of the class it constructs — its
+    // own, an alias's, a class's inheriting it — whose own references hold
+    // those spelling the class: its uses are no edits of their own.
+    auto uses_renamed = [](const index::IndexQuery::Located& member) {
+        return index::name_form(member.symbol.flags) != index::NameForm::Constructor;
+    };
     // The files the rename's own entries lie in.
     llvm::DenseSet<Fid> tied;
     for(auto& member: target.group) {
@@ -672,11 +709,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                         RelationKind::Declaration,
                         RelationKind::Reference,
                         RelationKind::Candidate}) {
-            // A constructor is called by a name of the class it constructs —
-            // its own, an alias's, a class's inheriting it — whose own
-            // references hold the ones spelling the class.
-            if(kind == RelationKind::Reference &&
-               index::name_form(member.symbol.flags) == index::NameForm::Constructor) {
+            if(kind == RelationKind::Reference && !uses_renamed(member)) {
                 continue;
             }
             for(auto& site: query.sites(member.symbol.hash, member.site.file, kind)) {
@@ -709,7 +742,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         // A name in a template is the symbol's where its instantiations
         // resolve it so; one in a #define body names something else in
         // another expansion; the resolver's guesses confirm nothing.
-        for(auto& member: target.group) {
+        for(auto& member: target.group | views::filter(uses_renamed)) {
             auto hash = member.symbol.hash;
             for(auto& site: serving.sites(hash, member.site.file, RelationKind::Reference)) {
                 if(site.origin == index::SiteOrigin::Instantiation) {
@@ -725,7 +758,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                 }
             }
         }
-        for(auto& member: target.group) {
+        for(auto& member: target.group | views::filter(uses_renamed)) {
             for(auto& site:
                 query.sites(member.symbol.hash, member.site.file, RelationKind::Guess)) {
                 if(text_of(site.file).text && !edits.contains({site.file, site.range.begin})) {

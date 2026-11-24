@@ -425,6 +425,9 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
                 add_self_relation(occurrence.decl, RelationKind::Write, name);
             }
             add_specialized_type(occurrence.decl, name);
+            if(occurrence.outranked) {
+                add_constructed_type(semantics, i, occurrence, name);
+            }
         }
         if(occurrence.kind.is_one_of(RelationKind::Reference,
                                      RelationKind::Candidate,

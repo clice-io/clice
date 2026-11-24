@@ -78,11 +78,11 @@ std::vector<protocol::DocumentHighlight> to_protocol(llvm::ArrayRef<PlacedHighli
 
 /// The declarations the type of a cursor's symbol names — at a name of a
 /// member of a template's specialization, the type the specialization
-/// gives it, at a class's name calling a constructor it inherits, that
-/// class (TypeDefinition relations spanning the cursor in the index
-/// serving its file); at a type, the type itself; elsewhere the type it is
-/// declared with (the relations without a range), a constructor's its
-/// class.
+/// gives it, at an alias's name or a class's calling a constructor the
+/// class inherits, that type (TypeDefinition relations spanning the cursor
+/// in the index serving its file); at a type, the type itself; elsewhere
+/// the type it is declared with (the relations without a range), a
+/// constructor's its class.
 llvm::SmallVector<index::IndexQuery::Target> named_types(const index::IndexQuery& index,
                                                          const index::IndexQuery::Cursor& cursor,
                                                          index::SymbolHash symbol);

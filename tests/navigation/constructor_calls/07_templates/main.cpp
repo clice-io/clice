@@ -19,11 +19,52 @@ Widget make(T size) {
     return §(dependent)Widget(size);
 }
 
+struct Any {
+    template <typename U>
+    Any(U value);
+};
+
+template <typename T>
+Widget braced(T size) {
+    return §(braced)Widget{size, size};
+}
+
+template <typename T>
+Any wrap(T value) {
+    return §(templated)Any(value);
+}
+
+template <typename T>
+Widget* allocate(T size) {
+    return new §(allocated)Widget(size);
+}
+
+template <typename... Sizes>
+Widget forward(Sizes... sizes) {
+    return §(expanded)Widget(sizes...);
+}
+
+template <typename T>
+struct Wide {
+    Wide(T value);
+};
+
+template <>
+struct Wide<int> {
+    Wide(int first, int second = 0);
+};
+
+template <typename T>
+struct Narrow : Wide<T> {
+    Narrow(T value) : §(specialized)Wide<T>(value) {}
+};
+
 template <typename T>
 T build(int size) {
     return §(parameter)T(size);
 }
 
 Holder<int> holder(1);
+Narrow<int> narrow(1);
 Widget made = make(2);
 Widget built = build<Widget>(3);

@@ -1,50 +1,7 @@
-[cards.delegating]
-highlights = [
-    { at = "⟦Widget⟧(int size);", kind = "text" },
-    { at = "Widget() : ⟦Widget⟧(42) {}", kind = "text" },
-    { at = "Widget::⟦Widget⟧(int size) : Base(size) {}", kind = "text" },
-]
-
-[cards.delegating.hover]
-markdown = '''
-**method** `Widget` · struct `Widget`
-
-```cpp
-Widget(int size)
-```
-'''
-range = "Widget() : ⟦Widget⟧(42) {}"
-
-[cards.delegating.semantic_token]
-text = "Widget"
-type = "method"
-modifiers = ["member", "constructor"]
-
-[cards.delegating_paren]
-highlights = [
-    { at = "⟦Widget⟧(int size);", kind = "text" },
-    { at = "Widget() : ⟦Widget⟧(42) {}", kind = "text" },
-    { at = "Widget::⟦Widget⟧(int size) : Base(size) {}", kind = "text" },
-]
-
-[cards.delegating_paren.hover]
-markdown = '''
-**method** `Widget` · struct `Widget`
-
-```cpp
-Widget(int size)
-```
-'''
-range = "Widget() : Widget⟦(⟧42) {}"
-
-[cards.delegating_paren.semantic_token]
-text = "("
-type = "none"
-
 [cards.base]
 highlights = [
     { at = "⟦Base⟧(int x);", kind = "text" },
-    { at = "Widget::Widget(int size) : ⟦Base⟧(size) {}", kind = "text" },
+    { at = "Widget(int size) : ⟦Base⟧(size) {}", kind = "text" },
 ]
 
 [cards.base.hover]
@@ -55,7 +12,7 @@ markdown = '''
 Base(int x)
 ```
 '''
-range = "Widget::Widget(int size) : ⟦Base⟧(size) {}"
+range = "Widget(int size) : ⟦Base⟧(size) {}"
 
 [cards.base.semantic_token]
 text = "Base"
@@ -65,7 +22,7 @@ modifiers = ["member", "constructor"]
 [cards.base_paren]
 highlights = [
     { at = "⟦Base⟧(int x);", kind = "text" },
-    { at = "Widget::Widget(int size) : ⟦Base⟧(size) {}", kind = "text" },
+    { at = "Widget(int size) : ⟦Base⟧(size) {}", kind = "text" },
 ]
 
 [cards.base_paren.hover]
@@ -76,55 +33,76 @@ markdown = '''
 Base(int x)
 ```
 '''
-range = "Widget::Widget(int size) : Base⟦(⟧size) {}"
+range = "Widget(int size) : Base⟦(⟧size) {}"
 
 [cards.base_paren.semantic_token]
 text = "("
 type = "none"
 
-[navigation.delegating]
-definition = ["Widget::⟦Widget⟧(int size) : Base(size) {}"]
-declaration = ["⟦Widget⟧(int size);", "Widget::⟦Widget⟧(int size) : Base(size) {}"]
-type_definition = ["struct ⟦Widget⟧ : Base {"]
-references = ["⟦Widget⟧(int size);", "Widget() : ⟦Widget⟧(42) {}", "Widget::⟦Widget⟧(int size) : Base(size) {}"]
+[cards.delegating]
+highlights = [
+    { at = "⟦Widget⟧(int width, int height);", kind = "text" },
+    { at = "Widget() : ⟦Widget⟧(1, 2) {}", kind = "text" },
+]
 
-[navigation.delegating_paren]
-definition = ["Widget::⟦Widget⟧(int size) : Base(size) {}"]
-declaration = ["⟦Widget⟧(int size);", "Widget::⟦Widget⟧(int size) : Base(size) {}"]
-type_definition = ["struct ⟦Widget⟧ : Base {"]
-references = ["⟦Widget⟧(int size);", "Widget() : ⟦Widget⟧(42) {}", "Widget::⟦Widget⟧(int size) : Base(size) {}"]
+[cards.delegating.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int width, int height)
+```
+'''
+range = "Widget() : ⟦Widget⟧(1, 2) {}"
+
+[cards.delegating.semantic_token]
+text = "Widget"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.delegating_paren]
+highlights = [
+    { at = "⟦Widget⟧(int width, int height);", kind = "text" },
+    { at = "Widget() : ⟦Widget⟧(1, 2) {}", kind = "text" },
+]
+
+[cards.delegating_paren.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int width, int height)
+```
+'''
+range = "Widget() : Widget⟦(⟧1, 2) {}"
+
+[cards.delegating_paren.semantic_token]
+text = "("
+type = "none"
 
 [navigation.base]
 definition = ["⟦Base⟧(int x);"]
 declaration = ["⟦Base⟧(int x);"]
 type_definition = ["struct ⟦Base⟧ {"]
-references = ["⟦Base⟧(int x);", "Widget::Widget(int size) : ⟦Base⟧(size) {}"]
+references = ["⟦Base⟧(int x);", "Widget(int size) : ⟦Base⟧(size) {}"]
 
 [navigation.base_paren]
 definition = ["⟦Base⟧(int x);"]
 declaration = ["⟦Base⟧(int x);"]
 type_definition = ["struct ⟦Base⟧ {"]
-references = ["⟦Base⟧(int x);", "Widget::Widget(int size) : ⟦Base⟧(size) {}"]
+references = ["⟦Base⟧(int x);", "Widget(int size) : ⟦Base⟧(size) {}"]
 
-["index cards".delegating.hover]
-markdown = '''
-**method** `Widget` · struct `Widget`
+[navigation.delegating]
+definition = ["⟦Widget⟧(int width, int height);"]
+declaration = ["⟦Widget⟧(int width, int height);"]
+type_definition = ["struct ⟦Widget⟧ : Base {"]
+references = ["⟦Widget⟧(int width, int height);", "Widget() : ⟦Widget⟧(1, 2) {}"]
 
-```cpp
-Widget::Widget(int size) : Base(size)
-```
-'''
-range = "Widget() : ⟦Widget⟧(42) {}"
-
-["index cards".delegating_paren.hover]
-markdown = '''
-**method** `Widget` · struct `Widget`
-
-```cpp
-Widget::Widget(int size) : Base(size)
-```
-'''
-range = "Widget() : Widget⟦(⟧42) {}"
+[navigation.delegating_paren]
+definition = ["⟦Widget⟧(int width, int height);"]
+declaration = ["⟦Widget⟧(int width, int height);"]
+type_definition = ["struct ⟦Widget⟧ : Base {"]
+references = ["⟦Widget⟧(int width, int height);", "Widget() : ⟦Widget⟧(1, 2) {}"]
 
 ["index cards".base.hover]
 markdown = '''
@@ -134,7 +112,7 @@ markdown = '''
 Base(int x)
 ```
 '''
-range = "Widget::Widget(int size) : ⟦Base⟧(size) {}"
+range = "Widget(int size) : ⟦Base⟧(size) {}"
 
 ["index cards".base_paren.hover]
 markdown = '''
@@ -144,4 +122,24 @@ markdown = '''
 Base(int x)
 ```
 '''
-range = "Widget::Widget(int size) : Base⟦(⟧size) {}"
+range = "Widget(int size) : Base⟦(⟧size) {}"
+
+["index cards".delegating.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int width, int height)
+```
+'''
+range = "Widget() : ⟦Widget⟧(1, 2) {}"
+
+["index cards".delegating_paren.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int width, int height)
+```
+'''
+range = "Widget() : Widget⟦(⟧1, 2) {}"

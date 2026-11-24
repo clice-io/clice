@@ -467,21 +467,30 @@ std::vector<protocol::TypeHierarchyItem>
     type_hierarchy_items(const index::IndexQuery& query,
                          const index::IndexQuery::Cursor& cursor,
                          PositionEncoding encoding) {
-    std::vector<protocol::TypeHierarchyItem> items;
+    std::vector<index::IndexQuery::Located> named;
     for(auto& located: query.resolve_at(cursor)) {
+        if(index::name_form(located.symbol.flags) != index::NameForm::Constructor) {
+            named.push_back(std::move(located));
+            continue;
+        }
+        // A constructor's name, declaring or calling it, names the class it
+        // constructs, which each of the constructors a template may call
+        // there names alike.
+        for(auto type: named_types(query, cursor, located.symbol.hash)) {
+            auto constructed = query.resolve(type.symbol, type.anchor);
+            if(constructed && ranges::none_of(named, [&](const index::IndexQuery::Located& seen) {
+                   return seen.symbol.hash == type.symbol;
+               })) {
+                named.push_back(std::move(*constructed));
+            }
+        }
+    }
+    std::vector<protocol::TypeHierarchyItem> items;
+    for(auto& located: named) {
         auto kind = located.symbol.kind;
         if(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
            kind == SymbolKind::Union || kind == SymbolKind::Protocol) {
             items.push_back(item_of<protocol::TypeHierarchyItem>(query, located, encoding));
-        } else if(index::name_form(located.symbol.flags) == index::NameForm::Constructor) {
-            // A constructor's name, declaring or calling it, names the class
-            // it constructs.
-            for(auto type: named_types(query, cursor, located.symbol.hash)) {
-                if(auto constructed = query.resolve(type.symbol, type.anchor)) {
-                    items.push_back(
-                        item_of<protocol::TypeHierarchyItem>(query, *constructed, encoding));
-                }
-            }
         }
     }
     return items;
