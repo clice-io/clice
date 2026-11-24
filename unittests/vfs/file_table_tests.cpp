@@ -314,7 +314,7 @@ ZEST_CASE(ListingKnowsDirectories) {
 #endif
 }
 
-ZEST_CASE(ListingMatchesCaseAsTheDirectory) {
+ZEST_CASE(ListingFollowsCaseRule) {
     // Windows and macOS match names regardless of case by default, Linux
     // with it.
     TempDir tmp;
