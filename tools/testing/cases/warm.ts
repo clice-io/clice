@@ -53,7 +53,7 @@ function listed(entry: unknown): [string, string] | undefined {
 /// of them compiles.
 function compilers(c: Case, wanted: Map<string, Wanted>): void {
     const want = (compiler: string, unit: string) => {
-        if (!/[\\/]/.test(compiler) && SOURCE.test(unit) && !wanted.has(compiler)) {
+        if (/^\w[\w.+-]*$/.test(compiler) && SOURCE.test(unit) && !wanted.has(compiler)) {
             wanted.set(compiler, { unit, by: c.id });
         }
     };
