@@ -109,7 +109,9 @@ ZEST_CASE(CancelledCompileFreesStrand) {
 ZEST_CASE(IPCCancelInterruptsCompile) {
     TempDir tmp;
     tmp.touch("interrupt.cpp", "");
+    tmp.touch("turn.cpp", "");
     auto src = tmp.path("interrupt.cpp");
+    auto turn = tmp.path("turn.cpp");
 
     WorkerHandle w;
     ZASSERT(w.spawn(true));
@@ -125,6 +127,13 @@ ZEST_CASE(IPCCancelInterruptsCompile) {
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
         cp.pcms = {};
+
+        // A document of its own, whose query below is answered once the
+        // worker's loop has come round.
+        auto turn_compile = cp;
+        turn_compile.path = turn;
+        turn_compile.arguments = make_args(turn);
+        ZASSERT(co_await w.peer->send_request(turn_compile));
 
         // The cancel reaches the request while its work is parked and flips
         // the stop flag the parse polls; the request still waits for the
@@ -148,6 +157,12 @@ ZEST_CASE(IPCCancelInterruptsCompile) {
         group.spawn(sender());
         co_await w.parked(gate);
         source.cancel();
+        // The cancel reaches the work once the worker's loop comes round
+        // after reading it: a release read with it would let the parse run
+        // to its end first.
+        worker::DocumentSymbolParams turn_query;
+        turn_query.path = turn;
+        ZASSERT(co_await w.peer->send_request(turn_query));
         w.release(gate);
         co_await group.join();
         ZASSERT(cancelled);
