@@ -3,6 +3,7 @@ highlights = [
     { at = "⟦Box⟧(T first, T second);", kind = "text" },
     { at = "Box() : ⟦Box⟧(T{}, T{}) {}", kind = "text" },
     { at = "Holder(T value) : ⟦Box⟧<T>(value, value) {}", kind = "text" },
+    { at = "return ⟦Box⟧(value, value);", kind = "text" },
 ]
 
 [cards.delegating.hover]
@@ -25,6 +26,7 @@ highlights = [
     { at = "⟦Box⟧(T first, T second);", kind = "text" },
     { at = "Box() : ⟦Box⟧(T{}, T{}) {}", kind = "text" },
     { at = "Holder(T value) : ⟦Box⟧<T>(value, value) {}", kind = "text" },
+    { at = "return ⟦Box⟧(value, value);", kind = "text" },
 ]
 
 [cards.base.hover]
@@ -38,6 +40,29 @@ Box(T first, T second)
 range = "Holder(T value) : ⟦Box⟧<T>(value, value) {}"
 
 [cards.base.semantic_token]
+text = "Box"
+type = "method"
+modifiers = ["member", "dependent", "constructor"]
+
+[cards.deduced]
+highlights = [
+    { at = "⟦Box⟧(T first, T second);", kind = "text" },
+    { at = "Box() : ⟦Box⟧(T{}, T{}) {}", kind = "text" },
+    { at = "Holder(T value) : ⟦Box⟧<T>(value, value) {}", kind = "text" },
+    { at = "return ⟦Box⟧(value, value);", kind = "text" },
+]
+
+[cards.deduced.hover]
+markdown = '''
+**method** `Box` · struct `Box<T>`
+
+```cpp
+Box(T first, T second)
+```
+'''
+range = "return ⟦Box⟧(value, value);"
+
+[cards.deduced.semantic_token]
 text = "Box"
 type = "method"
 modifiers = ["member", "dependent", "constructor"]
@@ -282,13 +307,34 @@ modifiers = ["local"]
 definition = ["⟦Box⟧(T first, T second);"]
 declaration = ["⟦Box⟧(T first, T second);"]
 type_definition = ["struct ⟦Box⟧ {"]
-references = ["⟦Box⟧(T first, T second);", "Box() : ⟦Box⟧(T{}, T{}) {}", "Holder(T value) : ⟦Box⟧<T>(value, value) {}"]
+references = [
+    "⟦Box⟧(T first, T second);",
+    "Box() : ⟦Box⟧(T{}, T{}) {}",
+    "Holder(T value) : ⟦Box⟧<T>(value, value) {}",
+    "return ⟦Box⟧(value, value);",
+]
 
 [navigation.base]
 definition = ["⟦Box⟧(T first, T second);"]
 declaration = ["⟦Box⟧(T first, T second);"]
 type_definition = ["struct ⟦Box⟧ {"]
-references = ["⟦Box⟧(T first, T second);", "Box() : ⟦Box⟧(T{}, T{}) {}", "Holder(T value) : ⟦Box⟧<T>(value, value) {}"]
+references = [
+    "⟦Box⟧(T first, T second);",
+    "Box() : ⟦Box⟧(T{}, T{}) {}",
+    "Holder(T value) : ⟦Box⟧<T>(value, value) {}",
+    "return ⟦Box⟧(value, value);",
+]
+
+[navigation.deduced]
+definition = ["⟦Box⟧(T first, T second);"]
+declaration = ["⟦Box⟧(T first, T second);"]
+type_definition = ["struct ⟦Box⟧ {"]
+references = [
+    "⟦Box⟧(T first, T second);",
+    "Box() : ⟦Box⟧(T{}, T{}) {}",
+    "Holder(T value) : ⟦Box⟧<T>(value, value) {}",
+    "return ⟦Box⟧(value, value);",
+]
 
 [navigation.dependent]
 definition = ["⟦Widget⟧(int size);"]
@@ -408,6 +454,16 @@ Box(T first, T second)
 ```
 '''
 range = "Holder(T value) : ⟦Box⟧<T>(value, value) {}"
+
+["index cards".deduced.hover]
+markdown = '''
+**method** `Box` · struct `Box`
+
+```cpp
+Box(T first, T second)
+```
+'''
+range = "return ⟦Box⟧(value, value);"
 
 ["index cards".dependent.hover]
 markdown = '''

@@ -23,6 +23,11 @@ struct Holder : Box<T> {
 };
 
 template <typename T>
+auto pair(T value) {
+    return §(deduced)Box(value, value);
+}
+
+template <typename T>
 Widget make(T size) {
     return §(dependent)Widget(size);
 }

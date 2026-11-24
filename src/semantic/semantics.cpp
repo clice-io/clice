@@ -1773,16 +1773,22 @@ clang::SourceLocation name_location(const clang::TypeSourceInfo& written) {
 
 /// The class a construction a template leaves open constructs: the one its
 /// type names, or the pattern of the class template a dependent
-/// specialization names (`Box<T>`).
+/// specialization names (`Box<T>`) or a deduction from dependent arguments
+/// deduces from (`Box(t, t)`).
 const clang::CXXRecordDecl* constructed_class(clang::QualType type) {
     if(const auto* record = type->getAsCXXRecordDecl()) {
         return record->getDefinition();
     }
+    auto pattern_of = [](clang::TemplateName name) -> const clang::CXXRecordDecl* {
+        const auto* pattern =
+            llvm::dyn_cast_if_present<clang::ClassTemplateDecl>(name.getAsTemplateDecl());
+        return pattern ? pattern->getTemplatedDecl()->getDefinition() : nullptr;
+    };
     if(const auto* specialization = type->getAs<clang::TemplateSpecializationType>()) {
-        if(const auto* pattern = llvm::dyn_cast_if_present<clang::ClassTemplateDecl>(
-               specialization->getTemplateName().getAsTemplateDecl())) {
-            return pattern->getTemplatedDecl()->getDefinition();
-        }
+        return pattern_of(specialization->getTemplateName());
+    }
+    if(const auto* deduced = type->getAs<clang::DeducedTemplateSpecializationType>()) {
+        return pattern_of(deduced->getTemplateName());
     }
     return nullptr;
 }
