@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { State } from "vscode-languageclient/node";
+import { State, type CodeAction, type Command } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
 import { scratchFolder } from "./scratch";
 // Shared protocol shapes — type-only, mirrors feature/context.ts.
@@ -201,18 +201,6 @@ suite("clice E2E", function () {
                 .getConfiguration("clice")
                 .update("executable", path.resolve(executable), vscode.ConfigurationTarget.Global);
         }
-        // VS Code drops a source action request when any code action provider
-        // comes or goes meanwhile and one serving the file sits the request
-        // out, as the snippets' does; the AI features register theirs for
-        // every file as the account resolves. Turned off, clice's alone serve
-        // the file.
-        const settings = vscode.workspace.getConfiguration();
-        await settings.update(
-            "editor.snippets.codeActions.enabled",
-            false,
-            vscode.ConfigurationTarget.Global,
-        );
-        await settings.update("chat.disableAIFeatures", true, vscode.ConfigurationTarget.Global);
     });
 
     suiteTeardown(function () {
@@ -639,46 +627,43 @@ suite("clice E2E", function () {
         }
         // The server offers them, for editors without the extension's UI.
         const start = { line: 0, character: 0 };
-        const offered = await client().sendRequest<{ kind?: string }[]>("textDocument/codeAction", {
-            textDocument: { uri: opened().uri.toString() },
-            range: { start, end: start },
-            context: { diagnostics: [], only: ["source"], triggerKind: 1 },
-        });
-        assert.ok(offered.some((action) => action.kind === "source.clice.context"));
+        const offered = await client().sendRequest<(Command | CodeAction)[]>(
+            "textDocument/codeAction",
+            {
+                textDocument: { uri: opened().uri.toString() },
+                range: { start, end: start },
+                context: { diagnostics: [], only: ["source"], triggerKind: 1 },
+            },
+        );
+        assert.ok(
+            offered.some((action) => "kind" in action && action.kind === "source.clice.context"),
+        );
 
-        // A provider of another language registered while VS Code asks, as
-        // an extension activating then registers one. A request VS Code
-        // dropped lists nothing too: the action added to the answer shows
-        // it took the answer.
-        const middleware = client().current.middleware;
-        const provide = middleware.provideCodeActions;
+        // What the extension hands VS Code of that answer. VS Code's own
+        // request lists the same, but drops itself whenever a code action
+        // provider anywhere comes or goes meanwhile.
+        const provide = client().current.middleware.provideCodeActions;
         assert.ok(provide, "the extension has a code action middleware");
-        const added = vscode.CodeActionKind.Source.append("e2e");
-        middleware.provideCodeActions = async (document, range, context, token, next) => {
-            vscode.languages
-                .registerCodeActionsProvider("markdown", { provideCodeActions: () => [] })
-                .dispose();
-            const actions = (await provide(document, range, context, token, next)) ?? [];
-            return [...actions, new vscode.CodeAction("added by the test", added)];
-        };
-        try {
-            const listed = await vscode.commands.executeCommand<vscode.CodeAction[]>(
-                "vscode.executeCodeActionProvider",
-                opened().uri,
-                new vscode.Range(0, 0, 0, 0),
-                vscode.CodeActionKind.Source.value,
-            );
-            assert.ok(
-                listed.some((action) => action.kind?.value === added.value),
-                "VS Code took the answer",
-            );
-            assert.ok(
-                !listed.some((action) => action.kind?.value.startsWith("source.clice.")),
-                "VS Code lists no clice source action",
-            );
-        } finally {
-            middleware.provideCodeActions = provide;
-        }
+        const token = new vscode.CancellationTokenSource().token;
+        const handed = await provide(
+            opened(),
+            new vscode.Range(0, 0, 0, 0),
+            {
+                diagnostics: [],
+                only: vscode.CodeActionKind.Source,
+                triggerKind: vscode.CodeActionTriggerKind.Invoke,
+            },
+            token,
+            () => client().current.protocol2CodeConverter.asCodeActionResult(offered, token),
+        );
+        assert.ok(
+            !(handed ?? []).some(
+                (action) =>
+                    action instanceof vscode.CodeAction &&
+                    action.kind?.value.startsWith("source.clice."),
+            ),
+            "the extension hands VS Code no clice source action",
+        );
     });
 
     test("completion", async function () {
