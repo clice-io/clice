@@ -929,10 +929,10 @@ ZEST_CASE(UnchangedValueIsNotRewritten) {
     ZEXPECT(after->pages < before->pages + 32);
 }
 
-/// The files beside the database at `file` (search segments), by name.
-std::vector<std::string> beside(llvm::StringRef file) {
+/// The value files of the database at `file` (search segments), by name.
+std::vector<std::string> value_files(llvm::StringRef file) {
     std::vector<std::string> names;
-    auto prefix = std::string(path::filename(file)) + "-beside-";
+    auto prefix = std::string(path::filename(file)) + "-value-";
     auto entries = fs::Directory::open(path::parent(file));
     ZASSERT(entries.has_value());
     for(const auto& entry: *entries) {
@@ -944,9 +944,9 @@ std::vector<std::string> beside(llvm::StringRef file) {
     return names;
 }
 
-ZEST_CASE(SegmentStoredBeside) {
-    // A search segment is a file beside the database, the B-tree holding
-    // an empty value under its key; removing the record removes the file.
+ZEST_CASE(SegmentStoredInFile) {
+    // A search segment is a value file of its own, the B-tree holding an
+    // empty value under its key; removing the record removes the file.
     TempDir tmp;
     auto store = open_store(tmp, "lmdb");
     auto file = path::join(index::database_directory(store, {}), "index.mdb");
@@ -956,7 +956,7 @@ ZEST_CASE(SegmentStoredBeside) {
     ZASSERT(db->write({blob(index::BlobKind::SearchSegment, key, large_value('s'))}, {}));
     ZASSERT(db->advance_read_snapshot().has_value());
     db->retire_old_snapshot();
-    ZEXPECT(beside(file).size() == 1u);
+    ZEXPECT(value_files(file).size() == 1u);
     ZEXPECT(db->usage()->overflow_pages == 0u);
     auto value = db->read(index::BlobKind::SearchSegment, key);
     ZASSERT(bool(value));
@@ -976,7 +976,7 @@ ZEST_CASE(SegmentStoredBeside) {
         {
     },
         {{index::BlobKind::SearchSegment, key}}));
-    ZEXPECT(beside(file).empty());
+    ZEXPECT(value_files(file).empty());
 }
 
 ZEST_CASE(ReaderKeepsSegmentFile) {
@@ -995,10 +995,10 @@ ZEST_CASE(ReaderKeepsSegmentFile) {
             {
         },
             {{index::BlobKind::SearchSegment, key}}));
-        ZEXPECT(beside(file).size() == 1u);
+        ZEXPECT(value_files(file).size() == 1u);
     }
     ZASSERT(db->write({blob(index::BlobKind::Header, "header", "gg")}, {}));
-    ZEXPECT(beside(file).empty());
+    ZEXPECT(value_files(file).empty());
 }
 
 ZEST_CASE(OpenRemovesUnnamedSegmentFiles) {
@@ -1014,18 +1014,112 @@ ZEST_CASE(OpenRemovesUnnamedSegmentFiles) {
         ZASSERT(db != nullptr);
         ZASSERT(db->write({blob(index::BlobKind::SearchSegment, named, large_value('b'))}, {}));
     }
-    auto kept = beside(file);
+    auto kept = value_files(file);
     ZASSERT(kept.size() == 1u);
-    auto stray = path::join(path::parent(file), "index.mdb-beside-4e0000000000000003");
+    auto stray = path::join(path::parent(file), "index.mdb-value-4e0000000000000003");
     ZASSERT(!fs::write_file(stray, "x"));
     ZASSERT(!fs::write_file(path::join(path::parent(file), kept.front() + ".partial"), "x"));
-    ZEXPECT(beside(file).size() == 3u);
+    ZEXPECT(value_files(file).size() == 3u);
     auto db = index::open_database(store, {}).value_or(nullptr);
     ZASSERT(db != nullptr);
-    ZEXPECT(beside(file) == kept);
+    ZEXPECT(value_files(file) == kept);
     auto value = db->read(index::BlobKind::SearchSegment, named);
     ZASSERT(bool(value));
     ZEXPECT(value.buffer->getBuffer() == large_value('b'));
+}
+
+ZEST_CASE(OrphanWrittenAgainStays) {
+    // A session killed between a segment's file and its commit leaves the
+    // file under a number the next session writes again: removing the
+    // orphan once no reader holds the database spares the file a commit
+    // names again.
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto file = path::join(index::database_directory(store, {}), "index.mdb");
+    auto key = index::number_key(std::uint32_t(4));
+    std::unique_ptr<index::BlobDatabase> db;
+    {
+        ForeignReader reader(file);
+        {
+            auto first = index::open_database(store, {}).value_or(nullptr);
+            ZASSERT(first != nullptr);
+            ZASSERT(
+                first->write({blob(index::BlobKind::SearchSegment, key, large_value('a'))}, {}));
+            ZASSERT(first->write(
+                {
+            },
+                {{index::BlobKind::SearchSegment, key}}));
+        }
+        ZASSERT(value_files(file).size() == 1u);
+        db = index::open_database(store, {}).value_or(nullptr);
+        ZASSERT(db != nullptr);
+        ZASSERT(db->write({blob(index::BlobKind::SearchSegment, key, large_value('b'))}, {}));
+    }
+    ZASSERT(db->write({blob(index::BlobKind::Header, "header", "gg")}, {}));
+    ZASSERT(db->advance_read_snapshot().has_value());
+    db->retire_old_snapshot();
+    auto value = db->read(index::BlobKind::SearchSegment, key);
+    ZASSERT(bool(value));
+    ZEXPECT(value.buffer->getBuffer() == large_value('b'));
+}
+
+ZEST_CASE(InlineSegmentOfOlderClice) {
+    // A clice that kept the segments in the B-tree left their bytes inline
+    // under their keys: they read as stored, for the search index's format
+    // check to turn them down.
+    TempDir tmp;
+    std::string file;
+    {
+        auto store = open_store(tmp, "lmdb");
+        file = populated_database(store, 1);
+    }
+    auto key = index::number_key(std::uint32_t(5));
+    {
+        MDB_env* env = nullptr;
+        ZASSERT(mdb_env_create(&env) == 0);
+        ZASSERT(mdb_env_open(env, file.c_str(), MDB_NOSUBDIR, 0644) == 0);
+        MDB_txn* txn = nullptr;
+        ZASSERT(mdb_txn_begin(env, nullptr, 0, &txn) == 0);
+        MDB_dbi dbi;
+        ZASSERT(mdb_dbi_open(txn, nullptr, 0, &dbi) == 0);
+        // The record's key: its kind's prefix, then its own.
+        auto encoded = "N" + key;
+        auto bytes = large_value('o');
+        MDB_val mk{encoded.size(), encoded.data()};
+        MDB_val mv{bytes.size(), bytes.data()};
+        ZASSERT(mdb_put(txn, dbi, &mk, &mv, 0) == 0);
+        ZASSERT(mdb_txn_commit(txn) == 0);
+        mdb_env_close(env);
+    }
+    auto store = open_store(tmp, "lmdb", /*read_only=*/true);
+    auto db = index::open_database(store, {}).value_or(nullptr);
+    ZASSERT(db != nullptr);
+    auto value = db->read(index::BlobKind::SearchSegment, key);
+    ZASSERT(bool(value));
+    ZEXPECT(value.buffer->getBuffer() == large_value('o'));
+    std::uint32_t read = 0;
+    db->for_each(index::BlobKind::SearchSegment, [&](llvm::StringRef, index::ReadBlob blob) {
+        read += blob ? 1 : 0;
+        return true;
+    });
+    ZEXPECT(read == 1u);
+}
+
+ZEST_CASE(SwapReopensSmall) {
+    // The compact file reopens with a map its size calls for: on Windows,
+    // where a writable map extends the file to the map, the old one would
+    // grow it back.
+    TempDir tmp;
+    auto store = open_store(tmp, "lmdb");
+    auto file = path::join(index::database_directory(store, {}), "index.mdb");
+    auto db = index::open_lmdb_database(store, {}, 512ull << 20).value_or(nullptr);
+    ZASSERT(db != nullptr);
+    ZASSERT(db->write({blob(index::BlobKind::Shard, "a", large_value('a'))}, {}));
+    ZASSERT(db->write_compact_copy(keep) == index::BlobDatabase::Copy::Written);
+    ZASSERT(db->swap_compact_copy() == index::BlobDatabase::Swap::Replaced);
+    auto status = fs::status(file);
+    ZASSERT(status);
+    ZEXPECT(status->size <= (256ull << 20));
 }
 
 ZEST_CASE(ReaderHoldsOpenLock) {

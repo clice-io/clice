@@ -78,18 +78,18 @@ llvm::SmallString<64> encode_key(BlobKind kind, llvm::StringRef key) {
     return encoded;
 }
 
-/// Whether a kind's values are stored beside the database, a file each,
-/// the B-tree keeping an empty value under the key: a search segment is
-/// written whole once and read in place, and its hundreds of megabytes
-/// would need a run of contiguous pages the free pages of a long-lived
-/// file seldom have.
-bool stored_beside(char prefix) {
+/// Whether a kind's values are stored in files of their own next to the
+/// database file, the B-tree keeping an empty value under the key: a
+/// search segment is written whole once and read in place, and its
+/// hundreds of megabytes would need a run of contiguous pages the free
+/// pages of a long-lived file seldom have.
+bool stored_in_file(char prefix) {
     return prefix == kind_prefix(BlobKind::SearchSegment);
 }
 
-/// The infix naming a value's file beside the database file, before the
-/// hexadecimal of its encoded key.
-constexpr llvm::StringLiteral beside_infix = "-beside-";
+/// The infix naming a value file (stored_in_file) after the database file,
+/// before the hexadecimal of its encoded key.
+constexpr llvm::StringLiteral value_infix = "-value-";
 
 /// The environment's self-description, stored under a key no kind prefix
 /// can produce. LMDB files are not portable across word sizes or byte
@@ -129,11 +129,11 @@ bool is_corruption(int rc) {
            rc == MDB_PAGE_NOTFOUND;
 }
 
-/// The files beside the database at `path` (stored_beside), a write's
+/// The value files of the database at `path` (stored_in_file), a write's
 /// unfinished ones included.
-std::vector<std::string> files_beside(llvm::StringRef path) {
+std::vector<std::string> value_files(llvm::StringRef path) {
     std::vector<std::string> found;
-    auto prefix = std::string(path::filename(path)) + beside_infix.str();
+    auto prefix = std::string(path::filename(path)) + value_infix.str();
     if(auto entries = fs::Directory::open(path::parent(path))) {
         for(const auto& entry: *entries) {
             if(entry && llvm::StringRef(entry->name).starts_with(prefix)) {
@@ -147,7 +147,7 @@ std::vector<std::string> files_beside(llvm::StringRef path) {
 void remove_database_files(llvm::StringRef path) {
     fs::remove(path);
     fs::remove(path.str() + "-lock");
-    for(auto& file: files_beside(path)) {
+    for(auto& file: value_files(path)) {
         fs::remove(file);
     }
 }
@@ -164,10 +164,12 @@ constexpr unsigned lmdb_flags = MDB_NOSUBDIR | MDB_NOTLS;
 
 /// The `-open` file beside the database: every process holding the
 /// database open but its writer locks it shared, and the writer locks it
-/// exclusively to swap in a compact copy. The locks belong to the open file, not to
-/// the process (flock, LockFileEx), so two handles of one process exclude
-/// each other as two processes do. The file is never removed: a process
-/// locking a new one would not exclude the holders of the old.
+/// exclusively to swap in a compact copy, cut the file to its pages or
+/// remove a value file a reader's snapshot may name. The locks belong to
+/// the open file, not to the process (flock, LockFileEx), so two handles
+/// of one process exclude each other as two processes do. The file is
+/// never removed: a process locking a new one would not exclude the
+/// holders of the old.
 class OpenLock {
 public:
     enum class Kind : std::uint8_t {
@@ -349,7 +351,7 @@ public:
             fs::remove(path + "-compact");
         }
         if(declared) {
-            remove_retired();
+            remove_unnamed_files();
             trim_file(*declared);
         }
     }
@@ -393,8 +395,8 @@ public:
             return std::unexpected(std::format("{} failed: {}", stage, mdb_strerror(rc)));
         };
         clear_dead_readers(env);
-        // A value stored beside is in its file before the commit naming it;
-        // the files of a write that does not commit go with it.
+        // A value file is written whole before the commit naming it; the
+        // files of a write that does not commit go with it.
         std::vector<std::string> written;
         bool committed = false;
         auto unwritten = llvm::make_scope_exit([&] {
@@ -414,9 +416,9 @@ public:
         }
         ranges::stable_sort(ordered, {}, &std::pair<std::string, const Blob*>::first);
         for(auto& [encoded, blob]: ordered) {
-            if(stored_beside(encoded.front())) {
-                auto file = beside(encoded);
-                if(auto error = write_beside(file, as_chars(blob->bytes))) {
+            if(stored_in_file(encoded.front())) {
+                auto file = value_file(encoded);
+                if(auto error = write_value_file(file, as_chars(blob->bytes))) {
                     return std::unexpected(
                         std::format("writing {} failed: {}", file, error.message()));
                 }
@@ -427,8 +429,7 @@ public:
             auto directory = fs::Directory::open(path::parent(path));
             if(auto error = directory ? directory->sync() : directory.error()) {
                 return std::unexpected(
-                    std::format("syncing the files beside the index "
-                                "database failed: {}",
+                    std::format("syncing the index database's value files failed: {}",
                                 error.message()));
             }
         }
@@ -438,7 +439,7 @@ public:
         }
         for(auto& [encoded, blob]: ordered) {
             auto mk = to_val(encoded);
-            auto mv = stored_beside(encoded.front()) ? MDB_val{} : to_val(as_chars(blob->bytes));
+            auto mv = stored_in_file(encoded.front()) ? MDB_val{} : to_val(as_chars(blob->bytes));
             // Putting a value back unchanged copies its leaf and overflow
             // pages all the same.
             if(MDB_val held;
@@ -464,18 +465,22 @@ public:
             return fail_all(rc, "commit");
         }
         committed = true;
-        if(int rc = cover_declared_pages(env)) {
-            LOG_WARN("Cannot extend the index database over its pages: {}", mdb_strerror(rc));
-        }
+        // A file this commit names again — an orphan a killed session left
+        // under a segment number it never committed — stays.
+        std::erase_if(unnamed_files,
+                      [&](const std::string& file) { return ranges::contains(written, file); });
         if(int rc = commit_tick()) {
             LOG_WARN("Cannot advance the index database past its write: {}", mdb_strerror(rc));
         }
+        if(int rc = cover_declared_pages(env)) {
+            LOG_WARN("Cannot extend the index database over its pages: {}", mdb_strerror(rc));
+        }
         for(auto& [kind, key]: removes) {
-            if(auto encoded = encode_key(kind, key); stored_beside(encoded.front())) {
-                retired.push_back(beside(encoded));
+            if(auto encoded = encode_key(kind, key); stored_in_file(encoded.front())) {
+                unnamed_files.push_back(value_file(encoded));
             }
         }
-        remove_retired();
+        remove_unnamed_files();
         return {};
     }
 
@@ -580,7 +585,7 @@ public:
         if(auto copied =
                append_copy(copy, mapsize + mapsize / 8 + (64ull << 20), abandon, declared);
            copied != Copy::Written) {
-            remove_database_files(copy);
+            fs::remove(copy);
             return copied;
         }
         // The copy commits without syncing, while the swap renames it over
@@ -652,13 +657,13 @@ public:
         return usage_of(txn);
     }
 
-    /// Queue the files beside that no record of the read snapshot names —
-    /// a write that did not finish, a session that ended before it removed
-    /// them — for removal.
-    void retire_orphans() {
-        for(auto& file: files_beside(path)) {
+    /// Remove the value files no record of the read snapshot names — of a
+    /// write that did not finish, or a session that ended before it could
+    /// remove them — once no other process has the database open.
+    void remove_orphans() {
+        for(auto& file: value_files(path)) {
             llvm::StringRef name(file);
-            auto hex = name.substr(name.rfind(beside_infix) + beside_infix.size());
+            auto hex = name.substr(name.rfind(value_infix) + value_infix.size());
             std::string encoded;
             bool named = false;
             if(!hex.ends_with(".partial") && llvm::tryGetFromHex(hex, encoded)) {
@@ -667,10 +672,10 @@ public:
                 named = mdb_get(txn, dbi, &key, &value) == 0;
             }
             if(!named) {
-                retired.push_back(file);
+                unnamed_files.push_back(file);
             }
         }
-        remove_retired();
+        remove_unnamed_files();
     }
 
 private:
@@ -716,7 +721,7 @@ private:
         // Commits of a few thousand records keep the dirty pages of one
         // transaction small; between them the copy may be given up.
         constexpr std::uint32_t batch = 4096;
-        remove_database_files(copy);
+        fs::remove(copy);
         MDB_env* target = nullptr;
         MDB_txn* source = nullptr;
         MDB_txn* write = nullptr;
@@ -833,21 +838,31 @@ private:
         return true;
     }
 
-    /// The value of `encoded` in the read snapshot: one stored beside is
-    /// its file, mapped read-only and immortal like a copy.
+    /// The value of `encoded` in the read snapshot: one stored in a file is
+    /// that file, mapped read-only and immortal like a copy. A record of
+    /// such a kind holding its bytes inline was written by a clice that
+    /// kept them in the B-tree.
     ReadBlob blob_of(llvm::StringRef encoded, const MDB_val& value) const {
-        if(!stored_beside(encoded.front())) {
+        if(!stored_in_file(encoded.front()) || value.mv_size != 0) {
             return blob_of(value);
         }
-        auto file = llvm::MemoryBuffer::getFile(beside(encoded),
-                                                /*IsText=*/false,
-                                                /*RequiresNullTerminator=*/false);
+        auto name = value_file(encoded);
+        auto file = fs::File::open(name);
         if(!file) {
-            LOG_WARN("The index database names a file beside it that does not open: {}",
-                     file.getError().message());
+            LOG_WARN("The index database names a value file that does not open: {}",
+                     file.error().message());
             return {};
         }
-        return {.buffer = std::move(*file)};
+        auto buffer = llvm::MemoryBuffer::getOpenFile(file->native_handle(),
+                                                      name,
+                                                      /*FileSize=*/-1,
+                                                      /*RequiresNullTerminator=*/false);
+        if(!buffer) {
+            LOG_WARN("The index database names a value file that does not read: {}",
+                     buffer.getError().message());
+            return {};
+        }
+        return {.buffer = std::move(*buffer)};
     }
 
     /// Commit the meta record again, unchanged. LMDB reuses the pages a
@@ -877,14 +892,14 @@ private:
         return mdb_txn_commit(tick);
     }
 
-    /// The file a value stored beside the database lives in.
-    std::string beside(llvm::StringRef encoded) const {
-        return path + beside_infix.str() + llvm::toHex(encoded, /*LowerCase=*/true);
+    /// The file the value of `encoded` lives in (stored_in_file).
+    std::string value_file(llvm::StringRef encoded) const {
+        return path + value_infix.str() + llvm::toHex(encoded, /*LowerCase=*/true);
     }
 
     /// Write `bytes` into `file` whole and durably, under a temporary name
     /// until they are.
-    static std::error_code write_beside(const std::string& file, llvm::StringRef bytes) {
+    static std::error_code write_value_file(const std::string& file, llvm::StringRef bytes) {
         auto partial = file + ".partial";
         std::error_code error;
         {
@@ -907,13 +922,14 @@ private:
         return error;
     }
 
-    /// Remove the files beside of records a commit removed, while no other
+    /// Remove the value files no record names any more, while no other
     /// process has the database open: a reader's snapshot may name them.
-    void remove_retired() {
-        if(retired.empty() || !OpenLock::acquire(path, OpenLock::Kind::Exclusive, /*wait=*/false)) {
+    void remove_unnamed_files() {
+        if(unnamed_files.empty() ||
+           !OpenLock::acquire(path, OpenLock::Kind::Exclusive, /*wait=*/false)) {
             return;
         }
-        std::erase_if(retired, [](const std::string& file) {
+        std::erase_if(unnamed_files, [](const std::string& file) {
             auto removed = fs::remove(file);
             return removed || removed.error() == std::errc::no_such_file_or_directory;
         });
@@ -1024,9 +1040,10 @@ private:
     /// is open; the writer holds none.
     std::optional<OpenLock> open_lock;
 
-    /// The files beside of records the writer's commits removed, left while
-    /// another process had the database open.
-    std::vector<std::string> retired;
+    /// The value files no committed record names — of records the writer's
+    /// commits removed, and orphans — left while another process had the
+    /// database open.
+    std::vector<std::string> unnamed_files;
 };
 
 enum class MetaCheck : std::uint8_t {
@@ -1295,7 +1312,7 @@ std::expected<std::unique_ptr<LmdbDatabase>, std::string> open_lmdb_env(llvm::St
         auto database =
             std::make_unique<LmdbDatabase>(env, dbi, txn, std::move(path), std::move(open_lock));
         if(!read_only) {
-            database->retire_orphans();
+            database->remove_orphans();
         }
         return database;
     }

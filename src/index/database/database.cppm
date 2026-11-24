@@ -76,8 +76,8 @@ enum class BlobKind : std::uint8_t {
     ContextChoices,
     /// The segments of the name search index (index/search_index.cppm)
     /// derived from the symbol records, keyed by a number_key of the
-    /// segment id the header lists. Each is stored in a file beside the
-    /// database.
+    /// segment id the header lists. Each is stored in a value file of its
+    /// own next to the database file.
     SearchSegment,
 };
 
@@ -85,7 +85,7 @@ enum class BlobKind : std::uint8_t {
 /// contract applies:
 ///
 /// - 0: the buffer owns its bytes (small LMDB values copied out for
-///   alignment) — valid for the buffer's lifetime.
+///   alignment) or maps a value file — valid for the buffer's lifetime.
 /// - nonzero: the bytes are borrowed from the backend's read snapshot of
 ///   that generation and die when it is retired (advance_read_snapshot()
 ///   followed by retire_old_snapshot(), a grow(), or a swap_compact_copy()
@@ -126,7 +126,7 @@ struct PageUsage {
 /// directory and file-shaped products (PCH/PCM/header contexts — clang
 /// consumes those by path, so they must be real files); BlobDatabase is
 /// the index's keyed blob database inside that directory, an LMDB
-/// `index.mdb` and the files beside it of the kinds it stores apart
+/// `index.mdb` and the value files of the kinds it keeps out of the B-tree
 /// (search segments). The interface stays virtual for test doubles (spies,
 /// failure injection).
 ///
@@ -312,10 +312,10 @@ bool database_exists(const CacheStore& store, const DatabaseKey& key);
 
 /// The build's database: an `index.mdb` (plus its `-lock` file, the
 /// `-open` file every reader holds locked while it has the database open,
-/// which the writer locks exclusively to swap in a compact copy or remove
-/// a file beside it, and the `-beside-` files of the values stored apart)
-/// in its
-/// database directory, created on demand. A writable open
+/// which the writer locks exclusively to swap in a compact copy, cut the
+/// file to its pages or remove a value file, and the `-value-` files of
+/// the values kept out of the B-tree) in its database directory, created
+/// on demand. A writable open
 /// presumes the caller holds the cache directory's writer lock
 /// (index/writer_lock.cppm) — the records form one mutable lineage that
 /// tolerates no second writer. The error says why when the

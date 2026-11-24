@@ -108,8 +108,8 @@ struct TopHits {
     }
 };
 
-/// Encode one segment offering `offered`, the nodes of a slice of the
-/// run, with the scopes above them it does not hold.
+/// Encode the segment offering the nodes `offered`, with the scopes above
+/// them it does not offer.
 std::vector<std::byte> encode_segment(llvm::ArrayRef<Node> nodes,
                                       llvm::ArrayRef<std::uint32_t> offered,
                                       llvm::ArrayRef<std::uint32_t> covered) {
@@ -148,7 +148,6 @@ std::vector<std::byte> encode_segment(llvm::ArrayRef<Node> nodes,
     blob.parents.reserve(total);
     blob.qualities.reserve(count);
     blob.name_of.reserve(total);
-    // Each name once, by lowercase name, then name.
     std::vector<llvm::StringRef> names;
     names.reserve(total);
     for(std::uint32_t id = 0; id < total; id += 1) {
@@ -383,8 +382,7 @@ float symbol_quality(llvm::StringRef name,
     return quality;
 }
 
-std::vector<std::vector<std::byte>> build_search_segments(const SearchSnapshot& snapshot,
-                                                          std::uint32_t bound) {
+std::vector<std::byte> build_search_segment(const SearchSnapshot& snapshot) {
     std::vector<Node> nodes;
     llvm::DenseMap<SymbolHash, std::uint32_t> node_of;
     auto place = [&](const SearchEntry& entry, bool offered) {
@@ -445,90 +443,13 @@ std::vector<std::vector<std::byte>> build_search_segments(const SearchSnapshot& 
                                });
     }
 
-    // The offered nodes in the order of a walk down the scope tree, so a
-    // segment's symbols share their scopes and few of those are copied in.
-    std::vector<bool> placed(nodes.size());
+    std::vector<std::uint32_t> offered;
     for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
         if(nodes[i].offered) {
-            for(auto at = i; at != no_entry && !placed[at]; at = nodes[at].scope) {
-                placed[at] = true;
-            }
+            offered.push_back(i);
         }
     }
-    std::vector<std::uint32_t> child_ends(nodes.size() + 1);
-    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
-        if(placed[i] && nodes[i].scope != no_entry) {
-            child_ends[nodes[i].scope + 1] += 1;
-        }
-    }
-    std::partial_sum(child_ends.begin(), child_ends.end(), child_ends.begin());
-    std::vector<std::uint32_t> children(child_ends.back());
-    std::vector<std::uint32_t> roots;
-    {
-        auto next = child_ends;
-        for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
-            if(!placed[i]) {
-                continue;
-            }
-            if(nodes[i].scope == no_entry) {
-                roots.push_back(i);
-            } else {
-                children[next[nodes[i].scope]] = i;
-                next[nodes[i].scope] += 1;
-            }
-        }
-    }
-    auto by_hash = [&](std::uint32_t lhs, std::uint32_t rhs) {
-        return nodes[lhs].symbol->hash < nodes[rhs].symbol->hash;
-    };
-    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
-        ranges::sort(children.begin() + child_ends[i],
-                     children.begin() + child_ends[i + 1],
-                     by_hash);
-    }
-    ranges::sort(roots, by_hash);
-    std::vector<std::uint32_t> order;
-    std::vector<bool> walked(nodes.size());
-    std::vector<std::uint32_t> pending;
-    auto walk = [&](std::uint32_t root) {
-        pending.push_back(root);
-        while(!pending.empty()) {
-            auto at = pending.back();
-            pending.pop_back();
-            if(walked[at]) {
-                continue;
-            }
-            walked[at] = true;
-            if(nodes[at].offered) {
-                order.push_back(at);
-            }
-            for(auto i = child_ends[at + 1]; i > child_ends[at]; i -= 1) {
-                pending.push_back(children[i - 1]);
-            }
-        }
-    };
-    for(auto root: roots) {
-        walk(root);
-    }
-    // Scopes linked in a cycle, which only corrupt parent columns form,
-    // lead to no root.
-    for(std::uint32_t i = 0; i < nodes.size(); i += 1) {
-        if(placed[i] && !walked[i]) {
-            walk(i);
-        }
-    }
-
-    std::vector<std::vector<std::byte>> segments;
-    llvm::ArrayRef<std::uint32_t> rest = order;
-    do {
-        auto slice = rest.take_front(bound);
-        rest = rest.drop_front(slice.size());
-        segments.push_back(encode_segment(nodes,
-                                          slice,
-                                          segments.empty() ? llvm::ArrayRef(snapshot.covered)
-                                                           : llvm::ArrayRef<std::uint32_t>()));
-    } while(!rest.empty());
-    return segments;
+    return encode_segment(nodes, offered, snapshot.covered);
 }
 
 bool ranks_after(const NameRank& lhs,
@@ -849,12 +770,12 @@ struct SearchIndex::Segment {
         return *it;
     }
 
-    /// The entries whose lowercase name is `lower`, by name.
-    llvm::ArrayRef<std::uint32_t> lower_range(llvm::StringRef lower) const {
+    /// The entries whose name is `name` in any case, by name.
+    llvm::ArrayRef<std::uint32_t> any_case(llvm::StringRef name) const {
         auto& ends = columns->name_ends;
         auto range = ranges::equal_range(
             views::iota(0u, name_count()),
-            lower,
+            name,
             [](llvm::StringRef lhs, llvm::StringRef rhs) {
                 return lhs.compare_insensitive(rhs) < 0;
             },
@@ -1008,6 +929,15 @@ bool SearchIndex::replace(std::uint32_t runs,
     }
     run_ends.push_back(static_cast<std::uint32_t>(segments.size()));
     index_runs();
+    return true;
+}
+
+bool SearchIndex::rebind(std::uint32_t segment, std::unique_ptr<llvm::MemoryBuffer> bytes) {
+    auto& held = *segments[segment];
+    if(!rebind_buffer(held.buffer, std::move(bytes))) {
+        return false;
+    }
+    held.columns = &codec::blob::view_verified<SearchIndexBlob>(as_bytes(held.buffer->getBuffer()));
     return true;
 }
 
@@ -1222,7 +1152,7 @@ SearchResult SearchIndex::search(const Locator& query,
                 auto& last = query.scope.back();
                 llvm::ArrayRef<Locator::Segment> above = query.scope;
                 above = above.drop_back();
-                for(auto entry: segment.lower_range(llvm::StringRef(last.name).lower())) {
+                for(auto entry: segment.any_case(last.name)) {
                     auto [spelled, current] = newest(segment, entry);
                     if(!segment.is_container(entry) ||
                        !args_match(last.args, spelled->arguments(current))) {
@@ -1313,9 +1243,8 @@ SearchResult SearchIndex::search(const Locator& query,
         }
     };
     auto consider_named = [&](llvm::StringRef name) {
-        auto lower = name.lower();
         for(auto at: open) {
-            for(auto entry: segments[at]->lower_range(lower)) {
+            for(auto entry: segments[at]->any_case(name)) {
                 if(allowed(at, entry)) {
                     consider(at, entry, false);
                 }

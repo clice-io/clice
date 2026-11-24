@@ -15,6 +15,21 @@ import :vfs.path;
 namespace clice::testing {
 namespace {
 
+/// A database refusing every write while `refuse` holds, as a full disk.
+struct Refusing final : ForwardingDatabase {
+    using ForwardingDatabase::ForwardingDatabase;
+
+    bool refuse = true;
+
+    std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                           llvm::ArrayRef<index::BlobKey> removes) override {
+        if(refuse) {
+            return std::unexpected("no space left on device");
+        }
+        return real->write(puts, removes);
+    }
+};
+
 ZEST_SUITE(ContextChoices) {
 
 ZEST_CASE(ContextsBlobRoundTrip) {
@@ -99,20 +114,6 @@ ZEST_CASE(CorruptSaveKeepsPending) {
 ZEST_CASE(RefusedSaveCounted) {
     // A write the database refuses leaves the batch pending and counted as
     // unsaved; the save that commits takes it and clears the count.
-    struct Refusing final : ForwardingDatabase {
-        using ForwardingDatabase::ForwardingDatabase;
-
-        bool refuse = true;
-
-        std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
-                                               llvm::ArrayRef<index::BlobKey> removes) override {
-            if(refuse) {
-                return std::unexpected("no space left on device");
-            }
-            return real->write(puts, removes);
-        }
-    };
-
     TempDir tmp;
     IndexerFixture f;
     open_store(tmp, f.project);
@@ -198,6 +199,7 @@ ZEST_CASE(SavesComeFurtherApart) {
     }
     f.save();
     ZASSERT(f.project.database->count(index::BlobKind::Shard) == 8u);
+    ZEXPECT(f.project.save_due());
     merge(8);
     ZEXPECT(!f.project.save_due());
     merge(9);
@@ -206,6 +208,29 @@ ZEST_CASE(SavesComeFurtherApart) {
     merge(0);
     ZEXPECT(!f.project.save_due());
     f.project.saved_at -= chrono::minutes(31);
+    ZEXPECT(f.project.save_due());
+}
+
+ZEST_CASE(RefusedSaveStaysDue) {
+    // A batch the database refused tries again at every checkpoint, however
+    // little it holds.
+    TempDir tmp;
+    for(std::uint32_t i = 0; i < 8; i += 1) {
+        tmp.touch(std::format("u{}.cpp", i), std::format("int u{0}() {{ return {0}; }}\n", i));
+    }
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    f.load();
+    for(std::uint32_t i = 0; i < 8; i += 1) {
+        ZASSERT(f.merge(index_file(tmp, tmp.path(std::format("u{}.cpp", i))).data));
+    }
+    f.save();
+    auto refusing = std::make_unique<Refusing>(std::move(f.project.database));
+    f.project.database = std::move(refusing);
+    ZASSERT(f.merge(index_file(tmp, tmp.path("u0.cpp")).data));
+    ZEXPECT(!f.project.save_due());
+    f.save();
+    ZASSERT(f.project.unsaved_bytes != 0u);
     ZEXPECT(f.project.save_due());
 }
 
@@ -233,6 +258,11 @@ struct FreeSpace final : ForwardingDatabase {
 
     bool lose_reads = false;
 
+    /// Whether the copy waits for its `abandon` before it starts.
+    bool wait_for_abandon = false;
+
+    std::optional<Copy> copied;
+
     std::optional<index::PageUsage> usage() override {
         auto usage = real->usage();
         if(usage) {
@@ -244,7 +274,13 @@ struct FreeSpace final : ForwardingDatabase {
 
     Copy write_compact_copy(const std::atomic<bool>& abandon) override {
         copies += 1;
-        return forced_copy ? *forced_copy : real->write_compact_copy(abandon);
+        for(std::uint32_t i = 0; wait_for_abandon && i < 1000 && !abandon.load(); i += 1) {
+            // No event: the flag is a plain atomic; ten seconds without it
+            // write the copy, which fails the test.
+            this_thread::sleep_for(chrono::milliseconds(10));
+        }
+        copied = forced_copy ? *forced_copy : real->write_compact_copy(abandon);
+        return *copied;
     }
 
     Swap swap_compact_copy() override {
@@ -465,15 +501,43 @@ ZEST_CASE(AbandonedShrinkTriesAgain) {
     ZEXPECT(p.hits("first_local") == 1u);
 }
 
-ZEST_CASE(RunWithoutIdleShrink) {
-    // A run ending with its indexing leaves the file to a server's idle time.
+ZEST_CASE(BatchEndShrinksSooner) {
+    // A run ending with its indexing copies the file at its idle save once
+    // a tenth of it is free, where a server waits for a quarter.
     ShrinkProject p;
     auto& space = p.spy();
-    p.f.project.shrinks_when_idle = false;
-    auto task = p.f.project.save(index::SearchRebuild::Idle);
-    p.f.loop.schedule(task);
-    p.f.loop.run();
+    space.pages = 1 << 18;
+    space.free = 1 << 15;
+    auto save = [&] {
+        auto task = p.f.project.save(index::SearchRebuild::Idle);
+        p.f.loop.schedule(task);
+        p.f.loop.run();
+    };
+    save();
     ZEXPECT(space.copies == 0u);
+    p.f.project.shrink_at = ShrinkAt::BatchEnd;
+    save();
+    ZEXPECT(space.copies == 1u);
+    ZEXPECT(space.swapped == index::BlobDatabase::Swap::Replaced);
+}
+
+ZEST_CASE(ShutdownAbandonsCopy) {
+    // A shutdown gives up the compact copy being written, and the copy
+    // leaves the file as it was.
+    ShrinkProject p;
+    auto& space = p.spy();
+    space.wait_for_abandon = true;
+    auto shrink = [&]() -> async::task<> {
+        co_await p.f.project.shrink_database();
+    };
+    auto shrink_task = shrink();
+    auto shutdown_task = p.f.project.shutdown();
+    p.f.loop.schedule(shrink_task);
+    p.f.loop.schedule(shutdown_task);
+    p.f.loop.run();
+    ZEXPECT(space.copied == index::BlobDatabase::Copy::Abandoned);
+    ZEXPECT(!space.swapped);
+    ZEXPECT(!p.f.project.shrink_failed);
 }
 
 ZEST_CASE(IdleSaveShrinks) {

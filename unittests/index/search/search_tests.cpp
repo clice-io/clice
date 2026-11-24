@@ -57,19 +57,18 @@ struct Corpus {
         return hash;
     }
 
-    /// The index of one run, its segments offering at most `bound` symbols.
-    SearchIndex build(std::uint32_t bound = index::segment_entries) const {
+    /// The index of one run.
+    SearchIndex build() const {
         SearchIndex built;
-        built.replace(0, segments(snapshot, bound));
+        built.replace(0, segments(snapshot));
         return built;
     }
 
     static std::vector<std::unique_ptr<llvm::MemoryBuffer>>
-        segments(const SearchSnapshot& snapshot, std::uint32_t bound = index::segment_entries) {
+        segments(const SearchSnapshot& snapshot) {
         std::vector<std::unique_ptr<llvm::MemoryBuffer>> buffers;
-        for(auto& bytes: index::build_search_segments(snapshot, bound)) {
-            buffers.push_back(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
-        }
+        buffers.push_back(
+            llvm::MemoryBuffer::getMemBufferCopy(as_chars(index::build_search_segment(snapshot))));
         return buffers;
     }
 
@@ -167,7 +166,7 @@ ZEST_CASE(Loads) {
 
 ZEST_CASE(DamagedPosting) {
     auto corpus = sample();
-    auto original = std::move(index::build_search_segments(corpus.snapshot).front());
+    auto original = index::build_search_segment(corpus.snapshot);
     auto blob = codec::blob::from_bytes<index::SearchIndexBlob>(original);
     ZASSERT(blob);
     // Bytes no posting list starts with: the blob's structure stays
@@ -195,9 +194,8 @@ ZEST_CASE(RepeatedNamesStoredOnce) {
     corpus.add("B::Run", SymbolKind::Method);
     corpus.add("run", SymbolKind::Function);
     corpus.add("Runner", SymbolKind::Struct);
-    auto segments = index::build_search_segments(corpus.snapshot);
-    ZASSERT(segments.size() == 1u);
-    auto blob = codec::blob::from_bytes<index::SearchIndexBlob>(segments.front());
+    auto segment = index::build_search_segment(corpus.snapshot);
+    auto blob = codec::blob::from_bytes<index::SearchIndexBlob>(segment);
     ZASSERT(blob);
     ZEXPECT(blob->names == "ABRunrunRunner");
     auto built = corpus.build();
@@ -611,56 +609,14 @@ ZEST_CASE(NameableSkipsSourceLocals) {
     ZEXPECT(names == (std::vector<std::string>{"helper_function", "helper_inline"}));
 }
 
-ZEST_CASE(SegmentsAnswerAsOne) {
-    // Segments of two symbols each, every one carrying the scopes above
-    // its symbols, answer every query as a single segment does.
-    auto corpus = sample();
-    auto whole = corpus.build();
-    auto split = corpus.build(2);
-    ZEXPECT(index::build_search_segments(corpus.snapshot, 2).size() == 11u);
-    for(llvm::StringRef text: {"foo",
-                               "Foo",
-                               "up",
-                               "u_p",
-                               "strcpy",
-                               "aaaaaa",
-                               R"("foo")",
-                               "*foo",
-                               "*_*",
-                               "inner::paint",
-                               "::outer::inner::Widget<int>::paint",
-                               "outer::inner::*",
-                               "inner::**",
-                               "::outer::*",
-                               "::*",
-                               "::outer::**",
-                               "Widget::*",
-                               "foo kind:variable,function",
-                               "kind:namespace *",
-                               "* path:/w/src/b/"}) {
-        ZEXPECT(names(corpus, split, text, 100) == names(corpus, whole, text, 100));
-    }
-    ZEXPECT(names(corpus, split, "foo", 2) == (Names{"foo", "Foo"}));
-}
-
-ZEST_CASE(SegmentsBounded) {
-    auto corpus = sample();
-    std::uint32_t offered = 0;
-    for(auto& bytes: index::build_search_segments(corpus.snapshot, 3)) {
-        auto blob = codec::blob::from_bytes<index::SearchIndexBlob>(bytes);
-        ZASSERT(blob);
-        ZEXPECT(blob->qualities.size() <= 3u);
-        offered += static_cast<std::uint32_t>(blob->qualities.size());
-    }
-    ZEXPECT(offered == corpus.snapshot.entries.size());
+ZEST_CASE(EmptyRunHasSegment) {
     // A run with nothing to offer still has a segment, which carries the
     // files it covers.
     SearchSnapshot empty{.covered = {4}};
-    auto segments = index::build_search_segments(empty);
-    ZASSERT(segments.size() == 1u);
     SearchIndex built;
     ZASSERT(built.replace(0, Corpus::segments(empty)));
     ZEXPECT(built.size() == 0u);
+    ZEXPECT(built.run_size(0) == 1u);
 }
 
 ZEST_CASE(NewerRunsHide) {

@@ -332,13 +332,17 @@ async::task<> Project::checkpoint() {
 }
 
 bool Project::save_due() const {
-    if(!index.has_unsaved_state()) {
+    if(!index.has_unsaved_state() || unsaved_bytes != 0) {
         return true;
     }
     if(chrono::steady_clock::now() - saved_at >= chrono::minutes(30)) {
         return true;
     }
-    auto stored = database ? database->count(index::BlobKind::Shard) : 0;
+    std::uint64_t stored = 0;
+    if(database) {
+        stored = std::uint64_t(database->count(index::BlobKind::Shard)) +
+                 database->count(index::BlobKind::InstantiationShard);
+    }
     return std::uint64_t(index.pending_shard_writes()) * 4 >= stored;
 }
 
@@ -353,7 +357,7 @@ async::task<> Project::save(index::SearchRebuild search) {
         // No more indexing is queued, so no save is due for a while: the
         // file may shrink — unless a file was queued while the save ran. A
         // shrink that discarded the database owes the fresh one a save.
-        if(!retry && search == index::SearchRebuild::Idle && shrinks_when_idle &&
+        if(!retry && search == index::SearchRebuild::Idle &&
            background_index.queue().queued() == 0) {
             report = co_await shrink_database();
             retry = report.owes_retry;
@@ -595,7 +599,7 @@ bool shrink_due(const index::PageUsage& usage, ShrinkAt at) {
     return free >= always || (free >= worth && free * parts >= usage.pages * usage.page_size);
 }
 
-async::task<index::IndexReport> Project::shrink_database(ShrinkAt at) {
+async::task<index::IndexReport> Project::shrink_database() {
     index::IndexReport report;
     if(!database || database->read_only()) {
         co_return report;
@@ -609,7 +613,7 @@ async::task<index::IndexReport> Project::shrink_database(ShrinkAt at) {
     }
     auto& db = *database;
     auto before = db.usage();
-    if(!before || !shrink_due(*before, at)) {
+    if(!before || !shrink_due(*before, shrink_at)) {
         co_return report;
     }
     Timer timer;

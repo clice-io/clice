@@ -534,8 +534,10 @@ async::task<> ServedProject::metadata_flush_task() {
     co_await async::sleep(chrono::milliseconds(50));
     metadata_flush_scheduled = false;
     // A save carries every change of the index too: while a pass leaves
-    // some unsaved, the marks ride its checkpoints or its end.
-    if(project.index.has_unsaved_state()) {
+    // some unsaved, the PCH and PCM records ride the next save of the
+    // index, a checkpoint's or the pass end's; a context choice, the
+    // user's own, saves at once.
+    if(project.index.has_unsaved_state() && !project.choices.dirty) {
         co_return;
     }
     co_await project.save();
