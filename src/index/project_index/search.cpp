@@ -189,6 +189,7 @@ void ProjectIndex::drop_search_runs(std::uint32_t runs) {
     auto kept = static_cast<std::uint32_t>(ends.size()) - runs;
     auto first = kept == 0 ? 0 : ends[kept - 1];
     for(auto id: llvm::ArrayRef(header.search_segments).drop_front(first)) {
+        std::erase(search.in_memory, id);
         auto key = number_key(id);
         // A segment no batch committed yet is only in memory.
         auto it = ranges::find_if(search.writes,
@@ -281,6 +282,7 @@ async::task<> ProjectIndex::update_search(SearchRebuild rebuild) {
     }
     auto bytes = segment.size();
     header.search_segments.push_back(header.next_segment);
+    search.in_memory.push_back(header.next_segment);
     search.writes.push_back(
         {BlobKind::SearchSegment, number_key(header.next_segment), std::move(segment)});
     header.next_segment += 1;

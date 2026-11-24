@@ -787,6 +787,10 @@ private:
 
         llvm::SmallVector<std::uint32_t> drops;
 
+        /// The segments built this session that keep their bytes in memory
+        /// until a save commits them to their files, which they then map.
+        llvm::SmallVector<std::uint32_t> in_memory;
+
         void symbol_changed(SymbolHash hash) {
             pending_symbols.insert(hash);
             if(changed_during_build) {

@@ -476,6 +476,31 @@ ZEST_CASE(SavesAddRuns) {
     }
 }
 
+ZEST_CASE(SaveMapsOnlyItsSegments) {
+    // A save moves the segments it committed onto their files and reads no
+    // other: one whose file went under a running server (a wiped cache)
+    // keeps the bytes it maps.
+    tmp.touch("a.cpp", "int first_value() { return 1; }\n");
+    tmp.touch("b.cpp", "int second_value() { return 2; }\n");
+    open_store(tmp, project);
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Idle);
+    auto directory = index::database_directory(*project.store, {});
+    auto entries = fs::Directory::open(directory);
+    ZASSERT(entries.has_value());
+    for(const auto& entry: *entries) {
+        if(entry && llvm::StringRef(entry->name).starts_with("index.mdb-value-")) {
+            // Windows removes no file a process maps.
+            fs::remove(path::join(directory, entry->name));
+        }
+    }
+    ZASSERT(merge(index_file(tmp, tmp.path("b.cpp")).data));
+    fx.save(index::SearchRebuild::Never);
+    ZEXPECT(project.index.search_index().run_count() == 2u);
+    ZEXPECT(index_hits("first_value") == 1u);
+    ZEXPECT(index_hits("second_value") == 1u);
+}
+
 ZEST_CASE(FoldsKeepRunsFew) {
     // Saves of like-sized changes fold as they go: the runs stay few, and
     // every symbol stays found.

@@ -1042,7 +1042,10 @@ ZEST_CASE(OrphanWrittenAgainStays) {
     ZASSERT(db->write({blob(index::BlobKind::SearchSegment, key, large_value('a'))}, {}));
     {
         ForeignReader reader(file);
-        ZASSERT(db->write({}, {{index::BlobKind::SearchSegment, key}}));
+        ZASSERT(db->write(
+            {
+        },
+            {{index::BlobKind::SearchSegment, key}}));
         db.reset();
         ZASSERT(value_files(file).size() == 1u);
         db = index::open_database(store, {}).value_or(nullptr);
