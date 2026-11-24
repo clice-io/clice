@@ -731,6 +731,45 @@ ZEST_CASE(SaveCompactsAndRetires) {
                                         IndexInternals::file_key(project.index, header_id)));
 }
 
+ZEST_CASE(CompactsUnreadShard) {
+    // A session compacts the shard of a header a unit stopped including
+    // though it never read the shard before: a later session reads the
+    // stored shard as it is, the dead variant unmasked.
+    TempDir tmp;
+    tmp.touch("shared.h",
+              "#pragma once\n#ifdef MODE\nint mode_fn();\n#endif\n"
+              "inline int shared_fn() { return 1; }\n");
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
+    tmp.touch("b.cpp", "#include \"shared.h\"\nint b() { return shared_fn(); }\n");
+    {
+        IndexerFixture first;
+        open_store(tmp, first.project);
+        first.list_units(tmp,
+                         {
+                             {"a.cpp"},
+                             {"b.cpp", {"-DMODE"}}
+        });
+        ZASSERT(first.merge(index_file(tmp, tmp.path("a.cpp")).data));
+        ZASSERT(first.merge(index_file(tmp, tmp.path("b.cpp"), {"-DMODE"}).data));
+        first.save();
+    }
+
+    open_store(tmp, project);
+    fx.list_units(tmp,
+                  {
+                      {"a.cpp"},
+                      {"b.cpp", {"-DMODE"}}
+    });
+    fx.load();
+    tmp.touch("b.cpp", "int b() { return 2; }\n");
+    ZASSERT(merge(index_file(tmp, tmp.path("b.cpp"), {"-DMODE"}).data));
+    fx.save();
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
+    auto* shard = project.index.shard(header_id);
+    ZASSERT(shard != nullptr);
+    ZEXPECT(shard->variants().size() == std::size_t(1));
+}
+
 ZEST_CASE(SaveRetiresPinnedShard) {
     TempDir tmp;
     tmp.touch("pinned.h",

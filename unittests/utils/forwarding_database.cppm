@@ -76,6 +76,28 @@ struct ForwardingDatabase : index::BlobDatabase {
     std::unique_ptr<index::BlobDatabase> real;
 };
 
+/// A database logging the kind of every record read from it.
+struct ReadLog final : ForwardingDatabase {
+    using ForwardingDatabase::ForwardingDatabase;
+
+    index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
+        reads.push_back(kind);
+        return real->read(kind, key);
+    }
+
+    void for_each(index::BlobKind kind,
+                  llvm::function_ref<bool(llvm::StringRef, index::ReadBlob)> fn) override {
+        reads.push_back(kind);
+        real->for_each(kind, fn);
+    }
+
+    std::size_t reads_of(index::BlobKind kind) const {
+        return static_cast<std::size_t>(ranges::count(reads, kind));
+    }
+
+    llvm::SmallVector<index::BlobKind> reads;
+};
+
 /// A database whose writes fail while `fail` holds: refused, as a full disk
 /// or a permission refuses them, or, when the failure `corrupts`, finding
 /// the database corrupt, as a damaged page only a write reaches does.
