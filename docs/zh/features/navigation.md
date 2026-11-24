@@ -1056,7 +1056,7 @@ tests/navigation/constructor_calls/06_conversion_casts
 
 模板中尚未确定的构造会跳转到它可能调用的各个构造函数
 
-在模板内部，实参或类型依赖模板参数的构造——`Box(T{}, T{})`、`Box<T>(value, value)`、`Box(value, value)`、经由别名模板的 `Crate(value, value)`、`Widget(size)`、`Widget{size, size}`、`new Widget(size)`、`new Box<T>`——会调用该类中接受相应个数实参的某个构造函数：构造函数模板也在其中；形参包或展开的参数包可对应任意个数；`initializer_list` 构造函数接受任意长度的花括号列表；该类继承的构造函数也算在内，但复制和移动构造函数从不算。这些类名会跳往每一个这样的构造函数，以及实例化实际调用的构造函数，特化自己的构造函数也包括在内。`T(size)` 则指代模板参数，无论实例化构造的是什么；聚合类的花括号（C++17 下的 `Pair<T>{}`）初始化的是它的成员，类名仍指向该类，而 `Pair<T>()` 调用的是它默认化（`= default`）的构造函数。
+在模板内部，实参或类型依赖模板参数的构造——`Box(T{}, T{})`、`Box<T>(value, value)`、`Box(value, value)`、经由别名模板的 `Crate(value, value)`、`Widget(size)`、`Widget{size, size}`、`new Widget(size)`、`new Box<T>`——会调用该类中接受相应个数实参的某个构造函数：构造函数模板也在其中；形参包或展开的参数包可对应任意个数；`initializer_list` 构造函数接受任意长度的花括号列表；该类继承的构造函数也算在内，但复制和移动构造函数从不算。这些类名会跳往每一个这样的构造函数，以及实例化实际调用的构造函数，特化自己的构造函数也包括在内。`T(size)` 则指代模板参数，无论实例化构造的是什么；聚合类的花括号（C++17 下的 `Pair<T>{}`）初始化的是它的成员，类名仍指向该类，而 `Pair<T>()` 调用的是它默认化的构造函数。
 
 ```case
 tests/navigation/constructor_calls/07_templates
