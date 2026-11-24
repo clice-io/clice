@@ -64,11 +64,13 @@ import :support.prelude;
 /// preamble_index_ms/flush_ms/state_write_ms for a pch, flush_ms for a
 /// pcm, index_ms/teardown_ms for a unit's compile), "compile_detail" (with
 /// CLICE_PERF=compile, compile_phases(): where one compile's time went
-/// inside clang, the totals of LLVM's time-trace phases — source_ms in included files,
-/// parse_class_ms, instantiate_function_ms, ... —, each counted at its outermost, which nest in
-/// each other and do not add up), "loop" (phase=stall: the master's event loop held up, every
-/// request waiting), "index_query" (master-side index lookups: kind=definition|references|
-/// implementation|search, files = the disk files a walk looked into),
+/// inside clang, the totals of LLVM's time-trace phases — source_ms in
+/// included files, parse_class_ms, instantiate_function_ms, ... — each
+/// counted at its outermost; phases nest in each other and do not add
+/// up), "loop" (phase=stall: the master's event loop held up, every
+/// request waiting), "index_query" (master-side index lookups:
+/// kind=definition|declaration|references|implementation|search, files =
+/// the disk files the lookup's relation walks looked into),
 /// "index_detail" (inside one index run: op=build splits the semantics
 /// table from projection, instantiations, finishing and the encoding of
 /// the shards and the TU index, op=preamble the document links and the

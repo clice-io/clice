@@ -211,11 +211,12 @@ void MasterServer::initialize() {
 }
 
 async::task<> MasterServer::watch_loop() {
-    // A short sleep wakes late by as long as the loop was busy elsewhere.
     constexpr auto interval = chrono::milliseconds(100);
     constexpr auto reported = chrono::milliseconds(200);
     while(true) {
         auto start = chrono::steady_clock::now();
+        // No event: a busy loop announces nothing, but a short sleep wakes
+        // late by as long as the loop was busy elsewhere.
         co_await async::sleep(interval, loop);
         auto late = chrono::steady_clock::now() - start - interval;
         if(late >= reported) {

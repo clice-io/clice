@@ -569,6 +569,14 @@ void IndexQuery::for_each_relation(SymbolHash hash,
     }
 }
 
+std::uint32_t IndexQuery::files_visited() const {
+    auto total = visited;
+    for(auto& other: other_projects) {
+        total += other.files_visited();
+    }
+    return total;
+}
+
 const Shard* IndexQuery::declaring_shard(Fid file) const {
     if(auto source = serving(file)) {
         return source->shard;

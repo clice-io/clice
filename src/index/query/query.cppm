@@ -542,11 +542,10 @@ public:
                Fid anchor,
                llvm::function_ref<std::vector<Site>(const IndexQuery&, SymbolHash)> ask) const;
 
-    /// How many disk files the relation walks of this query looked into
-    /// so far: what a lookup cost beside what it found (perf lines).
-    std::uint32_t files_visited() const {
-        return visited;
-    }
+    /// How many disk files the relation walks of this query and of the
+    /// other projects it asks looked into so far: what a lookup cost beside
+    /// what it found (perf lines).
+    std::uint32_t files_visited() const;
 
 private:
     /// The open buffer of `file`; null for a closed file.

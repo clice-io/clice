@@ -1074,29 +1074,6 @@ CompilationStatus CompilationUnit::run() {
     return CompilationStatus::Completed;
 }
 
-/// A phase name of clang's time-trace events as a perf key: "Module Load"
-/// is module_load_ms, "InstantiateFunction" instantiate_function_ms.
-static std::string phase_key(llvm::StringRef name) {
-    std::string key;
-    for(std::size_t i = 0; i < name.size(); i += 1) {
-        char c = name[i];
-        if(!llvm::isAlnum(c)) {
-            if(!key.empty() && key.back() != '_') {
-                key += '_';
-            }
-            continue;
-        }
-        if(llvm::isUpper(c) && i > 0 && llvm::isLower(name[i - 1]) && key.back() != '_') {
-            key += '_';
-        }
-        key += llvm::toLower(c);
-    }
-    while(!key.empty() && key.back() == '_') {
-        key.pop_back();
-    }
-    return key + "_ms";
-}
-
 /// Runs a compile; with compile_phases() on, under LLVM's time-trace profiler,
 /// whose per-phase totals of a millisecond or more make a compile_detail
 /// line: how long clang spent in included files (source_ms), parsing
@@ -1123,17 +1100,14 @@ static CompilationStatus profiled(CompilationUnit& unit,
 
     // The totals are the trace's "Total <phase>" events, durations in µs.
     std::vector<std::pair<std::string, std::int64_t>> phases;
-    auto parsed = llvm::json::parse(trace);
-    if(!parsed) {
-        llvm::consumeError(parsed.takeError());
-    } else if(auto* events = parsed->getAsObject()->getArray("traceEvents")) {
-        for(auto& event: *events) {
-            auto* object = event.getAsObject();
-            auto name = object->getString("name");
-            auto duration = object->getInteger("dur");
-            if(name && duration && *duration >= 1000 && name->consume_front("Total ")) {
-                phases.emplace_back(phase_key(*name), *duration / 1000);
-            }
+    auto parsed = llvm::cantFail(llvm::json::parse(trace));
+    for(auto& event: *parsed.getAsObject()->getArray("traceEvents")) {
+        auto* object = event.getAsObject();
+        auto name = object->getString("name");
+        auto duration = object->getInteger("dur");
+        if(name && duration && *duration >= 1000 && name->consume_front("Total ")) {
+            phases.emplace_back(kotatsu::naming::normalize_to_lower_snake(*name) + "_ms",
+                                *duration / 1000);
         }
     }
     ranges::sort(phases);

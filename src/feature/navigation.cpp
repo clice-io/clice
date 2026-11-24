@@ -169,6 +169,7 @@ std::vector<index::Site> project_definition(const index::IndexQuery& index,
 std::vector<index::Site> project_declaration(const index::IndexQuery& index,
                                              const index::IndexQuery::Cursor& cursor) {
     Timer timer;
+    auto visited = index.files_visited();
     std::vector<index::Site> result;
     for(auto symbol: cursor.symbols) {
         // Every block of a namespace declares it: the one definition gives,
@@ -199,9 +200,10 @@ std::vector<index::Site> project_declaration(const index::IndexQuery& index,
         }
     }
     LOG_PERF("index_query",
-             "kind=declaration path={} results={} elapsed_ms={:.2f}",
+             "kind=declaration path={} results={} files={} elapsed_ms={:.2f}",
              cursor.site.path,
              result.size(),
+             index.files_visited() - visited,
              timer.precise_ms());
     return result;
 }
