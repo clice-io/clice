@@ -1,0 +1,41 @@
+name: compat-image
+
+# Creates ghcr.io/clice-io/compat-linux with a tiny placeholder image, so
+# the package exists and can be made public before the full image is pushed.
+on:
+  push:
+    paths:
+      - .github/workflows/compat-image.yml
+
+permissions:
+  contents: read
+  packages: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  placeholder:
+    if: github.repository == 'clice-io/clice'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Push the placeholder
+        run: |
+          mkdir "$RUNNER_TEMP/placeholder"
+          cd "$RUNNER_TEMP/placeholder"
+          echo "The compat image of clice-io/clice; its real tags are hashes of tests/compat/Dockerfile." > README
+          printf '%s\n' \
+            'FROM scratch' \
+            'COPY README /' \
+            'LABEL org.opencontainers.image.source=https://github.com/clice-io/clice' \
+            'LABEL org.opencontainers.image.description="The Linux compat job of clice-io/clice runs in this image."' \
+            > Dockerfile
+          docker build -t ghcr.io/clice-io/compat-linux:placeholder .
+          docker push ghcr.io/clice-io/compat-linux:placeholder
