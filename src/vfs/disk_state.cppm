@@ -184,11 +184,8 @@ public:
 
     /// A build read this file's bytes, hashing to `hash`: for a file nobody
     /// looked at yet, that read is the first look, so that a change after
-    /// it is a change; one whose last look found other bytes is looked at
-    /// again. True when the disk holds other bytes than the build read: the
-    /// file changed since, or the build read it mid-write (a save in place
-    /// truncates it first), bytes no look ever reports.
-    bool consumed(Fid fid, std::uint64_t hash);
+    /// it is a change.
+    void consumed(Fid fid, std::uint64_t hash);
 
     /// Make every file under the directory `dir` (an identity) due now.
     void expire_under(llvm::StringRef dir);

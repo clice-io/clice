@@ -346,27 +346,12 @@ ZEST_CASE(ConsumedIsFirstLook) {
     // the disk moving on from it is a change.
     Fixture f;
     auto fid = f.file("src/a.h", "int b;\n");
-    ZASSERT(!f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n")));
+    f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"));
     f.hash_of(fid);
     ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 
-    ZASSERT(f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n")));
+    f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"));
     ZASSERT(f.disk.seen_hash(fid) == llvm::xxh3_64bits("int b;\n"));
-}
-
-ZEST_CASE(ConsumedLooksAgain) {
-    // A build that read other bytes than the last look found has the file
-    // looked at again: bytes a write held for a moment are bytes the disk
-    // holds no more, and a change since is a change.
-    Fixture f;
-    auto fid = f.file("src/a.h", "int a;\n");
-    f.hash_of(fid);
-    ZASSERT(f.disk.consumed(fid, llvm::xxh3_64bits("")));
-    ZASSERT(f.disk.take_changes().empty());
-
-    f.rewrite("src/a.h", "int b;\n");
-    ZASSERT(!f.disk.consumed(fid, llvm::xxh3_64bits("int b;\n")));
-    ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 }
 
 ZEST_CASE(FlagHearsChange) {

@@ -138,17 +138,10 @@ void DiskState::add_root(llvm::StringRef dir, Policy rule) {
     }
 }
 
-bool DiskState::consumed(Fid fid, std::uint64_t hash) {
-    auto it = files.find(fid);
-    if(it == files.end()) {
+void DiskState::consumed(Fid fid, std::uint64_t hash) {
+    if(!files.contains(fid)) {
         saw(fid, hash, false);
-        return false;
     }
-    if(it->second.seen == hash) {
-        return false;
-    }
-    look(fid);
-    return seen_hash(fid) != hash;
 }
 
 void DiskState::expire_under(llvm::StringRef dir) {

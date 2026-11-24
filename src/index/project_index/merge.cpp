@@ -270,9 +270,11 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     llvm::SmallVector<VersionID> version_of;
     version_of.resize_for_overwrite(view.path_count());
     // A file the parse read whose bytes the disk no longer holds leaves the
-    // index stale on arrival. Not one read through a module or the
-    // precompiled header: a reindex would read the same build again, which
-    // only a change reaching it rebuilds.
+    // index stale on arrival, though no look may ever report a change: a
+    // parse reading it mid-write (a save in place truncates it first) read
+    // bytes the disk held for a moment. Not one read through a module or
+    // the precompiled header: a reindex would read the same build again,
+    // which only a change reaching it rebuilds.
     Fid moved_on;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         llvm::StringRef path = view.path(i);
@@ -281,8 +283,10 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         // The worker had no buffer to hash a file behind a PCM, and no
         // shard or build recorded one.
         if(hash != 0) {
-            if(files.disk.consumed(file_ids_map[i], hash) && view.content_hash(i) != 0 &&
-               !moved_on.valid()) {
+            files.disk.consumed(file_ids_map[i], hash);
+            if(view.content_hash(i) != 0 && !moved_on.valid() &&
+               files.disk.seen_hash(file_ids_map[i]) != hash &&
+               files.disk.check(file_ids_map[i], hash) != vfs::DiskState::CheckResult::Fresh) {
                 moved_on = file_ids_map[i];
             }
         } else if(auto status = fs::status(path)) {
