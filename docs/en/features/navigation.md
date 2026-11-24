@@ -1043,7 +1043,8 @@ tests/navigation/implicit_targets/11_coroutine_keywords
 ## Constructions by Name
 
 A class's name that calls a constructor stands for that constructor in
-every feature but the type ones, which answer the class.
+every feature but the type ones and rename, which answer the type the name
+writes.
 
 <!-- BEGIN GENERATED ITEMS: navigation/constructor_calls -->
 
@@ -1155,7 +1156,7 @@ tests/navigation/constructor_calls/06_conversion_casts
 
 A construction a template leaves open leads to the constructors it may call
 
-Inside a template, `Box(T{}, T{})`, `Box<T>(value, value)`,
+Inside a template, `Box(T{}, T{})`, `Box<T>(value, value)`, `Box(value, value)`,
 `Widget(size)`, `Widget{size, size}` and `new Widget(size)` with dependent
 arguments call one of the class's constructors taking that many
 arguments — a constructor template among them, any number for a parameter

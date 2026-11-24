@@ -962,7 +962,7 @@ tests/navigation/implicit_targets/11_coroutine_keywords
 
 ## 以类名写出的构造
 
-调用构造函数的类名，在类型相关功能以外的所有功能中都代表该构造函数；类型相关功能给出的则是该类。
+调用构造函数的类名，在类型相关功能和重命名以外的所有功能中都代表该构造函数；类型相关功能和重命名针对的则是这个名字写出的类型。
 
 <!-- BEGIN GENERATED ITEMS: navigation/constructor_calls -->
 
@@ -1056,7 +1056,7 @@ tests/navigation/constructor_calls/06_conversion_casts
 
 模板中尚未确定的构造会跳转到它可能调用的各个构造函数
 
-在模板内部，实参依赖模板参数的 `Box(T{}, T{})`、`Box<T>(value, value)`、`Widget(size)`、`Widget{size, size}` 和 `new Widget(size)` 会调用该类中接受相应个数实参的某个构造函数（构造函数模板也在其中；形参包或展开的参数包可对应任意个数；`initializer_list` 构造函数接受任意长度的花括号列表），或调用它继承的构造函数：这些类名会跳往每一个这样的构造函数，以及实例化实际调用的构造函数，特化自己的构造函数也包括在内。`T(size)` 则指代模板参数，无论实例化构造的是什么。
+在模板内部，实参依赖模板参数的 `Box(T{}, T{})`、`Box<T>(value, value)`、`Box(value, value)`、`Widget(size)`、`Widget{size, size}` 和 `new Widget(size)` 会调用该类中接受相应个数实参的某个构造函数（构造函数模板也在其中；形参包或展开的参数包可对应任意个数；`initializer_list` 构造函数接受任意长度的花括号列表），或调用它继承的构造函数：这些类名会跳往每一个这样的构造函数，以及实例化实际调用的构造函数，特化自己的构造函数也包括在内。`T(size)` 则指代模板参数，无论实例化构造的是什么。
 
 ```case
 tests/navigation/constructor_calls/07_templates
