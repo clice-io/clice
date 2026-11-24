@@ -15,7 +15,7 @@ Either way, builds and suites go through Bash `run_in_background`, which notifie
 
 - Every push: the unit tests and the cases, RelWithDebInfo, beside CI — push without waiting for them.
 - Async code, shutdown or position math: the Debug suites too, beside the RelWithDebInfo ones. ASan and the assertions — clice's, clang's and kotatsu's — live only there. Debug builds Linux x64 and macOS arm64 alone: xclang has the ASan libclang only there.
-- Command handling: the compat suite (`pixi run compat-test`). It needs the build systems and compilers CI has: on Linux all of them are in the image CI's job runs in (`tests/compat/Dockerfile`; on a box, see "On a box"), on Windows `compat-test.yml` installs them. Where `CI` is set, a box included, a missing one fails its scenario instead of skipping it.
+- Command handling: the compat suite (`pixi run compat-test`). It needs the build systems and compilers CI has: the pixi environments `cuda` and `toolchains`, and the system's — on Linux the image CI's job runs in (`tests/compat/Dockerfile`; on a box, see "On a box"), on Windows what `compat-test.yml` installs. Where `CI` is set, a box included, a missing one fails its scenario instead of skipping it.
 - `editors/`: the editors' end-to-end tests (`pixi run -e editor editor-test`, Zed's `zed-e2e`); on Linux without a display, under `xvfb-run -a`.
 - A new command, flag, `clice/*` request or `clice.toml` key: a case that exercises it, or CI's coverage check fails (`tests/README.md`, "Coverage").
 - A failure on one platform: reproduced and fixed on that OS — a box of it, or a machine of yours — not by pushing guesses at CI.

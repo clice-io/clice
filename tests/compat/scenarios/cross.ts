@@ -55,7 +55,8 @@ function zigTarget(target: string): Scenario {
     };
 }
 
-/// The NDK the runner images ship.
+/// The compat image's NDK (tests/compat/Dockerfile), which names it as the
+/// runner images name theirs.
 const NDK = process.env["ANDROID_NDK_LATEST_HOME"] ?? process.env["ANDROID_NDK_HOME"] ?? "";
 
 export const SCENARIOS: Scenario[] = [

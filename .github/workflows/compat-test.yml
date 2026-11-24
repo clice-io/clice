@@ -49,7 +49,7 @@ jobs:
         run: |
           image=ghcr.io/clice-io/compat-linux:$(sha256sum tests/compat/Dockerfile | cut -d' ' -f1)
           if ! docker manifest inspect "$image" > /dev/null; then
-            echo "::error::$image is not pushed: compat-image.yml builds it on a push changing tests/compat/Dockerfile; rerun once that run passed"
+            echo "::error::$image is not pushed: compat-image.yml pushes it for a tests/compat/Dockerfile on a branch of clice-io/clice, on the push or by hand; rerun once it has"
             exit 1
           fi
           echo "container={\"image\": \"$image\", \"options\": \"--init\"}" >> "$GITHUB_OUTPUT"
@@ -101,9 +101,10 @@ jobs:
           environments: ${{ steps.environments.outputs.names }}
           activate-environment: node
 
-      # The Linux scenarios' programs are all in the job's image; the
-      # Windows and macOS scenarios use what the runner images ship (Visual
-      # Studio, LLVM replaced below, MinGW; Xcode, Homebrew GCC and LLVM).
+      # The Linux scenarios' programs beside the pixi environments' are all
+      # in the job's image; the Windows and macOS scenarios use what the
+      # runner images ship (Visual Studio, LLVM replaced below, MinGW; Xcode,
+      # Homebrew GCC and LLVM).
       # The scenarios find CMake 4.5 in the home directory, which the job
       # gives the container its own of.
       - name: Link CMake 4.5 into the home directory

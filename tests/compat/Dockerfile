@@ -1,9 +1,10 @@
 # The Linux compat job's image (compat-test.yml): every program the Linux
-# scenarios run, so the job downloads none of them. The system's packages are
-# Ubuntu 24.04's, the runner's own, and the rest are what the runner image
-# ships or the scenarios need beside it, at the versions written here.
-# compat-image.yml pushes it to ghcr.io/clice-io/compat-linux, tagged by the
-# SHA-256 of this file.
+# scenarios run beside the pixi environments' (nvcc, conda's and Intel's
+# compilers, xclang), so the job downloads none of them. The system's
+# packages are Ubuntu 24.04's, the runner's own, and the rest are what the
+# runner image ships or the scenarios need beside it, at the versions written
+# here. compat-image.yml pushes it to ghcr.io/clice-io/compat-linux, tagged
+# by the SHA-256 of this file.
 FROM ubuntu:24.04
 
 LABEL org.opencontainers.image.source=https://github.com/clice-io/clice
@@ -28,9 +29,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf \
     && rm -rf /var/lib/apt/lists/*
 
-# Each download is checked against the hash its publisher gives.
+# Each download is checked against the hash its publisher gives: SHA-256,
+# or the SHA-1 alone Google gives for the NDK.
 SHELL ["/bin/bash", "-euo", "pipefail", "-c"]
-RUN fetch() { curl -fsSL --retry 5 --retry-all-errors -o "$1" "$2" && echo "$3  $1" | sha256sum -c -; } \
+RUN fetch() { curl -fsSL --retry 5 --retry-all-errors -o "$1" "$2" && echo "$3  $1" | "${4:-sha256}sum" -c -; } \
     # The runner image's CMake, and 4.5, the first whose `import std` needs
     # no experimental gate.
     && fetch /tmp/cmake.tar.gz \
@@ -57,7 +59,7 @@ RUN fetch() { curl -fsSL --retry 5 --retry-all-errors -o "$1" "$2" && echo "$3  
     # The runner image's newest NDK.
     && fetch /tmp/ndk.zip \
         https://dl.google.com/android/repository/android-ndk-r30-linux.zip \
-        753611f410d002cfcd3f3dc2ef49aad532089d3180b436c060a90bf0fcb64df2 \
+        5107f898313790e449e87eee2183d9a20602dee9 sha1 \
     && unzip -q /tmp/ndk.zip -d /opt && mv /opt/android-ndk-r30 /opt/android-ndk \
     && rm -f /tmp/*.tar.gz /tmp/*.tar.xz /tmp/*.zip
 
