@@ -723,34 +723,15 @@ auto selector_rest(const clang::ObjCMethodDecl& method, unsigned start) -> std::
     return rest;
 }
 
-/// The label details of an item standing for `count` overloads of a name.
+}  // namespace
+
 protocol::CompletionItemLabelDetails bundle_details(std::size_t count) {
     protocol::CompletionItemLabelDetails details;
     details.detail = std::format("(…) +{} overload{}", count - 1, count > 2 ? "s" : "");
     return details;
 }
 
-}  // namespace
-
-/// Make `item`, one overload of a name, stand for all `count` of them: a
-/// call it inserts takes its parentheses, with the cursor between them for a
-/// client taking snippets, in place of its own arguments.
-void bundle(protocol::CompletionItem& item, std::size_t count, bool snippets) {
-    item.label_details = bundle_details(count);
-    if(!snippets) {
-        return;
-    }
-    std::visit(
-        [&](auto& edit) {
-            if(llvm::StringRef(edit.new_text).starts_with(item.label + "(")) {
-                edit.new_text = escape_snippet(item.label) + "($0)";
-                item.insert_text_format = protocol::InsertTextFormat::Snippet;
-            }
-        },
-        *item.text_edit);
-}
-
-auto Reply::open(Completing& completing, clang::Sema& sema, clang::CodeCompletionContext& context)
+auto Reply::open(Completing& completing, clang::CodeCompletionContext& context)
     -> std::optional<Reply> {
     auto prefix = Prefix::from(completing.text, completing.offset);
     auto map = completing.unit.focus_file().positions();
@@ -763,16 +744,15 @@ auto Reply::open(Completing& completing, clang::Sema& sema, clang::CodeCompletio
     if(completing.client.insert_replace && prefix.whole != prefix.typed) {
         edit = protocol::InsertReplaceEdit{.insert = *typed, .replace = *whole};
     }
-    return Reply(completing, sema, context, prefix, std::move(edit));
+    return Reply(completing, context, prefix, std::move(edit));
 }
 
 Reply::Reply(Completing& completing,
-             clang::Sema& sema,
              clang::CodeCompletionContext& context,
              Prefix prefix,
              Edit edit) :
-    completing(completing), sema(sema), context(context), prefix(prefix), matcher(prefix.spelling),
-    edit(std::move(edit)) {
+    completing(completing), sema(completing.unit.sema()), context(context), prefix(prefix),
+    matcher(prefix.spelling), edit(std::move(edit)) {
     auto text = completing.text;
     auto after = text.drop_front(prefix.whole.end).ltrim();
     follows = after.starts_with("(")   ? Follows::Parenthesis
@@ -1627,12 +1607,10 @@ auto Reply::finish() -> std::vector<Item> {
         items.swap(deduped);
     }
 
-    std::vector<Item> listed;
-    listed.reserve(items.size());
-    for(auto& entry: items) {
-        listed.push_back({.item = std::move(entry.item), .documented = entry.documented});
-    }
-    return listed;
+    return items | views::transform([](Listed& entry) {
+               return Item{.item = std::move(entry.item), .documented = entry.documented};
+           }) |
+           ranges::to<std::vector>();
 }
 
 }  // namespace clice::feature

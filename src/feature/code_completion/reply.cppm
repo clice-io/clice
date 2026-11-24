@@ -110,10 +110,8 @@ struct Candidate {
     std::optional<std::uint32_t> order;
 };
 
-/// Make `item`, one overload of a name, stand for all `count` of them: a
-/// call it inserts takes its parentheses, with the cursor between them for a
-/// client taking snippets, in place of its own arguments.
-void bundle(protocol::CompletionItem& item, std::size_t count, bool snippets);
+/// The label details of an item standing for `count` overloads of a name.
+protocol::CompletionItemLabelDetails bundle_details(std::size_t count);
 
 /// The items one of Sema's replies offers (CodeCompleteConsumer::
 /// ProcessCodeCompleteResults), added phase by phase — Sema's candidates,
@@ -123,9 +121,8 @@ class Reply {
 public:
     /// The reply to `context`; none where the name at the point maps to no
     /// position.
-    static auto open(Completing& completing,
-                     clang::Sema& sema,
-                     clang::CodeCompletionContext& context) -> std::optional<Reply>;
+    static auto open(Completing& completing, clang::CodeCompletionContext& context)
+        -> std::optional<Reply>;
 
     void add_candidates(llvm::MutableArrayRef<clang::CodeCompletionResult> candidates);
 
@@ -197,11 +194,7 @@ private:
 
     using Edit = std::variant<protocol::TextEdit, protocol::InsertReplaceEdit>;
 
-    Reply(Completing& completing,
-          clang::Sema& sema,
-          clang::CodeCompletionContext& context,
-          Prefix prefix,
-          Edit edit);
+    Reply(Completing& completing, clang::CodeCompletionContext& context, Prefix prefix, Edit edit);
 
     bool member_access() const;
 

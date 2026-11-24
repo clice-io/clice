@@ -11,11 +11,29 @@ import :feature.documentation;
 import :semantic.decls;
 import :semantic.identity;
 import :semantic.template_resolver;
-import :support.markup;
+import :support.json;
 
 namespace clice::feature {
 
 namespace {
+
+/// Make `item`, one overload of a name, stand for all `count` of them: a
+/// call it inserts takes its parentheses, with the cursor between them for a
+/// client taking snippets, in place of its own arguments.
+void bundle(protocol::CompletionItem& item, std::size_t count, bool snippets) {
+    item.label_details = bundle_details(count);
+    if(!snippets) {
+        return;
+    }
+    std::visit(
+        [&](auto& edit) {
+            if(llvm::StringRef(edit.new_text).starts_with(item.label + "(")) {
+                edit.new_text = escape_snippet(item.label) + "($0)";
+                item.insert_text_format = protocol::InsertTextFormat::Snippet;
+            }
+        },
+        *item.text_edit);
+}
 
 /// The function template `context` is in, through the lambdas and local
 /// classes inside it.
@@ -66,8 +84,8 @@ public:
         // it asks for the allocator, so that completion runs through
         // `unloaded`, which reads none.
         auto& completion = sema.CodeCompletion();
-        if(whole_buffer && !typed_names && !processing && completion.CodeCompleter == this &&
-           sema.getPreprocessor().isBacktrackEnabled()) {
+        if(whole_buffer && !typed_names && nested_run == Nested::None &&
+           completion.CodeCompleter == this && sema.getPreprocessor().isBacktrackEnabled()) {
             completion.CodeCompleter = &unloaded;
         }
         return completing.info.getAllocator();
@@ -153,9 +171,7 @@ private:
            (lexer && lexer->isLexingRawMode())) {
             return;
         }
-        auto processed = llvm::make_scope_exit([&, was = processing] { processing = was; });
-        processing = true;
-        if(through_unloaded && nested_run == Nested::None && complete_unloaded(sema, context)) {
+        if(through_unloaded && complete_namespace(sema, context)) {
             return;
         }
 
@@ -174,7 +190,7 @@ private:
         if(candidates.empty() && completing.names.candidates.empty()) {
             return;
         }
-        auto reply = Reply::open(completing, sema, context);
+        auto reply = Reply::open(completing, context);
         if(!reply) {
             return;
         }
@@ -189,7 +205,7 @@ private:
     /// (`requires { typename lib:: }`) made the completion that stands
     /// through `unloaded`: the names of a namespace, or of the global one,
     /// qualifying it come again, read. Whether that produced the reply.
-    bool complete_unloaded(clang::Sema& sema, clang::CodeCompletionContext& context) {
+    bool complete_namespace(clang::Sema& sema, clang::CodeCompletionContext& context) {
         using enum clang::NestedNameSpecifier::Kind;
         auto spec = context.getCXXScopeSpecifier();
         if(!spec || ((*spec)->getScopeRep().getKind() != Namespace &&
@@ -630,10 +646,7 @@ private:
 
     Unloaded unloaded{*this};
 
-    /// A reply is being processed: the completions it runs itself go
-    /// through no `unloaded`.
-    bool processing = false;
-
+    /// The completions a nested run makes go through no `unloaded`.
     Nested nested_run = Nested::None;
 };
 
@@ -713,13 +726,11 @@ auto code_complete(CompilationParams params,
         };
     }
 
+    auto listed = items | views::transform([](Item& entry) { return std::move(entry.item); }) |
+                  ranges::to<std::vector>();
     Completion completion{
-        .list = {.is_incomplete = cut || more_names},
+        .list = {.is_incomplete = cut || more_names, .items = std::move(listed)},
     };
-    completion.list.items.reserve(items.size());
-    for(auto& entry: items) {
-        completion.list.items.push_back(std::move(entry.item));
-    }
     if(includes) {
         auto insertion = action::include_insertion(*unit);
         if(auto position = unit->focus_file().positions().position(insertion.offset, encoding)) {
