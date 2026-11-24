@@ -52,9 +52,11 @@ import :support.prelude;
 /// "[perf:<topic>] key=value ..." at info level, and written only when the
 /// environment sets CLICE_PERF (perf_lines()), as the ecosystem's
 /// measurements do: a log a reader opens says how long a step took in its
-/// own words. Topics in use: "index" (per-file and
-/// phase timings; phase=save splits search_ms, prepare_ms, write_ms and
-/// migrate_ms), "cache" (hits and misses; why a miss rebuilds is in
+/// own words. Topics in use: "index" (per-file and phase timings;
+/// phase=save splits a save into search_ms, the search index's update,
+/// prepare_ms, the batch gathered on the event loop, write_ms, the
+/// database's write, and migrate_ms, the move onto the database's new
+/// read snapshot), "cache" (hits and misses; why a miss rebuilds is in
 /// the build's info line), "startup" (phase
 /// durations), "request" (per-request latency on the master: wait_ms =
 /// time until a worker was ready, total_ms = end-to-end), "query"
@@ -63,14 +65,15 @@ import :support.prelude;
 /// tasks: kind=pch|pcm|compile_unit with per-stage splits — compile_ms, then
 /// preamble_index_ms/flush_ms/state_write_ms for a pch, flush_ms for a
 /// pcm, index_ms/teardown_ms for a unit's compile), "compile_detail" (with
-/// CLICE_PERF=compile, compile_phases(): where one compile's time went
-/// inside clang, the totals of LLVM's time-trace phases — source_ms in
-/// included files, parse_class_ms, instantiate_function_ms, ... — each
-/// counted at its outermost; phases nest in each other and do not add
-/// up), "loop" (phase=stall: the master's event loop held up, every
-/// request waiting), "index_query" (master-side index lookups:
-/// kind=definition|declaration|references|implementation|search, files =
-/// the disk files the lookup's relation walks looked into),
+/// CLICE_PERF=compile, compile_phases(): where a compile's time went inside
+/// clang, any but a completion's, the totals of LLVM's time-trace phases —
+/// source_ms in included files, parse_class_ms, instantiate_function_ms,
+/// ... — each counted at its outermost; phases nest in each other and do
+/// not add up), "loop" (phase=stall: the master's event loop held up 200
+/// ms or more, every request waiting), "index_query" (master-side index
+/// lookups: kind=definition|declaration|references|implementation|search,
+/// file_visits = how many times the lookup's relation walks looked into a
+/// disk file, once per file and walk),
 /// "index_detail" (inside one index run: op=build splits the semantics
 /// table from projection, instantiations, finishing and the encoding of
 /// the shards and the TU index, op=preamble the document links and the
@@ -361,10 +364,10 @@ void reset_anomaly_for_testing();
 /// Whether perf lines (LOG_PERF) are written: CLICE_PERF set.
 bool perf_lines();
 
-/// Whether each compile also writes where its time went inside clang
-/// ("compile_detail"): CLICE_PERF=compile. LLVM's time-trace profiler the
-/// totals come from slows every compile by about a twentieth, which the
-/// measurements plain CLICE_PERF serves must not pay.
+/// Whether each compile but a completion's also writes where its time
+/// went inside clang ("compile_detail"): CLICE_PERF=compile. LLVM's
+/// time-trace profiler the totals come from slows every compile by about a
+/// twentieth, which the measurements plain CLICE_PERF serves must not pay.
 bool compile_phases();
 
 /// Whether the server traces its editor's LSP messages: CLICE_LSP_TRACE

@@ -1080,9 +1080,13 @@ CompilationStatus CompilationUnit::run() {
 /// classes and functions, instantiating templates. A phase counts once at
 /// its outermost, but phases nest in each other, so they do not add up.
 static CompilationStatus profiled(CompilationUnit& unit,
-                                  CompilationKind kind,
+                                  const CompilationParams& params,
                                   llvm::function_ref<CompilationStatus()> run) {
-    if(!logging::compile_phases()) {
+    // A completion's parse runs another inside it (instantiating), which
+    // stops once enough calls instantiated the template, in whatever
+    // included file it is: the profiler refuses to write events left open.
+    if(!logging::compile_phases() || params.kind == CompilationKind::Completion ||
+       params.instantiating) {
         return run();
     }
     // A granularity no phase reaches: no event is kept, only the totals.
@@ -1090,13 +1094,15 @@ static CompilationStatus profiled(CompilationUnit& unit,
     Timer timer;
     auto status = run();
     auto elapsed = timer.ms();
+    // A parse stopped halfway leaves them open too.
+    if(status != CompilationStatus::Completed) {
+        llvm::timeTraceProfilerCleanup();
+        return status;
+    }
     llvm::SmallString<2048> trace;
     llvm::raw_svector_ostream stream(trace);
     llvm::timeTraceProfilerWrite(stream);
     llvm::timeTraceProfilerCleanup();
-    if(status == CompilationStatus::SetupFail) {
-        return status;
-    }
 
     // The totals are the trace's "Total <phase>" events, durations in µs.
     std::vector<std::pair<std::string, std::int64_t>> phases;
@@ -1117,7 +1123,7 @@ static CompilationStatus profiled(CompilationUnit& unit,
     }
     LOG_PERF("compile_detail",
              "kind={} file={} total_ms={}{}",
-             kind,
+             params.kind,
              unit.file_path(unit.focus_file().file()),
              elapsed,
              line);
@@ -1135,7 +1141,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
     clang::noteBottomOfStack();
 
     std::unique_ptr<CompilationUnit> unit(new CompilationUnit(std::move(params)));
-    unit->status = profiled(*unit, unit->params.kind, [&] { return unit->run(); });
+    unit->status = profiled(*unit, unit->params, [&] { return unit->run(); });
 
     // A precompiled header the build declares that clang refuses for this
     // parse — the unit's own flags conflict with the ones it was built
@@ -1160,7 +1166,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
         again.input.pch = {};
         unit.reset();
         unit.reset(new CompilationUnit(std::move(again)));
-        unit->status = profiled(*unit, unit->params.kind, [&] { return unit->run(); });
+        unit->status = profiled(*unit, unit->params, [&] { return unit->run(); });
     }
 
     // Instantiated where the preamble ends, a template misses what the focus
@@ -1185,7 +1191,7 @@ std::unique_ptr<CompilationUnit> compile(CompilationParams params) {
         unit.reset();
         unit.reset(new CompilationUnit(std::move(again)));
         unit->instantiate = false;
-        unit->status = profiled(*unit, unit->params.kind, [&] { return unit->run(); });
+        unit->status = profiled(*unit, unit->params, [&] { return unit->run(); });
     }
     return unit;
 }

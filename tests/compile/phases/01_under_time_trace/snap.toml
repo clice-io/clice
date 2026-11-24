@@ -1,0 +1,11 @@
+[test.diagnostics]
+diagnostics = []
+
+[test.completion.completion]
+items = [
+    { label = "held", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[test.references]
+references = ["int ⟦held⟧;", "return value.⟦held⟧;"]
