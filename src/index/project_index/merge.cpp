@@ -272,10 +272,13 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // A file the parse read whose bytes the disk no longer holds leaves the
     // index stale on arrival, though no look may ever report a change: a
     // parse reading it mid-write (a save in place truncates it first) read
-    // bytes the disk held for a moment. Not one read through a module or
-    // the precompiled header: a reindex would read the same build again,
-    // which only a change reaching it rebuilds.
-    Fid moved_on;
+    // bytes the disk held for a moment. Not when the unit's last run read
+    // the same bytes, which every run reads then (a header the parse holds
+    // as embedded bytes keeps the byte order mark the disk's hash leaves
+    // out), nor for a file read through a module or the precompiled header:
+    // a reindex would read the same build again, which only a change
+    // reaching it rebuilds.
+    llvm::SmallVector<std::uint32_t> moved_on;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         llvm::StringRef path = view.path(i);
         auto hash = read_hash(i);
@@ -284,10 +287,9 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         // shard or build recorded one.
         if(hash != 0) {
             files.disk.consumed(file_ids_map[i], hash);
-            if(view.content_hash(i) != 0 && !moved_on.valid() &&
-               files.disk.seen_hash(file_ids_map[i]) != hash &&
+            if(view.content_hash(i) != 0 && files.disk.seen_hash(file_ids_map[i]) != hash &&
                files.disk.check(file_ids_map[i], hash) != vfs::DiskState::CheckResult::Fresh) {
-                moved_on = file_ids_map[i];
+                moved_on.push_back(i);
             }
         } else if(auto status = fs::status(path)) {
             hash = files.disk.unchanged_hash(file_ids_map[i], *status, baseline_before_ns);
@@ -324,18 +326,26 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // them from here on. One that holds a file by now makes the index stale
     // on arrival.
     IndexReport report;
-    if(moved_on.valid()) {
-        LOG_INFO("The index of {} read {} as the disk no longer holds it; it is indexed again",
-                 tu_path,
-                 files.resolve(moved_on));
-        report.add_reindex(tu_path_id);
-    }
     for(std::uint32_t i = 0; i < view.absent_count(); i += 1) {
         auto fid = files.intern(Spelling::absolute(view.absent(i)));
         if(files.disk.current(fid)) {
             report.add_reindex(tu_path_id);
         }
         manifest.absent.push_back(files.intern_version(fid, 0));
+    }
+    if(!moved_on.empty()) {
+        auto last = this->manifest(tu_path_id);
+        auto read_before = [&](std::uint32_t local_id) {
+            auto version = version_of[local_id];
+            return last && (last->tu_version == version ||
+                            ranges::contains(last->nodes, version.raw, &IncludeNode::file));
+        };
+        if(auto it = ranges::find_if_not(moved_on, read_before); it != moved_on.end()) {
+            LOG_INFO("The index of {} read {} as the disk no longer holds it; it is indexed again",
+                     tu_path,
+                     files.resolve(file_ids_map[*it]));
+            report.add_reindex(tu_path_id);
+        }
     }
 
     // The inputs of the imported modules and of the precompiled header
