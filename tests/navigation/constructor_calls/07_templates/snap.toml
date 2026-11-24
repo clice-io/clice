@@ -1,3 +1,52 @@
+[cards.aggregate]
+highlights = [
+    { at = "struct ⟦Pair⟧ {", kind = "text" },
+    { at = "⟦Pair⟧() = default;", kind = "text" },
+    { at = "⟦Pair⟧<T> empty() {", kind = "text" },
+    { at = "return ⟦Pair⟧<T>{};", kind = "text" },
+    { at = "⟦Pair⟧<T> zeroed() {", kind = "text" },
+    { at = "return ⟦Pair⟧<T>();", kind = "text" },
+]
+
+[cards.aggregate.hover]
+markdown = '''
+**struct** `Pair`
+
+```cpp
+template <typename T> struct Pair {
+  T first;
+  T second;
+}
+```
+'''
+range = "return ⟦Pair⟧<T>{};"
+
+[cards.aggregate.semantic_token]
+text = "Pair"
+type = "struct"
+modifiers = ["global", "template"]
+
+[cards.value_initialized]
+highlights = [
+    { at = "⟦Pair⟧() = default;", kind = "text" },
+    { at = "return ⟦Pair⟧<T>();", kind = "text" },
+]
+
+[cards.value_initialized.hover]
+markdown = '''
+**method** `Pair` · struct `Pair<T>`
+
+```cpp
+Pair() = default
+```
+'''
+range = "return ⟦Pair⟧<T>();"
+
+[cards.value_initialized.semantic_token]
+text = "Pair"
+type = "method"
+modifiers = ["member", "dependent", "constructor"]
+
 [cards.delegating]
 highlights = [
     { at = "⟦Box⟧(T first, T second);", kind = "text" },
@@ -340,6 +389,25 @@ text = "T"
 type = "typeParameter"
 modifiers = ["local"]
 
+[navigation.aggregate]
+definition = ["struct ⟦Pair⟧ {"]
+declaration = ["struct ⟦Pair⟧ {"]
+type_definition = ["struct ⟦Pair⟧ {"]
+references = [
+    "struct ⟦Pair⟧ {",
+    "⟦Pair⟧() = default;",
+    "⟦Pair⟧<T> empty() {",
+    "return ⟦Pair⟧<T>{};",
+    "⟦Pair⟧<T> zeroed() {",
+    "return ⟦Pair⟧<T>();",
+]
+
+[navigation.value_initialized]
+definition = ["⟦Pair⟧() = default;"]
+declaration = ["⟦Pair⟧() = default;"]
+type_definition = ["struct ⟦Pair⟧ {"]
+references = ["⟦Pair⟧() = default;", "return ⟦Pair⟧<T>();"]
+
 [navigation.delegating]
 definition = ["⟦Box⟧(T first, T second);"]
 declaration = ["⟦Box⟧(T first, T second);"]
@@ -473,6 +541,27 @@ definition = ["template <typename ⟦T⟧> @-2"]
 declaration = ["template <typename ⟦T⟧> @-2"]
 type_definition = ["template <typename ⟦T⟧> @-2"]
 references = ["template <typename ⟦T⟧> @-2", "⟦T⟧ build(int size) {", "return ⟦T⟧(size);"]
+
+["index cards".aggregate.hover]
+markdown = '''
+**struct** `Pair`
+
+```cpp
+template <typename T>
+struct Pair { ... }
+```
+'''
+range = "return ⟦Pair⟧<T>{};"
+
+["index cards".value_initialized.hover]
+markdown = '''
+**method** `Pair` · struct `Pair`
+
+```cpp
+Pair() = default
+```
+'''
+range = "return ⟦Pair⟧<T>();"
 
 ["index cards".delegating.hover]
 markdown = '''

@@ -1919,7 +1919,9 @@ References named_calls(const SemanticNode& node) {
         return out;
     }
     const auto* record = constructed_class(construction->type->getType());
-    if(!construction->arguments || !record) {
+    // An aggregate's braces initialize its members, calling no constructor.
+    if(!construction->arguments || !record ||
+       (construction->arguments->braced && record->isAggregate())) {
         return out;
     }
     for(const auto* member: record->decls()) {

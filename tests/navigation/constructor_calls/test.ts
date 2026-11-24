@@ -30,7 +30,9 @@ answers(
 // Read-only, the card comes from the index.
 test("index cards", async (t) => {
     const s = await t.start({ lastRule: { readonly: "on" } });
-    s.open("main.cpp", { pull: false });
+    for (const file of new Set(t.markers().map((m) => m.path))) {
+        s.open(file, { pull: false });
+    }
     await s.sync();
     for (const m of t.markers()) {
         await t.show(m.name, s.hover(m));
