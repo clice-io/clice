@@ -114,6 +114,10 @@ ZEST_CASE(IPCCancelInterruptsCompile) {
     auto turn = tmp.path("turn.cpp");
 
     WorkerHandle w;
+    // The query below runs beside the parked compile.
+    w.env = {
+        {.name = "UV_THREADPOOL_SIZE", .value = "2"}
+    };
     ZASSERT(w.spawn(true));
 
     bool test_done = false;
