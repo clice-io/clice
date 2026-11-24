@@ -413,20 +413,18 @@ ZEST_CASE(DriverKeepsAlias) {
     };
     using enum CompilerFamily;
     for(std::vector<std::string> args: {
-            std::vector<std::string>{"-msmall-data-limit=8"},
-            {"-flto"},
+            std::vector<std::string>{"-flto"},
             {"-flto=auto"},
             {"-trigraphs"},
             {"-marm"},
             {"-mmacosx-version-min=11.0"},
             {"--sysroot", "/opt/sysroot"},
-            {"-G", "8"},
             {"-std=c++20"}
     }) {
         ZEXPECT(render(args, GCC) == args);
     }
-    std::vector<std::string> unaliased = {"-G", "8"};
-    ZEXPECT(render({"-msmall-data-limit=8"}, NVCC) == unaliased);
+    std::vector<std::string> unaliased = {"-ftrigraphs"};
+    ZEXPECT(render({"-trigraphs"}, NVCC) == unaliased);
     /// A second prefix of an option names no alias.
     std::vector<std::string> standard = {"-std=c++20"};
     ZEXPECT(render({"--std=c++20"}, GCC) == standard);

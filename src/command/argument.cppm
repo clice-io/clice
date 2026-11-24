@@ -126,8 +126,8 @@ struct Arg {
     std::uint32_t opt_id = 0;
     ArgClass cls = ArgClass::Semantic;
 
-    /// The alias of the option the command wrote (`-msmall-data-limit=` for
-    /// -G), 0 when it wrote the option's own name.
+    /// The alias of the option the command wrote (`-trigraphs` for
+    /// -ftrigraphs), 0 when it wrote the option's own name.
     std::uint16_t alias = 0;
 
     /// Interned verbatim token, only for ArgClass::Unknown (nullptr otherwise).
@@ -204,8 +204,8 @@ bool keeps_alias(const Arg& arg, CompilerFamily family);
 
 /// Render one argument for the command's own driver. A GCC-style driver
 /// gets an option as the command wrote it, which another compiler may know
-/// by that name alone: GCC's `-msmall-data-limit=8` is clang's `-G 8`,
-/// which RISC-V GCC rejects. A cl-mode driver reads a `-` spelling as its
+/// by that name alone: GCC's `-trigraphs` is clang's -ftrigraphs, which
+/// GCC rejects. A cl-mode driver reads a `-` spelling as its
 /// own option where one exists (`-Wall` is `/Wall`, -Weverything) and
 /// drops the GCC-style ones it lacks, so an argument the parse unaliased
 /// out of a cl spelling (`/W3` is -Wall, `/J` -funsigned-char) is spelled

@@ -150,10 +150,10 @@ public:
     ///
     /// Entry identity is the command hash (CommandTable::command_hash), the
     /// same identity the rest of the system uses to pin a CDB entry (e.g.
-    /// clice/switchContext). A change confined to codegen-only flags (-g,
-    /// -ffunction-sections, ...) is therefore not reported as `changed` — this is
-    /// deliberate. (Optimization level -O* is semantic, not codegen-only: it
-    /// defines __OPTIMIZE__, so changing it does count.)
+    /// clice/switchContext). A change confined to options a command leaves out
+    /// (-ffunction-sections, -fno-plt, ...) is therefore not reported as
+    /// `changed` — this is deliberate. (Optimization level -O* is semantic,
+    /// not codegen-only: it defines __OPTIMIZE__, so changing it does count.)
     ///
     /// If the file cannot be read or does not hold a JSON array, the old
     /// entries are kept and nullopt is returned — the caller must retry
