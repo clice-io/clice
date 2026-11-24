@@ -89,6 +89,27 @@ std::vector<index::Site> mismatched_declarations(const index::IndexQuery& index,
     return result;
 }
 
+/// The types a symbol is declared with, its TypeDefinition relations
+/// without a range.
+llvm::SmallVector<index::IndexQuery::Target> declared_types(const index::IndexQuery& index,
+                                                            index::IndexQuery::Target of) {
+    llvm::SmallVector<index::IndexQuery::Target> types;
+    llvm::DenseSet<index::SymbolHash> seen;
+    index.for_each_relation(of.symbol,
+                            of.anchor,
+                            RelationKind::TypeDefinition,
+                            index::IndexQuery::Order::DiskFirst,
+                            {.preamble = false},
+                            [&](const index::IndexSource& source, const index::Relation& relation) {
+                                if(!relation.range.valid() && seen.insert(relation.target).second) {
+                                    types.push_back(
+                                        {.symbol = relation.target, .anchor = source.file});
+                                }
+                                return true;
+                            });
+    return types;
+}
+
 /// The first block of a namespace in `file`.
 std::optional<index::Site> first_block(const index::IndexQuery& index,
                                        index::SymbolHash hash,
@@ -389,9 +410,9 @@ std::vector<PlacedHighlight> document_highlights(const index::IndexQuery& index,
     return result;
 }
 
-std::vector<index::Site> type_definition(const index::IndexQuery& index,
-                                         const index::IndexQuery::Cursor& cursor,
-                                         index::SymbolHash symbol) {
+llvm::SmallVector<index::IndexQuery::Target> named_types(const index::IndexQuery& index,
+                                                         const index::IndexQuery::Cursor& cursor,
+                                                         index::SymbolHash symbol) {
     auto anchor = cursor.site.file;
     llvm::SmallVector<index::IndexQuery::Target> found;
     if(auto source = index.serving(anchor)) {
@@ -405,33 +426,24 @@ std::vector<index::Site> type_definition(const index::IndexQuery& index,
                                         return true;
                                     });
     }
-    auto declared_type = [&](const index::IndexQuery::Target& of) {
-        llvm::SmallVector<index::IndexQuery::Target> types;
-        llvm::DenseSet<index::SymbolHash> seen;
-        index.for_each_relation(
-            of.symbol,
-            of.anchor,
-            RelationKind::TypeDefinition,
-            index::IndexQuery::Order::DiskFirst,
-            {.preamble = false},
-            [&](const index::IndexSource& source, const index::Relation& relation) {
-                if(!relation.range.valid() && seen.insert(relation.target).second) {
-                    types.push_back({.symbol = relation.target, .anchor = source.file});
-                }
-                return true;
-            });
-        return types;
-    };
-    if(found.empty()) {
-        // A type is its own type definition.
-        if(auto info = index.symbol_info(symbol, anchor);
-           info && (is_class(info->kind) || info->kind == SymbolKind::Enum ||
-                    info->kind == SymbolKind::Protocol || info->kind == SymbolKind::Type)) {
-            found.push_back({.symbol = symbol, .anchor = anchor});
-        } else {
-            found = declared_type({.symbol = symbol, .anchor = anchor});
-        }
+    if(!found.empty()) {
+        return found;
     }
+    // A type is its own type definition.
+    if(auto info = index.symbol_info(symbol, anchor);
+       info && (is_class(info->kind) || info->kind == SymbolKind::Enum ||
+                info->kind == SymbolKind::Protocol || info->kind == SymbolKind::Type)) {
+        return {
+            {.symbol = symbol, .anchor = anchor}
+        };
+    }
+    return declared_types(index, {.symbol = symbol, .anchor = anchor});
+}
+
+std::vector<index::Site> type_definition(const index::IndexQuery& index,
+                                         const index::IndexQuery::Cursor& cursor,
+                                         index::SymbolHash symbol) {
+    auto found = named_types(index, cursor, symbol);
     // An alias leads on to the type it names, through aliases of aliases.
     llvm::DenseSet<index::SymbolHash> seen;
     for(std::uint32_t i = 0; i < found.size(); i += 1) {
@@ -441,7 +453,7 @@ std::vector<index::Site> type_definition(const index::IndexQuery& index,
            index::has_flag(named->flags, index::SymbolFlags::TemplateParameter)) {
             continue;
         }
-        found.append(declared_type(target));
+        found.append(declared_types(index, target));
     }
     std::vector<index::Site> result;
     for(auto target: found) {

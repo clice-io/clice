@@ -1,0 +1,124 @@
+[cards.alias]
+highlights = [
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "auto a = ⟦Alias⟧(1);", kind = "text" },
+]
+
+[cards.alias.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "auto a = ⟦Alias⟧(1);"
+
+[cards.alias.semantic_token]
+text = "Alias"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.deduced]
+highlights = [
+    { at = "⟦Box⟧(T value);", kind = "text" },
+    { at = "auto b = ⟦Box⟧(2);", kind = "text" },
+    { at = "Box c⟦(⟧3);", kind = "text" },
+]
+
+[cards.deduced.hover]
+markdown = '''
+**method** `Box` · struct `Box<…>`
+
+```cpp
+Box(T value)
+```
+**Template arguments:**
+```cpp
+T = int
+```
+'''
+range = "auto b = ⟦Box⟧(2);"
+
+[cards.deduced.semantic_token]
+text = "Box"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.declarator]
+highlights = [
+    { at = "struct ⟦Box⟧ {", kind = "text" },
+    { at = "⟦Box⟧(T value);", kind = "text" },
+    { at = "auto b = ⟦Box⟧(2);", kind = "text" },
+    { at = "⟦Box⟧ c(3);", kind = "text" },
+]
+
+[cards.declarator.hover]
+markdown = '''
+**struct** `Box<…>`
+
+```cpp
+template <typename T> struct Box {}
+```
+**Template arguments:**
+```cpp
+T = int
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
+'''
+range = "⟦Box⟧ c(3);"
+
+[cards.declarator.semantic_token]
+text = "Box"
+type = "struct"
+modifiers = ["global", "template"]
+
+[navigation.alias]
+definition = ["⟦Widget⟧(int size);"]
+declaration = ["⟦Widget⟧(int size);"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = ["⟦Widget⟧(int size);", "auto a = ⟦Alias⟧(1);"]
+
+[navigation.deduced]
+definition = ["⟦Box⟧(T value);"]
+declaration = ["⟦Box⟧(T value);"]
+type_definition = ["struct ⟦Box⟧ {"]
+references = ["⟦Box⟧(T value);", "auto b = ⟦Box⟧(2);", "Box c⟦(⟧3);"]
+
+[navigation.declarator]
+definition = ["struct ⟦Box⟧ {"]
+declaration = ["struct ⟦Box⟧ {"]
+type_definition = ["struct ⟦Box⟧ {"]
+references = ["struct ⟦Box⟧ {", "⟦Box⟧(T value);", "auto b = ⟦Box⟧(2);", "⟦Box⟧ c(3);"]
+
+["index cards".alias.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "auto a = ⟦Alias⟧(1);"
+
+["index cards".deduced.hover]
+markdown = '''
+**method** `Box` · struct `Box`
+
+```cpp
+Box(T value)
+```
+'''
+range = "auto b = ⟦Box⟧(2);"
+
+["index cards".declarator.hover]
+markdown = '''
+**struct** `Box`
+
+```cpp
+template <typename T>
+struct Box { ... }
+```
+'''
+range = "⟦Box⟧ c(3);"

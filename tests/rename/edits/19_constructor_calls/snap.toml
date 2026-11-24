@@ -1,0 +1,59 @@
+[answers.base.rename]
+compiles = true
+
+[answers.base.rename.edits]
+"main.cpp" = '''
+-struct Base {
+-    Base(int value);
++struct Root {
++    Root(int value);
+ };
+
+-struct Derived : Base {
+-    using Base::Base;
++struct Derived : Root {
++    using Root::Root;
+ };
+
+-using Alias = Base;
++using Alias = Root;
+
+ void build() {
+-    auto a = Base(1);
++    auto a = Root(1);
+     auto b = Alias(2);
+     auto c = Derived(3);
+-    auto* d = new Base(4);
++    auto* d = new Root(4);
+ }
+'''
+
+[answers.call.rename]
+compiles = true
+
+[answers.call.rename.edits]
+"main.cpp" = '''
+-struct Base {
+-    Base(int value);
++struct Root {
++    Root(int value);
+ };
+
+-struct Derived : Base {
+-    using Base::Base;
++struct Derived : Root {
++    using Root::Root;
+ };
+
+-using Alias = Base;
++using Alias = Root;
+
+ void build() {
+-    auto a = Base(1);
++    auto a = Root(1);
+     auto b = Alias(2);
+     auto c = Derived(3);
+-    auto* d = new Base(4);
++    auto* d = new Root(4);
+ }
+'''

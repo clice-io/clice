@@ -2325,8 +2325,8 @@ ZEST_CASE(OccurrenceCoverage) {
     ZEXPECT(spelled_in("delegating") ==
             std::vector<Spelled>{
                 {"Delegating", SymbolKind::Method, {RelationKind::Definition}},
-                {"Delegating", SymbolKind::Struct, {RelationKind::Reference} },
-                {"(",          SymbolKind::Method, {RelationKind::Candidate} },
+                {"Delegating", SymbolKind::Method, {RelationKind::Candidate} },
+                {"(",          SymbolKind::Method, {RelationKind::Implied}   },
                 {"T",          SymbolKind::Type,   {RelationKind::Reference} },
     });
 }

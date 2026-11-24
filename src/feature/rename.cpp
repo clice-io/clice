@@ -641,9 +641,8 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
             RenameEdit{.site = token_site(*text.source, file, site.path, offset, old_name.size())});
     };
     // The offsets of the old name a site spells; none when the file's index
-    // is not current, or the site spells another name — punctuation (a
-    // construction's paren), a keyword (the destructor `delete` runs), or
-    // a macro's invocation, which a note lists.
+    // is not current, or the site spells another name — a keyword (the
+    // destructor `delete` runs) or a macro's invocation, which a note lists.
     const auto& cxx_keywords = keywords(cxx());
     auto spelled_at = [&](const index::Site& site) -> llvm::SmallVector<std::uint32_t, 1> {
         auto& text = text_of(site.file);
@@ -673,6 +672,13 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                         RelationKind::Declaration,
                         RelationKind::Reference,
                         RelationKind::Candidate}) {
+            // A constructor is called by a name of the class it constructs —
+            // its own, an alias's, a class's inheriting it — whose own
+            // references hold the ones spelling the class.
+            if(kind == RelationKind::Reference &&
+               index::name_form(member.symbol.flags) == index::NameForm::Constructor) {
+                continue;
+            }
             for(auto& site: query.sites(member.symbol.hash, member.site.file, kind)) {
                 tied.insert(site.file);
                 for(auto offset: spelled_at(site)) {

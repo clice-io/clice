@@ -1762,6 +1762,100 @@ void nns_references(clang::NestedNameSpecifierLoc NNSL, References& out) {
     }
 }
 
+/// Where a written type's name is: the class, alias or template it refers
+/// to there; invalid for a type no declaration's name writes (a builtin, a
+/// template parameter an instantiation substituted).
+clang::SourceLocation type_name(const clang::TypeSourceInfo& written) {
+    References names;
+    type_loc_references(written.getTypeLoc().getUnqualifiedLoc(), names, nullptr);
+    return names.empty() ? clang::SourceLocation() : names.front().location;
+}
+
+/// The class a construction a template leaves open constructs: the one its
+/// type names, or the pattern of the class template a dependent
+/// specialization names (`Box<T>`).
+const clang::CXXRecordDecl* constructed_class(clang::QualType type) {
+    if(const auto* record = type->getAsCXXRecordDecl()) {
+        return record->getDefinition();
+    }
+    if(const auto* specialization = type->getAs<clang::TemplateSpecializationType>()) {
+        if(const auto* pattern = llvm::dyn_cast_if_present<clang::ClassTemplateDecl>(
+               specialization->getTemplateName().getAsTemplateDecl())) {
+            return pattern->getTemplatedDecl()->getDefinition();
+        }
+    }
+    return nullptr;
+}
+
+/// The constructors a class's name calls where it writes a construction —
+/// `Widget(1)`, `Widget{1}`, `new Widget(1)`, the `Base` of `: Base(1)`: a
+/// reference at the name to the one clang resolves; inside a template,
+/// which leaves the choice to instantiation, a candidate reference to every
+/// constructor of the class taking that many arguments, which the
+/// parenthesis leads to. None where no written constructor runs (an
+/// implicit or aggregate construction) or no declaration's name writes the
+/// type.
+References named_calls(const SemanticNode& node) {
+    References out;
+    auto call = [&](const clang::TypeSourceInfo* written, const clang::CXXConstructorDecl* called) {
+        if(!called->isImplicit()) {
+            if(auto name = type_name(*written); name.isValid()) {
+                refer(out, called, RelationKind::Reference, name);
+            }
+        }
+    };
+    auto construct = [&](const clang::TypeSourceInfo* written, const clang::Expr* init) {
+        if(auto* construction = llvm::dyn_cast<clang::CXXConstructExpr>(init->IgnoreImplicit())) {
+            call(written, decls::constructor_of(construction));
+        }
+    };
+    auto candidates =
+        [&](const clang::TypeSourceInfo* written, unsigned count, clang::SourceLocation paren) {
+            const auto* record = constructed_class(written->getType());
+            auto name = type_name(*written);
+            if(!record || name.isInvalid()) {
+                return;
+            }
+            for(const auto* constructor: record->ctors()) {
+                if(!constructor->isImplicit() && constructor->getMinRequiredArguments() <= count &&
+                   (count <= constructor->getNumParams() || constructor->isVariadic())) {
+                    refer(out, constructor, RelationKind::Candidate, name);
+                    refer(out, constructor, RelationKind::Implied, paren);
+                }
+            }
+        };
+
+    if(const auto* init = node.get<clang::CXXCtorInitializer>()) {
+        if(!init->isBaseInitializer() && !init->isDelegatingInitializer()) {
+            return out;
+        }
+        if(const auto* list = llvm::dyn_cast<clang::ParenListExpr>(init->getInit())) {
+            candidates(init->getTypeSourceInfo(), list->getNumExprs(), list->getLParenLoc());
+        } else {
+            construct(init->getTypeSourceInfo(), init->getInit());
+        }
+        return out;
+    }
+    const auto* S = node.get<clang::Stmt>();
+    if(const auto* TOE = llvm::dyn_cast_if_present<clang::CXXTemporaryObjectExpr>(S)) {
+        call(TOE->getTypeSourceInfo(), decls::constructor_of(TOE));
+    } else if(const auto* FCE = llvm::dyn_cast_if_present<clang::CXXFunctionalCastExpr>(S);
+              FCE && FCE->getCastKind() == clang::CK_ConstructorConversion) {
+        construct(FCE->getTypeInfoAsWritten(), FCE->getSubExpr());
+    } else if(const auto* NE = llvm::dyn_cast_if_present<clang::CXXNewExpr>(S);
+              NE && !NE->isArray()) {
+        if(const auto* construction = NE->getConstructExpr()) {
+            call(NE->getAllocatedTypeSourceInfo(), decls::constructor_of(construction));
+        } else if(const auto* list =
+                      llvm::dyn_cast_if_present<clang::ParenListExpr>(NE->getInitializer())) {
+            candidates(NE->getAllocatedTypeSourceInfo(), list->getNumExprs(), list->getLParenLoc());
+        }
+    } else if(const auto* UCE = llvm::dyn_cast_if_present<clang::CXXUnresolvedConstructExpr>(S)) {
+        candidates(UCE->getTypeSourceInfo(), UCE->getNumArgs(), UCE->getLParenLoc());
+    }
+    return out;
+}
+
 void stmt_references(const clang::Stmt* S,
                      References& out,
                      types::TemplateResolver* resolver,
@@ -1851,7 +1945,7 @@ void stmt_references(const clang::Stmt* S,
     /// new Foo() / delete p
     /// ^~~~ reference to the operator new / operator delete it selects and
     /// the destructor delete runs; `new` also leads to the constructor,
-    /// which the parentheses reference.
+    /// which the class's name calls.
     if(auto* NE = llvm::dyn_cast<clang::CXXNewExpr>(S)) {
         auto keyword = [&](const clang::NamedDecl* decl) {
             return keyword_after_scope(decl->getASTContext(), NE->getBeginLoc(), NE->isGlobalNew());
@@ -1865,6 +1959,7 @@ void stmt_references(const clang::Stmt* S,
                 refer(out, constructor, RelationKind::Implied, keyword(constructor));
             }
         }
+        out.append(named_calls(SemanticNode(S)));
         return;
     }
     if(auto* DE = llvm::dyn_cast<clang::CXXDeleteExpr>(S)) {
@@ -1888,7 +1983,9 @@ void stmt_references(const clang::Stmt* S,
     }
 
     /// Foo value(1); / Foo value{};
-    ///          ^~~~ reference to the selected constructor
+    ///          ^~~~ reference to the selected constructor; in `Foo(1)` the
+    /// class's name calls it, and the parenthesis leads there
+    /// (resolve_references with tree context)
     if(auto* CE = llvm::dyn_cast<clang::CXXConstructExpr>(S)) {
         /// Implicit constructions have no written parens: the reference
         /// carries an invalid location.
@@ -1896,6 +1993,9 @@ void stmt_references(const clang::Stmt* S,
               decls::constructor_of(CE),
               RelationKind::Reference,
               CE->getParenOrBraceRange().getBegin());
+        if(llvm::isa<clang::CXXTemporaryObjectExpr>(CE)) {
+            out.append(named_calls(SemanticNode(S)));
+        }
         return;
     }
 
@@ -2085,8 +2185,25 @@ void stmt_references(const clang::Stmt* S,
         refer_conversion(out, CSCE, CSCE->getLParenLoc());
         return;
     }
+    /// Widget(1)
+    /// ^~~~ reference to the constructor the class's name calls
+    /// Target(source) / double(m)
+    ///       ^          ^~~~ reference to the conversion function the cast
+    /// calls: after a type's name, the name a conversion function has, at
+    /// the parenthesis, as at a C-style cast's
     if(auto* FCE = llvm::dyn_cast<clang::CXXFunctionalCastExpr>(S)) {
-        refer_conversion(out, FCE, FCE->getBeginLoc());
+        out.append(named_calls(SemanticNode(S)));
+        refer_conversion(out,
+                         FCE,
+                         type_name(*FCE->getTypeInfoAsWritten()).isValid() ? FCE->getLParenLoc()
+                                                                           : FCE->getBeginLoc());
+        return;
+    }
+
+    /// Widget(value) inside a template, `value` dependent
+    /// ^~~~ candidate reference to the constructors it may run
+    if(llvm::isa<clang::CXXUnresolvedConstructExpr>(S)) {
+        out.append(named_calls(SemanticNode(S)));
         return;
     }
 
@@ -2196,7 +2313,8 @@ llvm::SmallVector<NameOccurrence, 2> spelled(const References& references) {
                            reference.kind,
                            reference.location,
                            reference.name_end,
-                           reference.later_piece});
+                           reference.later_piece,
+                           reference.outranked});
         }
     }
     return out;
@@ -2254,7 +2372,67 @@ llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
         return out;
     }
 
-    return resolve_references(entry.node, resolver);
+    auto out = resolve_references(entry.node, resolver);
+    /// Widget(1) / new const Widget(1) / : Base(1)
+    /// ^~~~ the class gives way to the constructor its name calls
+    if(entry.node.get<clang::TypeLoc>()) {
+        auto owner = entry.parent;
+        while(owner != Semantics::invalid) {
+            const auto* type = semantics.node(owner).node.get<clang::TypeLoc>();
+            if(!type || !type->getAs<clang::QualifiedTypeLoc>()) {
+                break;
+            }
+            owner = semantics.node(owner).parent;
+        }
+        if(owner != Semantics::invalid) {
+            auto calls = named_calls(semantics.node(owner).node);
+            for(auto& reference: out) {
+                reference.outranked = ranges::any_of(calls, [&](const Reference& call) {
+                    return !call.kind.is_one_of(RelationKind::Implied) &&
+                           call.location == reference.location;
+                });
+            }
+        }
+    }
+    if(const auto* construct = entry.node.get<clang::CXXConstructExpr>();
+       construct && calling_name(semantics, index).isValid()) {
+        for(auto& reference: out) {
+            if(reference.location == construct->getParenOrBraceRange().getBegin()) {
+                reference.kind = RelationKind::Implied;
+            }
+        }
+    }
+    return out;
+}
+
+clang::SourceLocation calling_name(const Semantics& semantics, std::uint32_t index) {
+    const auto* construct = semantics.node(index).node.get<clang::CXXConstructExpr>();
+    if(!construct) {
+        return {};
+    }
+    // A cast, a new-expression or an initializer writes the construction it
+    // holds, which clang wraps in what it needs to destroy the temporary.
+    auto owner = index;
+    if(!llvm::isa<clang::CXXTemporaryObjectExpr>(construct)) {
+        owner = semantics.node(index).parent;
+        while(owner != Semantics::invalid && llvm::isa_and_present<clang::FullExpr,
+                                                                   clang::MaterializeTemporaryExpr,
+                                                                   clang::CXXBindTemporaryExpr,
+                                                                   clang::ImplicitCastExpr>(
+                                                 semantics.node(owner).node.get<clang::Stmt>())) {
+            owner = semantics.node(owner).parent;
+        }
+        if(owner == Semantics::invalid) {
+            return {};
+        }
+    }
+    const auto* constructor = decls::constructor_of(construct);
+    for(const auto& call: named_calls(semantics.node(owner).node)) {
+        if(call.kind.is_one_of(RelationKind::Reference) && call.decl == constructor) {
+            return call.location;
+        }
+    }
+    return {};
 }
 
 const clang::ObjCMethodDecl* objc_selector_target(const Semantics& semantics, std::uint32_t index) {
@@ -2425,23 +2603,9 @@ llvm::SmallVector<Reference, 2> resolve_references(const SemanticNode& node,
                       RelationKind::Reference,
                       init->getMemberLocation());
             }
-            /// template <class T> struct X { X() : X(T{}) {} };
-            ///                                      ^~~~ candidate: every
-            /// constructor taking that many arguments, dependent ones leaving
-            /// the choice to instantiation. Inside a template a
-            /// delegating initializer reads as one of the base.
-            auto* PLE = llvm::dyn_cast_if_present<clang::ParenListExpr>(init->getInit());
-            auto* type = init->getTypeSourceInfo();
-            if(auto* record = type ? type->getType()->getAsCXXRecordDecl() : nullptr;
-               PLE && record && record->hasDefinition()) {
-                auto count = PLE->getNumExprs();
-                for(auto* ctor: record->ctors()) {
-                    if(ctor->getMinRequiredArguments() <= count &&
-                       (count <= ctor->getNumParams() || ctor->isVariadic())) {
-                        refer(out, ctor, RelationKind::Candidate, PLE->getLParenLoc());
-                    }
-                }
-            }
+            /// Foo() : Base(1) {} / Foo() : Foo(1) {}
+            ///         ^~~~ reference to the constructor it calls
+            out.append(named_calls(node));
             break;
         }
 

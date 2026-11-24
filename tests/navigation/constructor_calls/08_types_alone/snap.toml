@@ -1,0 +1,325 @@
+[cards.parameter]
+highlights = [
+    { at = "struct ⟦Widget⟧ {", kind = "text" },
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "void build(⟦Widget⟧ param) {", kind = "text" },
+    { at = "⟦Widget⟧ d(1);", kind = "text" },
+    { at = "auto e = static_cast<⟦Widget⟧>(2);", kind = "text" },
+    { at = "auto* f = make<⟦Widget⟧>(3);", kind = "text" },
+]
+
+[cards.parameter.hover]
+markdown = '''
+**struct** `Widget`
+
+```cpp
+struct Widget {}
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
+'''
+range = "void build(⟦Widget⟧ param) {"
+
+[cards.parameter.semantic_token]
+text = "Widget"
+type = "struct"
+modifiers = ["global"]
+
+[cards.aggregate]
+highlights = [
+    { at = "struct ⟦Point⟧ {", kind = "text" },
+    { at = "auto a = ⟦Point⟧{1, 2};", kind = "text" },
+]
+
+[cards.aggregate.hover]
+markdown = '''
+**struct** `Point`
+
+```cpp
+struct Point {
+  int x;
+  int y;
+}
+```
+**Size:** 8 bytes
+**Alignment:** 4 bytes
+'''
+range = "auto a = ⟦Point⟧{1, 2};"
+
+[cards.aggregate.semantic_token]
+text = "Point"
+type = "struct"
+modifiers = ["global"]
+
+[cards.implicit]
+highlights = [
+    { at = "struct ⟦Plain⟧ {", kind = "text" },
+    { at = "auto b = ⟦Plain⟧();", kind = "text" },
+    { at = "auto c = ⟦Plain⟧{};", kind = "text" },
+]
+
+[cards.implicit.hover]
+markdown = '''
+**struct** `Plain`
+
+```cpp
+struct Plain {
+  int value;
+}
+```
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "auto b = ⟦Plain⟧();"
+
+[cards.implicit.semantic_token]
+text = "Plain"
+type = "struct"
+modifiers = ["global"]
+
+[cards.implicit_braced]
+highlights = [
+    { at = "struct ⟦Plain⟧ {", kind = "text" },
+    { at = "auto b = ⟦Plain⟧();", kind = "text" },
+    { at = "auto c = ⟦Plain⟧{};", kind = "text" },
+]
+
+[cards.implicit_braced.hover]
+markdown = '''
+**struct** `Plain`
+
+```cpp
+struct Plain {
+  int value;
+}
+```
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "auto c = ⟦Plain⟧{};"
+
+[cards.implicit_braced.semantic_token]
+text = "Plain"
+type = "struct"
+modifiers = ["global"]
+
+[cards.declarator]
+highlights = [
+    { at = "struct ⟦Widget⟧ {", kind = "text" },
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "void build(⟦Widget⟧ param) {", kind = "text" },
+    { at = "⟦Widget⟧ d(1);", kind = "text" },
+    { at = "auto e = static_cast<⟦Widget⟧>(2);", kind = "text" },
+    { at = "auto* f = make<⟦Widget⟧>(3);", kind = "text" },
+]
+
+[cards.declarator.hover]
+markdown = '''
+**struct** `Widget`
+
+```cpp
+struct Widget {}
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
+'''
+range = "⟦Widget⟧ d(1);"
+
+[cards.declarator.semantic_token]
+text = "Widget"
+type = "struct"
+modifiers = ["global"]
+
+[cards.cast_type]
+highlights = [
+    { at = "struct ⟦Widget⟧ {", kind = "text" },
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "void build(⟦Widget⟧ param) {", kind = "text" },
+    { at = "⟦Widget⟧ d(1);", kind = "text" },
+    { at = "auto e = static_cast<⟦Widget⟧>(2);", kind = "text" },
+    { at = "auto* f = make<⟦Widget⟧>(3);", kind = "text" },
+]
+
+[cards.cast_type.hover]
+markdown = '''
+**struct** `Widget`
+
+```cpp
+struct Widget {}
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
+'''
+range = "auto e = static_cast<⟦Widget⟧>(2);"
+
+[cards.cast_type.semantic_token]
+text = "Widget"
+type = "struct"
+modifiers = ["global"]
+
+[cards.argument]
+highlights = [
+    { at = "struct ⟦Widget⟧ {", kind = "text" },
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "void build(⟦Widget⟧ param) {", kind = "text" },
+    { at = "⟦Widget⟧ d(1);", kind = "text" },
+    { at = "auto e = static_cast<⟦Widget⟧>(2);", kind = "text" },
+    { at = "auto* f = make<⟦Widget⟧>(3);", kind = "text" },
+]
+
+[cards.argument.hover]
+markdown = '''
+**struct** `Widget`
+
+```cpp
+struct Widget {}
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
+'''
+range = "auto* f = make<⟦Widget⟧>(3);"
+
+[cards.argument.semantic_token]
+text = "Widget"
+type = "struct"
+modifiers = ["global"]
+
+[navigation.parameter]
+definition = ["struct ⟦Widget⟧ {"]
+declaration = ["struct ⟦Widget⟧ {"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = [
+    "struct ⟦Widget⟧ {",
+    "⟦Widget⟧(int size);",
+    "void build(⟦Widget⟧ param) {",
+    "⟦Widget⟧ d(1);",
+    "auto e = static_cast<⟦Widget⟧>(2);",
+    "auto* f = make<⟦Widget⟧>(3);",
+]
+
+[navigation.aggregate]
+definition = ["struct ⟦Point⟧ {"]
+declaration = ["struct ⟦Point⟧ {"]
+type_definition = ["struct ⟦Point⟧ {"]
+references = ["struct ⟦Point⟧ {", "auto a = ⟦Point⟧{1, 2};"]
+
+[navigation.implicit]
+definition = ["struct ⟦Plain⟧ {"]
+declaration = ["struct ⟦Plain⟧ {"]
+type_definition = ["struct ⟦Plain⟧ {"]
+references = ["struct ⟦Plain⟧ {", "auto b = ⟦Plain⟧();", "auto c = ⟦Plain⟧{};"]
+
+[navigation.implicit_braced]
+definition = ["struct ⟦Plain⟧ {"]
+declaration = ["struct ⟦Plain⟧ {"]
+type_definition = ["struct ⟦Plain⟧ {"]
+references = ["struct ⟦Plain⟧ {", "auto b = ⟦Plain⟧();", "auto c = ⟦Plain⟧{};"]
+
+[navigation.declarator]
+definition = ["struct ⟦Widget⟧ {"]
+declaration = ["struct ⟦Widget⟧ {"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = [
+    "struct ⟦Widget⟧ {",
+    "⟦Widget⟧(int size);",
+    "void build(⟦Widget⟧ param) {",
+    "⟦Widget⟧ d(1);",
+    "auto e = static_cast<⟦Widget⟧>(2);",
+    "auto* f = make<⟦Widget⟧>(3);",
+]
+
+[navigation.cast_type]
+definition = ["struct ⟦Widget⟧ {"]
+declaration = ["struct ⟦Widget⟧ {"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = [
+    "struct ⟦Widget⟧ {",
+    "⟦Widget⟧(int size);",
+    "void build(⟦Widget⟧ param) {",
+    "⟦Widget⟧ d(1);",
+    "auto e = static_cast<⟦Widget⟧>(2);",
+    "auto* f = make<⟦Widget⟧>(3);",
+]
+
+[navigation.argument]
+definition = ["struct ⟦Widget⟧ {"]
+declaration = ["struct ⟦Widget⟧ {"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = [
+    "struct ⟦Widget⟧ {",
+    "⟦Widget⟧(int size);",
+    "void build(⟦Widget⟧ param) {",
+    "⟦Widget⟧ d(1);",
+    "auto e = static_cast<⟦Widget⟧>(2);",
+    "auto* f = make<⟦Widget⟧>(3);",
+]
+
+["index cards".parameter.hover]
+markdown = '''
+**struct** `Widget`
+
+```cpp
+struct Widget { ... }
+```
+'''
+range = "void build(⟦Widget⟧ param) {"
+
+["index cards".aggregate.hover]
+markdown = '''
+**struct** `Point`
+
+```cpp
+struct Point { ... }
+```
+'''
+range = "auto a = ⟦Point⟧{1, 2};"
+
+["index cards".implicit.hover]
+markdown = '''
+**struct** `Plain`
+
+```cpp
+struct Plain { ... }
+```
+'''
+range = "auto b = ⟦Plain⟧();"
+
+["index cards".implicit_braced.hover]
+markdown = '''
+**struct** `Plain`
+
+```cpp
+struct Plain { ... }
+```
+'''
+range = "auto c = ⟦Plain⟧{};"
+
+["index cards".declarator.hover]
+markdown = '''
+**struct** `Widget`
+
+```cpp
+struct Widget { ... }
+```
+'''
+range = "⟦Widget⟧ d(1);"
+
+["index cards".cast_type.hover]
+markdown = '''
+**struct** `Widget`
+
+```cpp
+struct Widget { ... }
+```
+'''
+range = "auto e = static_cast<⟦Widget⟧>(2);"
+
+["index cards".argument.hover]
+markdown = '''
+**struct** `Widget`
+
+```cpp
+struct Widget { ... }
+```
+'''
+range = "auto* f = make<⟦Widget⟧>(3);"

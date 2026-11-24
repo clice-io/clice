@@ -76,13 +76,20 @@ std::vector<PlacedHighlight> document_highlights(const index::IndexQuery& index,
 std::vector<protocol::DocumentHighlight> to_protocol(llvm::ArrayRef<PlacedHighlight> highlights,
                                                      PositionEncoding encoding);
 
-/// Go-to-type-definition of a cursor's symbol: the declarations its
-/// type names — at a name of a member of a template's specialization,
-/// the type the specialization gives it (TypeDefinition relations
-/// spanning the cursor in the index serving its file); at a type, the
-/// type itself; elsewhere the type it is declared with (the relations
-/// without a range). An alias leads on to the type it names. The
-/// cursor's own site drops out unless it is the only one.
+/// The declarations the type of a cursor's symbol names — at a name of a
+/// member of a template's specialization, the type the specialization
+/// gives it, at a class's name calling a constructor it inherits, that
+/// class (TypeDefinition relations spanning the cursor in the index
+/// serving its file); at a type, the type itself; elsewhere the type it is
+/// declared with (the relations without a range), a constructor's its
+/// class.
+llvm::SmallVector<index::IndexQuery::Target> named_types(const index::IndexQuery& index,
+                                                         const index::IndexQuery::Cursor& cursor,
+                                                         index::SymbolHash symbol);
+
+/// Go-to-type-definition of a cursor's symbol: the declarations named_types
+/// gives, an alias leading on to the type it names. The cursor's own site
+/// drops out unless it is the only one.
 std::vector<index::Site> type_definition(const index::IndexQuery& index,
                                          const index::IndexQuery::Cursor& cursor,
                                          index::SymbolHash symbol);

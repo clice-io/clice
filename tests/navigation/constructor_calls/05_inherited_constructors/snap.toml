@@ -1,0 +1,77 @@
+[cards.cast]
+highlights = [
+    { at = "⟦Base⟧(int value);", kind = "text" },
+    { at = "using Base::⟦Base⟧;", kind = "text" },
+    { at = "auto a = ⟦Derived⟧(1);", kind = "text" },
+    { at = "auto* b = new ⟦Derived⟧(2);", kind = "text" },
+]
+
+[cards.cast.hover]
+markdown = '''
+**method** `Base` · struct `Base`
+
+```cpp
+Base(int value)
+```
+'''
+range = "auto a = ⟦Derived⟧(1);"
+
+[cards.cast.semantic_token]
+text = "Derived"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.allocated]
+highlights = [
+    { at = "⟦Base⟧(int value);", kind = "text" },
+    { at = "using Base::⟦Base⟧;", kind = "text" },
+    { at = "auto a = ⟦Derived⟧(1);", kind = "text" },
+    { at = "auto* b = new ⟦Derived⟧(2);", kind = "text" },
+]
+
+[cards.allocated.hover]
+markdown = '''
+**method** `Base` · struct `Base`
+
+```cpp
+Base(int value)
+```
+'''
+range = "auto* b = new ⟦Derived⟧(2);"
+
+[cards.allocated.semantic_token]
+text = "Derived"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[navigation.cast]
+definition = ["⟦Base⟧(int value);"]
+declaration = ["⟦Base⟧(int value);"]
+type_definition = ["struct ⟦Derived⟧ : Base {"]
+references = ["⟦Base⟧(int value);", "using Base::⟦Base⟧;", "auto a = ⟦Derived⟧(1);", "auto* b = new ⟦Derived⟧(2);"]
+
+[navigation.allocated]
+definition = ["⟦Base⟧(int value);"]
+declaration = ["⟦Base⟧(int value);"]
+type_definition = ["struct ⟦Derived⟧ : Base {"]
+references = ["⟦Base⟧(int value);", "using Base::⟦Base⟧;", "auto a = ⟦Derived⟧(1);", "auto* b = new ⟦Derived⟧(2);"]
+
+["index cards".cast.hover]
+markdown = '''
+**method** `Base` · struct `Base`
+
+```cpp
+Base(int value)
+```
+'''
+range = "auto a = ⟦Derived⟧(1);"
+
+["index cards".allocated.hover]
+markdown = '''
+**method** `Base` · struct `Base`
+
+```cpp
+Base(int value)
+```
+'''
+range = "auto* b = new ⟦Derived⟧(2);"

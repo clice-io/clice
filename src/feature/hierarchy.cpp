@@ -2,6 +2,7 @@ module clice;
 
 import :feature.document_symbols;
 import :feature.hierarchy;
+import :feature.navigation;
 import :feature.protocol;
 import :index.query;
 import :index.query.locate;
@@ -472,6 +473,15 @@ std::vector<protocol::TypeHierarchyItem>
         if(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
            kind == SymbolKind::Union || kind == SymbolKind::Protocol) {
             items.push_back(item_of<protocol::TypeHierarchyItem>(query, located, encoding));
+        } else if(index::name_form(located.symbol.flags) == index::NameForm::Constructor) {
+            // A constructor's name, declaring or calling it, names the class
+            // it constructs.
+            for(auto type: named_types(query, cursor, located.symbol.hash)) {
+                if(auto constructed = query.resolve(type.symbol, type.anchor)) {
+                    items.push_back(
+                        item_of<protocol::TypeHierarchyItem>(query, *constructed, encoding));
+                }
+            }
         }
     }
     return items;

@@ -133,9 +133,9 @@ semantic_tokens = [
     { at = "void launch(float⟦*⟧ values) {", type = "operator", modifiers = ["declarator"] },
     { at = "void launch(float* ⟦values⟧) {", type = "parameter", modifiers = ["definition", "local"] },
     { at = "⟦scale⟧<<<dim3(1), dim3(64)>>>(values);", type = "function", modifiers = ["global"] },
-    { at = "scale<<<⟦dim3⟧(1), dim3(64)>>>(values);", type = "struct", modifiers = ["global"] },
+    { at = "scale<<<⟦dim3⟧(1), dim3(64)>>>(values);", type = "method", modifiers = ["member", "constructor"] },
     { at = "scale<<<dim3(⟦1⟧), dim3(64)>>>(values);", type = "number" },
-    { at = "scale<<<dim3(1), ⟦dim3⟧(64)>>>(values);", type = "struct", modifiers = ["global"] },
+    { at = "scale<<<dim3(1), ⟦dim3⟧(64)>>>(values);", type = "method", modifiers = ["member", "constructor"] },
     { at = "scale<<<dim3(1), dim3(⟦64⟧)>>>(values);", type = "number" },
     { at = "scale<<<dim3(1), dim3(64)>>>(⟦values⟧);", type = "parameter", modifiers = ["local"] },
 ]

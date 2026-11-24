@@ -1039,6 +1039,14 @@ tests/navigation/implicit_targets/11_coroutine_keywords
 
 <!-- END GENERATED ITEMS -->
 
+## Constructor Calls
+
+A class's name that calls a constructor stands for that constructor in
+every feature but the type ones, which answer the class.
+
+<!-- BEGIN GENERATED ITEMS: navigation/constructor_calls -->
+<!-- END GENERATED ITEMS -->
+
 ## Implicit Construction
 
 Navigation from initialization, return, capture and decomposition syntax reaches

@@ -478,10 +478,25 @@ void Builder::project_relations(const Semantics& semantics, std::uint32_t index)
     // and incoming calls leave out the factory's callers, which signature
     // help does show the constructors to.
     if(auto* CCE = node.get<clang::CXXConstructExpr>()) {
-        if(!CCE->getParenOrBraceRange().isValid()) {
+        const auto* constructor = decls::constructor_of(CCE);
+        if(auto name = calling_name(semantics, index); name.isValid()) {
+            call(constructor, name);
+            // A class inheriting the constructor is the type its name
+            // constructs.
+            const auto* constructed = CCE->getType()->getAsCXXRecordDecl();
+            if(constructed &&
+               decls::normalize(constructed) != decls::normalize(constructor->getParent())) {
+                auto [fid, range] = *unit.written_range(unit.seen_name(name).range);
+                relate(fid,
+                       constructor,
+                       {.kind = RelationKind::TypeDefinition, .range = range},
+                       constructed);
+            }
             return;
         }
-        call(decls::constructor_of(CCE), CCE->getParenOrBraceRange().getBegin());
+        if(CCE->getParenOrBraceRange().isValid()) {
+            call(constructor, CCE->getParenOrBraceRange().getBegin());
+        }
         return;
     }
 
