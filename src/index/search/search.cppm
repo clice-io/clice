@@ -12,8 +12,9 @@
 /// covers, so the owner records a change as a small run and folds runs
 /// together now and then. A run is one segment but where a builder bounds
 /// its entries (segment_entries): the database keeps each segment in a file
-/// of its own, read in place. Symbols merged after the newest run's snapshot are not in it; the
-/// owner keeps their hashes aside and scans those directly.
+/// of its own, read in place. Symbols merged after the newest run's
+/// snapshot are not in it; the owner keeps their hashes aside and scans
+/// those directly.
 
 module clice:index.search;
 

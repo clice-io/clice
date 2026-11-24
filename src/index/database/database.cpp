@@ -42,11 +42,10 @@ std::size_t default_mapsize() {
 /// The map a writer reopens a file of `declared` bytes with. A Windows
 /// writable map extends the file to the map's size: there the pages and an
 /// eighth more, elsewhere the default, which takes no disk.
-std::size_t writer_mapsize(std::uint64_t declared) {
+std::size_t writer_mapsize([[maybe_unused]] std::uint64_t declared) {
 #ifdef _WIN32
     return std::max<std::size_t>(lmdb_small_mapsize, declared + declared / 8 + (64ull << 20));
 #else
-    (void)declared;
     return default_mapsize();
 #endif
 }
@@ -578,10 +577,8 @@ public:
         // than the live ones.
         auto mapsize = live ? (live->pages - live->free_pages) * live->page_size : 0;
         std::uint64_t declared = 0;
-        if(auto copied = append_copy(copy,
-                                     mapsize + mapsize / 8 + (64ull << 20),
-                                     abandon,
-                                     declared);
+        if(auto copied =
+               append_copy(copy, mapsize + mapsize / 8 + (64ull << 20), abandon, declared);
            copied != Copy::Written) {
             remove_database_files(copy);
             return copied;
@@ -771,7 +768,8 @@ private:
             if(int put = mdb_put(write, into, &key, &value, MDB_APPEND)) {
                 return fail(put, false);
             }
-            if(++pending == batch) {
+            pending += 1;
+            if(pending == batch) {
                 pending = 0;
                 if(int committed = mdb_txn_commit(std::exchange(write, nullptr))) {
                     return fail(committed, false);

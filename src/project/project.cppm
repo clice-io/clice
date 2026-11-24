@@ -86,6 +86,15 @@ struct Affected {
     CDBDiff commands;
 };
 
+/// When a compact copy of the database file is weighed (shrink_due).
+enum class ShrinkAt : std::uint8_t {
+    /// A server with no indexing queued: more saves free pages again soon.
+    Idle,
+    /// A batch run's end: the file is only read from then on, and a cold
+    /// query reads the free pages between the live ones ahead with them.
+    BatchEnd,
+};
+
 /// A project: its build — the rules, the compilation databases and the
 /// members they make, the commands each file compiles under — and what it
 /// builds from it: its PCHs, its modules and its units' index, persisted in
@@ -105,15 +114,6 @@ struct Affected {
 /// background/background.cpp). The task graph's attempts and the background
 /// index's tasks use the members before them: an owner awaits shutdown()
 /// before the project dies.
-/// When a compact copy of the database file is weighed (shrink_due).
-enum class ShrinkAt : std::uint8_t {
-    /// A server with no indexing queued: more saves free pages again soon.
-    Idle,
-    /// A batch run's end: the file is only read from then on, and a cold
-    /// query reads the free pages between the live ones ahead with them.
-    BatchEnd,
-};
-
 struct Project {
     explicit Project(FileTable& file_table,
                      CanonicalPath root = {},
