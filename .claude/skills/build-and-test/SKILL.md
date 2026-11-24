@@ -15,7 +15,7 @@ Either way, builds and suites go through Bash `run_in_background`, which notifie
 
 - Every push: the unit tests and the cases, RelWithDebInfo, beside CI — push without waiting for them.
 - Async code, shutdown or position math: the Debug suites too, beside the RelWithDebInfo ones. ASan and the assertions — clice's, clang's and kotatsu's — live only there. Debug builds Linux x64 and macOS arm64 alone: xclang has the ASan libclang only there.
-- Command handling: the compat suite (`pixi run compat-test`). It needs the build systems and compilers CI installs (`compat-test.yml`); where `CI` is set, a box included, a missing one fails its scenario instead of skipping it.
+- Command handling: the compat suite (`pixi run compat-test`). It needs the build systems and compilers CI has: on Linux all of them are in the image CI's job runs in (`tests/compat/Dockerfile`; on a box, see "On a box"), on Windows `compat-test.yml` installs them. Where `CI` is set, a box included, a missing one fails its scenario instead of skipping it.
 - `editors/`: the editors' end-to-end tests (`pixi run -e editor editor-test`, Zed's `zed-e2e`); on Linux without a display, under `xvfb-run -a`.
 - A new command, flag, `clice/*` request or `clice.toml` key: a case that exercises it, or CI's coverage check fails (`tests/README.md`, "Coverage").
 - A failure on one platform: reproduced and fixed on that OS — a box of it, or a machine of yours — not by pushing guesses at CI.
@@ -45,6 +45,16 @@ id=$(box up clice-io/clice)        # ~1 min
 box push $id                       # tracked files only: `git add` new ones first
 box run $id 'pixi run build RelWithDebInfo' > /tmp/<topic>-build.log 2>&1 &&
 box run $id 'pixi run -e test-run test RelWithDebInfo' > /tmp/<topic>-test.log 2>&1
+```
+
+- The Linux compat suite runs in CI's image, tagged by the Dockerfile's SHA-256, as the box's own user, with the checkout, the caches (Bazel's output tree among them) and pixi mounted at their own paths; `--init` lets `bazel shutdown` see its server exit:
+
+```bash
+box run $id 'src=$(realpath .) && docker run --rm --init -e CI \
+  -v "$src:$src" -v "$HOME/.cache:$HOME/.cache" -v "$HOME/.pixi:$HOME/.pixi" -w "$src" \
+  ghcr.io/clice-io/compat-linux:$(sha256sum tests/compat/Dockerfile | cut -d" " -f1) \
+  bash -c "export PATH=\$HOME/.pixi/bin:\$PATH && pixi install -e node -e cuda -e toolchains && pixi run -e node compat-test"' \
+  > /tmp/<topic>-compat.log 2>&1
 ```
 
 - Boxes are plentiful: verification runs in parallel, never one run after another on one box. Each kind of work gets a box of its own — RelWithDebInfo and Debug, each target, each side of an A/B — and the cases split over several with the shard argument (`pixi run -e test-run cases-test RelWithDebInfo 2/3`, whole subtopics per shard).

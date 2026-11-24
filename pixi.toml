@@ -215,9 +215,10 @@ CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm run z
 depends-on = ["install-tests"]
 
 # Real build systems and toolchains over tests/compat/project; the tools each
-# scenario names come from the system (CI installs them, see compat-test.yml),
-# nvcc from the `cuda` environment (on Windows the `toolchains` one), conda's
-# compilers, Intel's and xclang from the `toolchains` one. Workspace-level so CI can run it from the bare
+# scenario names come from the system (on Linux the compat image of
+# tests/compat/Dockerfile, on Windows compat-test.yml's steps), nvcc from the
+# `cuda` environment (on Windows the `toolchains` one), conda's compilers,
+# Intel's and xclang from the `toolchains` one. Workspace-level so CI can run it from the bare
 # `node` env.
 [tasks.compat-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]

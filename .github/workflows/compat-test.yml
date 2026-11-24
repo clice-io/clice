@@ -25,8 +25,40 @@ env:
   CYGWIN_PACKAGES: gcc-core gcc-g++ cmake ninja
 
 jobs:
+  # The Linux scenarios run in the image compat-image.yml pushes under the
+  # Dockerfile's hash. A Dockerfile a branch changed has no image until that
+  # workflow's run on the push finished. The container gets an init process:
+  # the job's own first process reaps no orphan, and `bazel shutdown` waits
+  # for its server to be gone.
+  image:
+    if: startsWith(inputs.os, 'ubuntu')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      container: ${{ steps.image.outputs.container }}
+    steps:
+      - name: Checkout the Dockerfile
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: tests/compat/Dockerfile
+          sparse-checkout-cone-mode: false
+
+      - name: Find the image
+        id: image
+        run: |
+          image=ghcr.io/clice-io/compat-linux:$(sha256sum tests/compat/Dockerfile | cut -d' ' -f1)
+          if ! docker manifest inspect "$image" > /dev/null; then
+            echo "::error::$image is not pushed: compat-image.yml builds it on a push changing tests/compat/Dockerfile; rerun once that run passed"
+            exit 1
+          fi
+          echo "container={\"image\": \"$image\", \"options\": \"--init\"}" >> "$GITHUB_OUTPUT"
+
   compat:
+    needs: image
+    if: ${{ !cancelled() && needs.image.result != 'failure' }}
     runs-on: ${{ inputs.os }}
+    container: ${{ needs.image.outputs.container && fromJSON(needs.image.outputs.container) || '' }}
     timeout-minutes: 90
     steps:
       - name: Pick the newest release
@@ -69,23 +101,14 @@ jobs:
           environments: ${{ steps.environments.outputs.names }}
           activate-environment: node
 
-      # The Windows and macOS scenarios use what the runner images ship
-      # (Visual Studio, LLVM upgraded below, MinGW; Xcode, Homebrew GCC and
-      # LLVM), and the Linux image already has gcc, clang, cmake, make and
-      # bazelisk.
-      # An unreachable mirror stalls apt for the job's whole bound.
-      - name: Install build systems and cross compilers
+      # The Linux scenarios' programs are all in the job's image; the
+      # Windows and macOS scenarios use what the runner images ship (Visual
+      # Studio, LLVM replaced below, MinGW; Xcode, Homebrew GCC and LLVM).
+      # The scenarios find CMake 4.5 in the home directory, which the job
+      # gives the container its own of.
+      - name: Link CMake 4.5 into the home directory
         if: runner.os == 'Linux'
-        timeout-minutes: 15
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            bear ccache meson ninja-build xmake emscripten musl-tools \
-            libc++-18-dev libc++abi-18-dev \
-            g++-mingw-w64-x86-64 g++-riscv64-linux-gnu \
-            g++-aarch64-linux-gnu g++-arm-linux-gnueabihf \
-            gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
-            gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf
+        run: ln -s /opt/cmake-4.5 ~/cmake-4.5
 
       # MSYS2 ships on the image without compilers: its UCRT and clang
       # environments' native ones, and its own GCC and CMake, which write
@@ -165,21 +188,13 @@ jobs:
           key: cmake-4.5.0-windows-x86_64
 
       - name: Install CMake 4.5
-        if: runner.os == 'Linux' || (runner.os == 'Windows' && steps.cmake.outputs.cache-hit != 'true')
+        if: runner.os == 'Windows' && steps.cmake.outputs.cache-hit != 'true'
         timeout-minutes: 5
         run: |
-          release=https://github.com/Kitware/CMake/releases/download/v4.5.0
-          if [ "$RUNNER_OS" = Windows ]; then
-            curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/cmake.zip" \
-              "$release/cmake-4.5.0-windows-x86_64.zip"
-            unzip -q "$RUNNER_TEMP/cmake.zip" -d "$RUNNER_TEMP"
-            mv "$RUNNER_TEMP/cmake-4.5.0-windows-x86_64" ~/cmake-4.5
-          else
-            curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/cmake.tar.gz" \
-              "$release/cmake-4.5.0-linux-x86_64.tar.gz"
-            tar -xzf "$RUNNER_TEMP/cmake.tar.gz" -C "$RUNNER_TEMP"
-            mv "$RUNNER_TEMP/cmake-4.5.0-linux-x86_64" ~/cmake-4.5
-          fi
+          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/cmake.zip" \
+            https://github.com/Kitware/CMake/releases/download/v4.5.0/cmake-4.5.0-windows-x86_64.zip
+          unzip -q "$RUNNER_TEMP/cmake.zip" -d "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/cmake-4.5.0-windows-x86_64" ~/cmake-4.5
 
       # Cygwin installs from the packages the first run under this key
       # downloaded, kept in the Actions cache, without reaching a mirror: a
@@ -214,17 +229,6 @@ jobs:
             sleep 30
           done
           exit 1
-
-      # ziglang.org turns CI downloads away: the action fetches from its
-      # community mirrors once, then from the Actions cache. Its cache of
-      # zig's own builds would save a new entry on every run.
-      - name: Install zig
-        if: runner.os == 'Linux'
-        timeout-minutes: 5
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.14.1
-          use-cache: false
 
       - name: Download binaries
         if: steps.release.outputs.tag == ''
