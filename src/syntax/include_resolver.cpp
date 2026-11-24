@@ -23,7 +23,7 @@ void NameIndex::holders(llvm::StringRef name,
     if(auto it = exact.find(name); it != exact.end()) {
         out.append(it->second.begin(), it->second.end());
     }
-    if(auto it = folded.find(vfs::fold(name)); it != folded.end()) {
+    if(auto it = folded.find(vfs::fold_case(name)); it != folded.end()) {
         out.append(it->second.begin(), it->second.end());
     }
 }
@@ -41,7 +41,7 @@ ResolvedSearchConfig resolve_search_config(const SearchConfig& config,
         resolved.dirs.push_back({dir.path, &listing, dir.framework});
         resolved.frameworks |= dir.framework;
         if(names) {
-            resolved.positions.try_emplace(&listing, resolved.dirs.size() - 1);
+            resolved.positions[&listing].push_back(resolved.dirs.size() - 1);
         }
     }
     return resolved;
@@ -153,12 +153,14 @@ std::optional<ResolveResult> resolve_include(llvm::StringRef filename,
         config.names->holders(first, holders);
         llvm::SmallVector<unsigned, 4> candidates;
         for(auto* listing: holders) {
-            if(auto it = config.positions.find(listing);
-               it != config.positions.end() && it->second >= start) {
-                candidates.push_back(it->second);
+            if(auto it = config.positions.find(listing); it != config.positions.end()) {
+                ranges::copy_if(it->second, std::back_inserter(candidates), [&](unsigned i) {
+                    return i >= start;
+                });
             }
         }
         ranges::sort(candidates);
+        candidates.erase(ranges::unique(candidates).begin(), candidates.end());
         for(auto i: candidates) {
             auto& dir = config.dirs[i];
             if(check_in_dir(dir.path,

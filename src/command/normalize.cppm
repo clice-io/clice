@@ -44,6 +44,21 @@ using SharedKey = std::pair<std::uint64_t, std::uint64_t>;
 /// info → @rsp expansion → nvcc translation → parse → classify → path
 /// normalize → dedup.
 struct Normalizer {
+    /// A response file named from inside another, as shared_key keys it.
+    struct Nested {
+        std::uint64_t hash = 0;
+
+        /// Whether it sets a driver mode.
+        bool sets_driver_mode = false;
+
+        /// Whether the driver mode it sets is cl's.
+        bool sets_cl = false;
+
+        /// Whether it names a source, an input its content cannot place:
+        /// the commands it serves compile each their own.
+        bool names_source = false;
+    };
+
     CommandTable& commands;
 
     FileTable& files;
@@ -65,6 +80,12 @@ struct Normalizer {
     /// The response files a database load read ahead, which read_response
     /// takes from here rather than reading them again one by one.
     llvm::DenseMap<Fid, ObservedFile> read_responses{};
+
+    /// nested_response's answers, by the file's path.
+    llvm::StringMap<std::optional<Nested>> nested_responses{};
+
+    /// read_option's answers this load, by option_key.
+    llvm::StringMap<std::optional<LocalArg>> read_options{};
 
     /// `file` is the entry's normalized path used to pick the input slot
     /// among the command's inputs; invalid synthesizes the slot at the end.
@@ -93,7 +114,8 @@ struct Normalizer {
     /// `-frandom-seed`) masked, so a database normalizes each such command
     /// once. A response file named from inside another goes in by its
     /// content. None when the command names its file twice, a response file
-    /// it cannot read, or reads nvcc's options files.
+    /// it cannot read or one inside another naming a source, or reads nvcc's
+    /// options files.
     std::optional<SharedKey> shared_key(const Spelling& directory,
                                         llvm::StringRef file,
                                         Fid entry,
@@ -114,15 +136,6 @@ struct Normalizer {
                                                     const Spelling& directory,
                                                     CompilerFamily family);
 
-    /// A response file named from inside another, as shared_key keys it.
-    struct Nested {
-        std::uint64_t hash = 0;
-
-        /// Whether it sets a driver mode, and whether cl's.
-        bool sets_cl = false;
-        bool sets_driver_mode = false;
-    };
-
     /// The response file `name` names, read once: a build names a target's
     /// shared flags from inside the response file of each of its commands
     /// (Unreal's Shared.rsp). None when it cannot be read.
@@ -133,9 +146,6 @@ struct Normalizer {
     std::error_code read_response(kotatsu::buffer_ref out,
                                   std::string_view name,
                                   const Spelling& directory);
-
-    /// nested_response's answers, by the file's path.
-    llvm::StringMap<std::optional<Nested>> nested_responses;
 
     /// The argument `parsed` reads as in a command whose relative paths
     /// resolve from `anchor`, as normalize() lays it down; none for one it
@@ -151,9 +161,6 @@ struct Normalizer {
     std::string option_key(const cli::ParsedArg& parsed,
                            bool gcc_host,
                            const Spelling& anchor) const;
-
-    /// read_option's answers this load, by option_key.
-    llvm::StringMap<std::optional<LocalArg>> read_options;
 };
 
 /// The commands written by hand — a rule's default command, the builtin

@@ -7,7 +7,7 @@ import :vfs.path;
 
 namespace clice::vfs {
 
-llvm::SmallString<64> fold(llvm::StringRef name) {
+llvm::SmallString<64> fold_case(llvm::StringRef name) {
     llvm::SmallString<64> folded;
     for(char c: name) {
         folded.push_back(llvm::toLower(c));
@@ -23,7 +23,8 @@ std::optional<bool> entry_is_directory(const Listing& listing, llvm::StringRef n
     if(auto it = listing.entries.find(name); it != listing.entries.end()) {
         return it->second;
     }
-    if(llvm::isASCII(name) && (listing.case_sensitive || !listing.folded.contains(fold(name)))) {
+    if(llvm::isASCII(name) &&
+       (listing.case_sensitive || !listing.folded.contains(fold_case(name)))) {
         return std::nullopt;
     }
     llvm::SmallString<256> entry(listing.dir);
@@ -70,7 +71,7 @@ std::shared_ptr<const Listing> list(llvm::StringRef dir) {
         }
         listing->entries.try_emplace(entry->name, directory);
         if(!listing->case_sensitive) {
-            listing->folded.insert(fold(entry->name));
+            listing->folded.insert(fold_case(entry->name));
         }
     }
 
@@ -137,8 +138,9 @@ const Listing& Scope::list(llvm::StringRef dir) {
 }
 
 void Scope::adopt(llvm::StringRef dir, std::shared_ptr<const Listing> listing) {
-    cache.listings[dir] = listing;
-    held[dir] = std::move(listing);
+    if(held.try_emplace(dir, listing).second) {
+        cache.listings[dir] = std::move(listing);
+    }
 }
 
 void Scope::take(SharedListings& shared) {

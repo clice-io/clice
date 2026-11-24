@@ -83,7 +83,7 @@ ZEST_CASE(KeyIgnoresCodegen) {
 
 ZEST_CASE(KeyIgnoresFrontendFlags) {
     /// Chromium sets each target's warnings apart and names its module:
-    /// keying on them asked the compiler once a target.
+    /// keyed on them, the compiler would be asked once a target.
     auto base = f.add("/fake", "/tmp/a.cpp", {"clang++", "-std=c++23", "/tmp/a.cpp"});
     auto frontend = f.add("/fake",
                           "/tmp/b.cpp",
@@ -95,6 +95,19 @@ ZEST_CASE(KeyIgnoresFrontendFlags) {
                            "-fmodule-name=//base:base",
                            "/tmp/b.cpp"});
     ZEXPECT(f.key(base) == f.key(frontend));
+
+    /// But not the warnings clang's driver reads itself: `-Wno-deprecated`
+    /// leaves C++'s `__DEPRECATED` undefined, `-Wwrite-strings` makes C's
+    /// string literals const, a `-no-pedantic` cancels `-pedantic`.
+    auto deprecated =
+        f.add("/fake", "/tmp/c.cpp", {"clang++", "-std=c++23", "-Wno-deprecated", "/tmp/c.cpp"});
+    ZEXPECT(f.key(base) != f.key(deprecated));
+    auto pedantic =
+        f.add("/fake", "/tmp/d.cpp", {"clang++", "-std=c++23", "-pedantic", "/tmp/d.cpp"});
+    ZEXPECT(f.key(base) != f.key(pedantic));
+    auto c = f.add("/fake", "/tmp/a.c", {"clang", "/tmp/a.c"});
+    auto strings = f.add("/fake", "/tmp/b.c", {"clang", "-Wwrite-strings", "/tmp/b.c"});
+    ZEXPECT(f.key(c) != f.key(strings));
 }
 
 ZEST_CASE(KeyTracksSemantics) {

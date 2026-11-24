@@ -293,8 +293,9 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     for(auto& parsed: staged) {
         auto id = parsed ? parsed->id : clang_options::OPT_UNKNOWN;
 
-        /// The entry's own input token becomes the slot, preserving its
-        /// position (language selectors before it govern it). Other inputs
+        /// The entry's own input token becomes the slot, where language
+        /// selectors before it govern it (the slot moves to the end when
+        /// none follows, below). Other inputs
         /// — nvcc query leftovers aside, a multi-input command — drop,
         /// paired with their per-file selectors. Input args carry their
         /// token as the spelling.
@@ -561,7 +562,8 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
             // One switching the command's driver mode would read its masks
             // otherwise.
             auto nested = nested_response(token.drop_front(), directory);
-            if(!nested || nested->sets_cl || (cl_mode(family) && nested->sets_driver_mode)) {
+            if(!nested || nested->sets_cl || (cl_mode(family) && nested->sets_driver_mode) ||
+               nested->names_source) {
                 return std::nullopt;
             }
             text += "\x01response";
@@ -598,11 +600,14 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
         }
         if(cl_mode(family)) {
             // cl's own outputs, and the dependency files of clang's options
-            // passed through `/clang:` (Unreal's `/clang:-MF<file>`).
+            // passed through `/clang:` (Unreal's `/clang:-MF<file>`); not a
+            // path another option takes, which a POSIX host spells with a `/`
+            // (`/imsvc /docker/include`).
             auto output = ranges::find_if(cl_outputs, [&](llvm::StringRef name) {
                 return option && token.drop_front().starts_with(name);
             });
-            if(output == cl_outputs.end()) {
+            if(output == cl_outputs.end() ||
+               (i > driver_end && takes_next(command_line[i - 1], token, visibility))) {
                 text += token;
                 continue;
             }
@@ -687,8 +692,9 @@ std::optional<Normalizer::Nested> Normalizer::nested_response(llvm::StringRef na
         if(!read_response(text, name, directory)) {
             known->second =
                 Nested{.hash = llvm::xxh3_64bits(text),
+                       .sets_driver_mode = llvm::StringRef(text).contains("--driver-mode="),
                        .sets_cl = llvm::StringRef(text).contains("--driver-mode=cl"),
-                       .sets_driver_mode = llvm::StringRef(text).contains("--driver-mode=")};
+                       .names_source = ranges::any_of(split_command(text), is_source_path)};
         }
     }
     return known->second;

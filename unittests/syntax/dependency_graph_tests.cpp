@@ -909,6 +909,43 @@ int main() {}
     ZEXPECT(includes("src/main.cpp") == llvm::SmallVector<Fid>{id("inc/util.h")});
 }
 
+ZEST_CASE(RescanChangedSearchDir) {
+    /// A search directory changed since the last scan kept its listing: the
+    /// rescan lists it again, once, and a header found there finds its own
+    /// includes in that listing too.
+    tmp.touch("inc/util.h", "#include <other.h>\n");
+    tmp.touch("inc/other.h", "int other = 1;\n");
+    tmp.touch("src/main.cpp", "#include <util.h>\n");
+    for(auto path: {"inc/util.h", "inc/other.h", "src/main.cpp", "inc", "src"}) {
+        age_file(tmp.path(path));
+    }
+    scan({
+        {tmp.root, tmp.path("src/main.cpp"), {"-I", tmp.path("inc")}}
+    });
+    ZASSERT(includes("inc/util.h") == llvm::SmallVector<Fid>{id("inc/other.h")});
+
+    tmp.touch("inc/new.h");
+    graph.reset();
+    scan_all(cdb, toolchain, graph);
+    ZEXPECT(includes("src/main.cpp") == llvm::SmallVector<Fid>{id("inc/util.h")});
+    ZEXPECT(includes("inc/util.h") == llvm::SmallVector<Fid>{id("inc/other.h")});
+}
+
+ZEST_CASE(QuotedBesideBeforeSearch) {
+    /// A quoted include looks beside each includer before the search
+    /// directories, whichever includer of the command's files comes first.
+    tmp.touch("src/a/cfg.h");
+    tmp.touch("inc/cfg.h");
+    tmp.touch("src/a/x.cpp", "#include \"cfg.h\"\n");
+    tmp.touch("src/b/y.cpp", "#include \"cfg.h\"\n");
+    scan({
+        {tmp.root, tmp.path("src/b/y.cpp"), {"-I", tmp.path("inc")}},
+        {tmp.root, tmp.path("src/a/x.cpp"), {"-I", tmp.path("inc")}},
+    });
+    ZEXPECT(includes("src/a/x.cpp") == llvm::SmallVector<Fid>{id("src/a/cfg.h")});
+    ZEXPECT(includes("src/b/y.cpp") == llvm::SmallVector<Fid>{id("inc/cfg.h")});
+}
+
 // TODO: add tests for:
 // - Circular includes (A→B→A) to verify BFS terminates correctly
 // - set_includes overwrite: calling twice with same (path_id, config_id)

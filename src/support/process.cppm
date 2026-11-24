@@ -31,6 +31,17 @@ inline std::size_t thread_pool_size() {
     return std::clamp<std::uint64_t>(env_integer("UV_THREADPOOL_SIZE").value_or(4), 1, 1024);
 }
 
+/// How many parts in_parts splits `size` items into: two for each thread of
+/// the pool.
+inline std::size_t parts_of(std::size_t size) {
+    return std::min(size, 2 * thread_pool_size());
+}
+
+/// Run `work(part, first, end)` for each part of `[0, size)` on the thread
+/// pool together.
+async::task<> in_parts(std::size_t size,
+                       llvm::function_ref<void(std::size_t, std::size_t, std::size_t)> work);
+
 /// Test hook: CLICE_TEST_JITTER=<ms> makes this a random delay of up to that
 /// many milliseconds, zero while it is unset. The places that race with an
 /// editor's actions (a worker starting a request's work, a background index

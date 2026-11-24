@@ -195,9 +195,10 @@ public:
     /// Make every file under the directory `dir` (an identity) due now.
     void expire_under(llvm::StringRef dir);
 
-    /// Look at every watched flag, then at the files that are due, longest
-    /// due first, for about `budget` of wall time. Returns how many files
-    /// the looks found changed.
+    /// Look at the flags watched at every tick, then at the rotating flags
+    /// in turn for about `budget` of wall time, then at the files that are
+    /// due, longest due first, for about `budget` more. Returns how many
+    /// files the looks found changed.
     std::size_t tick(Clock::duration budget);
 
     /// Look at these files now, due or not, under any policy.

@@ -6,6 +6,7 @@ import :command.file_kind;
 import :command.normalize;
 import :command.table;
 import :support.logging;
+import :support.process;
 import :support.text;
 import :vfs.cygwin;
 import :vfs.file_system;
@@ -114,8 +115,11 @@ std::optional<std::string_view> string_of(auto&& value,
 /// The response files a command line or response file text names: its
 /// `@`-tokens, quotes taken off. Close enough to read ahead by.
 void named_responses(llvm::StringRef text, std::vector<std::string>& names) {
+    auto starts_token = [&](std::size_t at) {
+        return at == 0 || llvm::isSpace(text[at - 1]);
+    };
     for(auto at = text.find('@'); at != llvm::StringRef::npos; at = text.find('@', at + 1)) {
-        if(at != 0 && !llvm::isSpace(text[at - 1]) && text[at - 1] != '"') {
+        if(!starts_token(at) && !(text[at - 1] == '"' && starts_token(at - 1))) {
             continue;
         }
         auto rest = text.drop_front(at + 1);
@@ -125,11 +129,14 @@ void named_responses(llvm::StringRef text, std::vector<std::string>& names) {
     }
 }
 
-/// A path the load will intern, its identity resolved ahead, and a
-/// response file's content read ahead.
-struct Resolved {
+/// A path the load will intern, read ahead of it.
+struct ReadAhead {
     std::string path;
+
+    /// Its identity, resolved ahead.
     std::optional<CanonicalPath> identity;
+
+    /// A response file's content.
     std::optional<ObservedFile> content;
 };
 
@@ -141,9 +148,9 @@ struct Resolved {
 /// much as the rest of the load (Unreal names two response files from each
 /// of its 40000 commands). The response files' contents are kept for the
 /// load, whose one thread would read each again (Normalizer::read_responses).
-std::deque<Resolved> read_ahead(llvm::StringRef json,
-                                simdjson::padded_string_view padded,
-                                const Spelling& database_dir) {
+std::deque<ReadAhead> read_ahead(llvm::StringRef json,
+                                 simdjson::padded_string_view padded,
+                                 const Spelling& database_dir) {
     simdjson::ondemand::parser parser;
     simdjson::ondemand::document doc;
     simdjson::ondemand::array entries;
@@ -151,7 +158,7 @@ std::deque<Resolved> read_ahead(llvm::StringRef json,
         return {};
     }
     // A deque: the rounds add to it while earlier tasks fill its files.
-    std::deque<Resolved> resolved;
+    std::deque<ReadAhead> resolved;
     // The response files of the round at hand, and the directory the
     // command naming each runs in, which names nested ones are relative to
     // as well.
@@ -174,7 +181,9 @@ std::deque<Resolved> read_ahead(llvm::StringRef json,
         }
         auto directory = string_of(entry["directory"], json, parser, directory_storage, error);
         auto file = string_of(entry["file"], json, parser, file_storage, error);
-        if(!directory || !file) {
+        // One written inside Cygwin or MSYS2 spells its paths for their mount
+        // table, which only the load reads.
+        if(!directory || !file || fs::cygwin::is_posix_path(*directory)) {
             return {};
         }
         auto base = Spelling(*directory, database_dir);
@@ -198,44 +207,37 @@ std::deque<Resolved> read_ahead(llvm::StringRef json,
         }
     }
     auto read_all = [&]() -> async::task<> {
-        // The identities of the files read in no round, in batches: one task
-        // a file costs as much as the call it makes.
-        constexpr std::size_t batch = 256;
         llvm::DenseSet<std::size_t> read;
         for(auto& [index, directory]: responses) {
             read.insert(index);
         }
-        async::task_group<> resolving;
-        std::vector<Resolved*> unread;
+        std::vector<ReadAhead*> unread;
         for(std::size_t index = 0; index < resolved.size(); index += 1) {
             if(!read.contains(index)) {
                 unread.push_back(&resolved[index]);
             }
         }
-        for(std::size_t first = 0; first < unread.size(); first += batch) {
-            resolving.spawn([](llvm::ArrayRef<Resolved*> files) -> async::task<> {
-                co_await async::queue([&] {
-                    for(auto* file: files) {
-                        file->identity.emplace(Spelling::absolute(file->path));
-                    }
-                });
-            }(llvm::ArrayRef(unread).slice(first, std::min(batch, unread.size() - first))));
-        }
+        // The identities of the files read in no round, beside the rounds.
+        auto identify = [&](std::size_t, std::size_t first, std::size_t end) {
+            for(auto* file: llvm::ArrayRef(unread).slice(first, end - first)) {
+                file->identity.emplace(Spelling::absolute(file->path));
+            }
+        };
+        async::task_group<> identifying;
+        identifying.spawn(in_parts(unread.size(), identify));
         while(!responses.empty()) {
             std::vector<std::vector<std::string>> nested(responses.size());
-            async::task_group<> reads;
-            for(auto [response, named]: views::zip(responses, nested)) {
-                reads.spawn([](Resolved& file, std::vector<std::string>& named) -> async::task<> {
-                    co_await async::queue([&] {
-                        file.identity.emplace(Spelling::absolute(file.path));
-                        if(auto read = vfs::read_observed(file.path)) {
-                            named_responses(read->text, named);
-                            file.content = std::move(*read);
-                        }
-                    });
-                }(resolved[response.first], named));
-            }
-            co_await reads.join();
+            co_await in_parts(responses.size(),
+                              [&](std::size_t, std::size_t first, std::size_t end) {
+                                  for(auto index = first; index < end; index += 1) {
+                                      auto& file = resolved[responses[index].first];
+                                      file.identity.emplace(Spelling::absolute(file.path));
+                                      if(auto read = vfs::read_observed(file.path)) {
+                                          named_responses(read->text, nested[index]);
+                                          file.content = std::move(*read);
+                                      }
+                                  }
+                              });
             std::vector<std::pair<std::size_t, Spelling>> next;
             for(auto [response, named]: views::zip(responses, nested)) {
                 for(auto& name: named) {
@@ -246,7 +248,7 @@ std::deque<Resolved> read_ahead(llvm::StringRef json,
             }
             responses = std::move(next);
         }
-        co_await resolving.join();
+        co_await identifying.join();
     };
     async::run(read_all());
     return resolved;
@@ -412,10 +414,10 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             read_responses.try_emplace(fid, std::move(*file.content));
         }
     }
-    LOG_DEBUG("Compilation database {}: resolved {} files ahead in {:.0f} ms",
-              path,
-              resolved.size(),
-              ahead.precise_ms());
+    LOG_PERF("startup",
+             "phase=cdb_read_ahead files={} elapsed_ms={:.0f}",
+             resolved.size(),
+             ahead.precise_ms());
     simdjson::ondemand::parser json_parser;
     simdjson::ondemand::document doc;
     if(auto error = json_parser.iterate(padded).get(doc)) {
@@ -683,14 +685,12 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     if(broken) {
         return std::nullopt;
     }
-    LOG_DEBUG(
-        "Compilation database {}: keyed its commands in {:.0f} ms, read {} of them in full "
-        "({} without a key) in {:.0f} ms",
-        path,
-        keying_ms,
-        read_commands,
-        keyless,
-        reading_ms);
+    LOG_PERF("startup",
+             "phase=cdb_commands read={} keyless={} keying_ms={:.0f} reading_ms={:.0f}",
+             read_commands,
+             keyless,
+             keying_ms,
+             reading_ms);
     if(skipped != 0) {
         LOG_GUIDANCE("{} of the compilation database {} {} skipped; the log names {}",
                      counted(skipped, "entry", "entries"),

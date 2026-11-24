@@ -191,13 +191,17 @@ ZEST_CASE(BatchAgreesOnMissing) {
     // A listed directory answers for the names it lacks too, and for those
     // of a subdirectory that is not there, as a status by path would: one
     // in another case is there where the volume matches names in any case,
-    // and `.` and `..` name the directory they lead to, which no listing
-    // holds — clang asks for `detail/..` before it opens `detail/../x.h`.
+    // a non-ASCII one too, as is a short name (`LONGFI~1.H`) where the
+    // volume keeps them, and `.` and `..` name the directory they lead to,
+    // which no listing holds — clang asks for `detail/..` before it opens
+    // `detail/../x.h`.
     TempDir tmp;
     for(int i = 0; i < 20; i += 1) {
         tmp.touch(std::format("dir/h{}.h", i));
     }
     tmp.touch("dir/sub/s.h");
+    tmp.touch("dir/\xC3\x84.h");
+    tmp.touch("dir/longfilename.h");
 
     vfs::StatusBatch batch;
     for(int round = 0; round < 2; round += 1) {
@@ -208,7 +212,9 @@ ZEST_CASE(BatchAgreesOnMissing) {
                              std::format("dir/sub/n{}.h", i),
                              std::format("dir/sub/../h{}.h", i),
                              std::string("dir/sub/.."),
-                             std::string("dir/sub/.")}) {
+                             std::string("dir/sub/."),
+                             std::string("dir/\xC3\xA4.h"),
+                             std::string("dir/LONGFI~1.H")}) {
                 auto batched = batch.status(tmp.path(name));
                 auto direct = fs::status(tmp.path(name));
                 ZASSERT(batched.has_value() == direct.has_value());

@@ -45,7 +45,7 @@ struct Listing {
 
 /// `name` with ASCII letters lowered, as a listing matching names
 /// case-insensitively keeps them (Listing::folded).
-llvm::SmallString<64> fold(llvm::StringRef name);
+llvm::SmallString<64> fold_case(llvm::StringRef name);
 
 /// List `dir`: the pre/post-stat pairing discipline of file reads, on the
 /// directory. A missing directory lists as empty. Safe to call from any
@@ -73,6 +73,7 @@ struct DirCache {
 /// stays as it is: a directory one of them lists the others take.
 struct SharedListings {
     std::mutex lock;
+
     llvm::StringMap<std::shared_ptr<const Listing>> listed;
 };
 
@@ -92,15 +93,21 @@ struct Scope {
     /// The listing of `dir` for this operation.
     const Listing& list(llvm::StringRef dir);
 
-    /// Take a listing `dir` was just listed into (vfs::list, run elsewhere).
+    /// Take a listing `dir` was just listed into (vfs::list, run elsewhere),
+    /// unless the scope holds one of `dir` already: what the operation read
+    /// off that one holds.
     void adopt(llvm::StringRef dir, std::shared_ptr<const Listing> listing);
 
     /// Take what the threads over this scope listed.
     void take(SharedListings& shared);
 
     DirCache& cache;
+
     llvm::StringMap<std::shared_ptr<const Listing>> held;
+
+    /// For a thread's scope, the operation's, and what its threads list.
     const Scope* operation = nullptr;
+
     SharedListings* shared = nullptr;
 };
 

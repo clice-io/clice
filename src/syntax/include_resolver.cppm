@@ -41,7 +41,7 @@ struct NameIndex {
 
     llvm::StringMap<llvm::SmallVector<const vfs::Listing*, 1>> exact;
 
-    /// Names folded (vfs::fold), of the listings matching case-insensitively.
+    /// Names folded (vfs::fold_case), of the listings matching case-insensitively.
     llvm::StringMap<llvm::SmallVector<const vfs::Listing*, 1>> folded;
 };
 
@@ -52,10 +52,12 @@ struct ResolvedSearchConfig {
     unsigned angled_start_idx = 0;
     std::shared_ptr<const vfs::HiddenFiles> hidden;
 
-    /// The names `dirs` hold, and where in `dirs` each of their listings
-    /// stands first; null for a configuration searched in order.
+    /// The names `dirs` hold; null for a configuration searched in order.
     const NameIndex* names = nullptr;
-    llvm::DenseMap<const vfs::Listing*, unsigned> positions;
+
+    /// Where in `dirs` each of their listings stands, with `names`: twice
+    /// for a directory both quoted and angled (`-iquote . -I .`).
+    llvm::DenseMap<const vfs::Listing*, llvm::SmallVector<unsigned, 1>> positions;
 
     /// Whether any of `dirs` is a framework directory, which the index does not serve.
     bool frameworks = false;

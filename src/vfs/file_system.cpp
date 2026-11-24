@@ -117,7 +117,7 @@ bool list_statuses(llvm::StringRef dir,
             folded.clear();
             return false;
         }
-        folded.insert(fold(entry->name));
+        folded.insert(fold_case(entry->name));
         if(auto status = entry->status(); status && status->type != fs::FileType::Symlink) {
             entries.try_emplace(entry->name, *status);
         }
@@ -578,7 +578,7 @@ std::expected<fs::Status, std::error_code> StatusBatch::status(llvm::StringRef p
         return it->second;
     }
     if(directory.complete && llvm::isASCII(name) && !name.contains('~') &&
-       !directory.folded.contains(fold(name))) {
+       !directory.folded.contains(fold_case(name))) {
         return std::unexpected(std::make_error_code(std::errc::no_such_file_or_directory));
     }
 #endif

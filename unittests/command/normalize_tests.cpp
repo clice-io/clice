@@ -124,6 +124,8 @@ ZEST_CASE(SharedKeys) {
     ZEXPECT((key("a.cpp", "clang++ -std=c++17 a.cpp") != key("b.cpp", "clang++ -std=c++20 b.cpp")));
     ZEXPECT((key("a.cpp", "clang-cl /clang:-std=c++17 /c a.cpp") !=
              key("b.cpp", "clang-cl /clang:-std=c++20 /c b.cpp")));
+    ZEXPECT((key("a.cpp", "clang-cl /imsvc /docker/a /c a.cpp") !=
+             key("b.cpp", "clang-cl /imsvc /docker/b /c b.cpp")));
 
     /// Commands reading files of their own, or naming theirs twice, have none.
     ZEXPECT(!key("a.cpp", "clang++ @a.rsp a.cpp").has_value());
@@ -192,6 +194,12 @@ ZEST_CASE(ResponseFileKeys) {
     ZEXPECT(generated == key(tmp.path("gen/b.gen.cpp"), "clang++ @gb.rsp"));
     ZEXPECT(command(tmp.path("gen/a.gen.cpp"), "clang++ @ga.rsp") ==
             command(tmp.path("gen/b.gen.cpp"), "clang++ @gb.rsp"));
+
+    /// One whose response file inside another names the sources has none:
+    /// its content cannot place them, the language each compiles in.
+    tmp.touch("sources.rsp", "-x c src/a.c -x c++ src/b.cpp");
+    tmp.touch("outer.rsp", "@sources.rsp");
+    ZEXPECT(!key(tmp.path("src/a.c"), "clang -c @outer.rsp").has_value());
 };
 
 ZEST_CASE(UnreadableResponseRecorded) {

@@ -480,11 +480,12 @@ std::expected<ScannedText, vfs::FileError> read_and_scan(const char* path) {
     };
 }
 
-/// Where a lookup found an include's file, before it is interned: its
-/// path as found, empty when found nowhere, and the search dir it was found
-/// in.
+/// Where a lookup found an include's file, before it is interned.
 struct Found {
+    /// Its path as found, empty when found nowhere.
     Spelling path;
+
+    /// The search dir it was found in.
     std::optional<unsigned> found_dir_idx;
 };
 
@@ -874,10 +875,11 @@ struct FullScan {
 
     /// List `dir` on the thread pool into the scanner's listings, unless
     /// the cache can still confirm a listing of it — its one validation stat
-    /// happens lazily at first use — or the scan listed it ahead already.
+    /// happens lazily at first use — or the scan listed it already.
     /// Whether it does.
     bool list_ahead(async::task_group<>& listings, llvm::StringRef dir) {
-        if(files.dirs.kept(dir) || !listed_ahead.insert(dir).second) {
+        if(files.dirs.kept(dir) || scanner.scope.held.contains(dir) ||
+           !listed_ahead.insert(dir).second) {
             return false;
         }
         listings.spawn(list_into(scanner.scope, dir.str()));
@@ -903,34 +905,11 @@ struct FullScan {
         return listed;
     }
 
-    /// How many parts work over `size` items is split into on the thread
-    /// pool: two for each of its threads.
-    static std::size_t parts_of(std::size_t size) {
-        return std::min(size, 2 * thread_pool_size());
-    }
-
-    /// Run `work(part, first, end)` for each part of `[0, size)` on the
-    /// thread pool together.
-    static async::task<>
-        in_parts(std::size_t size,
-                 llvm::function_ref<void(std::size_t, std::size_t, std::size_t)> work) {
-        auto count = parts_of(size);
-        async::task_group<> parts;
-        for(std::size_t part = 0; part < count; part += 1) {
-            parts.spawn([](llvm::function_ref<void(std::size_t, std::size_t, std::size_t)> work,
-                           std::size_t part,
-                           std::size_t first,
-                           std::size_t end) -> async::task<> {
-                co_await async::queue([&] { work(part, first, end); });
-            }(work, part, size * part / count, size * (part + 1) / count));
-        }
-        co_await parts.join();
-    }
-
-    /// Where the includes of a wave are found, and the files found there
-    /// that the file table does not know yet.
-    struct Resolved {
+    /// Where the includes of a wave are found.
+    struct WaveIncludes {
         std::vector<std::vector<Found>> found;
+
+        /// The files found there that the file table does not know yet.
         llvm::StringSet<> unknown;
     };
 
@@ -940,7 +919,7 @@ struct FullScan {
     /// the groups the wave meets first, then the files, are split among the
     /// threads of the pool, which list the directories they reach beside
     /// one another.
-    async::task<Resolved> resolve(const Wave& wave) {
+    async::task<WaveIncludes> resolve(const Wave& wave) {
         std::vector<FileScanner::Search*> fresh;
         for(auto context: wave.contexts) {
             auto& search = scanner.searches[context.group];
@@ -961,7 +940,7 @@ struct FullScan {
             scanner.index(search->resolved);
         }
 
-        Resolved resolved{.found = std::vector<std::vector<Found>>(wave.contexts.size())};
+        WaveIncludes resolved{.found = std::vector<std::vector<Found>>(wave.contexts.size())};
         auto parts = parts_of(wave.files.size());
         std::vector<llvm::StringMap<Found>> learned(parts);
         std::vector<llvm::StringSet<>> unknown(parts);

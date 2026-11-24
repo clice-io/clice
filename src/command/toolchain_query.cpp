@@ -150,16 +150,7 @@ std::string stopped(llvm::StringRef compiler, chrono::milliseconds bound) {
     return std::format("{} did not finish within {} ms and was stopped", compiler, bound.count());
 }
 
-/// Hang detection: a query answers in well under a second, a cold Windows
-/// start in a few, more while the scanner reads the driver beside other
-/// starting work (over 5 on CI runners); a compiler or wrapper that never
-/// exits (one reading its input, a hung network mount) would block the
-/// query's caller for good.
-/// LIMITATION: a driver's first start on a machine, scanned by an antivirus
-/// beside other starting work, can pass the bound (2.6 s idle on a fresh
-/// Windows runner, past 10 s under a test run's load): the files it was
-/// asked for compile with clang's own reading of the command until the
-/// query's cooldown passes.
+/// How long a query may run (QueryBatch::bound).
 chrono::milliseconds query_bound() {
     // Lets tests stand in a hung compiler without waiting out the bound, and
     // the cases' warm-up wait out a cold compiler's first start.
@@ -270,7 +261,16 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec, Qu
     }
     auto compiler = args[0];
     std::size_t driver_tokens = command.family == CompilerFamily::Zig ? 2 : 1;
-    // The cancel kills the compiler with what it started.
+    // Hang detection: a query answers in well under a second, a cold
+    // Windows start in a few, more while the scanner reads the driver beside
+    // other starting work (over 5 on CI runners); a compiler or wrapper that
+    // never exits (one reading its input, a hung network mount) would block
+    // the query's caller for good. The cancel kills it with what it started.
+    // LIMITATION: a driver's first start on a machine, scanned by an
+    // antivirus beside other starting work, can pass the bound (2.6 s idle
+    // on a fresh Windows runner, past 10 s under a test run's load): the
+    // files it was asked for compile with clang's own reading of the command
+    // until the query's cooldown passes.
     auto asked = co_await async::with_timeout(ask_compiler(std::move(args),
                                                            command,
                                                            std::string(input->path()),

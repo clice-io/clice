@@ -7,6 +7,40 @@ import :unittests.utils;
 namespace clice::testing {
 namespace {
 
+/// resolve_include over `config` searched in order, as most callers search
+/// it, checked against the search through the index of the names its
+/// directories hold, as the dependency scan searches it: the two agree.
+std::optional<ResolveResult> resolve(llvm::StringRef filename,
+                                     bool angled,
+                                     llvm::StringRef includer_dir,
+                                     bool include_next,
+                                     std::optional<unsigned> found_dir_idx,
+                                     const SearchConfig& config,
+                                     vfs::Scope& scope) {
+    auto in_order =
+        resolve_include(filename, angled, includer_dir, include_next, found_dir_idx, config, scope);
+    NameIndex names;
+    auto indexed = resolve_search_config(config, scope, &names);
+    for(auto& dir: indexed.dirs) {
+        names.add(*dir.listing);
+    }
+    auto* includer = includer_dir.empty() ? nullptr : &scope.list(includer_dir);
+    auto found = resolve_include(filename,
+                                 angled,
+                                 includer,
+                                 includer_dir,
+                                 include_next,
+                                 found_dir_idx,
+                                 indexed,
+                                 scope);
+    ZEXPECT(found.has_value() == in_order.has_value());
+    if(found && in_order) {
+        ZEXPECT(found->path == in_order->path);
+        ZEXPECT(found->found_dir_idx == in_order->found_dir_idx);
+    }
+    return in_order;
+}
+
 ZEST_SUITE(IncludeResolver) {
 
 ZEST_CASE(ResolveAbsolutePath) {
@@ -18,7 +52,7 @@ ZEST_CASE(ResolveAbsolutePath) {
     vfs::DirCache cache;
     vfs::Scope scope(cache);
 
-    auto result = resolve_include(abs_path, false, "", false, 0, config, scope);
+    auto result = resolve(abs_path, false, "", false, 0, config, scope);
 
     ZASSERT(result);
     ZEXPECT(fs::equivalent(result->path.str(), abs_path).value_or(false));
@@ -36,7 +70,7 @@ ZEST_CASE(ResolveQuotedFromIncluder) {
     vfs::DirCache cache;
     vfs::Scope scope(cache);
 
-    auto result = resolve_include("local.h", false, tmp.path("src"), false, 0, config, scope);
+    auto result = resolve("local.h", false, tmp.path("src"), false, 0, config, scope);
 
     ZASSERT(result);
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("src/local.h")).value_or(false));
@@ -53,7 +87,7 @@ ZEST_CASE(ResolveAngledFromDirectories) {
     vfs::DirCache cache;
     vfs::Scope scope(cache);
 
-    auto result = resolve_include("sys/types.h", true, "", false, 0, config, scope);
+    auto result = resolve("sys/types.h", true, "", false, 0, config, scope);
 
     ZASSERT(result);
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("include/sys/types.h")).value_or(false));
@@ -74,7 +108,7 @@ ZEST_CASE(ResolveSkipsDirectories) {
     vfs::DirCache cache;
     vfs::Scope scope(cache);
 
-    auto result = resolve_include("memory", true, "", false, 0, config, scope);
+    auto result = resolve("memory", true, "", false, 0, config, scope);
 
     ZASSERT(result);
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("std/memory")).value_or(false));
@@ -94,7 +128,7 @@ ZEST_CASE(ResolveIncludeNext) {
     vfs::Scope scope(cache);
 
     // Simulate #include_next from a file found at dir index 0.
-    auto result = resolve_include("stdlib.h", true, "", true, 0, config, scope);
+    auto result = resolve("stdlib.h", true, "", true, 0, config, scope);
 
     ZASSERT(result);
     // Should skip dir1 (found_dir_idx=0) and find in dir2.
@@ -112,7 +146,7 @@ ZEST_CASE(ResolveNotFound) {
     vfs::DirCache cache;
     vfs::Scope scope(cache);
 
-    auto result = resolve_include("nonexistent.h", false, tmp.path("src"), false, 0, config, scope);
+    auto result = resolve("nonexistent.h", false, tmp.path("src"), false, 0, config, scope);
 
     ZEXPECT(!result.has_value());
 }
@@ -128,13 +162,13 @@ ZEST_CASE(ResolveStatCacheHits) {
     vfs::DirCache cache;
     vfs::Scope scope(cache);
 
-    auto first = resolve_include("cached.h", true, "", false, 0, config, scope);
+    auto first = resolve("cached.h", true, "", false, 0, config, scope);
     ZASSERT(first);
 
     // The operation keeps the listing it read: a file removed meanwhile
     // still resolves in it, read off no disk.
     ZASSERT(fs::remove(tmp.path("include/cached.h")));
-    auto second = resolve_include("cached.h", true, "", false, 0, config, scope);
+    auto second = resolve("cached.h", true, "", false, 0, config, scope);
     ZASSERT(second);
     ZEXPECT(second->path == first->path);
 }
@@ -151,7 +185,7 @@ ZEST_CASE(ResolveQuotedFallsBack) {
     vfs::DirCache cache;
     vfs::Scope scope(cache);
 
-    auto result = resolve_include("fallback.h", false, tmp.path("src"), false, 0, config, scope);
+    auto result = resolve("fallback.h", false, tmp.path("src"), false, 0, config, scope);
 
     ZASSERT(result);
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("include/fallback.h")).value_or(false));
@@ -179,7 +213,7 @@ ZEST_CASE(AngledSkipsQuotedDirs) {
     vfs::Scope scope(cache);
 
     // <header.h> should skip iquote, find in idir (Angled before System).
-    auto result = resolve_include("header.h", true, "", false, 0, config, scope);
+    auto result = resolve("header.h", true, "", false, 0, config, scope);
     ZASSERT(result);
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("idir/header.h")).value_or(false));
     ZEXPECT(result->found_dir_idx == 1u);
@@ -199,7 +233,7 @@ ZEST_CASE(AngledMissesQuotedOnly) {
     vfs::Scope scope(cache);
 
     // <only_here.h> should NOT find it — only in quoted dir.
-    auto result = resolve_include("only_here.h", true, "", false, 0, config, scope);
+    auto result = resolve("only_here.h", true, "", false, 0, config, scope);
     ZEXPECT(!result.has_value());
 }
 
@@ -219,7 +253,7 @@ ZEST_CASE(QuotedSearchesAllDirs) {
     vfs::Scope scope(cache);
 
     // "deep.h" is only in system dir, but quoted search goes through all.
-    auto result = resolve_include("deep.h", false, "", false, 0, config, scope);
+    auto result = resolve("deep.h", false, "", false, 0, config, scope);
     ZASSERT(result);
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("sys/deep.h")).value_or(false));
 }
@@ -239,7 +273,7 @@ ZEST_CASE(AngledBeforeSystem) {
     vfs::Scope scope(cache);
 
     // <priority.h> should find in Angled (index 0) before System (index 1).
-    auto result = resolve_include("priority.h", true, "", false, 0, config, scope);
+    auto result = resolve("priority.h", true, "", false, 0, config, scope);
     ZASSERT(result);
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("idir/priority.h")).value_or(false));
     ZEXPECT(result->found_dir_idx == 0u);
@@ -261,7 +295,7 @@ ZEST_CASE(AfterSearchedLast) {
     vfs::Scope scope(cache);
 
     // <fallback.h> not in angled or sys, found in after.
-    auto result = resolve_include("fallback.h", true, "", false, 0, config, scope);
+    auto result = resolve("fallback.h", true, "", false, 0, config, scope);
     ZASSERT(result);
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("after/fallback.h")).value_or(false));
     ZEXPECT(result->found_dir_idx == 2u);
@@ -284,7 +318,7 @@ ZEST_CASE(IncludeNextPropagatesIdx) {
     vfs::Scope scope(cache);
 
     // File found at dir1 (index 1) does #include_next <limits.h>
-    auto result = resolve_include("limits.h", true, "", true, 1, config, scope);
+    auto result = resolve("limits.h", true, "", true, 1, config, scope);
     ZASSERT(result);
     // Should skip dirs 0-1, find in dir2.
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("dir2/limits.h")).value_or(false));
@@ -307,18 +341,12 @@ ZEST_CASE(IncludeNextOutsideDirs) {
 
     // src/a.h was found next to its includer, through no search dir: clang
     // looks its #include_next up like a plain include, from the start.
-    auto includer =
-        resolve_include("a.h", false, tmp.path("src"), false, std::nullopt, config, scope);
+    auto includer = resolve("a.h", false, tmp.path("src"), false, std::nullopt, config, scope);
     ZASSERT(includer);
     ZEXPECT(includer->found_dir_idx == std::nullopt);
 
-    auto result = resolve_include("target.h",
-                                  false,
-                                  tmp.path("src"),
-                                  true,
-                                  includer->found_dir_idx,
-                                  config,
-                                  scope);
+    auto result =
+        resolve("target.h", false, tmp.path("src"), true, includer->found_dir_idx, config, scope);
     ZASSERT(result);
     ZEXPECT(fs::equivalent(result->path.str(), tmp.path("inc0/target.h")).value_or(false));
     ZEXPECT(result->found_dir_idx == 0u);
@@ -339,8 +367,8 @@ ZEST_CASE(CaseMatchesVolume) {
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    auto header = resolve_include("myheader.h", true, "", false, 0, config, scope);
-    auto nested = resolve_include("sub/x.h", true, "", false, 0, config, scope);
+    auto header = resolve("myheader.h", true, "", false, 0, config, scope);
+    auto nested = resolve("sub/x.h", true, "", false, 0, config, scope);
     ZASSERT(header.has_value() == insensitive);
     ZASSERT(nested.has_value() == insensitive);
     if(insensitive) {
@@ -361,7 +389,7 @@ ZEST_CASE(NormalizationMatchesVolume) {
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    auto result = resolve_include("\xC3\xA9.h", true, "", false, 0, config, scope);
+    auto result = resolve("\xC3\xA9.h", true, "", false, 0, config, scope);
     ZASSERT(result.has_value() == insensitive);
 }
 
@@ -378,20 +406,20 @@ ZEST_CASE(FrameworkHeaders) {
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    auto bar = resolve_include("Foo/Bar.h", true, "", false, 0, config, scope);
+    auto bar = resolve("Foo/Bar.h", true, "", false, 0, config, scope);
     ZASSERT(bar);
     ZEXPECT(fs::equivalent(bar->path.str(), tmp.path("Frameworks/Foo.framework/Headers/Bar.h"))
                 .value_or(false));
     ZEXPECT(bar->found_dir_idx == 0u);
 
-    auto internal = resolve_include("Foo/Internal.h", true, "", false, 0, config, scope);
+    auto internal = resolve("Foo/Internal.h", true, "", false, 0, config, scope);
     ZASSERT(internal);
     ZEXPECT(fs::equivalent(internal->path.str(),
                            tmp.path("Frameworks/Foo.framework/PrivateHeaders/Internal.h"))
                 .value_or(false));
 
-    ZEXPECT(!resolve_include("Foo.framework/Headers/Bar.h", true, "", false, 0, config, scope));
-    ZEXPECT(!resolve_include("Bar.h", true, "", false, 0, config, scope));
+    ZEXPECT(!resolve("Foo.framework/Headers/Bar.h", true, "", false, 0, config, scope));
+    ZEXPECT(!resolve("Bar.h", true, "", false, 0, config, scope));
 }
 
 ZEST_CASE(FrameworkHeaderArgument) {
@@ -437,12 +465,12 @@ ZEST_CASE(FirstFrameworkWins) {
 
     vfs::DirCache cache;
     vfs::Scope scope(cache);
-    ZEXPECT(resolve_include("Foo/A.h", true, "", false, 0, config, scope));
-    ZEXPECT(!resolve_include("Foo/B.h", true, "", false, 0, config, scope));
+    ZEXPECT(resolve("Foo/A.h", true, "", false, 0, config, scope));
+    ZEXPECT(!resolve("Foo/B.h", true, "", false, 0, config, scope));
 
     tmp.touch("plain/Foo/B.h");
     config.dirs.push_back({tmp.path("plain")});
-    auto plain = resolve_include("Foo/B.h", true, "", false, 0, config, scope);
+    auto plain = resolve("Foo/B.h", true, "", false, 0, config, scope);
     ZASSERT(plain);
     ZEXPECT(plain->found_dir_idx == 2u);
 }
@@ -469,6 +497,55 @@ ZEST_CASE(VersionedFrameworkArgument, skip = Windows) {
     auto bar = names.of(header);
     ZASSERT(bar);
     ZEXPECT(bar->path == "Foo/Bar.h");
+}
+
+ZEST_CASE(DirectoryQuotedAndAngled) {
+    // `-iquote inc -I inc`: clang keeps the directory among the quoted
+    // ones and among the angled ones, where an angled include finds it.
+    TempDir tmp;
+    tmp.touch("inc/header.h");
+
+    SearchConfig config;
+    config.dirs.push_back({tmp.path("inc")});
+    config.dirs.push_back({tmp.path("inc")});
+    config.angled_start_idx = 1;
+    config.system_start_idx = 2;
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    auto result = resolve("header.h", true, "", false, std::nullopt, config, scope);
+    ZASSERT(result);
+    ZEXPECT(result->found_dir_idx == 1u);
+}
+
+ZEST_CASE(IndexSharedAcrossOrders) {
+    // Two commands search the same directories in other orders through one
+    // index of names: each finds the header in its own first directory.
+    TempDir tmp;
+    tmp.touch("a/x.h");
+    tmp.touch("b/x.h");
+
+    SearchConfig ab;
+    ab.dirs.push_back({tmp.path("a")});
+    ab.dirs.push_back({tmp.path("b")});
+    SearchConfig ba;
+    ba.dirs.push_back({tmp.path("b")});
+    ba.dirs.push_back({tmp.path("a")});
+
+    vfs::DirCache cache;
+    vfs::Scope scope(cache);
+    NameIndex names;
+    auto first = resolve_search_config(ab, scope, &names);
+    auto second = resolve_search_config(ba, scope, &names);
+    for(auto* config: {&first, &second}) {
+        for(auto& dir: config->dirs) {
+            names.add(*dir.listing);
+        }
+    }
+    auto result = resolve_include("x.h", true, nullptr, "", false, std::nullopt, second, scope);
+    ZASSERT(result);
+    ZEXPECT(result->found_dir_idx == 0u);
+    ZEXPECT(fs::equivalent(result->path.str(), tmp.path("b/x.h")).value_or(false));
 }
 
 // TODO: add tests for:

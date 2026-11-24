@@ -164,7 +164,7 @@ echo 'msc_full_ver 194435207'
     ZEXPECT(ours[2] == tmp.path("llvm/lib/clang/20/include"));
 }
 
-ZEST_CASE(ClangCLAskedOncePerQuestion) {
+ZEST_CASE(OneRunPerQuestion) {
     // clang-cl is asked a command's standard alone: commands that differ in
     // anything else, the directories each names for its headers, share one
     // run of it, and each one's job takes its own directories.
@@ -179,11 +179,13 @@ esac
     auto a = add("a.cpp", {clang_cl.c_str(), "/imsvc", tmp.c_path("a")});
     auto b = add("b.cpp", {clang_cl.c_str(), "/imsvc", tmp.c_path("b")});
     auto c = add("c.cpp", {clang_cl.c_str(), "/std:c++17", "/imsvc", tmp.c_path("a")});
-    llvm::SmallVector<CommandRef> refs = {a, b, c};
+    // A C file is asked about over a C file.
+    auto d = add("d.c", {clang_cl.c_str(), "/imsvc", tmp.c_path("a")});
+    llvm::SmallVector<CommandRef> refs = {a, b, c, d};
     f.toolchain.warm(refs);
     auto runs = vfs::read_text(tmp.path("runs"));
     ZASSERT(runs);
-    ZEXPECT(*runs == "run\nrun\n");
+    ZEXPECT(*runs == "run\nrun\nrun\n");
 
     auto dir_a = Spelling::absolute(tmp.path("a")).str();
     auto dir_b = Spelling::absolute(tmp.path("b")).str();
@@ -197,20 +199,23 @@ esac
     ZEXPECT(last_standard(f.resolve(c)) == "-std=c++17");
 }
 
-ZEST_CASE(HungClangCLStopsItsQuestion) {
+ZEST_CASE(HungRunFailsWaiters) {
     // The bound that stops a clang-cl that never exits fails every query
-    // asking what it was asked at once: none waits out a bound of its own.
+    // asking what it was asked at once: none runs it again.
     ScopedEnv bound("CLICE_TEST_QUERY_BOUND_MS", "1000");
-    auto clang_cl = fake_driver("clang-cl", "while :; do :; done\n");
+    auto clang_cl = fake_driver("clang-cl",
+                                std::format(R"(echo run >> '{}'
+while :; do :; done
+)",
+                                            tmp.path("runs")));
     llvm::SmallVector<CommandRef> refs;
     for(unsigned i = 0; i < 8 * sys::parallelism(); i += 1) {
         auto headers = tmp.path(std::to_string(i));
         refs.push_back(
             add(std::format("{}.cpp", i), {clang_cl.c_str(), "/imsvc", headers.c_str()}));
     }
-    auto start = chrono::steady_clock::now();
     f.toolchain.warm(refs);
-    ZEXPECT(chrono::steady_clock::now() - start < chrono::seconds(5));
+    ZEXPECT(vfs::read_text(tmp.path("runs")) == "run\n");
     for(auto& ref: refs) {
         ZEXPECT(llvm::StringRef(f.failure(ref))
                     .ends_with(" did not finish within 1000 ms and was stopped"));

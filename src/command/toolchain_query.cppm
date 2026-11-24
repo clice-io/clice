@@ -38,9 +38,6 @@ class QueryBatch {
 public:
     QueryBatch();
 
-    /// How long a query may run before it is stopped.
-    const chrono::milliseconds bound;
-
     /// What the driver of `question`, a `cl_question`, run in `cwd`, answers
     /// over `input`, an empty file of the query's language it fills with
     /// `cl_query_source`; a query of the batch asking the same over a file of
@@ -48,6 +45,9 @@ public:
     async::task<std::expected<ProgramOutput, std::string>> ask_cl(std::vector<std::string> question,
                                                                   llvm::StringRef input,
                                                                   std::string cwd);
+
+    /// How long a query may run before it is stopped.
+    const chrono::milliseconds bound;
 
 private:
     struct Answer {

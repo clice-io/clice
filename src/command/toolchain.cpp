@@ -109,13 +109,16 @@ std::vector<std::string> files_under(const Spelling& dir) {
 
 /// Whether the frontend takes `arg` as the command writes it, the driver
 /// passing it on untouched to cc1, so the query need not see it: clang's
-/// `-W`, `-w` and `-pedantic`, and `-fmodule-name=`, which outside header
-/// modules (normalize drops it with them) names only `__MODULE__`. Targets
-/// setting their warnings or their module names apart would each ask the
-/// compiler (Chromium names every target's module). One a driver translates
-/// (cl's `/W4`, `-Wframe-larger-than=`) the query sees, as it does every
-/// option of a compiler whose flags clang takes only after flags_for_clang
-/// (GCC's `-Werror=shadow`).
+/// `-W` options and `-pedantic-errors`, and `-fmodule-name=`, which outside
+/// header modules (normalize drops it with them) names only `__MODULE__`.
+/// Targets setting their warnings or their module names apart would each
+/// ask the compiler (Chromium names every target's module). One a driver
+/// reads itself the query sees — cl's `/W4`; clang's `-Wno-deprecated`,
+/// which leaves C++'s `__DEPRECATED` undefined, `-Wwrite-strings` and a `-w`
+/// after it, which make C's string literals const, `-pedantic` and the
+/// `-no-pedantic` after it, `-Wframe-larger-than=` and Darwin's
+/// `-Wnonportable-cfstrings` —, as it sees every option of a compiler whose
+/// flags clang takes only after flags_for_clang (GCC's `-Werror=shadow`).
 bool frontend_takes_as_written(const Arg& arg, CompilerFamily family) {
     if(cl_mode(family) || family == CompilerFamily::GCC || family == CompilerFamily::NVCC) {
         return false;
@@ -123,9 +126,19 @@ bool frontend_takes_as_written(const Arg& arg, CompilerFamily family) {
     if(arg.cls == ArgClass::Semantic) {
         return arg.opt_id == clang_options::OPT_fmodule_name_EQ;
     }
-    auto opt = clang_options::table().option(arg.opt_id);
-    return arg.cls == ArgClass::Diagnostics && opt &&
-           opt->has_visibility_flag(clang_options::CC1Option);
+    using namespace clang_options;
+    constexpr std::array driver_reads = {OPT_Wdeprecated,
+                                         OPT_Wno_deprecated,
+                                         OPT_Wwrite_strings,
+                                         OPT_Wno_write_strings,
+                                         OPT_w,
+                                         OPT_pedantic,
+                                         OPT_Wframe_larger_than_EQ,
+                                         OPT_Wnonportable_cfstrings,
+                                         OPT_Wno_nonportable_cfstrings};
+    auto opt = table().option(arg.opt_id);
+    return arg.cls == ArgClass::Diagnostics && opt && opt->has_visibility_flag(CC1Option) &&
+           !ranges::contains(driver_reads, arg.opt_id);
 }
 
 /// Which args feed the query (and its key): everything that may change
@@ -909,24 +922,14 @@ void Toolchain::learn_search_dirs(llvm::ArrayRef<CommandRef> refs) {
             }
         }
     }
-    auto learn = [&]() -> async::task<> {
-        constexpr std::size_t batch = 256;
-        async::task_group<> learning;
-        for(std::size_t first = 0; first < dirs.size(); first += batch) {
-            learning.spawn([](llvm::MutableArrayRef<Dir> dirs) -> async::task<> {
-                co_await async::queue([&] {
-                    for(auto& dir: dirs) {
-                        if(!dir.known) {
-                            dir.identity.emplace(Spelling::absolute(dir.value));
-                        }
-                        dir.builtin_headers = holds_builtin_headers(dir.value);
-                    }
-                });
-            }(llvm::MutableArrayRef(dirs).slice(first, std::min(batch, dirs.size() - first))));
+    async::run(in_parts(dirs.size(), [&](std::size_t, std::size_t first, std::size_t end) {
+        for(auto& dir: llvm::MutableArrayRef(dirs).slice(first, end - first)) {
+            if(!dir.known) {
+                dir.identity.emplace(Spelling::absolute(dir.value));
+            }
+            dir.builtin_headers = holds_builtin_headers(dir.value);
         }
-        co_await learning.join();
-    };
-    async::run(learn());
+    }));
     for(auto& dir: dirs) {
         if(dir.identity) {
             files.intern(Spelling::absolute(dir.value), *dir.identity);

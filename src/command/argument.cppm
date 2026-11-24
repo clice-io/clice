@@ -114,10 +114,11 @@ enum class ArgClass : std::uint8_t {
     /// to toolchain queries only for NVCC query tokens.
     Unknown,
 
-    /// The input slot: where the source file sat in the original command.
-    /// A pure position marker — it stores no path (the file is the entry's,
-    /// not the command's). Language selectors before it govern the input;
-    /// renders inject the actual file here.
+    /// The input slot: last, or where the source file sat in the original
+    /// command when a language selector follows it. A pure position marker
+    /// — it stores no path (the file is the entry's, not the command's).
+    /// Language selectors before it govern the input; renders inject the
+    /// actual file here.
     Input,
 };
 
