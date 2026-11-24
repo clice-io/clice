@@ -5,9 +5,19 @@ import { test } from "@clice/tools/testing";
 
 /// What a user's delete of `target` removes under a running server: all of
 /// it, but on Windows, which removes no file a process holds open, the
-/// server's index database and the directories holding it stay.
+/// server's index database and the directories holding it stay. A file the
+/// server renames meanwhile (one it writes whole under a temporary name) is
+/// passed over, as `rm -rf` does.
 function wipe(target: string): void {
-    const directory = fs.lstatSync(target).isDirectory();
+    let directory: boolean;
+    try {
+        directory = fs.lstatSync(target).isDirectory();
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+            return;
+        }
+        throw error;
+    }
     if (directory) {
         for (const name of fs.readdirSync(target)) {
             wipe(path.join(target, name));
@@ -23,7 +33,8 @@ function wipe(target: string): void {
         }
     } catch (error) {
         const code = (error as NodeJS.ErrnoException).code ?? "";
-        if (process.platform !== "win32" || !["EPERM", "EBUSY", "ENOTEMPTY"].includes(code)) {
+        const kept = process.platform === "win32" && ["EPERM", "EBUSY", "ENOTEMPTY"].includes(code);
+        if (code !== "ENOENT" && !kept) {
             throw error;
         }
     }
