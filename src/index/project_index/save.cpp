@@ -321,26 +321,23 @@ async::task<bool> ProjectIndex::rebind_views(BlobDatabase& db,
     };
     co_await rebind(shard_records);
     co_await rebind(instantiation_records);
+    // A segment whose file went before it could map it — a cache wiped
+    // under the server — keeps its bytes: the next load builds it again.
     std::erase_if(search.in_memory, [&](std::uint32_t id) {
         auto key = number_key(id);
-        if(damage || ranges::any_of(search.writes, [&](const BlobDatabase::Blob& blob) {
-               return blob.key == key;
-           })) {
+        if(ranges::any_of(search.writes,
+                          [&](const BlobDatabase::Blob& blob) { return blob.key == key; })) {
             return false;
         }
-        auto at = ranges::find(header.search_segments, id) - header.search_segments.begin();
-        auto blob = db.read(BlobKind::SearchSegment, key);
-        if(!blob || !search.index.rebind(static_cast<std::uint32_t>(at), std::move(blob.buffer))) {
-            LOG_ERROR("The index database lost a search segment its header lists");
-            damage = true;
-            return false;
+        if(auto blob = db.read(BlobKind::SearchSegment, key)) {
+            auto at = ranges::find(header.search_segments, id) - header.search_segments.begin();
+            search.index.rebind(static_cast<std::uint32_t>(at), std::move(blob.buffer));
         }
         return true;
     });
-    // A view left unrebound — a shard that diverged and the ones after it,
-    // a lost search index — still borrows the old snapshot or owns bytes
-    // no file holds: it stays, and the caller discards the index before
-    // anything reads them.
+    // A view left unrebound — a shard that diverged and the ones after it —
+    // still borrows the old snapshot: it stays, and the caller discards the
+    // index before anything reads them.
     if(db.corrupted() || damage) {
         co_return false;
     }

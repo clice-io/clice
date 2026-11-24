@@ -932,13 +932,12 @@ bool SearchIndex::replace(std::uint32_t runs,
     return true;
 }
 
-bool SearchIndex::rebind(std::uint32_t segment, std::unique_ptr<llvm::MemoryBuffer> bytes) {
+void SearchIndex::rebind(std::uint32_t segment, std::unique_ptr<llvm::MemoryBuffer> bytes) {
     auto& held = *segments[segment];
-    if(!rebind_buffer(held.buffer, std::move(bytes))) {
-        return false;
+    if(rebind_buffer(held.buffer, std::move(bytes))) {
+        held.columns =
+            &codec::blob::view_verified<SearchIndexBlob>(as_bytes(held.buffer->getBuffer()));
     }
-    held.columns = &codec::blob::view_verified<SearchIndexBlob>(as_bytes(held.buffer->getBuffer()));
-    return true;
 }
 
 void SearchIndex::clear() {

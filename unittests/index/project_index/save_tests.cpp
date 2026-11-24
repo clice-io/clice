@@ -44,6 +44,32 @@ struct WriteLog final : ForwardingDatabase {
     }
 };
 
+/// Remove the database's value files under `directory`, as a user wiping
+/// the cache under a running server; Windows removes none a process maps.
+void remove_value_files(llvm::StringRef directory) {
+    auto entries = fs::Directory::open(directory);
+    ZASSERT(entries.has_value());
+    for(const auto& entry: *entries) {
+        if(entry && llvm::StringRef(entry->name).starts_with("index.mdb-value-")) {
+            fs::remove(path::join(directory, entry->name));
+        }
+    }
+}
+
+/// A database whose value files go as soon as each write commits them.
+struct WipedAfterWrite final : ForwardingDatabase {
+    using ForwardingDatabase::ForwardingDatabase;
+
+    std::string directory;
+
+    std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                           llvm::ArrayRef<index::BlobKey> removes) override {
+        auto committed = real->write(puts, removes);
+        remove_value_files(directory);
+        return committed;
+    }
+};
+
 /// Open the cache store under `tmp` with a logged LMDB database of
 /// `mapsize` bytes (0 = the default).
 WriteLog& open_logged(TempDir& tmp, Project& project, std::size_t mapsize = 0) {
@@ -485,20 +511,26 @@ ZEST_CASE(SaveMapsOnlyItsSegments) {
     open_store(tmp, project);
     ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
     fx.save(index::SearchRebuild::Idle);
-    auto directory = index::database_directory(*project.store, {});
-    auto entries = fs::Directory::open(directory);
-    ZASSERT(entries.has_value());
-    for(const auto& entry: *entries) {
-        if(entry && llvm::StringRef(entry->name).starts_with("index.mdb-value-")) {
-            // Windows removes no file a process maps.
-            fs::remove(path::join(directory, entry->name));
-        }
-    }
+    remove_value_files(index::database_directory(*project.store, {}));
     ZASSERT(merge(index_file(tmp, tmp.path("b.cpp")).data));
     fx.save(index::SearchRebuild::Never);
     ZEXPECT(project.index.search_index().run_count() == 2u);
     ZEXPECT(index_hits("first_value") == 1u);
     ZEXPECT(index_hits("second_value") == 1u);
+}
+
+ZEST_CASE(SegmentKeepsBytesWithoutFile) {
+    // A segment whose file goes between its commit and its mapping keeps
+    // the bytes it holds, and answers.
+    tmp.touch("a.cpp", "int first_value() { return 1; }\n");
+    open_store(tmp, project);
+    auto wiped = std::make_unique<WipedAfterWrite>(std::move(project.database));
+    wiped->directory = index::database_directory(*project.store, {});
+    project.database = std::move(wiped);
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Idle);
+    ZEXPECT(project.index.search_index().run_count() == 1u);
+    ZEXPECT(index_hits("first_value") == 1u);
 }
 
 ZEST_CASE(FoldsKeepRunsFew) {

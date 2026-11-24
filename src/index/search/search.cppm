@@ -159,9 +159,8 @@ public:
     bool replace(std::uint32_t runs, std::vector<std::unique_ptr<llvm::MemoryBuffer>> segments);
 
     /// Swap a segment's bytes for byte-identical ones elsewhere (the file a
-    /// save stored them in); false, keeping the old ones, when the sizes
-    /// differ.
-    bool rebind(std::uint32_t segment, std::unique_ptr<llvm::MemoryBuffer> bytes);
+    /// save stored them in), keeping the old ones when the sizes differ.
+    void rebind(std::uint32_t segment, std::unique_ptr<llvm::MemoryBuffer> bytes);
 
     void clear();
 
