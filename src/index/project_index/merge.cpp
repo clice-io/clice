@@ -273,11 +273,11 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // index stale on arrival, though no look may ever report a change: a
     // parse reading it mid-write (a save in place truncates it first) read
     // bytes the disk held for a moment. Not when the unit's last run read
-    // the same bytes, which every run reads then (a header the parse holds
-    // as embedded bytes keeps the byte order mark the disk's hash leaves
-    // out), nor for a file read through a module or the precompiled header:
-    // a reindex would read the same build again, which only a change
-    // reaching it rebuilds.
+    // the same bytes as gone: every run reads them then (a header the parse
+    // holds as embedded bytes keeps the byte order mark the disk's hash
+    // leaves out). Nor for a file read through a module or the precompiled
+    // header: a reindex would read the same build again, which only a
+    // change reaching it rebuilds.
     llvm::SmallVector<std::uint32_t> moved_on;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         llvm::StringRef path = view.path(i);
@@ -333,18 +333,23 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         }
         manifest.absent.push_back(files.intern_version(fid, 0));
     }
-    if(!moved_on.empty()) {
-        auto last = this->manifest(tu_path_id);
-        auto read_before = [&](std::uint32_t local_id) {
-            auto version = version_of[local_id];
-            return last && (last->tu_version == version ||
-                            ranges::contains(last->nodes, version.raw, &IncludeNode::file));
-        };
-        if(auto it = ranges::find_if_not(moved_on, read_before); it != moved_on.end()) {
-            LOG_INFO("The index of {} read {} as the disk no longer holds it; it is indexed again",
-                     tu_path,
-                     files.resolve(file_ids_map[*it]));
-            report.add_reindex(tu_path_id);
+    auto last = stale_reads.lookup(tu_path_id);
+    if(auto it = ranges::find_if(
+           moved_on,
+           [&](std::uint32_t local_id) { return !ranges::contains(last, version_of[local_id]); });
+       it != moved_on.end()) {
+        LOG_INFO("The index of {} read {} as the disk no longer holds it; it is indexed again",
+                 tu_path,
+                 files.resolve(file_ids_map[*it]));
+        report.add_reindex(tu_path_id);
+    }
+    if(moved_on.empty()) {
+        stale_reads.erase(tu_path_id);
+    } else {
+        auto& stale = stale_reads[tu_path_id];
+        stale.clear();
+        for(auto local_id: moved_on) {
+            stale.push_back(version_of[local_id]);
         }
     }
 
