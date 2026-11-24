@@ -1,3 +1,11 @@
+namespace std {
+template <typename E>
+class initializer_list {
+    const E* first;
+    decltype(sizeof(0)) count;
+};
+}  // namespace std
+
 struct Widget {
     Widget(int size);
     Widget(int width, int height);
@@ -32,6 +40,34 @@ Widget braced(T size) {
 template <typename T>
 Any wrap(T value) {
     return §(templated)Any(value);
+}
+
+struct Pack {
+    template <typename... U>
+    Pack(U... values);
+};
+
+template <typename T>
+Pack gather(T value) {
+    return §(pack)Pack(value, value);
+}
+
+struct List {
+    List(std::initializer_list<int> values);
+};
+
+template <typename T>
+List listed(T value) {
+    return §(listed)List{value, value, value};
+}
+
+struct Derived : Widget {
+    using Widget::Widget;
+};
+
+template <typename T>
+Derived inherit(T size) {
+    return §(inherited)Derived(size);
 }
 
 template <typename T>

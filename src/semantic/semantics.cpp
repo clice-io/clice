@@ -1787,6 +1787,17 @@ const clang::CXXRecordDecl* constructed_class(clang::QualType type) {
     return nullptr;
 }
 
+/// Whether the constructor's first parameter is a `std::initializer_list`
+/// the others leave alone: it takes a braced list of any length.
+bool takes_list(const clang::CXXConstructorDecl& constructor) {
+    if(constructor.getNumParams() == 0 || constructor.getMinRequiredArguments() > 1) {
+        return false;
+    }
+    const auto* list = types::decl_of(constructor.getParamDecl(0)->getType().getNonReferenceType());
+    return list && list->getIdentifier() && list->getIdentifier()->isStr("initializer_list") &&
+           list->isInStdNamespace();
+}
+
 /// The arguments a construction a template leaves open lists, `(a, b)` or
 /// `{a, b}`, and where the list opens.
 struct Arguments {
@@ -1794,15 +1805,25 @@ struct Arguments {
 
     clang::SourceLocation open;
 
+    bool braced = false;
+
     /// Whether the constructor takes as many: a pack expansion among them
-    /// stands for any number of its own.
+    /// stands for any number of its own, as a parameter pack takes any
+    /// number.
     bool taken_by(const clang::CXXConstructorDecl& constructor) const {
+        if(braced && takes_list(constructor)) {
+            return true;
+        }
         auto packs = static_cast<unsigned>(ranges::count_if(list, [](const clang::Expr* argument) {
             return llvm::isa<clang::PackExpansionExpr>(argument);
         }));
         auto fixed = static_cast<unsigned>(list.size()) - packs;
+        auto unbounded = constructor.isVariadic() ||
+                         ranges::any_of(constructor.parameters(), [](const clang::ParmVarDecl* p) {
+                             return p->isParameterPack();
+                         });
         return (packs != 0 || constructor.getMinRequiredArguments() <= fixed) &&
-               (fixed <= constructor.getNumParams() || constructor.isVariadic());
+               (fixed <= constructor.getNumParams() || unbounded);
     }
 };
 
@@ -1811,7 +1832,7 @@ std::optional<Arguments> listed_arguments(const clang::Expr* arguments) {
         return Arguments{.list = list->exprs(), .open = list->getLParenLoc()};
     }
     if(const auto* list = llvm::dyn_cast_if_present<clang::InitListExpr>(arguments)) {
-        return Arguments{.list = list->inits(), .open = list->getLBraceLoc()};
+        return Arguments{.list = list->inits(), .open = list->getLBraceLoc(), .braced = true};
     }
     return std::nullopt;
 }
@@ -1869,8 +1890,8 @@ std::optional<Construction> construction_of(const SemanticNode& node) {
 /// The constructors a type's name calls where it writes a construction: a
 /// reference at the name to the one clang resolves; inside a template,
 /// which leaves the choice to instantiation, a guess at every constructor
-/// of the class taking that many arguments, which the parenthesis leads
-/// to. None where no written constructor runs (an implicit or aggregate
+/// of the class, its own or one it inherits, taking that many arguments,
+/// which the parenthesis leads to. None where no written constructor runs (an implicit or aggregate
 /// construction) or no declaration's name writes the type.
 References named_calls(const SemanticNode& node) {
     References out;
@@ -1891,6 +1912,9 @@ References named_calls(const SemanticNode& node) {
         return out;
     }
     for(const auto* member: record->decls()) {
+        if(const auto* inherited = llvm::dyn_cast<clang::ConstructorUsingShadowDecl>(member)) {
+            member = inherited->getTargetDecl();
+        }
         const auto* constructor =
             llvm::dyn_cast_if_present<clang::CXXConstructorDecl>(member->getAsFunction());
         if(constructor && !constructor->isImplicit() &&

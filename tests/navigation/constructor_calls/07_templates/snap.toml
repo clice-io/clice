@@ -46,6 +46,8 @@ modifiers = ["member", "dependent", "constructor"]
 highlights = [
     { at = "⟦Widget⟧(int size);", kind = "text" },
     { at = "return ⟦Widget⟧(size);", kind = "text" },
+    { at = "using Widget::⟦Widget⟧;", kind = "text" },
+    { at = "return ⟦Derived⟧(size);", kind = "text" },
     { at = "return new ⟦Widget⟧(size);", kind = "text" },
     { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
     { at = "return T⟦(⟧size);", kind = "text" },
@@ -70,6 +72,7 @@ modifiers = ["member", "dependent", "constructor"]
 highlights = [
     { at = "⟦Widget⟧(int width, int height);", kind = "text" },
     { at = "return ⟦Widget⟧{size, size};", kind = "text" },
+    { at = "using Widget::⟦Widget⟧;", kind = "text" },
     { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
 ]
 
@@ -109,10 +112,80 @@ text = "Any"
 type = "method"
 modifiers = ["member", "template", "dependent", "constructor"]
 
+[cards.pack]
+highlights = [
+    { at = "⟦Pack⟧(U... values);", kind = "text" },
+    { at = "return ⟦Pack⟧(value, value);", kind = "text" },
+]
+
+[cards.pack.hover]
+markdown = '''
+**method** `Pack` · struct `Pack`
+
+```cpp
+template <typename... U> Pack(U... values)
+```
+'''
+range = "return ⟦Pack⟧(value, value);"
+
+[cards.pack.semantic_token]
+text = "Pack"
+type = "method"
+modifiers = ["member", "template", "dependent", "constructor"]
+
+[cards.listed]
+highlights = [
+    { at = "⟦List⟧(std::initializer_list<int> values);", kind = "text" },
+    { at = "return ⟦List⟧{value, value, value};", kind = "text" },
+]
+
+[cards.listed.hover]
+markdown = '''
+**method** `List` · struct `List`
+
+```cpp
+List(std::initializer_list<int> values)
+```
+'''
+range = "return ⟦List⟧{value, value, value};"
+
+[cards.listed.semantic_token]
+text = "List"
+type = "method"
+modifiers = ["member", "dependent", "constructor"]
+
+[cards.inherited]
+highlights = [
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "return ⟦Widget⟧(size);", kind = "text" },
+    { at = "using Widget::⟦Widget⟧;", kind = "text" },
+    { at = "return ⟦Derived⟧(size);", kind = "text" },
+    { at = "return new ⟦Widget⟧(size);", kind = "text" },
+    { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
+    { at = "return T⟦(⟧size);", kind = "text" },
+]
+
+[cards.inherited.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "return ⟦Derived⟧(size);"
+
+[cards.inherited.semantic_token]
+text = "Derived"
+type = "method"
+modifiers = ["member", "dependent", "constructor"]
+
 [cards.allocated]
 highlights = [
     { at = "⟦Widget⟧(int size);", kind = "text" },
     { at = "return ⟦Widget⟧(size);", kind = "text" },
+    { at = "using Widget::⟦Widget⟧;", kind = "text" },
+    { at = "return ⟦Derived⟧(size);", kind = "text" },
     { at = "return new ⟦Widget⟧(size);", kind = "text" },
     { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
     { at = "return T⟦(⟧size);", kind = "text" },
@@ -139,6 +212,8 @@ highlights = [
     { at = "⟦Widget⟧(int width, int height);", kind = "text" },
     { at = "return ⟦Widget⟧(size);", kind = "text" },
     { at = "return ⟦Widget⟧{size, size};", kind = "text" },
+    { at = "using Widget::⟦Widget⟧;", kind = "text" },
+    { at = "return ⟦Derived⟧(size);", kind = "text" },
     { at = "return new ⟦Widget⟧(size);", kind = "text" },
     { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
     { at = "return T⟦(⟧size);", kind = "text" },
@@ -222,6 +297,8 @@ type_definition = ["struct ⟦Widget⟧ {"]
 references = [
     "⟦Widget⟧(int size);",
     "return ⟦Widget⟧(size);",
+    "using Widget::⟦Widget⟧;",
+    "return ⟦Derived⟧(size);",
     "return new ⟦Widget⟧(size);",
     "return ⟦Widget⟧(sizes...);",
     "return T⟦(⟧size);",
@@ -231,13 +308,44 @@ references = [
 definition = ["⟦Widget⟧(int width, int height);"]
 declaration = ["⟦Widget⟧(int width, int height);"]
 type_definition = ["struct ⟦Widget⟧ {"]
-references = ["⟦Widget⟧(int width, int height);", "return ⟦Widget⟧{size, size};", "return ⟦Widget⟧(sizes...);"]
+references = [
+    "⟦Widget⟧(int width, int height);",
+    "return ⟦Widget⟧{size, size};",
+    "using Widget::⟦Widget⟧;",
+    "return ⟦Widget⟧(sizes...);",
+]
 
 [navigation.templated]
 definition = ["⟦Any⟧(U value);"]
 declaration = ["⟦Any⟧(U value);"]
 type_definition = ["struct ⟦Any⟧ {"]
 references = ["⟦Any⟧(U value);", "return ⟦Any⟧(value);"]
+
+[navigation.pack]
+definition = ["⟦Pack⟧(U... values);"]
+declaration = ["⟦Pack⟧(U... values);"]
+type_definition = ["struct ⟦Pack⟧ {"]
+references = ["⟦Pack⟧(U... values);", "return ⟦Pack⟧(value, value);"]
+
+[navigation.listed]
+definition = ["⟦List⟧(std::initializer_list<int> values);"]
+declaration = ["⟦List⟧(std::initializer_list<int> values);"]
+type_definition = ["struct ⟦List⟧ {"]
+references = ["⟦List⟧(std::initializer_list<int> values);", "return ⟦List⟧{value, value, value};"]
+
+[navigation.inherited]
+definition = ["⟦Widget⟧(int size);"]
+declaration = ["⟦Widget⟧(int size);"]
+type_definition = ["struct ⟦Derived⟧ : Widget {"]
+references = [
+    "⟦Widget⟧(int size);",
+    "return ⟦Widget⟧(size);",
+    "using Widget::⟦Widget⟧;",
+    "return ⟦Derived⟧(size);",
+    "return new ⟦Widget⟧(size);",
+    "return ⟦Widget⟧(sizes...);",
+    "return T⟦(⟧size);",
+]
 
 [navigation.allocated]
 definition = ["⟦Widget⟧(int size);"]
@@ -246,6 +354,8 @@ type_definition = ["struct ⟦Widget⟧ {"]
 references = [
     "⟦Widget⟧(int size);",
     "return ⟦Widget⟧(size);",
+    "using Widget::⟦Widget⟧;",
+    "return ⟦Derived⟧(size);",
     "return new ⟦Widget⟧(size);",
     "return ⟦Widget⟧(sizes...);",
     "return T⟦(⟧size);",
@@ -260,6 +370,8 @@ references = [
     "⟦Widget⟧(int width, int height);",
     "return ⟦Widget⟧(size);",
     "return ⟦Widget⟧{size, size};",
+    "using Widget::⟦Widget⟧;",
+    "return ⟦Derived⟧(size);",
     "return new ⟦Widget⟧(size);",
     "return ⟦Widget⟧(sizes...);",
     "return T⟦(⟧size);",
@@ -327,6 +439,37 @@ template <typename U>
 ```
 '''
 range = "return ⟦Any⟧(value);"
+
+["index cards".pack.hover]
+markdown = '''
+**method** `Pack` · struct `Pack`
+
+```cpp
+template <typename... U>
+    Pack(U... values)
+```
+'''
+range = "return ⟦Pack⟧(value, value);"
+
+["index cards".listed.hover]
+markdown = '''
+**method** `List` · struct `List`
+
+```cpp
+List(std::initializer_list<int> values)
+```
+'''
+range = "return ⟦List⟧{value, value, value};"
+
+["index cards".inherited.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "return ⟦Derived⟧(size);"
 
 ["index cards".allocated.hover]
 markdown = '''
