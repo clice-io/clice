@@ -4,6 +4,7 @@ highlights = [
     { at = "Box() : ⟦Box⟧(T{}, T{}) {}", kind = "text" },
     { at = "Holder(T value) : ⟦Box⟧<T>(value, value) {}", kind = "text" },
     { at = "return ⟦Box⟧(value, value);", kind = "text" },
+    { at = "return ⟦Crate⟧(value, value);", kind = "text" },
 ]
 
 [cards.delegating.hover]
@@ -27,6 +28,7 @@ highlights = [
     { at = "Box() : ⟦Box⟧(T{}, T{}) {}", kind = "text" },
     { at = "Holder(T value) : ⟦Box⟧<T>(value, value) {}", kind = "text" },
     { at = "return ⟦Box⟧(value, value);", kind = "text" },
+    { at = "return ⟦Crate⟧(value, value);", kind = "text" },
 ]
 
 [cards.base.hover]
@@ -50,6 +52,7 @@ highlights = [
     { at = "Box() : ⟦Box⟧(T{}, T{}) {}", kind = "text" },
     { at = "Holder(T value) : ⟦Box⟧<T>(value, value) {}", kind = "text" },
     { at = "return ⟦Box⟧(value, value);", kind = "text" },
+    { at = "return ⟦Crate⟧(value, value);", kind = "text" },
 ]
 
 [cards.deduced.hover]
@@ -67,12 +70,55 @@ text = "Box"
 type = "method"
 modifiers = ["member", "dependent", "constructor"]
 
+[cards.alias_deduced]
+highlights = [
+    { at = "⟦Box⟧(T first, T second);", kind = "text" },
+    { at = "Box() : ⟦Box⟧(T{}, T{}) {}", kind = "text" },
+    { at = "Holder(T value) : ⟦Box⟧<T>(value, value) {}", kind = "text" },
+    { at = "return ⟦Box⟧(value, value);", kind = "text" },
+    { at = "return ⟦Crate⟧(value, value);", kind = "text" },
+]
+
+[cards.alias_deduced.hover]
+markdown = '''
+**method** `Box` · struct `Box<T>`
+
+```cpp
+Box(T first, T second)
+```
+'''
+range = "return ⟦Crate⟧(value, value);"
+
+[cards.alias_deduced.semantic_token]
+text = "Crate"
+type = "method"
+modifiers = ["member", "dependent", "constructor"]
+
+[cards.default_new]
+highlights = [
+    { at = "⟦Box⟧() : Box(T{}, T{}) {}", kind = "text" },
+    { at = "return new ⟦Box⟧<T>;", kind = "text" },
+]
+
+[cards.default_new.hover]
+markdown = '''
+**method** `Box` · struct `Box<T>`
+
+```cpp
+Box()
+```
+'''
+range = "return new ⟦Box⟧<T>;"
+
+[cards.default_new.semantic_token]
+text = "Box"
+type = "method"
+modifiers = ["member", "dependent", "constructor"]
+
 [cards.dependent]
 highlights = [
     { at = "⟦Widget⟧(int size);", kind = "text" },
     { at = "return ⟦Widget⟧(size);", kind = "text" },
-    { at = "using Widget::⟦Widget⟧;", kind = "text" },
-    { at = "return ⟦Derived⟧(size);", kind = "text" },
     { at = "return new ⟦Widget⟧(size);", kind = "text" },
     { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
     { at = "return T⟦(⟧size);", kind = "text" },
@@ -97,7 +143,6 @@ modifiers = ["member", "dependent", "constructor"]
 highlights = [
     { at = "⟦Widget⟧(int width, int height);", kind = "text" },
     { at = "return ⟦Widget⟧{size, size};", kind = "text" },
-    { at = "using Widget::⟦Widget⟧;", kind = "text" },
     { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
 ]
 
@@ -181,27 +226,23 @@ modifiers = ["member", "dependent", "constructor"]
 
 [cards.inherited]
 highlights = [
-    { at = "⟦Widget⟧(int size);", kind = "text" },
-    { at = "return ⟦Widget⟧(size);", kind = "text" },
-    { at = "using Widget::⟦Widget⟧;", kind = "text" },
-    { at = "return ⟦Derived⟧(size);", kind = "text" },
-    { at = "return new ⟦Widget⟧(size);", kind = "text" },
-    { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
-    { at = "return T⟦(⟧size);", kind = "text" },
+    { at = "⟦Sheet⟧(int size);", kind = "text" },
+    { at = "using Sheet::⟦Sheet⟧;", kind = "text" },
+    { at = "return ⟦Page⟧(size);", kind = "text" },
 ]
 
 [cards.inherited.hover]
 markdown = '''
-**method** `Widget` · struct `Widget`
+**method** `Sheet` · struct `Sheet`
 
 ```cpp
-Widget(int size)
+Sheet(int size)
 ```
 '''
-range = "return ⟦Derived⟧(size);"
+range = "return ⟦Page⟧(size);"
 
 [cards.inherited.semantic_token]
-text = "Derived"
+text = "Page"
 type = "method"
 modifiers = ["member", "dependent", "constructor"]
 
@@ -209,8 +250,6 @@ modifiers = ["member", "dependent", "constructor"]
 highlights = [
     { at = "⟦Widget⟧(int size);", kind = "text" },
     { at = "return ⟦Widget⟧(size);", kind = "text" },
-    { at = "using Widget::⟦Widget⟧;", kind = "text" },
-    { at = "return ⟦Derived⟧(size);", kind = "text" },
     { at = "return new ⟦Widget⟧(size);", kind = "text" },
     { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
     { at = "return T⟦(⟧size);", kind = "text" },
@@ -237,8 +276,6 @@ highlights = [
     { at = "⟦Widget⟧(int width, int height);", kind = "text" },
     { at = "return ⟦Widget⟧(size);", kind = "text" },
     { at = "return ⟦Widget⟧{size, size};", kind = "text" },
-    { at = "using Widget::⟦Widget⟧;", kind = "text" },
-    { at = "return ⟦Derived⟧(size);", kind = "text" },
     { at = "return new ⟦Widget⟧(size);", kind = "text" },
     { at = "return ⟦Widget⟧(sizes...);", kind = "text" },
     { at = "return T⟦(⟧size);", kind = "text" },
@@ -312,6 +349,7 @@ references = [
     "Box() : ⟦Box⟧(T{}, T{}) {}",
     "Holder(T value) : ⟦Box⟧<T>(value, value) {}",
     "return ⟦Box⟧(value, value);",
+    "return ⟦Crate⟧(value, value);",
 ]
 
 [navigation.base]
@@ -323,6 +361,7 @@ references = [
     "Box() : ⟦Box⟧(T{}, T{}) {}",
     "Holder(T value) : ⟦Box⟧<T>(value, value) {}",
     "return ⟦Box⟧(value, value);",
+    "return ⟦Crate⟧(value, value);",
 ]
 
 [navigation.deduced]
@@ -334,7 +373,26 @@ references = [
     "Box() : ⟦Box⟧(T{}, T{}) {}",
     "Holder(T value) : ⟦Box⟧<T>(value, value) {}",
     "return ⟦Box⟧(value, value);",
+    "return ⟦Crate⟧(value, value);",
 ]
+
+[navigation.alias_deduced]
+definition = ["⟦Box⟧(T first, T second);"]
+declaration = ["⟦Box⟧(T first, T second);"]
+type_definition = ["struct ⟦Box⟧ {", "using ⟦Crate⟧ = Box<T>;"]
+references = [
+    "⟦Box⟧(T first, T second);",
+    "Box() : ⟦Box⟧(T{}, T{}) {}",
+    "Holder(T value) : ⟦Box⟧<T>(value, value) {}",
+    "return ⟦Box⟧(value, value);",
+    "return ⟦Crate⟧(value, value);",
+]
+
+[navigation.default_new]
+definition = ["⟦Box⟧() : Box(T{}, T{}) {}"]
+declaration = ["⟦Box⟧() : Box(T{}, T{}) {}"]
+type_definition = ["struct ⟦Box⟧ {"]
+references = ["⟦Box⟧() : Box(T{}, T{}) {}", "return new ⟦Box⟧<T>;"]
 
 [navigation.dependent]
 definition = ["⟦Widget⟧(int size);"]
@@ -343,8 +401,6 @@ type_definition = ["struct ⟦Widget⟧ {"]
 references = [
     "⟦Widget⟧(int size);",
     "return ⟦Widget⟧(size);",
-    "using Widget::⟦Widget⟧;",
-    "return ⟦Derived⟧(size);",
     "return new ⟦Widget⟧(size);",
     "return ⟦Widget⟧(sizes...);",
     "return T⟦(⟧size);",
@@ -354,12 +410,7 @@ references = [
 definition = ["⟦Widget⟧(int width, int height);"]
 declaration = ["⟦Widget⟧(int width, int height);"]
 type_definition = ["struct ⟦Widget⟧ {"]
-references = [
-    "⟦Widget⟧(int width, int height);",
-    "return ⟦Widget⟧{size, size};",
-    "using Widget::⟦Widget⟧;",
-    "return ⟦Widget⟧(sizes...);",
-]
+references = ["⟦Widget⟧(int width, int height);", "return ⟦Widget⟧{size, size};", "return ⟦Widget⟧(sizes...);"]
 
 [navigation.templated]
 definition = ["⟦Any⟧(U value);"]
@@ -380,18 +431,10 @@ type_definition = ["struct ⟦List⟧ {"]
 references = ["⟦List⟧(std::initializer_list<int> values);", "return ⟦List⟧{value, value, value};"]
 
 [navigation.inherited]
-definition = ["⟦Widget⟧(int size);"]
-declaration = ["⟦Widget⟧(int size);"]
-type_definition = ["struct ⟦Derived⟧ : Widget {"]
-references = [
-    "⟦Widget⟧(int size);",
-    "return ⟦Widget⟧(size);",
-    "using Widget::⟦Widget⟧;",
-    "return ⟦Derived⟧(size);",
-    "return new ⟦Widget⟧(size);",
-    "return ⟦Widget⟧(sizes...);",
-    "return T⟦(⟧size);",
-]
+definition = ["⟦Sheet⟧(int size);"]
+declaration = ["⟦Sheet⟧(int size);"]
+type_definition = ["struct ⟦Page⟧ : Sheet {"]
+references = ["⟦Sheet⟧(int size);", "using Sheet::⟦Sheet⟧;", "return ⟦Page⟧(size);"]
 
 [navigation.allocated]
 definition = ["⟦Widget⟧(int size);"]
@@ -400,8 +443,6 @@ type_definition = ["struct ⟦Widget⟧ {"]
 references = [
     "⟦Widget⟧(int size);",
     "return ⟦Widget⟧(size);",
-    "using Widget::⟦Widget⟧;",
-    "return ⟦Derived⟧(size);",
     "return new ⟦Widget⟧(size);",
     "return ⟦Widget⟧(sizes...);",
     "return T⟦(⟧size);",
@@ -416,8 +457,6 @@ references = [
     "⟦Widget⟧(int width, int height);",
     "return ⟦Widget⟧(size);",
     "return ⟦Widget⟧{size, size};",
-    "using Widget::⟦Widget⟧;",
-    "return ⟦Derived⟧(size);",
     "return new ⟦Widget⟧(size);",
     "return ⟦Widget⟧(sizes...);",
     "return T⟦(⟧size);",
@@ -464,6 +503,26 @@ Box(T first, T second)
 ```
 '''
 range = "return ⟦Box⟧(value, value);"
+
+["index cards".alias_deduced.hover]
+markdown = '''
+**method** `Box` · struct `Box`
+
+```cpp
+Box(T first, T second)
+```
+'''
+range = "return ⟦Crate⟧(value, value);"
+
+["index cards".default_new.hover]
+markdown = '''
+**method** `Box` · struct `Box`
+
+```cpp
+Box()
+```
+'''
+range = "return new ⟦Box⟧<T>;"
 
 ["index cards".dependent.hover]
 markdown = '''
@@ -519,13 +578,13 @@ range = "return ⟦List⟧{value, value, value};"
 
 ["index cards".inherited.hover]
 markdown = '''
-**method** `Widget` · struct `Widget`
+**method** `Sheet` · struct `Sheet`
 
 ```cpp
-Widget(int size)
+Sheet(int size)
 ```
 '''
-range = "return ⟦Derived⟧(size);"
+range = "return ⟦Page⟧(size);"
 
 ["index cards".allocated.hover]
 markdown = '''

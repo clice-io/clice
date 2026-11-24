@@ -28,6 +28,19 @@ auto pair(T value) {
 }
 
 template <typename T>
+using Crate = Box<T>;
+
+template <typename T>
+auto crate(T value) {
+    return §(alias_deduced)Crate(value, value);
+}
+
+template <typename T>
+Box<T>* fresh() {
+    return new §(default_new)Box<T>;
+}
+
+template <typename T>
 Widget make(T size) {
     return §(dependent)Widget(size);
 }
@@ -66,13 +79,18 @@ List listed(T value) {
     return §(listed)List{value, value, value};
 }
 
-struct Derived : Widget {
-    using Widget::Widget;
+struct Sheet {
+    Sheet(int size);
+    Sheet(const Sheet& other);
+};
+
+struct Page : Sheet {
+    using Sheet::Sheet;
 };
 
 template <typename T>
-Derived inherit(T size) {
-    return §(inherited)Derived(size);
+Page inherit(T size) {
+    return §(inherited)Page(size);
 }
 
 template <typename T>

@@ -1774,21 +1774,23 @@ clang::SourceLocation name_location(const clang::TypeSourceInfo& written) {
 /// The class a construction a template leaves open constructs: the one its
 /// type names, or the pattern of the class template a dependent
 /// specialization names (`Box<T>`) or a deduction from dependent arguments
-/// deduces from (`Box(t, t)`).
+/// deduces from (`Box(t, t)`), through an alias template to the one it
+/// names.
 const clang::CXXRecordDecl* constructed_class(clang::QualType type) {
     if(const auto* record = type->getAsCXXRecordDecl()) {
         return record->getDefinition();
     }
-    auto pattern_of = [](clang::TemplateName name) -> const clang::CXXRecordDecl* {
-        const auto* pattern =
-            llvm::dyn_cast_if_present<clang::ClassTemplateDecl>(name.getAsTemplateDecl());
-        return pattern ? pattern->getTemplatedDecl()->getDefinition() : nullptr;
-    };
+    const clang::TemplateDecl* written = nullptr;
     if(const auto* specialization = type->getAs<clang::TemplateSpecializationType>()) {
-        return pattern_of(specialization->getTemplateName());
+        written = specialization->getTemplateName().getAsTemplateDecl();
+    } else if(const auto* deduced = type->getAs<clang::DeducedTemplateSpecializationType>()) {
+        written = deduced->getTemplateName().getAsTemplateDecl();
     }
-    if(const auto* deduced = type->getAs<clang::DeducedTemplateSpecializationType>()) {
-        return pattern_of(deduced->getTemplateName());
+    if(const auto* alias = llvm::dyn_cast_if_present<clang::TypeAliasTemplateDecl>(written)) {
+        return constructed_class(alias->getTemplatedDecl()->getUnderlyingType());
+    }
+    if(const auto* pattern = llvm::dyn_cast_if_present<clang::ClassTemplateDecl>(written)) {
+        return pattern->getTemplatedDecl()->getDefinition();
     }
     return nullptr;
 }
@@ -1877,9 +1879,12 @@ std::optional<Construction> construction_of(const SemanticNode& node) {
                             .construct = constructs(FCE->getSubExpr())};
     }
     if(const auto* NE = llvm::dyn_cast_if_present<clang::CXXNewExpr>(S); NE && !NE->isArray()) {
+        // `new Box<T>` default-initializes: it lists no arguments.
         return Construction{.type = NE->getAllocatedTypeSourceInfo(),
                             .construct = NE->getConstructExpr(),
-                            .arguments = listed_arguments(NE->getInitializer())};
+                            .arguments = NE->hasInitializer()
+                                             ? listed_arguments(NE->getInitializer())
+                                             : Arguments{}};
     }
     if(const auto* UCE = llvm::dyn_cast_if_present<clang::CXXUnresolvedConstructExpr>(S)) {
         return Construction{
@@ -1918,12 +1923,12 @@ References named_calls(const SemanticNode& node) {
         return out;
     }
     for(const auto* member: record->decls()) {
-        if(const auto* inherited = llvm::dyn_cast<clang::ConstructorUsingShadowDecl>(member)) {
-            member = inherited->getTargetDecl();
-        }
-        const auto* constructor =
-            llvm::dyn_cast_if_present<clang::CXXConstructorDecl>(member->getAsFunction());
+        const auto* inherited = llvm::dyn_cast<clang::ConstructorUsingShadowDecl>(member);
+        const auto* constructor = llvm::dyn_cast_if_present<clang::CXXConstructorDecl>(
+            (inherited ? inherited->getTargetDecl() : member)->getAsFunction());
+        // No copy or move constructor of a base is ever inherited.
         if(constructor && !constructor->isImplicit() &&
+           !(inherited && constructor->isCopyOrMoveConstructor()) &&
            construction->arguments->taken_by(*constructor)) {
             refer(out, constructor, RelationKind::Guess, name);
             refer(out, constructor, RelationKind::Implied, construction->arguments->open);
