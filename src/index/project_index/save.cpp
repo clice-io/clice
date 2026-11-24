@@ -45,7 +45,6 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
     // snapshot off the loop would end it.
     llvm::SmallVector<Fid> marked(compact.begin(), compact.end());
     ranges::sort(marked);
-    compact.clear();
     for(auto file: marked) {
         auto* current = shard(file);
         if(!current) {
@@ -110,6 +109,11 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
         assert(replacement.loaded() && "a freshly written instantiation blob must verify");
         replace_instantiations(file, std::move(replacement));
     }
+    // Cleared only now: a shard the compaction above read first is masked
+    // by its file's live variants and uses only while the file is marked
+    // (shard, instantiation_shard), and the compaction finds the dead ones
+    // by that mask.
+    compact.clear();
     drop_fileless_symbols();
 
     // The names of internal linkage the compacted shards declare, for the
