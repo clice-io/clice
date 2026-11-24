@@ -1165,7 +1165,9 @@ for a parameter pack or an expanded pack, a braced list of any length for
 an `initializer_list` constructor, and one the class inherits, never a copy
 or move constructor. Their names lead to each of them, and to what an
 instantiation calls, a specialization's own constructor too. `T(size)`
-names the template parameter, whatever an instantiation constructs.
+names the template parameter, whatever an instantiation constructs, and
+an aggregate's braces, `Pair<T>{}` under C++17, initialize its members: its
+name stays the class's, while `Pair<T>()` calls its defaulted constructor.
 
 ```case
 tests/navigation/constructor_calls/07_templates
