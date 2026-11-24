@@ -14,10 +14,11 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 # The runner image's compilers (GCC 12 to 14, its default 13 behind cc and
 # c++, clang 16 to 18 with 18 as clang), the job's own tools (git for the
-# checkout, gh for the release runs), and the build systems and cross
-# compilers the scenarios add.
+# checkout, gh for the release runs), node for the bazelisk of the
+# repository's npm packages, which the Bazel scenario finds first, and the
+# build systems and cross compilers the scenarios add.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl git gh unzip xz-utils python3 make file pkg-config \
+        ca-certificates curl git gh nodejs unzip xz-utils python3 make file pkg-config \
         gcc g++ gcc-12 g++-12 gcc-14 g++-14 \
         clang clang-16 clang-17 clang-18 clang-tools-16 clang-tools-17 clang-tools-18 \
         lld-16 lld-17 lld-18 libclang-rt-16-dev libclang-rt-17-dev libclang-rt-18-dev \

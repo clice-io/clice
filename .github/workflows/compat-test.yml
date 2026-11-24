@@ -56,7 +56,7 @@ jobs:
 
   compat:
     needs: image
-    if: ${{ !cancelled() && needs.image.result != 'failure' }}
+    if: ${{ !cancelled() && contains(fromJSON('["success", "skipped"]'), needs.image.result) }}
     runs-on: ${{ inputs.os }}
     container: ${{ needs.image.outputs.container && fromJSON(needs.image.outputs.container) || '' }}
     timeout-minutes: 90
