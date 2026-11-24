@@ -90,11 +90,14 @@ ZEST_CASE(EnclosingAsksAround) {
     )");
     auto located = locate("target");
     ZASSERT(located.size() == 1U);
-    auto site = query().first_site(located.front().symbol.hash, {}, RelationKind::Reference);
-    ZASSERT(site.has_value());
+    // The written reference alone: a walk past the file's shard would read
+    // its instantiations before the reads below are counted.
+    auto sites =
+        query().written_only().sites(located.front().symbol.hash, {}, RelationKind::Reference);
+    ZASSERT(sites.size() == 1U);
     log->reads.clear();
-    ZEXPECT(feature::enclosing_functions(query(), {*site}) == std::vector<std::string>{"caller"});
-    ZEXPECT(index::context_lines(query(), {*site}).size() == 1U);
+    ZEXPECT(feature::enclosing_functions(query(), sites) == std::vector<std::string>{"caller"});
+    ZEXPECT(index::context_lines(query(), sites).size() == 1U);
     ZEXPECT(log->reads_of(index::BlobKind::Symbol) == 1U);
     ZEXPECT(log->reads_of(index::BlobKind::InstantiationShard) == 0U);
 }
