@@ -5,6 +5,7 @@ import :index.database;
 import :index.project_index;
 import :index.query;
 import :index.query.locate;
+import :index.query.text;
 import :index.search.locator;
 import :project.project;
 import :semantic.symbol;
@@ -12,8 +13,6 @@ import :unittests.utils;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.indexer_fixture;
 import :unittests.utils.temp_dir;
-import :vfs.ids;
-import :vfs.path;
 
 namespace clice::testing {
 namespace {
@@ -67,7 +66,7 @@ ZEST_CASE(LocateReadsShardAlone) {
     ZEXPECT(log->reads_of(index::BlobKind::Dependents) == 0U);
 }
 
-ZEST_CASE(ExactNameReadsItsRecord) {
+ZEST_CASE(ExactNameReadsOne) {
     // A name some symbol spells exactly reads that symbol's record alone,
     // not those of the names it fuzzily matches.
     reopen(R"(
@@ -80,8 +79,9 @@ ZEST_CASE(ExactNameReadsItsRecord) {
 }
 
 ZEST_CASE(EnclosingAsksAround) {
-    // Which function encloses a site is asked of the definitions around it
-    // alone, not of every definition in the file.
+    // Which function encloses a reference is asked of the definitions
+    // around it alone, not of every definition in the file; it and the
+    // line the reference lies on leave the file's instantiations unread.
     reopen(R"(
         int target() { return 1; }
         int first() { return 2; }
@@ -90,11 +90,32 @@ ZEST_CASE(EnclosingAsksAround) {
     )");
     auto located = locate("target");
     ZASSERT(located.size() == 1U);
-    auto sites = query().sites(located.front().symbol.hash, {}, RelationKind::Reference);
-    ZASSERT(sites.size() == 1U);
+    auto site = query().first_site(located.front().symbol.hash, {}, RelationKind::Reference);
+    ZASSERT(site.has_value());
     log->reads.clear();
-    ZEXPECT(feature::enclosing_functions(query(), sites) == std::vector<std::string>{"caller"});
+    ZEXPECT(feature::enclosing_functions(query(), {*site}) == std::vector<std::string>{"caller"});
+    ZEXPECT(index::context_lines(query(), {*site}).size() == 1U);
     ZEXPECT(log->reads_of(index::BlobKind::Symbol) == 1U);
+    ZEXPECT(log->reads_of(index::BlobKind::InstantiationShard) == 0U);
+}
+
+ZEST_CASE(WalkReadsInstantiations) {
+    // A walk going past a file's shard reads its instantiations, and not
+    // the units depending on the file.
+    reopen(R"(
+        struct Item {
+            int size() const { return 1; }
+        };
+        template <typename T>
+        int measure(const T& t) { return t.size(); }
+        int target() { return measure(Item{}); }
+    )");
+    auto located = locate("Item::size");
+    ZASSERT(located.size() == 1U);
+    log->reads.clear();
+    ZEXPECT(query().sites(located.front().symbol.hash, {}, RelationKind::Reference).size() == 1U);
+    ZEXPECT(log->reads_of(index::BlobKind::InstantiationShard) == 1U);
+    ZEXPECT(log->reads_of(index::BlobKind::Dependents) == 0U);
 }
 
 };  // ZEST_SUITE(QueryReads)

@@ -76,7 +76,7 @@ struct ForwardingDatabase : index::BlobDatabase {
     std::unique_ptr<index::BlobDatabase> real;
 };
 
-/// A database logging the kind of every record read from it.
+/// A database logging the kind of each read of a record and each scan.
 struct ReadLog final : ForwardingDatabase {
     using ForwardingDatabase::ForwardingDatabase;
 

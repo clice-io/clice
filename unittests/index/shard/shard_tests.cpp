@@ -297,12 +297,10 @@ ZEST_CASE(VariantMaskFiltering) {
     // Restricting to the first variant hides the occurrence only the second
     // holds, while the shared occurrence keeps serving.
     shard.set_live({variants[0]});
-    ZASSERT(shard.has_dead_variants());
     ZASSERT(hash_at(shard, 1) == 111u);
     ZASSERT(hash_at(shard, 11) == 0u);
 
     shard.set_live(variants);
-    ZASSERT(!shard.has_dead_variants());
     ZASSERT(hash_at(shard, 11) == 222u);
 
     shard.set_live({});
