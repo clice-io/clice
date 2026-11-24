@@ -73,7 +73,7 @@ ZEST_CASE(IdentityHashes) {
     database.add_command("/fake", "c.cpp", "clang++ -std=c++17 c.cpp"sv);
     database.add_command("/fake", "x1.c", "clang -x c++ x1.c"sv);
     database.add_command("/fake", "x2.c", "clang -x c x2.c"sv);
-    database.add_command("/fake", "g.cpp", "clang++ -std=c++20 -g a.cpp"sv);
+    database.add_command("/fake", "g.cpp", "clang++ -std=c++20 -fno-plt a.cpp"sv);
 
     auto hash_of = [&](llvm::StringRef file) {
         return commands.command_hash(database.candidate_entries(fake(file)).front().command);
@@ -271,7 +271,7 @@ ZEST_CASE(OrdinaryHashStable) {
                                        "-o",
                                        "main.o",
                                        "main.cpp"});
-    ZEXPECT(commands.command_hash(entry->command) == 0x49934bc992945eb8ULL);
+    ZEXPECT(commands.command_hash(entry->command) == 0xad6702fc7fcfd700ULL);
 };
 
 ZEST_CASE(ForcedLanguage) {

@@ -64,14 +64,14 @@ ZEST_CASE(KeyIgnoresPreprocessorDepfile) {
 }
 
 ZEST_CASE(KeyIgnoresCodegen) {
-    /// Debug info, section layout and colored diagnostics never change how
-    /// a driver sets up the parse; stack protection does, through its macros.
+    /// Section layout, the PLT and colored diagnostics never change how a
+    /// driver sets up the parse; stack protection does, through its macros.
     auto base = f.add("/fake", "/tmp/a.cpp", {"g++", "-std=c++23", "/tmp/a.cpp"});
     auto codegen = f.add("/fake",
                          "/tmp/b.cpp",
                          {"g++",
                           "-std=c++23",
-                          "-g",
+                          "-fno-plt",
                           "-ffunction-sections",
                           "-fdiagnostics-color=always",
                           "/tmp/b.cpp"});
@@ -113,9 +113,9 @@ ZEST_CASE(KeyTracksSemantics) {
 ZEST_CASE(KeyTracksWrittenAlias) {
     /// A GCC may know an option by one name alone; nvcc's query hands its
     /// arguments to clang's driver, which knows them all.
-    auto g = f.add("/fake", "/tmp/a.c", {"gcc", "-G", "8", "/tmp/a.c"});
-    auto limit = f.add("/fake", "/tmp/b.c", {"gcc", "-msmall-data-limit=8", "/tmp/b.c"});
-    ZEXPECT(f.key(g) != f.key(limit));
+    auto clang_name = f.add("/fake", "/tmp/a.c", {"gcc", "-ftrigraphs", "/tmp/a.c"});
+    auto gcc_name = f.add("/fake", "/tmp/b.c", {"gcc", "-trigraphs", "/tmp/b.c"});
+    ZEXPECT(f.key(clang_name) != f.key(gcc_name));
     auto offload = f.add("/fake", "/tmp/c.cu", {"nvcc", "--offload-host-only", "/tmp/c.cu"});
     auto cuda = f.add("/fake", "/tmp/d.cu", {"nvcc", "--cuda-host-only", "/tmp/d.cu"});
     ZEXPECT(f.key(offload) == f.key(cuda));

@@ -187,17 +187,24 @@ ZEST_CASE(LeftOutOptionsShare) {
     CommandTable commands;
     CompilationDatabase database{file_table, commands};
     database.add_command("/fake", "a.cpp", "clang++ -std=c++20 -fPIC -c a.cpp"sv);
-    database.add_command("/fake",
-                         "b.cpp",
-                         "clang++ -std=c++20 -fPIC -g -fno-omit-frame-pointer -ffunction-sections "
-                         "-c -o b.o -MD -MF b.d -MJ b.o.json -ftime-trace=b.trace.json "
-                         "-save-temps=obj --serialize-diagnostics b.dia -Wa,-adhlns=b.lst "
-                         "-frandom-seed=b.o b.cpp"sv);
+    database.add_command(
+        "/fake",
+        "b.cpp",
+        "clang++ -std=c++20 -fPIC -fno-omit-frame-pointer -ffunction-sections "
+        "-c -o b.o -MD -MF b.d -MJ b.o.json -ftime-trace=b.trace.json "
+        "-save-temps=obj --serialize-diagnostics b.dia -Wa,-adhlns=b.lst "
+        "-frandom-seed=b.o -fno-plt -fno-strict-aliasing -fvisibility-inlines-hidden "
+        "-ftrivial-auto-var-init=zero -fstack-clash-protection -Wl,--gc-sections "
+        "-fmodule-name=b -fmodule-map-file=b.modulemap -fmodules-strict-decluse "
+        "-fmodules-cache-path=cache -fplugin=libp.so "
+        "-fprofile-sample-use=b.prof -fcolor-diagnostics -fmessage-length=0 "
+        "-Xclang -mconstructor-aliases b.cpp"sv);
     database.add_command("/fake", "c.cpp", "cl /std:c++20 /c /Foc.obj c.cpp"sv);
     database.add_command("/fake",
                          "d.cpp",
                          "cl /std:c++20 /c /Fod.obj /Fdd.pdb /Fad.asm /FRd.sbr /Fed.exe "
-                         "/sourceDependencies d.json /showIncludes /showFilenames d.cpp"sv);
+                         "/sourceDependencies d.json /showIncludes /showFilenames /GL /Gy "
+                         "/guard:cf /Qspectre /bigobj /MP d.cpp"sv);
     database.add_command("/fake", "e.cpp", "clang-cl /std:c++20 /c e.cpp"sv);
     database.add_command("/fake",
                          "f.cpp",
@@ -210,6 +217,53 @@ ZEST_CASE(LeftOutOptionsShare) {
     ZEXPECT(join_command(commands.render_full(command("b.cpp"))) == "clang++ -std=c++20 -fPIC");
     ZEXPECT(command("c.cpp") == command("d.cpp"));
     ZEXPECT(command("e.cpp") == command("f.cpp"));
+};
+
+ZEST_CASE(HeaderModuleFilesLeftOut) {
+    /// The module files of a header module build are its header modules; a
+    /// bare one elsewhere is a C++20 header unit, and GCC's -fmodules is its
+    /// C++20 modules.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    database.add_command("/fake",
+                         "a.cpp",
+                         "clang++ -std=c++20 -fmodules -fmodule-file=dep.pcm a.cpp"sv);
+    database.add_command("/fake", "b.cpp", "clang++ -std=c++20 -fmodule-file=unit.pcm b.cpp"sv);
+    database.add_command("/fake", "c.cpp", "g++ -std=c++20 -fmodules c.cpp"sv);
+    auto rendered = [&](llvm::StringRef file) {
+        return join_command(
+            commands.render_full(database.candidate_entries(fake(file)).front().command));
+    };
+    ZEXPECT(rendered("a.cpp") == "clang++ -std=c++20");
+    ZEXPECT(llvm::StringRef(rendered("b.cpp")).contains("-fmodule-file="));
+    ZEXPECT(rendered("c.cpp") == "g++ -std=c++20 -fmodules");
+};
+
+ZEST_CASE(KeptOptionsStayApart) {
+    /// What looks like code generation but predefines macros or sets what
+    /// Sema reads keeps commands apart: the optimization level, the stack
+    /// protector, control-flow protection, the instrumentation profile,
+    /// trapping math and the sanitizers.
+    FileTable file_table;
+    CommandTable commands;
+    CompilationDatabase database{file_table, commands};
+    std::array flags = {"",
+                        "-O2",
+                        "-fstack-protector-strong",
+                        "-fcf-protection=full",
+                        "-fprofile-instr-generate",
+                        "-ftrapping-math",
+                        "-fsanitize=address"};
+    llvm::SmallVector<CommandID> seen;
+    for(auto [i, flag]: views::enumerate(flags)) {
+        auto file = std::format("{}.cpp", i);
+        auto line = std::format("clang++ -std=c++20 {} {}", flag, file);
+        database.add_command("/fake", file, llvm::StringRef(line));
+        auto command = database.candidate_entries(fake(file)).front().command;
+        ZEXPECT(!ranges::contains(seen, command));
+        seen.push_back(command);
+    }
 };
 
 ZEST_CASE(ModuleEmbeddingDiscarded) {

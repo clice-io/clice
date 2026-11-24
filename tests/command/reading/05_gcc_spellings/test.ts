@@ -8,7 +8,7 @@ const UNCONVERTED = "The command stays a driver command";
 // target does not know.
 test("cross gcc", { errors: [UNCONVERTED] }, async (t) => {
     await t.cli(
-        "command convert -- riscv32-wch-elf-gcc -march=rv32imc_zba_xw -mabi=ilp32 -msmall-data-limit=8 -c main.c",
+        "command convert -- riscv32-wch-elf-gcc -march=rv32imc_zba_xw -mabi=ilp32 -trigraphs -c main.c",
     );
     await t.cli(
         "command convert -- aarch64-none-elf-gcc -mcpu=cortex-a72.cortex-a53 -mabi=lp64 -c main.c",

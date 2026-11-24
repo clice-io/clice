@@ -28,7 +28,10 @@ On the Linux box, build clice from this tree before any pin moves, and keep it a
 ```bash
 pixi run build RelWithDebInfo
 rm -rf ~/clice-bin && cp -RL build/RelWithDebInfo/bin ~/clice-bin
+cp "$(npx bazel info output_base)"/external/xclang++xclang+libclang_x86_64-unknown-linux-gnu/include/clang/Options/Options.inc ~/Options.inc.old
 ```
+
+The last line keeps the old release's table of clang's options for Step 6; a box that skips the build takes it from the old release's `libclang-<version>-x86_64-unknown-linux-gnu.tar.xz`.
 
 The new headers need not build the old `modules/` (a name it exports may be gone upstream), and regenerating only reads them. But the clice must carry this tree's own `clice modularize`: one built from an older tree writes another shape (thousands of extra lines of enum wrappers). main's CI build artifact (`build-<triple>-RelWithDebInfo`, kept 3 days) serves as well: unpacked into `~/clice-bin`, it needs `chmod +x ~/clice-bin/bin/*` (artifacts drop the executable bit), and a box that skips the build needs `pixi run install-tests` before Step 4, or `npx bazel` gets a 404.
 
@@ -88,7 +91,19 @@ When a fix is not obvious, read the LLVM source code to understand the new API. 
 
 Then the unit tests and the cases, and a build of every other configuration, each on a box of its own (the build-and-test skill): `pixi run build Debug` and `pixi run build Debug -- --platforms=@xclang//platforms:aarch64-apple-darwin` (the ASan libclang, built with assertions, declares more than the release one), and `pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:<triple>` for the other targets. CI runs them all, but a configuration that does not build is found faster here.
 
-## Step 6: Write the Changelogs (REQUIRED)
+## Step 6: Re-check the Option Classes
+
+`src/command/option_classes.inc` classes clang's options by what clice's analysis reads (its header states the criterion), over two rules from clang's tables: an option a release adds or changes takes the class those rules give it until a line says otherwise. After the build, on the Linux box of Step 2, `tools/options/options.ts` gathers the evidence for each new or changed option and its counterpart: the class the table gives it, the macros, `__has_feature` answers and cc1 arguments it changes with a real clang of the release, and the files of the driver reading it for a decision of its own:
+
+```bash
+box run $linux 'git clone -q --depth 1 --filter=blob:none --sparse -b llvmorg-<LLVM version> https://github.com/llvm/llvm-project ~/llvm-project && git -C ~/llvm-project sparse-checkout set clang/lib/Driver'
+box run $linux 'pixi run node tools/options/options.ts --previous ~/Options.inc.old --llvm ~/llvm-project --out build/options.md'
+box cp $linux . build/options.md
+```
+
+Hand the report and `option_classes.inc` to codex (the external-agents skill), to decide each suspicious and each new option against the criterion of the `.inc`'s header and answer each class it disputes with a counterexample: the command, the target, and what the analysis then reads otherwise. Probe each one with the release's clang, apply those that hold to the `.inc` (a line in its section, under a comment saying what the analysis reads), run the tool again, and resume the same codex session with the new report until a round brings no new confirmed counterexample. The unit tests and the cases run after the last change.
+
+## Step 7: Write the Changelogs (REQUIRED)
 
 Toolchain-level findings on clice's side (`MODULE.bazel`, `.bazelrc`, `BUILD.bazel`, `bazel/`, CI mechanics; the toolchain itself keeps its own notes in xclang) go to `toolchain-changelog.md` in this directory, in its symptom / cause / fix / check shape. API changes go to `llvm-changelog.md`, maintainer reference material, deliberately not a docs page.
 
@@ -101,19 +116,20 @@ Every LLVM upgrade adds a new H2 section to `llvm-changelog.md` (e.g., `## LLVM 
 
 To find upstream commits, search the LLVM git history between version tags (`git log --oneline llvmorg-<OLD>..llvmorg-<NEW> -- clang/include/clang/AST/` in `../llvm-project`, or the GitHub history). Group changes by category with a table per category, as the newest section does.
 
-## Step 7: Report and Wait
+## Step 8: Report and Wait
 
 Present a summary to the maintainer and **wait for confirmation** before opening the PR. The summary should include:
 
 - All API changes that were adapted and how they were resolved
 - What the regenerated `modules/` dropped, and what `demand.cpp` gained
 - All test expectation changes (snapshot updates, assertion value changes) and why
+- The option classes Step 6 changed, and what each counterexample showed
 - Any unavoidable behavior changes from upstream LLVM (e.g., TypePrinter output differences, type sugar changes) that affect user-visible features like hover
 - The LLVM changelog that was written
 
 The maintainer decides whether all changes are acceptable or if adjustments are needed.
 
-## Step 8: The PR
+## Step 9: The PR
 
 The pull-request skill takes over; the title is `chore: upgrade LLVM to <X.Y.Z>`.
 

@@ -26,6 +26,7 @@
     "github/**/*.ts",
     "lint/**/*.ts",
     "modules/**/*.ts",
+    "options/**/*.ts",
     "precheck/**/*.ts",
     "protocol/**/*.ts",
     "release/**/*.ts",
