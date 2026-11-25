@@ -300,9 +300,15 @@ OPTION(_analyzer_no_default_checks, LeftOut)
 // What clang-cl accepts and ignores...
 OPTION_GROUP(cl_ignored_Group, LeftOut)
 
-// ...but cl's runtime checks, which define __MSVC_RUNTIME_CHECKS
-// (flags_for_clang).
+// ...but what cl defines macros for (flags_for_clang): its runtime checks,
+// /GZ among them (__MSVC_RUNTIME_CHECKS), /sdl's (_GUARDOVERFLOW_CRT_ALLOCATORS),
+// control flow guard (_CONTROL_FLOW_GUARD) and /utf-8 (_UTF8).
 OPTION(_SLASH_RTC, Semantic)
+OPTION(_SLASH_GZ, Semantic)
+OPTION(_SLASH_sdl, Semantic)
+OPTION(_SLASH_sdl_, Semantic)
+OPTION(_SLASH_guard, Semantic)
+OPTION(_SLASH_utf8, Semantic)
 
 // Frame pointers; unwind tables stay, which decide __GCC_HAVE_DWARF2_CFI_ASM.
 OPTION(fomit_frame_pointer, LeftOut)
@@ -411,7 +417,6 @@ OPTION(_SLASH_d2guardcfgdispatch, LeftOut)
 OPTION(_SLASH_d2guardcfgdispatch_, LeftOut)
 OPTION(_SLASH_d2guardnochecks, LeftOut)
 OPTION(_SLASH_funcoverride, LeftOut)
-OPTION(_SLASH_guard, LeftOut)
 OPTION(_SLASH_GL, LeftOut)
 OPTION(_SLASH_GL_, LeftOut)
 OPTION(_SLASH_Gm, LeftOut)
@@ -419,7 +424,6 @@ OPTION(_SLASH_Gm_, LeftOut)
 OPTION(_SLASH_GT, LeftOut)
 OPTION(_SLASH_Gh, LeftOut)
 OPTION(_SLASH_GH, LeftOut)
-OPTION(_SLASH_GZ, LeftOut)
 OPTION(_SLASH_Ge, LeftOut)
 OPTION(_SLASH_favor, LeftOut)
 OPTION(_SLASH_Qspectre, LeftOut)
@@ -603,3 +607,14 @@ OPTION(fno_use_line_directives, LeftOut)
 // -mno-constant-cfstrings (__CONSTANT_CFSTRINGS__).
 OPTION(finline, Semantic)
 OPTION(mconstant_cfstrings, Semantic)
+
+// What clang ignores but GCC predefines macros by, which a GCC's query
+// answers: non-call exceptions (__EXCEPTIONS, and GCC's C++ turns exceptions
+// off with -fno-non-call-exceptions), signaling NaNs (__SUPPORT_SNAN__) and
+// single-precision constants (__GCC_IEC_559).
+OPTION(fnon_call_exceptions, Semantic)
+OPTION(fno_non_call_exceptions, Semantic)
+OPTION(fsignaling_nans, Semantic)
+OPTION(fno_signaling_nans, Semantic)
+OPTION(fsingle_precision_constant, Semantic)
+OPTION(fno_single_precision_constant, Semantic)

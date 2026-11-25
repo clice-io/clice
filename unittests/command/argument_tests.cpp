@@ -112,7 +112,7 @@ ZEST_CASE(LeftOutOptions) {
                   OPT_fcolor_diagnostics,
                   OPT_fmessage_length_EQ,
                   OPT__SLASH_GL,
-                  OPT__SLASH_guard,
+                  OPT__SLASH_Qspectre,
                   OPT__SLASH_bigobj}) {
         ZEXPECT(!classify_option(id, {}).has_value());
     }
@@ -141,7 +141,10 @@ ZEST_CASE(KeptOptions) {
     /// speculative load hardening's __has_feature, the vector library
     /// (__NO_MATH_ERRNO__), soft float, -undef, a specs file's include
     /// directories, -nostdlib++, the tab stop -Wmisleading-indentation
-    /// measures by, and MinGW GCC's -mthreads (_MT).
+    /// measures by, MinGW GCC's -mthreads (_MT), what cl defines macros for
+    /// (/GZ, /sdl, /guard:cf, /utf-8), and what clang ignores but GCC
+    /// defines macros by (non-call exceptions, signaling NaNs,
+    /// single-precision constants).
     for(auto id: {OPT_O,
                   OPT_fPIC,
                   OPT_fstack_protector_strong,
@@ -195,7 +198,16 @@ ZEST_CASE(KeptOptions) {
                   OPT_nostdlibxx,
                   OPT_mconstant_cfstrings,
                   OPT_ftabstop,
-                  OPT_mthreads}) {
+                  OPT_mthreads,
+                  OPT__SLASH_GZ,
+                  OPT__SLASH_sdl,
+                  OPT__SLASH_sdl_,
+                  OPT__SLASH_guard,
+                  OPT__SLASH_utf8,
+                  OPT_fnon_call_exceptions,
+                  OPT_fno_non_call_exceptions,
+                  OPT_fsignaling_nans,
+                  OPT_fsingle_precision_constant}) {
         ZEXPECT((classify_option(id, {}) == ArgClass::Semantic));
     }
     ZEXPECT((classify_option(OPT_W_Joined, {}) == ArgClass::Diagnostics));

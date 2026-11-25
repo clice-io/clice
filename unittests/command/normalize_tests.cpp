@@ -206,7 +206,7 @@ ZEST_CASE(LeftOutOptionsShare) {
                          "d.cpp",
                          "cl /std:c++20 /c /Fod.obj /Fdd.pdb /Fad.asm /FRd.sbr /Fed.exe "
                          "/sourceDependencies d.json /showIncludes /showFilenames /GL /Gy "
-                         "/guard:cf /Qspectre /bigobj /MP d.cpp"sv);
+                         "/Qspectre /bigobj /MP d.cpp"sv);
     database.add_command("/fake", "e.cpp", "clang-cl /std:c++20 /c e.cpp"sv);
     database.add_command("/fake",
                          "f.cpp",

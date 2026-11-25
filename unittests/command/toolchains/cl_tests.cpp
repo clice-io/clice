@@ -95,6 +95,25 @@ ZEST_CASE(CLRuntimeChecks) {
     ZEXPECT(!adjacent(argv, "-D", "__MSVC_RUNTIME_CHECKS"));
 }
 
+ZEST_CASE(CLSwitchMacros) {
+    // cl defines macros for switches clang-cl ignores, the last of a switch
+    // and its negation deciding; clang-cl defines none of them.
+    auto cl = fake_cl();
+    auto argv = f.resolve(add("a.cpp", {cl.c_str(), "/GZ", "/sdl", "/guard:cf", "/utf-8"}));
+    ZEXPECT(adjacent(argv, "-D", "__MSVC_RUNTIME_CHECKS"));
+    ZEXPECT(adjacent(argv, "-D", "_GUARDOVERFLOW_CRT_ALLOCATORS=1"));
+    ZEXPECT(adjacent(argv, "-D", "_CONTROL_FLOW_GUARD=1"));
+    ZEXPECT(adjacent(argv, "-D", "_UTF8=1"));
+    argv = f.resolve(add("b.cpp", {cl.c_str(), "/sdl", "/sdl-", "/guard:cf", "/guard:cf-"}));
+    ZEXPECT(!adjacent(argv, "-D", "_GUARDOVERFLOW_CRT_ALLOCATORS=1"));
+    ZEXPECT(!adjacent(argv, "-D", "_CONTROL_FLOW_GUARD=1"));
+    auto clang_cl = fake_cl("clang-cl");
+    argv = f.resolve(add("c.cpp", {clang_cl.c_str(), "/sdl", "/guard:cf", "/utf-8"}));
+    ZEXPECT(!adjacent(argv, "-D", "_GUARDOVERFLOW_CRT_ALLOCATORS=1"));
+    ZEXPECT(!adjacent(argv, "-D", "_CONTROL_FLOW_GUARD=1"));
+    ZEXPECT(!adjacent(argv, "-D", "_UTF8=1"));
+}
+
 ZEST_CASE(CLToolsetHeaders) {
     // A cl.exe compiles with the headers of its own toolset, not the
     // newest one installed, outside a developer prompt.
