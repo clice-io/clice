@@ -1,8 +1,11 @@
 common --enable_platform_specific_config
 # xclang, kotatsu and the third-party libraries come from the clice Bazel
-# registry, the rest from the Bazel Central Registry.
-common --registry=https://bazel.clice.io/
+# registry, the rest from the Bazel Central Registry. The Central Registry
+# is asked first: resolving probes each registry in turn, and GitHub Pages,
+# which serves the clice registry, answers a hot missing path with a 503
+# that fails the build. No version the clice registry serves is in it.
 common --registry=https://bcr.bazel.build/
+common --registry=https://bazel.clice.io/
 # Downloads from them and from GitHub drop at times.
 common --experimental_repository_downloader_retries=10 --http_timeout_scaling=2
 # The C++ toolchain is xclang's (MODULE.bazel), on every platform; rules_cc's

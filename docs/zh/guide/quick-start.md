@@ -46,8 +46,8 @@ cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
 ```
 # .bazelrc
-common --registry=https://bazel.clice.io/
 common --registry=https://bcr.bazel.build/
+common --registry=https://bazel.clice.io/
 ```
 
 ```python
