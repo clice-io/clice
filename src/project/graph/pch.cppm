@@ -63,7 +63,7 @@ struct PCHEntry : Precompiled<FailureRecord> {
     std::optional<FailureRecord> consumes;
 
     /// The saves of documents using the PCH, each asking to look again for
-    /// the files the build did not find (Project::look_again).
+    /// the files the build did not find or open (Project::look_again).
     std::uint32_t saves = 0;
 
     /// How many saves had asked when the build of `path` started: one

@@ -19,10 +19,9 @@ import :worker.protocol;
 
 namespace clice {
 
-MasterServer::SecondName* LSPClient::second_name(llvm::StringRef spelling) {
-    auto path_id =
-        spelling.empty() ? std::nullopt : server.files.find(Spelling::absolute(spelling));
-    return path_id ? server.find_second_name(*path_id, spelling) : nullptr;
+MasterServer::SecondName* LSPClient::second_name(llvm::StringRef name) {
+    auto path_id = name.empty() ? std::nullopt : server.files.find(Spelling::absolute(name));
+    return path_id ? server.find_second_name(*path_id, name) : nullptr;
 }
 
 LSPClient::RawResult LSPClient::logged(RawResult answer,
@@ -83,12 +82,12 @@ LSPClient::RawResult LSPClient::logged(RawResult answer,
 }
 
 LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
-    auto path = feature::to_path(uri);
+    auto path = feature::written_path(uri);
     if(!path) {
         // Not a file: no document of ours.
         return ResolvedDoc{.project = server.projects.front()};
     }
-    auto path_id = server.files.intern(*path);
+    auto path_id = server.files.intern(Spelling::absolute(*path));
     auto project = server.owner_of(path_id).shared_from_this();
     auto session = server.find_session(path_id);
     auto version = session ? std::optional(session->version) : std::nullopt;
@@ -96,12 +95,12 @@ LSPClient::ResolvedDoc LSPClient::resolve_uri(const std::string& uri) {
     // file — its session, its index — only while both hold the same text.
     if(auto* second = server.find_second_name(path_id, *path)) {
         if(server.find_document(path_id)->diverged(*second)) {
-            return ResolvedDoc{.path = std::move(*path).str(), .project = std::move(project)};
+            return ResolvedDoc{.path = std::move(*path), .project = std::move(project)};
         }
         version = second->buffer.version;
     }
     return ResolvedDoc{
-        .path = std::move(*path).str(),
+        .path = std::move(*path),
         .path_id = path_id,
         .project = std::move(project),
         .version = version,

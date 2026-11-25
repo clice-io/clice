@@ -195,17 +195,17 @@ void LSPClient::publish_second_name(MasterServer::Document& document,
         return;
     }
     protocol::PublishDiagnosticsParams params;
-    params.uri = feature::to_uri(second.spelling);
+    params.uri = feature::to_uri(second.name);
     params.version = second.buffer.version;
     auto* owner = document.owner;
     auto compiled = !diverged && owner ? owner->latest_at(first.path_id, first.version) : nullptr;
     if(diverged) {
         params.diagnostics = to_client({feature::file_warning(divergence_message(second))},
-                                       second.spelling,
+                                       second.name,
                                        second.buffer.positions());
     } else if(compiled) {
         params.diagnostics = to_client(owner->shown_diagnostics(first, *compiled->output),
-                                       second.spelling,
+                                       second.name,
                                        compiled->output->text->positions());
     } else if(!flipped) {
         // Shared once the owner's compile caught up with the text; until
@@ -218,10 +218,9 @@ void LSPClient::publish_second_name(MasterServer::Document& document,
     publish_diagnostics(peer, params);
 }
 
-void LSPClient::retract_second_name(llvm::StringRef spelling) {
+void LSPClient::retract_second_name(llvm::StringRef name) {
     if(client_ready && !pull_diagnostics) {
-        peer.send_notification(
-            protocol::PublishDiagnosticsParams{.uri = feature::to_uri(spelling)});
+        peer.send_notification(protocol::PublishDiagnosticsParams{.uri = feature::to_uri(name)});
     }
 }
 

@@ -9,7 +9,6 @@ import :server.master;
 import :server.served_project;
 import :support.logging;
 import :support.version;
-import :vfs.path;
 
 namespace clice {
 
@@ -120,15 +119,15 @@ void LSPClient::register_lifecycle() {
         // Every workspace folder is a project; a client without folder
         // support names its one root through rootUri.
         auto& folders = params.workspace_folders;
-        std::vector<Spelling> roots;
+        std::vector<std::string> roots;
         if(folders.has_value() && folders->has_value() && !(*folders)->empty()) {
             for(auto& folder: **folders) {
-                if(auto root = feature::to_path(folder.uri)) {
+                if(auto root = feature::written_path(folder.uri)) {
                     roots.push_back(std::move(*root));
                 }
             }
         } else if(params.root_uri.has_value()) {
-            if(auto root = feature::to_path(*params.root_uri)) {
+            if(auto root = feature::written_path(*params.root_uri)) {
                 roots.push_back(std::move(*root));
             }
         }
@@ -367,15 +366,15 @@ void LSPClient::register_lifecycle() {
         if(srv.shutting_down()) {
             return;
         }
-        std::vector<Spelling> removed;
+        std::vector<std::string> removed;
         for(auto& folder: params.event.removed) {
-            if(auto root = feature::to_path(folder.uri)) {
+            if(auto root = feature::written_path(folder.uri)) {
                 removed.push_back(std::move(*root));
             }
         }
-        std::vector<Spelling> added;
+        std::vector<std::string> added;
         for(auto& folder: params.event.added) {
-            if(auto root = feature::to_path(folder.uri)) {
+            if(auto root = feature::written_path(folder.uri)) {
                 added.push_back(std::move(*root));
             }
         }

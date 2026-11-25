@@ -13,7 +13,7 @@ enum class InstantiationKind : std::uint8_t {
     /// The `auto` or `decltype` keyword stands for the target: an
     /// occurrence of it with a Deduced relation.
     Deduced,
-    /// The keyword leads to the target (`new` to the constructor it runs):
+    /// The token leads to the target (`new` to the constructor it runs):
     /// an occurrence of it with an Implied relation.
     Implied,
     /// `from` calls the target here: the Callee and Caller relations.

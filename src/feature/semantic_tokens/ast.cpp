@@ -271,7 +271,7 @@ private:
         for(auto& occurrence: occurrences) {
             // `override`, `final` and `new` spell none of the declarations
             // they lead to.
-            if(occurrence.kind.is_one_of(RelationKind::Implied)) {
+            if(occurrence.kind.is_one_of(RelationKind::Implied) || occurrence.outranked) {
                 continue;
             }
             if(occurrence.kind.is_one_of(RelationKind::Reference,

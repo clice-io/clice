@@ -1,6 +1,7 @@
 module clice;
 
 import :feature.hierarchy;
+import :feature.navigation;
 import :feature.protocol;
 import :feature.rename;
 import :index.query.locate;
@@ -81,6 +82,26 @@ bool renamable(SymbolKind kind) {
         case SymbolKind::Protocol: return true;
         default: return false;
     }
+}
+
+/// What the instantiations resolve the name at `offset` to
+/// (IndexQuery::instantiated_at), but the constructors they call by a
+/// type's name, which tell nothing of the type the name writes.
+std::optional<index::IndexQuery::Cursor> instantiated_names(const index::IndexQuery& query,
+                                                            Fid file,
+                                                            std::uint32_t offset) {
+    auto cursor = query.instantiated_at(file, offset);
+    if(!cursor) {
+        return std::nullopt;
+    }
+    llvm::erase_if(cursor->symbols, [&](index::SymbolHash symbol) {
+        auto info = query.symbol_info(symbol, file);
+        return info && index::name_form(info->flags) == index::NameForm::Constructor;
+    });
+    if(cursor->symbols.empty()) {
+        return std::nullopt;
+    }
+    return cursor;
 }
 
 bool function_like(SymbolKind kind) {
@@ -344,15 +365,19 @@ std::expected<CursorRename, std::string> rename_at(const index::IndexQuery& serv
     auto query = serving.written_only();
     auto file = resolved.site.file;
     auto offset = resolved.site.range.begin;
+    auto cursor = query.symbol_at(file, offset);
+    if(cursor) {
+        cursor->symbols = ranges::to<llvm::SmallVector<index::SymbolHash, 1>>(
+            written_symbols(query, *cursor) | views::transform(&index::IndexQuery::Target::symbol));
+    }
     // A dependent name in a template (`value.print()`) is what its
     // instantiations resolve it to, whatever the resolver guesses.
-    auto cursor = query.symbol_at(file, offset);
     bool guessed =
         cursor && ranges::all_of(cursor->symbols, [&](index::SymbolHash symbol) {
             return query.relates_at(file, cursor->site.range, symbol, RelationKind::Guess);
         });
     if(!cursor || guessed) {
-        cursor = serving.instantiated_at(file, offset);
+        cursor = instantiated_names(serving, file, offset);
         if(!cursor) {
             return std::unexpected(
                 guessed ? "no instantiation the index saw resolves the name here; rename from a "
@@ -545,7 +570,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
     };
     auto shared_with = [&](const index::Site& site, std::uint32_t offset) -> std::optional<Shared> {
         auto file = site.file;
-        if(auto instantiated = serving.instantiated_at(file, offset)) {
+        if(auto instantiated = instantiated_names(serving, file, offset)) {
             for(auto symbol: instantiated->symbols) {
                 if(other_of_old_name(symbol, file)) {
                     return Shared{.symbol = symbol, .certain = true};
@@ -560,7 +585,8 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
             return std::nullopt;
         }
         std::optional<Shared> candidate;
-        for(auto symbol: cursor->symbols) {
+        for(auto symbol: written_symbols(query, *cursor) |
+                             views::transform(&index::IndexQuery::Target::symbol)) {
             if(!other_of_old_name(symbol, file)) {
                 continue;
             }
@@ -641,9 +667,8 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
             RenameEdit{.site = token_site(*text.source, file, site.path, offset, old_name.size())});
     };
     // The offsets of the old name a site spells; none when the file's index
-    // is not current, or the site spells another name — punctuation (a
-    // construction's paren), a keyword (the destructor `delete` runs), or
-    // a macro's invocation, which a note lists.
+    // is not current, or the site spells another name — a keyword (the
+    // destructor `delete` runs) or a macro's invocation, which a note lists.
     const auto& cxx_keywords = keywords(cxx());
     auto spelled_at = [&](const index::Site& site) -> llvm::SmallVector<std::uint32_t, 1> {
         auto& text = text_of(site.file);
@@ -666,6 +691,12 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         return offsets;
     };
 
+    // A constructor is called by a name of the class it constructs — its
+    // own, an alias's, a class's inheriting it — whose own references hold
+    // those spelling the class: its uses are no edits of their own.
+    auto uses_renamed = [](const index::IndexQuery::Located& member) {
+        return index::name_form(member.symbol.flags) != index::NameForm::Constructor;
+    };
     // The files the rename's own entries lie in.
     llvm::DenseSet<Fid> tied;
     for(auto& member: target.group) {
@@ -673,6 +704,9 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                         RelationKind::Declaration,
                         RelationKind::Reference,
                         RelationKind::Candidate}) {
+            if(kind == RelationKind::Reference && !uses_renamed(member)) {
+                continue;
+            }
             for(auto& site: query.sites(member.symbol.hash, member.site.file, kind)) {
                 tied.insert(site.file);
                 for(auto offset: spelled_at(site)) {
@@ -703,7 +737,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
         // A name in a template is the symbol's where its instantiations
         // resolve it so; one in a #define body names something else in
         // another expansion; the resolver's guesses confirm nothing.
-        for(auto& member: target.group) {
+        for(auto& member: target.group | views::filter(uses_renamed)) {
             auto hash = member.symbol.hash;
             for(auto& site: serving.sites(hash, member.site.file, RelationKind::Reference)) {
                 if(site.origin == index::SiteOrigin::Instantiation) {
@@ -719,7 +753,7 @@ RenamePlan plan_rename(const index::IndexQuery& serving,
                 }
             }
         }
-        for(auto& member: target.group) {
+        for(auto& member: target.group | views::filter(uses_renamed)) {
             for(auto& site:
                 query.sites(member.symbol.hash, member.site.file, RelationKind::Guess)) {
                 if(text_of(site.file).text && !edits.contains({site.file, site.range.begin})) {

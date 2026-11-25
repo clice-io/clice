@@ -1,0 +1,83 @@
+[cards.conversion]
+highlights = [
+    { at = "struct ⟦Target⟧ {", kind = "text" },
+    { at = "operator ⟦Target⟧() const;", kind = "text" },
+    { at = "⟦Target⟧ convert(Source source) {", kind = "text" },
+    { at = "return ⟦Target⟧(source);", kind = "text" },
+]
+
+[cards.conversion.hover]
+markdown = '''
+**struct** `Target`
+
+```cpp
+struct Target {
+  int value;
+}
+```
+**Size:** 4 bytes
+**Alignment:** 4 bytes
+'''
+range = "return ⟦Target⟧(source);"
+
+[cards.conversion.semantic_token]
+text = "Target"
+type = "struct"
+modifiers = ["global"]
+
+[cards.conversion_paren]
+highlights = [
+    { at = "⟦operator Target⟧() const;", kind = "text" },
+    { at = "return Target⟦(⟧source);", kind = "text" },
+]
+
+[cards.conversion_paren.hover]
+markdown = '''
+**method** `operator Target` · struct `Source`
+
+```cpp
+operator Target() const
+```
+'''
+range = "return Target⟦(⟧source);"
+
+[cards.conversion_paren.semantic_token]
+text = "("
+type = "none"
+
+[navigation.conversion]
+definition = ["struct ⟦Target⟧ {"]
+declaration = ["struct ⟦Target⟧ {"]
+type_definition = ["struct ⟦Target⟧ {"]
+references = [
+    "struct ⟦Target⟧ {",
+    "operator ⟦Target⟧() const;",
+    "⟦Target⟧ convert(Source source) {",
+    "return ⟦Target⟧(source);",
+]
+
+[navigation.conversion_paren]
+definition = ["⟦operator Target⟧() const;"]
+declaration = ["⟦operator Target⟧() const;"]
+type_definition = ["struct ⟦Target⟧ {"]
+references = ["⟦operator Target⟧() const;", "return Target⟦(⟧source);"]
+
+["index cards".conversion.hover]
+markdown = '''
+**struct** `Target`
+
+```cpp
+struct Target { ... }
+```
+'''
+range = "return ⟦Target⟧(source);"
+
+["index cards".conversion_paren.hover]
+markdown = '''
+**method** `operator Target` · struct `Source`
+
+```cpp
+operator Target() const
+```
+'''
+range = "return Target⟦(⟧source);"
