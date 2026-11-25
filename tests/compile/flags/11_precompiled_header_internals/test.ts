@@ -53,10 +53,9 @@ test("the server reads them alike", async (t) => {
 });
 
 test("a mark added to the header", async (t) => {
-    // The header's text stays as it was, but the PCH holds its bytes: the
-    // run after an edit builds the PCH again for the unit it indexes.
+    // The header's text stays as it was, but its bytes do not: the next run
+    // builds the PCH again and indexes every unit that reads it.
     await t.cli("index");
     t.disk.write("include/shapes.h", "\uFEFF" + t.disk.read("include/shapes.h"));
-    t.disk.write("src/main.cpp", t.disk.read("src/main.cpp") + "\n");
     await t.cli("index");
 });

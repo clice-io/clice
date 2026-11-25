@@ -2,6 +2,13 @@
 code = -32803
 message = "${WS}/.clang-format:2:1: unknown key 'IndentWdith'"
 
+[editor."marked/main.cpp"]
+code = -32803
+message = "${WS}/marked/.clang-format:1:1: unknown key 'IndentWdith'"
+
 [command."$ clice format"]
-stderr = "${WS}/.clang-format:2:1: unknown key 'IndentWdith'"
+stderr = '''
+${WS}/.clang-format:2:1: unknown key 'IndentWdith'
+${WS}/marked/.clang-format:1:1: unknown key 'IndentWdith'
+'''
 exit = 2

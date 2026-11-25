@@ -408,9 +408,11 @@ public:
     /// The document's latest compile, or null before its first compile.
     std::shared_ptr<const DocumentCompile> latest(Fid path_id) const;
 
-    /// The document's latest compile while its output describes buffer
-    /// `version`, or null.
-    std::shared_ptr<const DocumentCompile> latest_at(Fid path_id, int version) const;
+    /// The document's latest compile while its output describes the
+    /// session's buffer — its version, and the bytes it holds: a save can
+    /// take the mark of the file on disk alone (Session::follow_mark) —, or
+    /// null.
+    std::shared_ptr<const DocumentCompile> latest_at(const Session& session) const;
 
     /// The latest compile describes the buffer and what it read: no
     /// invalidation reached the document's node since it ran. Whether a

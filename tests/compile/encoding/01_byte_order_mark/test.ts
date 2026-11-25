@@ -64,3 +64,14 @@ test("a save adding the mark", async (t) => {
     s.save("saved_column.cpp", { write: false });
     await t.show("marked", s.errors("saved_column.cpp"));
 });
+
+test("a save adding the mark to a header", async (t) => {
+    // Alone, the header holds while its first line's column is the one it
+    // had before the mark; its host's context holds either way, and the save
+    // checks again which one the header compiles in.
+    const s = await t.start();
+    expect(await s.errors("contexted.h")).toEqual([]);
+    t.disk.write("contexted.h", "\uFEFF" + t.disk.read("contexted.h"));
+    s.save("contexted.h", { write: false });
+    expect(await s.errors("contexted.h")).toEqual([]);
+});

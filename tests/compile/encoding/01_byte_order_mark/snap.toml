@@ -8,6 +8,16 @@ int user3()
 '''
 range = "int ⟦user3⟧() {"
 
+["first line".tokens]
+semantic_tokens = [
+    { at = "⟦int⟧ user3() {", type = "primitive" },
+    { at = "int ⟦user3⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦return⟧ 3;", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦3⟧;", type = "number" },
+    { at = '⟦#include⟧ "a.h"', type = "directive" },
+    { at = '#include ⟦"a.h"⟧', type = "header" },
+]
+
 [navigation.shared_fn]
 definition = ["a.h │ int ⟦shared_fn⟧();"]
 

@@ -150,7 +150,7 @@ void ServedProject::retry_after_save(Session& session) {
     // that stands holds for the text saved.
     auto selection = project.select_command(path_id, command_request(path_id));
     if(selection.self_containment) {
-        auto compiled = latest_at(path_id, session.version);
+        auto compiled = latest_at(session);
         bool errs = !compiled || feature::count_errors(compiled->output->diagnostics.own) > 0;
         if(project.header_saved(
                *selection.self_containment,
@@ -926,7 +926,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
             compiled.generation.reset();
             compiled.output = CompileOutput{
                 .version = setup_fail ? std::optional(session->version) : std::nullopt,
-                .text = session->source,
+                .text = source,
                 .diagnostics = facts(),
                 .failed = setup_fail,
             };
@@ -1037,7 +1037,7 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
                                           : std::vector<feature::FileDiagnostic>();
     next->output = CompileOutput{
         .version = session->version,
-        .text = session->source,
+        .text = source,
         .diagnostics = facts(),
     };
     next->output->diagnostics.own = std::move(diagnostics);

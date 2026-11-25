@@ -198,7 +198,7 @@ void LSPClient::publish_second_name(MasterServer::Document& document,
     params.uri = feature::to_uri(second.name);
     params.version = second.buffer.version;
     auto* owner = document.owner;
-    auto compiled = !diverged && owner ? owner->latest_at(first.path_id, first.version) : nullptr;
+    auto compiled = !diverged && owner ? owner->latest_at(first) : nullptr;
     if(diverged) {
         params.diagnostics = to_client({feature::file_warning(divergence_message(second))},
                                        second.name,
