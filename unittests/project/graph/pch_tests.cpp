@@ -219,22 +219,17 @@ ZEST_CASE(ConsumeFailuresStopKey) {
     std::optional<Result> cleared, stopped;
     execute([&]() -> async::task<> {
         ZASSERT(co_await acquire(request("#define X 1\n")) == Result::Success);
-        project.pch_consume_failed("shared-key", "unreadable");
+        project.pch_consume_failed("shared-key");
         ZASSERT(co_await acquire(request("#define X 1\n")) == Result::Success);
         project.pch_consume_succeeded("shared-key");
-        project.pch_consume_failed("shared-key", "unreadable");
+        project.pch_consume_failed("shared-key");
         cleared = co_await acquire(request("#define X 1\n"));
 
-        project.pch_consume_failed("shared-key", "unreadable again");
+        project.pch_consume_failed("shared-key");
         stopped = co_await acquire(request("#define X 1\n"));
     });
     ZEXPECT(cleared == Result::Success);
     ZEXPECT(stopped == Result::Failed);
-    // The stop names how its consumers last failed.
-    auto it = project.pchs.find("shared-key");
-    ZASSERT(it != project.pchs.end());
-    ZASSERT(it->second.consumes.has_value());
-    ZEXPECT(it->second.consumes->cause == "unreadable again");
 }
 
 ZEST_CASE(SharedPairFailsOnce) {
@@ -243,8 +238,8 @@ ZEST_CASE(SharedPairFailsOnce) {
     std::optional<Result> rebuilt;
     execute([&]() -> async::task<> {
         ZASSERT(co_await acquire(request("#define X 1\n")) == Result::Success);
-        project.pch_consume_failed("shared-key", "unreadable");
-        project.pch_consume_failed("shared-key", "unreadable");
+        project.pch_consume_failed("shared-key");
+        project.pch_consume_failed("shared-key");
         rebuilt = co_await acquire(request("#define X 1\n"));
     });
     ZEXPECT(rebuilt == Result::Success);
@@ -261,10 +256,10 @@ ZEST_CASE(EvictedPairNotCounted) {
         };
         ZASSERT(co_await acquire(request("#define X 1\n")) == Result::Success);
         evict();
-        project.pch_consume_failed("shared-key", "unreadable");
+        project.pch_consume_failed("shared-key");
         first = co_await acquire(request("#define X 1\n"));
         evict();
-        project.pch_consume_failed("shared-key", "unreadable");
+        project.pch_consume_failed("shared-key");
         second = co_await acquire(request("#define X 1\n"));
     });
     ZEXPECT(first == Result::Success);

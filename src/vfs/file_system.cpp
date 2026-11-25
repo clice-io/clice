@@ -55,7 +55,7 @@ llvm::ErrorOr<std::shared_ptr<const llvm::MemoryBuffer>> load_text(const fs::Fil
 
 /// Whether what `file` reads from its start begins with the mark; none when
 /// it cannot be read.
-std::optional<bool> has_bom(fs::File& file) {
+std::optional<bool> starts_with_bom(fs::File& file) {
     char head[3];
     auto read = file.read(head);
     if(!read) {
@@ -64,26 +64,11 @@ std::optional<bool> has_bom(fs::File& file) {
     return llvm::StringRef(head, *read) == byte_order_mark;
 }
 
-/// The size of the text of the file at `path` as reading it gives (see
-/// without_bom), from a handle open to read it; none when it cannot be read.
-std::optional<std::uint64_t> read_size(llvm::StringRef path) {
-    auto file = fs::File::open(path);
-    if(!file) {
-        return std::nullopt;
-    }
-    auto status = file->status();
-    auto bom = has_bom(*file);
-    if(!status || !bom) {
-        return std::nullopt;
-    }
-    return status->size - (*bom ? byte_order_mark.size() : 0);
-}
-
-/// The size of the text of the file a stamp describes, learned once per
-/// stamp through a handle open to read it, as every compile opening the file
-/// sees it. The stamp's own size can be another: it leaves the mark in, and
-/// a file system filter (transparent encryption) can give a status or a
-/// directory listing another size than the text reading gives.
+/// The size of the text of the file a stamp describes (see without_bom),
+/// learned once per stamp through a handle open to read it, as every compile
+/// opening the file sees it. The stamp's own size can be another: it leaves
+/// the mark in, and a file system filter (transparent encryption) can give a
+/// status or a directory listing another size than the text reading gives.
 /// A file that cannot be read now gives the stamp's size and is asked again
 /// next time: another program holding it for a moment (a virus scanner) would
 /// otherwise leave the size off for the life of the process.
@@ -108,13 +93,19 @@ std::uint64_t text_size(const Stamp& stamp, llvm::StringRef path) {
             return it->second;
         }
     }
-    auto size = read_size(path);
-    if(!size) {
+    auto file = fs::File::open(path);
+    if(!file) {
         return stamp.size;
     }
+    auto status = file->status();
+    auto bom = starts_with_bom(*file);
+    if(!status || !bom) {
+        return stamp.size;
+    }
+    auto size = status->size - (*bom ? byte_order_mark.size() : 0);
     std::lock_guard lock(mutex);
-    results.try_emplace(key, *size);
-    return *size;
+    results.try_emplace(key, size);
+    return size;
 }
 
 #ifdef _WIN32
@@ -483,7 +474,7 @@ std::expected<void, FileError> remove(llvm::StringRef path) {
 
 bool starts_with_bom(llvm::StringRef path) {
     auto file = fs::File::open(path);
-    return file && has_bom(*file).value_or(false);
+    return file && starts_with_bom(*file).value_or(false);
 }
 
 std::expected<void, FileError> write_text(llvm::StringRef path, llvm::StringRef text, bool bom) {

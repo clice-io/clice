@@ -121,7 +121,7 @@ bool ServedProject::attribute_crash(const std::shared_ptr<Session>& session,
                  *consumed,
                  file);
         suspects.pch = *consumed;
-        project.pch_consume_failed(*consumed, "a compile reading it crashed: " + error.message);
+        project.pch_consume_failed(*consumed);
         return true;
     }
     record_crash(session, feature::RequestKind::Compile, worker::death_of(error), error.message);
@@ -891,7 +891,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
         // finishes Stale (waiting on the retracted key again finds it
         // changed, which overtakes this attempt), the waiter starts another,
         // and without the stopped key each would rebuild and fail forever.
-        project.pch_consume_failed(*built.loaded, reply.pch_consume_failure);
+        project.pch_consume_failed(*built.loaded);
         if(!pch_resent) {
             pch_resent = true;
             resend = true;

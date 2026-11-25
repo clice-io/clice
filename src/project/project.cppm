@@ -1000,8 +1000,7 @@ struct Project {
     /// keeps a record of its own; enough failures stop the key and
     /// acquisitions fail fast, so consumers fall back to compiling without a
     /// PCH instead of rebuilding and failing forever over failing storage.
-    /// `cause` is how the parse failed, which the key's refusal names.
-    void pch_consume_failed(llvm::StringRef pch_key, std::string cause);
+    void pch_consume_failed(llvm::StringRef pch_key);
 
     /// A parse read the key's pair and completed: its consumption failures were
     /// transient — without this, two unrelated hiccups far apart would stop a

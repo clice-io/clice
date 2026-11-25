@@ -114,10 +114,9 @@ bool refused(Project& project, llvm::StringRef pch_key, llvm::StringRef file) {
         return true;
     }
     if(entry.consumes && entry.consumes->stops(pch_consume_policy, FailureRecord::Clock::now())) {
-        LOG_WARN("PCH build for {} refused: its consumers keep failing to read key {}, last: {}",
+        LOG_WARN("PCH build for {} refused: its consumers keep failing to read key {}",
                  file,
-                 pch_key,
-                 entry.consumes->cause);
+                 pch_key);
         return true;
     }
     return false;
@@ -652,7 +651,7 @@ void Project::look_again(llvm::StringRef pch_key) {
     }
 }
 
-void Project::pch_consume_failed(llvm::StringRef pch_key, std::string cause) {
+void Project::pch_consume_failed(llvm::StringRef pch_key) {
     auto it = pchs.find(pch_key);
     if(it == pchs.end()) {
         return;
@@ -662,7 +661,7 @@ void Project::pch_consume_failed(llvm::StringRef pch_key, std::string cause) {
         if(!entry.consumes) {
             entry.consumes.emplace();
         }
-        entry.consumes->fail(pch_consume_policy, {}, std::move(cause), FailureRecord::Clock::now());
+        entry.consumes->fail(pch_consume_policy, {}, {}, FailureRecord::Clock::now());
     }
     // An in-flight rebuild owns the entry; its commit publishes a fresh
     // pair in place of the discarded one, so only an idle entry is
