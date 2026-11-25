@@ -102,7 +102,12 @@ std::uint64_t text_size(const Stamp& stamp, llvm::StringRef path) {
     if(!status || !bom) {
         return stamp.size;
     }
-    auto size = status->size - (*bom ? byte_order_mark.size() : 0);
+    // A file rewritten between the status and the read can start with a mark
+    // its status was too short to hold.
+    auto size = status->size;
+    if(*bom && size >= byte_order_mark.size()) {
+        size -= byte_order_mark.size();
+    }
     std::lock_guard lock(mutex);
     results.try_emplace(key, size);
     return size;
