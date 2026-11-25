@@ -258,19 +258,24 @@ void install_test_hooks(ipc::BincodePeer& peer, async::event_loop& loop) {
             {.id = params.id, .tag = params.tag, .relay = loop.create_relay()});
         gates.count.store(gates.standing.size(), std::memory_order_relaxed);
     });
-    peer.on_notification([](const worker::GateReleaseParams& params) {
-        auto& gates = worker_gates;
-        std::lock_guard lock(gates.mutex);
-        auto it = ranges::find_if(gates.standing,
-                                  [&](const WorkerGate& gate) { return gate.id == params.id; });
-        assert(it != gates.standing.end());
-        if(!it->parked) {
-            erase_gate(it);
-            return;
-        }
-        it->released = true;
-        it->relay = {};
-        gates.changed.notify_all();
+    // A $/cancelRequest read before the release reaches its request only once
+    // this read's dispatch has suspended: released on the loop's next turn, the
+    // work resumes with the stop flag a cancel sent first has tripped.
+    peer.on_notification([&loop](const worker::GateReleaseParams& params) {
+        loop.schedule([](std::uint64_t id) -> async::task<> {
+            auto& gates = worker_gates;
+            std::lock_guard lock(gates.mutex);
+            auto it = ranges::find_if(gates.standing,
+                                      [&](const WorkerGate& gate) { return gate.id == id; });
+            assert(it != gates.standing.end());
+            if(!it->parked) {
+                erase_gate(it);
+                co_return;
+            }
+            it->released = true;
+            it->relay = {};
+            gates.changed.notify_all();
+        }(params.id));
     });
 }
 
