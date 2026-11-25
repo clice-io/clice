@@ -5,6 +5,7 @@ import :feature.protocol;
 import :server.client;
 import :server.master;
 import :support.logging;
+import :vfs.path;
 
 namespace clice {
 
@@ -15,14 +16,13 @@ void LSPClient::register_document_sync() {
             return;
         srv.pool.user_activity();
 
-        auto spelled = feature::to_path(params.text_document.uri);
-        if(!spelled) {
+        auto path = feature::written_path(params.text_document.uri);
+        if(!path) {
             LOG_INFO("didOpen: {} names no file; not served", params.text_document.uri);
             return;
         }
-        auto& path = spelled->str();
-        if(is_other_language_path(path)) {
-            LOG_INFO("didOpen: {} is no C-family source; not served", path);
+        if(is_other_language_path(*path)) {
+            LOG_INFO("didOpen: {} is no C-family source; not served", *path);
             return;
         }
 
@@ -31,15 +31,15 @@ void LSPClient::register_document_sync() {
         // dependency — accept the buffer so the document is in place once
         // the server is ready: the projects adopt it as they start.
         if(srv.lifecycle != ServerLifecycle::Ready) {
-            LOG_WARN("didOpen before the server is ready, accepting: {}", path);
+            LOG_WARN("didOpen before the server is ready, accepting: {}", *path);
         }
 
-        srv.open_document(srv.files.intern(*spelled),
-                          path,
+        srv.open_document(srv.files.intern(Spelling::absolute(*path)),
+                          *path,
                           params.text_document.text,
                           params.text_document.version);
 
-        LOG_INFO("Opened {} (version {})", path, params.text_document.version);
+        LOG_INFO("Opened {} (version {})", *path, params.text_document.version);
     });
 
     peer.on_notification([this](const protocol::DidChangeTextDocumentParams& params) {
@@ -48,15 +48,15 @@ void LSPClient::register_document_sync() {
             return;
         srv.pool.user_activity();
 
-        auto spelled = feature::to_path(params.text_document.uri);
-        if(!spelled || is_other_language_path(*spelled)) {
+        auto path = feature::written_path(params.text_document.uri);
+        if(!path || is_other_language_path(*path)) {
             return;
         }
-        srv.change_document(srv.files.intern(*spelled),
-                            spelled->str(),
+        srv.change_document(srv.files.intern(Spelling::absolute(*path)),
+                            *path,
                             params.content_changes,
                             params.text_document.version);
-        LOG_DEBUG("Changed {} (version {})", spelled->str(), params.text_document.version);
+        LOG_DEBUG("Changed {} (version {})", *path, params.text_document.version);
     });
 
     peer.on_notification([this](const protocol::DidCloseTextDocumentParams& params) {
@@ -69,12 +69,12 @@ void LSPClient::register_document_sync() {
         // open forever when the editor already closed it. The diagnostics
         // clear is suppressed until the handshake completes — nothing was
         // pushed, and publishDiagnostics may not flow yet.
-        auto spelled = feature::to_path(params.text_document.uri);
-        if(!spelled) {
+        auto path = feature::written_path(params.text_document.uri);
+        if(!path) {
             return;
         }
-        srv.close_document(srv.files.intern(*spelled), spelled->str());
-        LOG_INFO("Closed {}", spelled->str());
+        srv.close_document(srv.files.intern(Spelling::absolute(*path)), *path);
+        LOG_INFO("Closed {}", *path);
     });
 
     peer.on_notification([this](const protocol::DidSaveTextDocumentParams& params) {

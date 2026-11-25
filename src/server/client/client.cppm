@@ -93,7 +93,7 @@ public:
     void publish_second_names(MasterServer::Document& document);
 
     /// A second name closed or took the file over: its diagnostics end.
-    void retract_second_name(llvm::StringRef spelling);
+    void retract_second_name(llvm::StringRef name);
 
     /// The server must restart (MasterServer::restart_reasons): ask a client
     /// that restarts it, once; else tell the user, a configuration file by a
@@ -210,11 +210,12 @@ private:
     // document.cpp
     void register_document_requests();
 
-    /// Shared front half of every document-addressed handler: URI → path →
-    /// interned path_id → a ticket on its open session (with none when the
-    /// document is not open) → the project serving it, held for the
-    /// request: a folder removed while the request runs keeps its project
-    /// alive until it completes.
+    /// Shared front half of every document-addressed handler: URI → path as
+    /// the client writes it (feature::written_path), which names the
+    /// document → interned path_id → a ticket on its open session (with
+    /// none when the document is not open) → the project serving it, held
+    /// for the request: a folder removed while the request runs keeps its
+    /// project alive until it completes.
     /// `version` is the document's as the request names it, a second name's
     /// own. The ticket is taken as the request is dispatched, ahead of the
     /// messages read with it: an edit among those arrives before the
@@ -229,8 +230,8 @@ private:
 
     ResolvedDoc resolve_uri(const std::string& uri);
 
-    /// The second name a document spelled `spelling` is open as, or null.
-    MasterServer::SecondName* second_name(llvm::StringRef spelling);
+    /// The second name a document named `name` is open as, or null.
+    MasterServer::SecondName* second_name(llvm::StringRef name);
 
     /// Registers the handler of a request on a document: the user is
     /// active, the document resolves to its project, and `answer` — given
