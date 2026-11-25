@@ -31,7 +31,8 @@ export interface Scenario {
     /// back; null when `file` has no counterpart.
     counterpart?: string | null;
     /// A refactoring: the file, the text the cursor goes to the start of,
-    /// the code action kind, and text the edit adds.
+    /// the code action kind, and text the edit adds. The file compiles with
+    /// a diagnostic: the editor asks for the refactoring once it shows it.
     refactor?: { file: string; at: string; kind: string; adds: string };
     /// The build configurations of the rules: the one the server starts
     /// with, and another to switch to.

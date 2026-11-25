@@ -1,0 +1,3 @@
+# #embed comes with C++26.
+[units]
+"main.cpp" = ["-std=c++26"]

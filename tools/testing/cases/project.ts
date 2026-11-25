@@ -185,6 +185,11 @@ function inheritedFlags(flags: readonly string[], args: readonly string[]): read
         : flags;
 }
 
+/// The compiler a generated database runs `unit` with.
+export function unitCompiler(unit: string): string {
+    return /\.[cm]$/.test(unit) ? "clang" : "clang++";
+}
+
 function entries(project: Project, units: Record<string, UnitArgs>, root: string): Entry[] {
     const workspace = posix(root);
     return Object.entries(units).flatMap(([unit, own]) => {
@@ -194,7 +199,7 @@ function entries(project: Project, units: Record<string, UnitArgs>, root: string
             directory: workspace,
             file,
             arguments: [
-                /\.[cm]$/.test(unit) ? "clang" : "clang++",
+                unitCompiler(unit),
                 ...inheritedFlags(project.flags ?? [], args),
                 ...args,
                 "-fsyntax-only",
