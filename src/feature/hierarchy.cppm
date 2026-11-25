@@ -75,7 +75,8 @@ TypeHierarchy type_hierarchy(const index::IndexQuery& index,
 
 /// The items a hierarchy prepared at a cursor starts from, one per symbol
 /// under it: functions, and the variables, fields and enumerators the
-/// functions using them call; types for a type hierarchy. An item spans
+/// functions using them call; types for a type hierarchy, a constructor's
+/// name standing for the class it constructs. An item spans
 /// the whole declaration and selects its name; its detail shows the
 /// symbol's qualified name inside a namespace or a class, and a function's
 /// signature; it carries the symbol's handle in `data` (see data_symbol).

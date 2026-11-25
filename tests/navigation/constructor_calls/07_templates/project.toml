@@ -1,0 +1,4 @@
+# C++17 keeps a class with only defaulted constructors an aggregate.
+[units]
+"main.cpp" = []
+"aggregate.cpp" = ["-std=c++17"]

@@ -1,0 +1,222 @@
+[cards.paren]
+highlights = [
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "auto* a = new ⟦Widget⟧(1);", kind = "text" },
+    { at = "auto* b = new ⟦Widget⟧{2};", kind = "text" },
+    { at = "auto* d = new const ⟦Widget⟧(3);", kind = "text" },
+]
+
+[cards.paren.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "auto* a = new ⟦Widget⟧(1);"
+
+[cards.paren.semantic_token]
+text = "Widget"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.braced]
+highlights = [
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "auto* a = new ⟦Widget⟧(1);", kind = "text" },
+    { at = "auto* b = new ⟦Widget⟧{2};", kind = "text" },
+    { at = "auto* d = new const ⟦Widget⟧(3);", kind = "text" },
+]
+
+[cards.braced.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "auto* b = new ⟦Widget⟧{2};"
+
+[cards.braced.semantic_token]
+text = "Widget"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.bare]
+highlights = [
+    { at = "⟦Widget⟧();", kind = "text" },
+    { at = "auto* c = new ⟦Widget⟧;", kind = "text" },
+]
+
+[cards.bare.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget()
+```
+'''
+range = "auto* c = new ⟦Widget⟧;"
+
+[cards.bare.semantic_token]
+text = "Widget"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.constant]
+highlights = [
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "auto* a = new ⟦Widget⟧(1);", kind = "text" },
+    { at = "auto* b = new ⟦Widget⟧{2};", kind = "text" },
+    { at = "auto* d = new const ⟦Widget⟧(3);", kind = "text" },
+]
+
+[cards.constant.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "auto* d = new const ⟦Widget⟧(3);"
+
+[cards.constant.semantic_token]
+text = "Widget"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.array]
+highlights = [
+    { at = "struct ⟦Widget⟧ {", kind = "text" },
+    { at = "⟦Widget⟧();", kind = "text" },
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "auto* a = new ⟦Widget⟧(1);", kind = "text" },
+    { at = "auto* b = new ⟦Widget⟧{2};", kind = "text" },
+    { at = "auto* c = new ⟦Widget⟧;", kind = "text" },
+    { at = "auto* d = new const ⟦Widget⟧(3);", kind = "text" },
+    { at = "auto* e = new ⟦Widget⟧[4];", kind = "text" },
+]
+
+[cards.array.hover]
+markdown = '''
+**struct** `Widget`
+
+```cpp
+struct Widget {}
+```
+**Size:** 1 byte
+**Alignment:** 1 byte
+'''
+range = "auto* e = new ⟦Widget⟧[4];"
+
+[cards.array.semantic_token]
+text = "Widget"
+type = "struct"
+modifiers = ["global"]
+
+[navigation.paren]
+definition = ["⟦Widget⟧(int size);"]
+declaration = ["⟦Widget⟧(int size);"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = [
+    "⟦Widget⟧(int size);",
+    "auto* a = new ⟦Widget⟧(1);",
+    "auto* b = new ⟦Widget⟧{2};",
+    "auto* d = new const ⟦Widget⟧(3);",
+]
+
+[navigation.braced]
+definition = ["⟦Widget⟧(int size);"]
+declaration = ["⟦Widget⟧(int size);"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = [
+    "⟦Widget⟧(int size);",
+    "auto* a = new ⟦Widget⟧(1);",
+    "auto* b = new ⟦Widget⟧{2};",
+    "auto* d = new const ⟦Widget⟧(3);",
+]
+
+[navigation.bare]
+definition = ["⟦Widget⟧();"]
+declaration = ["⟦Widget⟧();"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = ["⟦Widget⟧();", "auto* c = new ⟦Widget⟧;"]
+
+[navigation.constant]
+definition = ["⟦Widget⟧(int size);"]
+declaration = ["⟦Widget⟧(int size);"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = [
+    "⟦Widget⟧(int size);",
+    "auto* a = new ⟦Widget⟧(1);",
+    "auto* b = new ⟦Widget⟧{2};",
+    "auto* d = new const ⟦Widget⟧(3);",
+]
+
+[navigation.array]
+definition = ["struct ⟦Widget⟧ {"]
+declaration = ["struct ⟦Widget⟧ {"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = [
+    "struct ⟦Widget⟧ {",
+    "⟦Widget⟧();",
+    "⟦Widget⟧(int size);",
+    "auto* a = new ⟦Widget⟧(1);",
+    "auto* b = new ⟦Widget⟧{2};",
+    "auto* c = new ⟦Widget⟧;",
+    "auto* d = new const ⟦Widget⟧(3);",
+    "auto* e = new ⟦Widget⟧[4];",
+]
+
+["index cards".paren.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "auto* a = new ⟦Widget⟧(1);"
+
+["index cards".braced.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "auto* b = new ⟦Widget⟧{2};"
+
+["index cards".bare.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget()
+```
+'''
+range = "auto* c = new ⟦Widget⟧;"
+
+["index cards".constant.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "auto* d = new const ⟦Widget⟧(3);"
+
+["index cards".array.hover]
+markdown = '''
+**struct** `Widget`
+
+```cpp
+struct Widget { ... }
+```
+'''
+range = "auto* e = new ⟦Widget⟧[4];"

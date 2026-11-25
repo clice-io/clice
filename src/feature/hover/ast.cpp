@@ -1795,6 +1795,9 @@ auto decls_at(CompilationUnit& unit, llvm::ArrayRef<Token> touched) -> Targets {
 
                 for(auto& occurrence:
                     resolve_occurrences(semantics, n, &unit.get<types::TemplateResolver>())) {
+                    if(occurrence.outranked) {
+                        continue;
+                    }
                     if(unit.written_at(occurrence.location) == unit.written_at(location)) {
                         if(seen.insert(occurrence.decl).second) {
                             decls.push_back(occurrence.decl);
@@ -1987,7 +1990,8 @@ auto hover_info(CompilationUnit& unit,
         if(const SelectionTree::Node* node = tree.common_ancestor()) {
             auto targets = decls_at(unit, tokens);
             const auto* decl = pick_decl(targets.decls, *node);
-            if(const auto* deduced = deduced_class(*node); deduced && decl) {
+            if(const auto* deduced = deduced_class(*node);
+               deduced && decl && !llvm::isa<clang::FunctionDecl>(decl)) {
                 decl = deduced;
             }
             if(decl) {
