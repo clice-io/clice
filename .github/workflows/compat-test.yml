@@ -21,9 +21,44 @@ defaults:
   run:
     shell: bash
 
+env:
+  CYGWIN_PACKAGES: gcc-core gcc-g++ cmake ninja
+
 jobs:
+  # The Linux scenarios run in the image compat-image.yml pushes under the
+  # Dockerfile's hash. A Dockerfile a branch changed has no image until that
+  # workflow's run on the push finished. The container gets an init process:
+  # the job's own first process reaps no orphan, and `bazel shutdown` waits
+  # for its server to be gone.
+  image:
+    if: startsWith(inputs.os, 'ubuntu')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      container: ${{ steps.image.outputs.container }}
+    steps:
+      - name: Checkout the Dockerfile
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: tests/compat/Dockerfile
+          sparse-checkout-cone-mode: false
+
+      - name: Find the image
+        id: image
+        run: |
+          image=ghcr.io/clice-io/compat-linux:$(sha256sum tests/compat/Dockerfile | cut -d' ' -f1)
+          if ! docker manifest inspect "$image" > /dev/null; then
+            echo "::error::$image is not pushed: compat-image.yml pushes it for a tests/compat/Dockerfile on a branch of clice-io/clice, on the push or by hand; rerun once it has"
+            exit 1
+          fi
+          echo "container={\"image\": \"$image\", \"options\": \"--init\"}" >> "$GITHUB_OUTPUT"
+
   compat:
+    needs: image
+    if: ${{ !cancelled() && contains(fromJSON('["success", "skipped"]'), needs.image.result) }}
     runs-on: ${{ inputs.os }}
+    container: ${{ needs.image.outputs.container && fromJSON(needs.image.outputs.container) || '' }}
     timeout-minutes: 90
     steps:
       - name: Pick the newest release
@@ -66,23 +101,15 @@ jobs:
           environments: ${{ steps.environments.outputs.names }}
           activate-environment: node
 
-      # The Windows and macOS scenarios use what the runner images ship
-      # (Visual Studio, LLVM upgraded below, MinGW; Xcode, Homebrew GCC and
-      # LLVM), and the Linux image already has gcc, clang, cmake, make and
-      # bazelisk.
-      # An unreachable mirror stalls apt for the job's whole bound.
-      - name: Install build systems and cross compilers
+      # The Linux scenarios' programs beside the pixi environments' are all
+      # in the job's image; the Windows and macOS scenarios use what the
+      # runner images ship (Visual Studio, LLVM replaced below, MinGW; Xcode,
+      # Homebrew GCC and LLVM).
+      # The scenarios find CMake 4.5 in the home directory, which the job
+      # gives the container its own of.
+      - name: Link CMake 4.5 into the home directory
         if: runner.os == 'Linux'
-        timeout-minutes: 15
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            bear ccache meson ninja-build xmake emscripten musl-tools \
-            libc++-18-dev libc++abi-18-dev \
-            g++-mingw-w64-x86-64 g++-riscv64-linux-gnu \
-            g++-aarch64-linux-gnu g++-arm-linux-gnueabihf \
-            gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
-            gcc-riscv64-unknown-elf picolibc-riscv64-unknown-elf
+        run: ln -s /opt/cmake-4.5 ~/cmake-4.5
 
       # MSYS2 ships on the image without compilers: its UCRT and clang
       # environments' native ones, and its own GCC and CMake, which write
@@ -90,72 +117,119 @@ jobs:
       # package beside the image's older libraries fails to load (libarchive
       # built for OpenSSL 4 beside OpenSSL 3). pacman upgrades the core alone
       # first and stops, as a transaction replacing the runtime cannot fork
-      # afterwards; the second call upgrades the rest and installs.
+      # afterwards; the second call upgrades the rest and installs. MSYS2 has
+      # no versions to key its packages by: the week's first run saves the
+      # packages it installed, and the week's later runs download only what
+      # was released since.
+      - name: Name the week
+        if: runner.os == 'Windows'
+        id: week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MSYS2's packages
+        if: runner.os == 'Windows'
+        uses: actions/cache@v6
+        with:
+          path: C:\msys64\var\cache\pacman\pkg
+          key: msys2-${{ steps.week.outputs.week }}
+          restore-keys: msys2-
+
       - name: Install MSYS2's compilers
         if: runner.os == 'Windows'
         timeout-minutes: 20
         run: |
           pacman() {
             for _ in 1 2 3; do
-              C:/msys64/usr/bin/pacman.exe --noconfirm --needed "$@" && return
+              C:/msys64/usr/bin/pacman.exe --noconfirm "$@" && return
               sleep 30
             done
             return 1
           }
-          pacman -Syu
-          pacman -Su mingw-w64-ucrt-x86_64-gcc mingw-w64-clang-x86_64-clang gcc cmake ninja
+          pacman -Syu --needed
+          pacman -Su --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-clang-x86_64-clang gcc cmake ninja
+          # The cache keeps only the versions now installed.
+          pacman -Sc
 
       # The image's Visual Studio ships an STL that accepts Clang 22 or newer
       # alone (STL1000) beside an older LLVM, so its clang and clang-cl
-      # build nothing: Chocolatey, which installed that LLVM, replaces it.
-      - name: Upgrade LLVM
+      # build nothing: LLVM's release replaces it, its programs and their
+      # resource directory, not the libraries and headers to build against
+      # LLVM. Its archive needs zstd's long window.
+      - name: Cache LLVM
+        if: runner.os == 'Windows' && runner.arch == 'X64'
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}\llvm
+          key: llvm-23.1.3-x86_64-pc-windows-msvc
+
+      - name: Install LLVM
         if: runner.os == 'Windows' && runner.arch == 'X64'
         timeout-minutes: 15
-        run: choco upgrade llvm --version 23.1.3 -y --no-progress
+        run: |
+          name=clang+llvm-23.1.3-x86_64-pc-windows-msvc
+          archive=$RUNNER_TEMP/llvm/$name.tar.zst
+          if [ ! -f "$archive" ]; then
+            mkdir -p "$RUNNER_TEMP/llvm"
+            curl -fsSL --retry 5 --retry-all-errors -o "$archive" \
+              "https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.3/$name.tar.zst"
+          fi
+          rm -rf "C:/Program Files/LLVM"
+          mkdir "C:/Program Files/LLVM"
+          zstd -dc --long=31 "$archive" |
+            tar -x -C "C:/Program Files/LLVM" --strip-components=1 "$name/bin" "$name/lib/clang"
 
       # The `import std` scenarios' CMake: 4.5 is the first without an
       # experimental gate on it.
+      - name: Cache CMake 4.5
+        if: runner.os == 'Windows'
+        id: cmake
+        uses: actions/cache@v6
+        with:
+          path: ~/cmake-4.5
+          key: cmake-4.5.0-windows-x86_64
+
       - name: Install CMake 4.5
-        if: runner.os != 'macOS'
+        if: runner.os == 'Windows' && steps.cmake.outputs.cache-hit != 'true'
         timeout-minutes: 5
         run: |
-          release=https://github.com/Kitware/CMake/releases/download/v4.5.0
-          if [ "$RUNNER_OS" = Windows ]; then
-            curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/cmake.zip" \
-              "$release/cmake-4.5.0-windows-x86_64.zip"
-            unzip -q "$RUNNER_TEMP/cmake.zip" -d "$RUNNER_TEMP"
-            mv "$RUNNER_TEMP/cmake-4.5.0-windows-x86_64" ~/cmake-4.5
-          else
-            curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/cmake.tar.gz" \
-              "$release/cmake-4.5.0-linux-x86_64.tar.gz"
-            tar -xzf "$RUNNER_TEMP/cmake.tar.gz" -C "$RUNNER_TEMP"
-            mv "$RUNNER_TEMP/cmake-4.5.0-linux-x86_64" ~/cmake-4.5
-          fi
+          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/cmake.zip" \
+            https://github.com/Kitware/CMake/releases/download/v4.5.0/cmake-4.5.0-windows-x86_64.zip
+          unzip -q "$RUNNER_TEMP/cmake.zip" -d "$RUNNER_TEMP"
+          mv "$RUNNER_TEMP/cmake-4.5.0-windows-x86_64" ~/cmake-4.5
+
+      # Cygwin installs from the packages the first run under this key
+      # downloaded, kept in the Actions cache, without reaching a mirror: a
+      # change of the packages takes a new snapshot.
+      - name: Cache Cygwin's packages
+        if: runner.os == 'Windows'
+        id: cygwin
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}\cygwin
+          key: cygwin-${{ env.CYGWIN_PACKAGES }}
 
       - name: Install Cygwin's compilers
         if: runner.os == 'Windows'
         timeout-minutes: 35
+        env:
+          HIT: ${{ steps.cygwin.outputs.cache-hit }}
         run: |
-          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/setup-x86_64.exe" \
+          dir=$RUNNER_TEMP/cygwin
+          setup=("$dir/setup-x86_64.exe" --quiet-mode --no-desktop --no-shortcuts --no-startmenu
+            --root 'C:\cygwin64' --local-package-dir "$(cygpath -w "$dir")"
+            --packages "${CYGWIN_PACKAGES// /,}")
+          if [ "$HIT" = true ]; then
+            exec "${setup[@]}" --local-install
+          fi
+          mkdir -p "$dir"
+          curl -fsSL --retry 5 --retry-all-errors -o "$dir/setup-x86_64.exe" \
             https://cygwin.com/setup-x86_64.exe
           # In quiet mode, setup retries a mirror it cannot reach forever.
           for _ in 1 2 3; do
-            timeout 600 "$RUNNER_TEMP/setup-x86_64.exe" --quiet-mode --no-desktop --no-shortcuts --no-startmenu \
-              --root 'C:\cygwin64' --local-package-dir "$(cygpath -w "$RUNNER_TEMP/cygwin")" \
-              --site https://mirrors.kernel.org/sourceware/cygwin/ \
-              --packages gcc-core,gcc-g++,cmake,ninja && exit 0
+            timeout 600 "${setup[@]}" --site https://mirrors.kernel.org/sourceware/cygwin/ && exit 0
             sleep 30
           done
           exit 1
-
-      - name: Install zig
-        if: runner.os == 'Linux'
-        timeout-minutes: 5
-        run: |
-          curl -fsSL --retry 5 --retry-all-errors -o "$RUNNER_TEMP/zig.tar.xz" \
-            https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz
-          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/zig-x86_64-linux-0.14.1" >> "$GITHUB_PATH"
 
       - name: Download binaries
         if: steps.release.outputs.tag == ''

@@ -265,6 +265,20 @@ tests/code_completion/member_access/17_dot_on_pointer
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: partial -->
+
+**构造函数初始化列表**
+
+在构造函数的 `:` 之后，会列出尚未初始化的基类和成员，基类在前，按声明顺序排列
+
+接下来该初始化的那一项排在最前，但在有虚基类的类中未必如此。每一项都按其构造函数的形参插入占位符；有多个构造函数的基类或成员只算一个补全项，圆括号内留空，除非设置为重载分开列出。此处不提供其他命名空间中的名称。
+
+```case
+tests/code_completion/member_access/22_constructor_initializers
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 函数与代码片段

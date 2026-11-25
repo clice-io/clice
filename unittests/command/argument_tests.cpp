@@ -57,7 +57,6 @@ ZEST_CASE(ClassifyOptions) {
                   OPT__SLASH_sourceDependencies,
                   OPT__SLASH_showIncludes,
                   OPT__SLASH_showFilenames,
-                  OPT_g_Flag,
                   OPT_frandom_seed_EQ,
                   OPT_fsave_optimization_record,
                   OPT_foptimization_record_file_EQ,
@@ -72,6 +71,148 @@ ZEST_CASE(ClassifyOptions) {
     /// directories (newlib-nano's).
     ZEXPECT((classify_option(OPT_pthread, {}) == ArgClass::Semantic));
     ZEXPECT((classify_option(OPT_specs_EQ, {}) == ArgClass::Semantic));
+};
+
+ZEST_CASE(LeftOutOptions) {
+    /// What only code generation, linking, the header modules clice does
+    /// not build, plugins and the backend read: what cc1 keeps in its
+    /// CodeGenOptions, by driver and by cc1 names, the options the driver
+    /// turns into those, the linker's group, the sanitizers' and profiles'
+    /// details, how diagnostics print, and cl's own.
+    for(auto id: {OPT_fno_plt,
+                  OPT_faddrsig,
+                  OPT_fstack_clash_protection,
+                  OPT_mrelocation_model,
+                  OPT_funwind_tables_EQ,
+                  OPT_fno_strict_aliasing,
+                  OPT_fomit_frame_pointer,
+                  OPT_fvectorize,
+                  OPT_mno_red_zone,
+                  OPT_Wl_COMMA,
+                  OPT_shared,
+                  OPT_mfix_cortex_a53_835769,
+                  OPT_fdebug_prefix_map_EQ,
+                  OPT_fmodule_name_EQ,
+                  OPT_fmodule_map_file,
+                  OPT_fmodules_strict_decluse,
+                  OPT_fmodules_cache_path,
+                  OPT_fimplicit_module_maps,
+                  OPT_fmodule_format_EQ,
+                  OPT_fplugin_EQ,
+                  OPT_moutline_atomics,
+                  OPT_fsanitize_recover_EQ,
+                  OPT_fprofile_sample_use_EQ,
+                  OPT_fno_common,
+                  OPT_fstack_usage,
+                  OPT_fcoverage_mapping,
+                  OPT_ftest_coverage,
+                  OPT_fwhole_program_vtables,
+                  OPT_ftrivial_auto_var_init,
+                  OPT_fvisibility_inlines_hidden,
+                  OPT_fcolor_diagnostics,
+                  OPT_fmessage_length_EQ,
+                  OPT__SLASH_GL,
+                  OPT__SLASH_Qspectre,
+                  OPT__SLASH_bigobj}) {
+        ZEXPECT(!classify_option(id, {}).has_value());
+    }
+};
+
+ZEST_CASE(KeptOptions) {
+    /// What looks like code generation but predefines macros, answers
+    /// __has_feature, or sets what Sema reads: the optimization level
+    /// (__OPTIMIZE__), position independence (__PIC__), the stack
+    /// protector (__SSP__), fast math (__FAST_MATH__), the exception
+    /// model cc1 keeps in its CodeGenOptions (__SEH__), CFI directives
+    /// (__GCC_HAVE_DWARF2_CFI_ASM), the instrumentation profile
+    /// (__LLVM_INSTR_PROFILE_GENERATE), control-flow protection (__CET__),
+    /// Darwin's -static (__STATIC__), the sanitizers and the coverage one,
+    /// LTO, which -fsanitize=cfi requires, trapping math, which strict FP
+    /// evaluation follows, cl's runtime checks, and what round out those:
+    /// MIPS's MSA (__mips_msa), the LTO unit splitting and cross-DSO CFI
+    /// -fsanitize=cfi checks and expands by, unwind tables
+    /// (__GCC_HAVE_DWARF2_CFI_ASM), the runtime library AArch64's function
+    /// multiversioning follows, cl's /Zl (_VC_NODEFAULTLIB), ASan's field
+    /// padding and the ignore lists exempting types from it, which change a
+    /// record's layout, the options undoing others that stay, debug
+    /// information (__GCC_HAVE_DWARF2_CFI_ASM in a C file without unwind
+    /// tables), the default DWARF version -gembed-source requires, the
+    /// integrated assembler (ARM's crypto macros), forced vtables,
+    /// speculative load hardening's __has_feature, the vector library
+    /// (__NO_MATH_ERRNO__), soft float, -undef, a specs file's include
+    /// directories, -nostdlib++, the tab stop -Wmisleading-indentation
+    /// measures by, MinGW GCC's -mthreads (_MT), what cl defines macros for
+    /// (/GZ, /sdl, /guard:cf, /utf-8), and what clang ignores but GCC
+    /// defines macros by (non-call exceptions, signaling NaNs,
+    /// single-precision constants).
+    for(auto id: {OPT_O,
+                  OPT_fPIC,
+                  OPT_fstack_protector_strong,
+                  OPT_ffast_math,
+                  OPT_fno_exceptions,
+                  OPT_funsigned_char,
+                  OPT_fno_inline,
+                  OPT_exception_model,
+                  OPT_fdwarf2_cfi_asm,
+                  OPT_fprofile_instr_generate,
+                  OPT_fprofile_instrument_EQ,
+                  OPT_fcf_protection_EQ,
+                  OPT_static,
+                  OPT_fsanitize_EQ,
+                  OPT_fsanitize_coverage,
+                  OPT_fsanitize_coverage_type,
+                  OPT_fxray_instrument,
+                  OPT_flto_EQ,
+                  OPT_fvisibility_EQ,
+                  OPT_ftrapping_math,
+                  OPT_mtune_EQ,
+                  OPT__sysroot_EQ,
+                  OPT__SLASH_RTC,
+                  OPT_mmsa,
+                  OPT_fsplit_lto_unit,
+                  OPT_fsanitize_cfi_cross_dso,
+                  OPT_fno_asynchronous_unwind_tables,
+                  OPT_rtlib_EQ,
+                  OPT_fms_omit_default_lib,
+                  OPT_fsanitize_address_field_padding,
+                  OPT_fsanitize_ignorelist_EQ,
+                  OPT_fsanitize_ignore_for_ubsan_feature_EQ,
+                  OPT_fvisibility_global_new_delete_EQ,
+                  OPT_femit_all_decls,
+                  OPT_fgnu_inline_asm,
+                  OPT_finline,
+                  OPT_g_Flag,
+                  OPT_funified_lto,
+                  OPT_falloc_token_max_EQ,
+                  OPT_mllvm,
+                  OPT_fuse_ld_EQ,
+                  OPT_nostdlib,
+                  OPT_fdebug_default_version,
+                  OPT_fno_integrated_as,
+                  OPT_fforce_emit_vtables,
+                  OPT_mspeculative_load_hardening,
+                  OPT_fveclib,
+                  OPT_msoft_float,
+                  OPT_undef,
+                  OPT_specs_EQ,
+                  OPT_nostdlibxx,
+                  OPT_mconstant_cfstrings,
+                  OPT_ftabstop,
+                  OPT_mthreads,
+                  OPT__SLASH_GZ,
+                  OPT__SLASH_sdl,
+                  OPT__SLASH_sdl_,
+                  OPT__SLASH_guard,
+                  OPT__SLASH_utf8,
+                  OPT_fnon_call_exceptions,
+                  OPT_fno_non_call_exceptions,
+                  OPT_fsignaling_nans,
+                  OPT_fsingle_precision_constant}) {
+        ZEXPECT((classify_option(id, {}) == ArgClass::Semantic));
+    }
+    ZEXPECT((classify_option(OPT_W_Joined, {}) == ArgClass::Diagnostics));
+    ZEXPECT((classify_option(OPT_pedantic, {}) == ArgClass::Diagnostics));
+    ZEXPECT((classify_option(OPT_I, {}) == ArgClass::UserContent));
 };
 
 ZEST_CASE(InputAndUnknown) {
@@ -302,20 +443,18 @@ ZEST_CASE(DriverKeepsAlias) {
     };
     using enum CompilerFamily;
     for(std::vector<std::string> args: {
-            std::vector<std::string>{"-msmall-data-limit=8"},
-            {"-flto"},
+            std::vector<std::string>{"-flto"},
             {"-flto=auto"},
             {"-trigraphs"},
             {"-marm"},
             {"-mmacosx-version-min=11.0"},
             {"--sysroot", "/opt/sysroot"},
-            {"-G", "8"},
             {"-std=c++20"}
     }) {
         ZEXPECT(render(args, GCC) == args);
     }
-    std::vector<std::string> unaliased = {"-G", "8"};
-    ZEXPECT(render({"-msmall-data-limit=8"}, NVCC) == unaliased);
+    std::vector<std::string> unaliased = {"-ftrigraphs"};
+    ZEXPECT(render({"-trigraphs"}, NVCC) == unaliased);
     /// A second prefix of an option names no alias.
     std::vector<std::string> standard = {"-std=c++20"};
     ZEXPECT(render({"--std=c++20"}, GCC) == standard);
@@ -332,11 +471,11 @@ ZEST_CASE(StableForSameArgs) {
 
 ZEST_CASE(CodegenFlagsIgnored) {
     // The point of the key: pure codegen flags must not change it.
-    // Note -O* is deliberately NOT here: it defines
-    // __OPTIMIZE__ and is kept by is_codegen_option() on purpose.
+    // Note -O* is deliberately NOT here: it defines __OPTIMIZE__.
     auto base = canonicalize({"clang++", "-std=c++20", "-DFOO", "main.cpp"});
-    ZASSERT(base == canonicalize({"clang++", "-g", "-std=c++20", "-DFOO", "main.cpp"}));
-    ZASSERT(base == canonicalize({"clang++", "-gdwarf-4", "-std=c++20", "-DFOO", "main.cpp"}));
+    ZASSERT(base == canonicalize({"clang++", "-fno-plt", "-std=c++20", "-DFOO", "main.cpp"}));
+    ZASSERT(base ==
+            canonicalize({"clang++", "-fno-strict-aliasing", "-std=c++20", "-DFOO", "main.cpp"}));
     ZASSERT(base ==
             canonicalize({"clang++", "-std=c++20", "-fomit-frame-pointer", "-DFOO", "main.cpp"}));
     ZASSERT(base ==
@@ -399,7 +538,7 @@ ZEST_CASE(UnknownOptionKept) {
     // Unknown options might be semantic; dropping them could merge keys
     // that must differ.
     ZASSERT(canonicalize({"clang++", "-DFOO"}) !=
-            canonicalize({"clang++", "-DFOO", "-fplugin-arg-x-y"}));
+            canonicalize({"clang++", "-DFOO", "--clice-unknown-flag"}));
 }
 
 ZEST_CASE(WarningsChangeKey) {

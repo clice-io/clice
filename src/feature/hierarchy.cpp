@@ -2,6 +2,7 @@ module clice;
 
 import :feature.document_symbols;
 import :feature.hierarchy;
+import :feature.navigation;
 import :feature.protocol;
 import :index.query;
 import :index.query.locate;
@@ -467,11 +468,15 @@ std::vector<protocol::TypeHierarchyItem>
                          const index::IndexQuery::Cursor& cursor,
                          PositionEncoding encoding) {
     std::vector<protocol::TypeHierarchyItem> items;
-    for(auto& located: query.resolve_at(cursor)) {
-        auto kind = located.symbol.kind;
+    for(auto written: written_symbols(query, cursor)) {
+        auto located = query.resolve(written.symbol, written.anchor);
+        if(!located) {
+            continue;
+        }
+        auto kind = located->symbol.kind;
         if(kind == SymbolKind::Class || kind == SymbolKind::Struct || kind == SymbolKind::Enum ||
            kind == SymbolKind::Union || kind == SymbolKind::Protocol) {
-            items.push_back(item_of<protocol::TypeHierarchyItem>(query, located, encoding));
+            items.push_back(item_of<protocol::TypeHierarchyItem>(query, *located, encoding));
         }
     }
     return items;

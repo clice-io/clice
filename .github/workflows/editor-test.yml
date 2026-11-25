@@ -63,6 +63,16 @@ jobs:
         timeout-minutes: 20
         run: pixi run -e editor vscode-e2e RelWithDebInfo
 
+      - name: Upload the servers' logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: editor-logs-${{ inputs.target }}
+          path: .cache/editors/*/*/.clice/logs
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Save VSCode download cache
         if: github.ref == 'refs/heads/main' && steps.vscode-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
@@ -118,12 +128,20 @@ jobs:
           "$RUNNER_TEMP/zed-setup.exe" //VERYSILENT //SUPPRESSMSGBOXES //NORESTART //SP- //CURRENTUSER
           echo "ZED_EXECUTABLE=$LOCALAPPDATA/Programs/Zed/Zed.exe" >> "$GITHUB_ENV"
 
+      # Zed signs its GitHub release lookups with GITHUB_TOKEN. Unsigned, they
+      # count against the runner's address, 60 an hour that other jobs spend
+      # too, and a refused lookup leaves the extension on the older clice the
+      # test installed.
       - name: Zed E2E test (Linux)
         if: runner.os == 'Linux'
         timeout-minutes: 20
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: xvfb-run -a pixi run -e editor zed-e2e RelWithDebInfo
 
       - name: Zed E2E test (Windows)
         if: runner.os == 'Windows'
         timeout-minutes: 20
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: pixi run -e editor zed-e2e RelWithDebInfo

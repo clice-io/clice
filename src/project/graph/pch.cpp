@@ -82,7 +82,8 @@ std::pair<Check, llvm::StringRef> pair_state(Project& project, llvm::StringRef p
         return {Check::InputsChanged, "a file it read changed"};
     }
     if(entry.saves_built != entry.saves) {
-        return {Check::InputsChanged, "a save asked to look again for the files it did not find"};
+        return {Check::InputsChanged,
+                "a save asked to look again for the files it did not find or open"};
     }
     return {Check::Holds, {}};
 }

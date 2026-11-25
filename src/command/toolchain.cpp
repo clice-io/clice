@@ -109,10 +109,8 @@ std::vector<std::string> files_under(const Spelling& dir) {
 
 /// Whether the frontend takes `arg` as the command writes it, the driver
 /// passing it on untouched to cc1, so the query need not see it: clang's
-/// `-W` options and `-pedantic-errors`, and `-fmodule-name=`, which outside
-/// header modules (normalize drops it with them) names only `__MODULE__`.
-/// Targets setting their warnings or their module names apart would each
-/// ask the compiler (Chromium names every target's module). One a driver
+/// `-W` options and `-pedantic-errors`. Targets setting their warnings apart
+/// would each ask the compiler (Chromium sets every target's). One a driver
 /// reads itself the query sees — cl's `/W4`; clang's `-Wno-deprecated`,
 /// which leaves C++'s `__DEPRECATED` undefined, `-Wwrite-strings` and a `-w`
 /// after it, which make C's string literals const, `-pedantic` and the
@@ -122,9 +120,6 @@ std::vector<std::string> files_under(const Spelling& dir) {
 bool frontend_takes_as_written(const Arg& arg, CompilerFamily family) {
     if(cl_mode(family) || family == CompilerFamily::GCC || family == CompilerFamily::NVCC) {
         return false;
-    }
-    if(arg.cls == ArgClass::Semantic) {
-        return arg.opt_id == clang_options::OPT_fmodule_name_EQ;
     }
     using namespace clang_options;
     constexpr std::array driver_reads = {OPT_Wdeprecated,
@@ -152,8 +147,7 @@ bool in_query_view(const Arg& arg, CompilerFamily family) {
             // The query picks its own action; the command's (-fsyntax-only)
             // would go unused, an error under -Werror.
             auto opt = clang_options::table().option(arg.opt_id);
-            return (!opt || !opt->matches(clang_options::OPT_Action_Group)) &&
-                   !frontend_takes_as_written(arg, family);
+            return !opt || !opt->matches(clang_options::OPT_Action_Group);
         }
         case ArgClass::Diagnostics: return !frontend_takes_as_written(arg, family);
         case ArgClass::Unknown:
@@ -199,7 +193,7 @@ void drop_sycl_integration_files(std::vector<std::string>& tokens) {
 std::size_t forwarded_start(llvm::ArrayRef<std::string> tokens, const Command& command) {
     llvm::SmallVector<llvm::StringRef> values;
     for(auto& arg: command.args) {
-        if(is_xclang_option(arg.opt_id)) {
+        if(arg.opt_id == clang_options::OPT_Xclang) {
             values.push_back(arg.values[0]);
         }
     }

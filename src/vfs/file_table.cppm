@@ -119,20 +119,22 @@ struct FileTable {
     std::string display(Fid fid) const;
 
     /// display() of the file a worker or an index names by its identity,
-    /// interned first, so that an open document shows its own spelling.
+    /// interned first, so that an open document shows under its own name.
     std::string display_identity(llvm::StringRef identity);
 
-    /// A path by its identity, under the spelling of the workspace folder
-    /// it lies in (a folder opened through a symlink) or as it is outside
-    /// every folder.
+    /// A path by its identity, under the path the workspace folder it lies
+    /// in shows under (a folder opened through a symlink) or as it is
+    /// outside every folder.
     std::string display(CanonicalRef identity) const;
 
-    /// An open document names its file this way until it closes.
-    void show_as(Fid fid, llvm::StringRef spelling) {
-        shown[fid] = spelling.str();
+    /// An open document names its file this way until it closes: as the
+    /// client writes it, on Windows the drive letter in the client's case,
+    /// which display() gives back for the URIs the client is sent.
+    void show_as(Fid fid, llvm::StringRef path) {
+        shown[fid] = path.str();
     }
 
-    /// The spelling the file's open document was opened under, if one is.
+    /// The path the file's open document was opened under, if one is.
     std::optional<llvm::StringRef> shown_as(Fid fid) const {
         auto it = shown.find(fid);
         return it != shown.end() ? std::optional<llvm::StringRef>(it->second) : std::nullopt;
@@ -142,13 +144,14 @@ struct FileTable {
         shown.erase(fid);
     }
 
-    /// Files under the workspace folder `root` show under this spelling of
-    /// it, its `..` segments folded away while the folded path still names
-    /// the same directory.
-    void spell_root(const Spelling& root);
+    /// Files under the workspace folder the client writes as `root` show
+    /// under that path, its `..` segments folded away while the folded path
+    /// still names the same directory: the URIs the client is sent keep the
+    /// drive letter's case it wrote.
+    void spell_root(llvm::StringRef root);
 
-    /// Stop showing files under a spelling spell_root recorded.
-    void unspell_root(const Spelling& root);
+    /// Stop showing files under a root spell_root recorded.
+    void unspell_root(llvm::StringRef root);
 
     llvm::DenseMap<Fid, std::string> shown;
 
@@ -160,11 +163,13 @@ struct FileTable {
 
     /// A workspace folder spell_root recorded: its identity, the spelling
     /// it was opened under, `..` folded, and the one files under it show
-    /// under — the opened one while it names the folder.
+    /// under — the opened one while it names the folder — with the drive
+    /// letter of `written`: then the root spell_root was given.
     struct Folder {
         CanonicalPath identity;
         Spelling opened;
         Spelling shown;
+        std::string written;
     };
 
     llvm::SmallVector<Folder> folders;

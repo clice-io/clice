@@ -275,10 +275,16 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
         }
     }
 
-    bool header_modules =
-        family != CompilerFamily::GCC && ranges::any_of(staged, [](const auto& parsed) {
-            return parsed && parsed->id == clang_options::OPT_fmodules;
-        });
+    // GCC's -fmodules is its C++20 modules (flags_for_clang).
+    bool header_modules = false;
+    if(family != CompilerFamily::GCC) {
+        for(auto& parsed: staged) {
+            if(parsed && (parsed->id == clang_options::OPT_fmodules ||
+                          parsed->id == clang_options::OPT_fno_modules)) {
+                header_modules = parsed->id == clang_options::OPT_fmodules;
+            }
+        }
+    }
     bool gcc_host = family == CompilerFamily::GCC || command.host == CompilerFamily::GCC;
 
     std::vector<LocalArg> args;
@@ -341,8 +347,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
 
         // LIMITATION: Clang's header modules are dropped: a file compiles
         // without them, so its `@import`s are errors. Projects whose
-        // commands carry -fmodules reach it. GCC's -fmodules is its C++20
-        // modules (flags_for_clang).
+        // commands carry -fmodules reach it.
         if(header_modules && id == clang_options::OPT_fmodules) {
             static std::once_flag reported;
             std::call_once(reported, [] {
@@ -352,9 +357,10 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
             });
             continue;
         }
-        // The header module a unit belongs to goes with them: Chromium names
-        // one per target, which would ask the compiler once per target.
-        if(header_modules && id == clang_options::OPT_fmodule_name_EQ) {
+        // The module files of a header module build are its header modules
+        // (Bazel's `-fmodule-file=<target>.pcm`), written by the build's
+        // clang, not C++20 header units.
+        if(header_modules && id == clang_options::OPT_fmodule_file) {
             continue;
         }
 
@@ -503,8 +509,11 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
                          "-fdeps-file=",
                          "-fdeps-target=",
                          "-fdiagnostics-add-output=",
-                         "-fprofile-note="};
-    std::array joined_dependencies = {"-MF", "-MT", "-MQ", "-MJ"};
+                         "-fprofile-note=",
+                         "-MF",
+                         "-MT",
+                         "-MQ",
+                         "-MJ"};
     // After `/` or `-`; a longer name ahead of one it starts with.
     std::array<llvm::StringRef, 15> cl_outputs = {"Fo",
                                                   "Fd",
@@ -600,13 +609,14 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
         }
         if(cl_mode(family)) {
             // cl's own outputs, and the dependency files of clang's options
-            // passed through `/clang:` (Unreal's `/clang:-MF<file>`); not a
-            // path another option takes, which a POSIX host spells with a `/`
-            // (`/imsvc /docker/include`).
+            // passed through `/clang:` (Unreal's `/clang:-MF<file>`); not the
+            // program or a path another option takes, which a POSIX host
+            // spells with a `/` (`/docker/bin/clang-cl`,
+            // `/imsvc /docker/include`).
             auto output = ranges::find_if(cl_outputs, [&](llvm::StringRef name) {
                 return option && token.drop_front().starts_with(name);
             });
-            if(output == cl_outputs.end() ||
+            if(i < driver_end || output == cl_outputs.end() ||
                (i > driver_end && takes_next(command_line[i - 1], token, visibility))) {
                 text += token;
                 continue;
@@ -634,11 +644,6 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
                       joined,
                       [&](llvm::StringRef prefix) { return token.starts_with(prefix); });
                   prefix != joined.end()) {
-            text += *prefix;
-        } else if(auto prefix = ranges::find_if(
-                      joined_dependencies,
-                      [&](llvm::StringRef prefix) { return token.starts_with(prefix); });
-                  prefix != joined_dependencies.end()) {
             text += *prefix;
         } else if((token.starts_with("-Wp,-MD,") || token.starts_with("-Wp,-MMD,")) &&
                   token.count(',') == 2) {

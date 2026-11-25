@@ -17,7 +17,7 @@ highlights = [
 highlights = [
     { at = "⟦Session⟧(int id);", kind = "text" },
     { at = "Session::⟦Session⟧(int id) : id(id) {}", kind = "text" },
-    { at = "return Session⟦(⟧7);", kind = "text" },
+    { at = "return ⟦Session⟧(7);", kind = "text" },
 ]
 
 [answers.dtor_decl]
@@ -38,7 +38,7 @@ highlights = [
 highlights = [
     { at = "⟦Session⟧(int id);", kind = "text" },
     { at = "Session::⟦Session⟧(int id) : id(id) {}", kind = "text" },
-    { at = "return Session⟦(⟧7);", kind = "text" },
+    { at = "return ⟦Session⟧(7);", kind = "text" },
 ]
 
 [answers.dtor_call]

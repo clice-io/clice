@@ -2,7 +2,7 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { State } from "vscode-languageclient/node";
+import { State, type CodeAction, type Command } from "vscode-languageclient/node";
 import type { ClientHandle } from "../client";
 import { scratchFolder } from "./scratch";
 // Shared protocol shapes — type-only, mirrors feature/context.ts.
@@ -627,22 +627,42 @@ suite("clice E2E", function () {
         }
         // The server offers them, for editors without the extension's UI.
         const start = { line: 0, character: 0 };
-        const offered = await client().sendRequest<{ kind?: string }[]>("textDocument/codeAction", {
-            textDocument: { uri: opened().uri.toString() },
-            range: { start, end: start },
-            context: { diagnostics: [], only: ["source"], triggerKind: 1 },
-        });
-        assert.ok(offered.some((action) => action.kind === "source.clice.context"));
-
-        const listed = await vscode.commands.executeCommand<vscode.CodeAction[]>(
-            "vscode.executeCodeActionProvider",
-            opened().uri,
-            new vscode.Range(0, 0, 0, 0),
-            vscode.CodeActionKind.Source.value,
+        const offered = await client().sendRequest<(Command | CodeAction)[]>(
+            "textDocument/codeAction",
+            {
+                textDocument: { uri: opened().uri.toString() },
+                range: { start, end: start },
+                context: { diagnostics: [], only: ["source"], triggerKind: 1 },
+            },
         );
         assert.ok(
-            !listed.some((action) => action.kind?.value.startsWith("source.clice.")),
-            "VS Code lists no clice source action",
+            offered.some((action) => "kind" in action && action.kind === "source.clice.context"),
+        );
+
+        // What the extension hands VS Code of that answer. VS Code's own
+        // request lists the same, but drops itself whenever a code action
+        // provider anywhere comes or goes meanwhile.
+        const provide = client().current.middleware.provideCodeActions;
+        assert.ok(provide, "the extension has a code action middleware");
+        const token = new vscode.CancellationTokenSource().token;
+        const handed = await provide(
+            opened(),
+            new vscode.Range(0, 0, 0, 0),
+            {
+                diagnostics: [],
+                only: vscode.CodeActionKind.Source,
+                triggerKind: vscode.CodeActionTriggerKind.Invoke,
+            },
+            token,
+            () => client().current.protocol2CodeConverter.asCodeActionResult(offered, token),
+        );
+        assert.ok(
+            !(handed ?? []).some(
+                (action) =>
+                    action instanceof vscode.CodeAction &&
+                    action.kind?.value.startsWith("source.clice."),
+            ),
+            "the extension hands VS Code no clice source action",
         );
     });
 
@@ -702,12 +722,48 @@ suite("clice E2E", function () {
                 : [];
         assert.deepStrictEqual([...commands].sort(), [...advertised].sort());
 
-        const source = await vscode.workspace.openTextDocument(uriOf(refactor.file));
+        // VS Code asks for code actions on its own a moment after the cursor
+        // moves or the file's diagnostics change, and that request replaces
+        // the command's still waiting, which then applies nothing: the
+        // command asks once the file's diagnostics are in and VS Code's own
+        // request after them is answered.
+        const uri = uriOf(refactor.file);
+        let changes = 0;
+        let answered = -1;
+        const seen = new vscode.EventEmitter<void>();
+        const watch = vscode.languages.onDidChangeDiagnostics((event) => {
+            if (event.uris.some((each) => each.toString() === uri.toString())) {
+                changes += 1;
+                seen.fire();
+            }
+        });
+        const middleware = client().current.middleware;
+        const provide = middleware.provideCodeActions;
+        assert.ok(provide, "the extension has a code action middleware");
+        middleware.provideCodeActions = async (document, range, context, token, next) => {
+            const after = changes;
+            const actions = await provide(document, range, context, token, next);
+            if (
+                document.uri.toString() === uri.toString() &&
+                context.triggerKind === vscode.CodeActionTriggerKind.Automatic
+            ) {
+                answered = Math.max(answered, after);
+                seen.fire();
+            }
+            return actions;
+        };
+        const source = await vscode.workspace.openTextDocument(uri);
         try {
             const cursor = source.positionAt(source.getText().indexOf(refactor.at));
             await vscode.window.showTextDocument(source, {
                 selection: new vscode.Range(cursor, cursor),
             });
+            await until(
+                [seen.event],
+                () => vscode.languages.getDiagnostics(uri).length > 0 && answered === changes,
+                `VS Code's own code actions of ${refactor.file} after its diagnostics`,
+            );
+            await sync();
             const edited = until(
                 [vscode.workspace.onDidChangeTextDocument],
                 (event) => event?.document === source && event.contentChanges.length > 0,
@@ -719,6 +775,9 @@ suite("clice E2E", function () {
                 `the edit did not add ${refactor.adds}:\n${source.getText()}`,
             );
         } finally {
+            middleware.provideCodeActions = provide;
+            watch.dispose();
+            seen.dispose();
             await vscode.window.showTextDocument(source);
             await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
         }

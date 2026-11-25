@@ -12,6 +12,15 @@ struct Holder {
     §(defaulted)Holder() = default;
 };
 
+struct Base {
+    Base(int x) {}
+};
+
+struct Sized : Base {
+    §(initializers)Sized(int size) noexcept : Base(size), area{size * size} {}
+    int area;
+};
+
 struct §(record)Point {
     int x;
 };
