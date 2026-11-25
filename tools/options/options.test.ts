@@ -15,6 +15,7 @@ import {
     parseClassTable,
     parseOptions,
     suspicious,
+    variants,
 } from "./options.ts";
 
 const HELP_TEXTS =
@@ -180,6 +181,22 @@ describe("Options.inc", () => {
         );
         expect(change(option(options, "fno_plt"), previous.get("fno_plt"))).toBeUndefined();
         expect(change(option(options, "fno_plt"), undefined)).toBe("new");
+    });
+
+    test("a value an option gains is a change, and its probe tries it first", () => {
+        const previous = parseOptions(
+            OPTIONS_INC.replaceAll(
+                '"default,hidden,internal,protected"',
+                '"default,hidden,internal"',
+            ),
+        );
+        const visibility = option(options, "fvisibility_EQ");
+        expect(change(visibility, previous.get("fvisibility_EQ"))).toBe(
+            "changed values default | hidden | internal → default | hidden | internal | protected",
+        );
+        expect(variants(visibility, "f.txt", previous.get("fvisibility_EQ"))[0]).toEqual([
+            "-fvisibility=protected",
+        ]);
     });
 });
 

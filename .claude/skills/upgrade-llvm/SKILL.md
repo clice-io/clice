@@ -96,8 +96,8 @@ Then the unit tests and the cases, and a build of every other configuration, eac
 `src/command/option_classes.inc` classes clang's options by what clice's analysis reads (its header states the criterion), over two rules from clang's tables: an option a release adds or changes takes the class those rules give it until a line says otherwise. After the build, on the Linux box of Step 2, `tools/options/options.ts` gathers the evidence for each new or changed option and its counterpart: the class the table gives it, the macros, `__has_feature` answers and cc1 arguments it changes with a real clang of the release, and the files of the driver reading it for a decision of its own:
 
 ```bash
-box run $linux 'git clone -q --depth 1 --filter=blob:none --sparse -b llvmorg-<LLVM version> https://github.com/llvm/llvm-project ~/llvm-project && git -C ~/llvm-project sparse-checkout set clang/lib/Driver'
-box run $linux 'pixi run node tools/options/options.ts --previous ~/Options.inc.old --llvm ~/llvm-project --out build/options.md'
+box run $linux 'git clone -q --depth 1 --filter=blob:none --sparse -b llvmorg-<LLVM version> https://github.com/llvm/llvm-project ~/llvm-project-<LLVM version> && git -C ~/llvm-project-<LLVM version> sparse-checkout set clang/lib/Driver'
+box run $linux 'pixi run node tools/options/options.ts --previous ~/Options.inc.old --llvm ~/llvm-project-<LLVM version> --out build/options.md'
 box cp $linux . build/options.md
 ```
 

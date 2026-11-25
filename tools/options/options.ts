@@ -237,6 +237,7 @@ export function change(option: Option, previous: Option | undefined): string | u
         ["flags", set(previous.flags), set(option.flags)],
         ["visibility", set(previous.visibility), set(option.visibility)],
         ["marshalling", previous.marshalling ?? "none", option.marshalling ?? "none"],
+        ["values", set(previous.values ?? []), set(option.values ?? [])],
     ];
     const changed = fields
         .filter(([, was, is]) => was !== is)
@@ -326,11 +327,16 @@ export function probeTargets(option: Option, chain: readonly string[]): readonly
 
 /// The arguments an option is probed with: a value of those the table
 /// lists, or a sample of the values options commonly take.
-export function variants(option: Option, file: string): string[][] {
+export function variants(option: Option, file: string, previous?: Option): string[][] {
     if (option.kind === "Flag") {
         return [[option.spelling]];
     }
-    const values = option.values?.slice(0, 8) ?? [
+    const added =
+        previous === undefined
+            ? []
+            : (option.values ?? []).filter((value) => !(previous.values ?? []).includes(value));
+    const listed = option.values && [...new Set([...added, ...option.values.slice(0, 8)])];
+    const values = listed ?? [
         "1",
         "2",
         "none",
@@ -757,8 +763,10 @@ function failure(ran: Ran): string {
 
 interface Compiled {
     cc1: Cc1Argument[];
-    macros: Set<string>;
-    features: Set<string>;
+    /// None where the run printed no macro dump or feature answers: an option
+    /// sending the output elsewhere (`-o`) or printing another (`-M`).
+    macros: Set<string> | undefined;
+    features: Set<string> | undefined;
 }
 
 /// Runs a clang on each option's sample values, a few runs at a time, against
@@ -847,26 +855,36 @@ class Prober {
         }
         const lines = (stdout: string): string[] =>
             stdout.split(/\r?\n/).filter((line) => line.trim() !== "" && !line.startsWith("#"));
+        const defines = macros.stdout.split(/\r?\n/).filter((line) => line.startsWith("#define "));
+        const answers = lines(features.stdout).filter((line) => /^[FE]_\w+$/.test(line));
         return {
             cc1: cc1Arguments(
                 this.options,
                 this.cc1,
                 tokens.slice(2).filter((token) => token !== this.input),
             ),
-            macros: new Set(
-                macros.stdout.split(/\r?\n/).filter((line) => line.startsWith("#define ")),
-            ),
-            features: new Set(
-                lines(features.stdout).map((line) =>
-                    line.replace(/^([FE])_(\w+)$/, (_, which: string, name: string) =>
-                        which === "F" ? `__has_feature(${name})` : `__has_extension(${name})`,
-                    ),
-                ),
-            ),
+            macros: defines.length === 0 ? undefined : new Set(defines),
+            features:
+                answers.length === 0
+                    ? undefined
+                    : new Set(
+                          answers.map((line) =>
+                              line.replace(/^([FE])_(\w+)$/, (_, which: string, name: string) =>
+                                  which === "F"
+                                      ? `__has_feature(${name})`
+                                      : `__has_extension(${name})`,
+                              ),
+                          ),
+                      ),
         };
     }
 
-    async probe(option: Option, targets: readonly Target[], index: number): Promise<Evidence> {
+    async probe(
+        option: Option,
+        targets: readonly Target[],
+        index: number,
+        previous: Option | undefined,
+    ): Promise<Evidence> {
         const directory = path.join(this.scratch, String(index));
         fs.mkdirSync(directory);
         const file = path.join(directory, "f.txt");
@@ -880,7 +898,7 @@ class Prober {
                     throw new Error(`${this.clang} fails on ${target.triple}: ${baseline}`);
                 }
                 const results: (Compiled | string)[] = [];
-                for (const args of variants(option, file)) {
+                for (const args of variants(option, file, previous)) {
                     results.push(await this.compiled(target, args, directory));
                 }
                 return { target, baseline, results };
@@ -904,10 +922,13 @@ class Prober {
                     evidence.accepted.push(target.name);
                 }
                 const changes = (
-                    now: Set<string>,
-                    before: Set<string>,
+                    now: Set<string> | undefined,
+                    before: Set<string> | undefined,
                     into: Set<string>,
                 ): void => {
+                    if (now === undefined || before === undefined) {
+                        return;
+                    }
                     for (const [sign, from, minus] of [
                         ["+", now, before],
                         ["-", before, now],
@@ -1025,6 +1046,11 @@ async function main(): Promise<void> {
         return;
     }
     let { include, clang } = values;
+    // The probes run in directories of their own: a path relative to here
+    // would name nothing there, a bare name still goes through PATH.
+    if (clang !== undefined && path.basename(clang) !== clang) {
+        clang = path.resolve(clang);
+    }
     if (include === undefined || clang === undefined) {
         const triple =
             hostTriple() ??
@@ -1100,7 +1126,12 @@ async function main(): Promise<void> {
                 const why = unprobed(option, chain, only !== undefined);
                 const evidence =
                     why === undefined
-                        ? await prober.probe(option, probeTargets(option, chain), index)
+                        ? await prober.probe(
+                              option,
+                              probeTargets(option, chain),
+                              index,
+                              previous?.get(id),
+                          )
                         : undefined;
                 done++;
                 if (process.stderr.isTTY) {
