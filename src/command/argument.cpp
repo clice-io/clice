@@ -183,108 +183,6 @@ unsigned family_visibility(CompilerFamily family) {
     return ~(flang | clang_options::CLOption | clang_options::DXCOption);
 }
 
-bool is_discarded_option(unsigned id) {
-    /// Options the driver accepts and ignores (gcc compat knobs, e.g. the
-    /// per-file -frandom-seed=<output> bazel stamps on every command): a
-    /// per-file value here must not fracture query and identity keys.
-    /// Deliberately also drops clang's -Wignored-optimization-argument
-    /// compat warnings for them — under -Werror those abort the analysis.
-    /// The dependency files a build asks for (-MD, -MF, -MJ, ...) form a
-    /// group of their own.
-    if(auto opt = clang_options::table().option(id);
-       opt && (opt->has_flag(clang_options::detail::Ignored) || opt->matches(OPT_M_Group))) {
-        return true;
-    }
-
-    switch(id) {
-        /// Input file, unknown args, and output — we manage these ourselves.
-        /// -main-file-name is per-file input identity injected by to_argv()
-        /// for cc1 commands; it only labels diagnostics/debug info.
-        case OPT_INPUT:
-        case OPT_UNKNOWN:
-        case OPT__DASH_DASH:
-        case OPT_main_file_name:
-        case OPT_c:
-        case OPT_o:
-        case OPT_dxc_Fc:
-        case OPT_dxc_Fo:
-        case OPT__SLASH_Fo:
-        case OPT__SLASH_Fd:
-
-        /// What else a build writes beside the object, often one file per
-        /// unit: listings, executables, preprocessed output, timings,
-        /// intermediate files, serialized diagnostics, crash reports.
-        case OPT__SLASH_FA:
-        case OPT__SLASH_Fa:
-        case OPT__SLASH_Fe:
-        case OPT__SLASH_Fi:
-        case OPT__SLASH_Fm:
-        case OPT__SLASH_FR:
-        case OPT__SLASH_Fr:
-        case OPT__SLASH_doc:
-        case OPT__SLASH_sourceDependencies:
-        case OPT__SLASH_sourceDependenciesDirectives:
-        case OPT_ftime_trace:
-        case OPT_ftime_trace_EQ:
-        case OPT_ftime_trace_granularity_EQ:
-        case OPT_ftime_trace_verbose:
-        case OPT_save_temps:
-        case OPT_save_temps_EQ:
-        case OPT_dumpdir:
-        case OPT__serialize_diags:
-        case OPT_fcrash_diagnostics_dir:
-        case OPT_fsave_optimization_record:
-        case OPT_foptimization_record_file_EQ:
-        case OPT_gen_cdb_fragment_path:
-
-        /// The assembler's options: a listing file per unit
-        /// (`-Wa,-adhlns=main.lst`), never the C or C++ that is parsed.
-        case OPT_Wa_COMMA:
-        case OPT_Xassembler:
-
-        /// PCH building.
-        case OPT_emit_pch:
-        case OPT_include_pch:
-        case OPT__SLASH_Yc:
-        case OPT__SLASH_Yu:
-        case OPT__SLASH_Y_:
-        case OPT__SLASH_Fp:
-
-        /// Dependency scan, and the frontend's dependency output a driver
-        /// passes on (zig asks for its cache's: `-dependency-file` needs the
-        /// -MT that goes with the group).
-        case OPT_dependency_file:
-        case OPT_dependency_dot:
-        case OPT_sys_header_deps:
-        case OPT_E:
-        case OPT_show_inst:
-        case OPT_show_encoding:
-        case OPT_show_includes:
-        case OPT__SLASH_showFilenames:
-        case OPT__SLASH_showFilenames_:
-        case OPT__SLASH_showIncludes:
-        case OPT__SLASH_showIncludes_user:
-
-        /// C++ modules — we handle these ourselves. A module embedding
-        /// its sources overrides them in every importer, where a
-        /// preamble's PCH holding the same files then refuses to load;
-        /// clice builds its modules from the files on disk.
-        case OPT_fmodule_file:
-        case OPT_fmodule_output:
-        case OPT_fmodule_output_EQ:
-        case OPT_fmodules_embed_all_files:
-        case OPT_fmodules_embed_file_EQ:
-        case OPT_fprebuilt_module_path:
-        case OPT__SLASH_reference:
-        case OPT__SLASH_headerUnit:
-        case OPT__SLASH_headerUnitAngle:
-        case OPT__SLASH_headerUnitQuote:
-        case OPT__SLASH_translateInclude: return true;
-
-        default: return false;
-    }
-}
-
 llvm::SmallVector<std::size_t> forced_files(llvm::ArrayRef<Arg> args) {
     llvm::SmallVector<std::size_t> positions;
     for(auto id: {OPT_imacros, OPT_include}) {
@@ -295,20 +193,6 @@ llvm::SmallVector<std::size_t> forced_files(llvm::ArrayRef<Arg> args) {
         }
     }
     return positions;
-}
-
-bool is_user_content_option(unsigned id) {
-    switch(id) {
-        case OPT_I:
-        case OPT_isystem:
-        case OPT_iquote:
-        case OPT_idirafter:
-        case OPT_D:
-        case OPT_U:
-        case OPT_include:
-        case OPT_imacros: return true;
-        default: return false;
-    }
 }
 
 bool names_path(unsigned id, llvm::StringRef value) {
@@ -343,33 +227,17 @@ bool names_path(unsigned id, llvm::StringRef value) {
         case OPT_resource_dir:
         case OPT_config_system_dir_EQ:
         case OPT_config_user_dir_EQ:
-        case OPT_fprebuilt_module_path:
-        case OPT_fmodules_cache_path:
-        case OPT_fmodule_map_file:
         case OPT_ivfsoverlay:
         case OPT_fsanitize_ignorelist_EQ:
         case OPT_fsanitize_system_ignorelist_EQ:
-        case OPT_fsanitize_coverage_allowlist:
-        case OPT_fsanitize_coverage_ignorelist:
-        case OPT_fprofile_list_EQ:
-        case OPT_fxray_attr_list:
-        case OPT_fxray_always_instrument:
-        case OPT_fxray_never_instrument:
         case OPT_fprofile_instr_use_EQ:
         case OPT_fprofile_use_EQ:
-        case OPT_fprofile_sample_use_EQ:
-        case OPT_fprofile_remapping_file_EQ:
-        case OPT_fbuild_session_file:
         case OPT_include_pch:
         case OPT__SLASH_Fp:
         case OPT_working_directory: return true;
         case OPT_config: return value.contains('/') || value.contains('\\');
         default: return false;
     }
-}
-
-bool is_xclang_option(unsigned id) {
-    return id == OPT_Xclang;
 }
 
 unsigned effective_option(const Arg& arg) {
@@ -406,6 +274,40 @@ static bool dependency_options(llvm::ArrayRef<const char*> args) {
     return true;
 }
 
+/// The class of each of clang's options by id, none for one a command leaves
+/// out (option_classes.inc).
+const static std::vector<std::optional<ArgClass>>& option_classes() {
+    const static auto classes = [] {
+        using enum ArgClass;
+        constexpr std::optional<ArgClass> LeftOut;
+        auto& table = clang_options::table();
+        std::vector<std::optional<ArgClass>> classes(table.option_infos.size() + 1, Semantic);
+        for(auto& option: table.option_infos) {
+            if(table.option(option.id)->has_flag(clang_options::detail::Ignored)) {
+                classes[option.id] = LeftOut;
+            }
+        }
+#define CODEGEN_OPTION_WITH_MARSHALLING(PREFIX_TYPE, SPELLING_OFFSET, ID, ...)                     \
+    classes[OPT_##ID] = LeftOut;
+#include "clang/Options/Options.inc"
+#undef CODEGEN_OPTION_WITH_MARSHALLING
+        auto group = [&](unsigned id, std::optional<ArgClass> cls) {
+            for(auto& option: table.option_infos) {
+                if(table.option(option.id)->matches(id)) {
+                    classes[option.id] = cls;
+                }
+            }
+        };
+#define OPTION_GROUP(GROUP, CLASS) group(OPT_##GROUP, CLASS);
+#define OPTION(ID, CLASS) classes[OPT_##ID] = CLASS;
+#include "command/option_classes.inc"
+#undef OPTION
+#undef OPTION_GROUP
+        return classes;
+    }();
+    return classes;
+}
+
 std::optional<ArgClass> classify_option(unsigned id, llvm::ArrayRef<const char*> values) {
     /// -fmodule-file has two shapes: `name=path` names a prebuilt module
     /// (clice builds its own PCMs — irrelevant), a bare path is a header
@@ -425,77 +327,7 @@ std::optional<ArgClass> classify_option(unsigned id, llvm::ArrayRef<const char*>
        !ranges::contains(std::array{"full", "thin", "none"}, llvm::StringRef(values[0]))) {
         return std::nullopt;
     }
-    switch(id) {
-        case OPT_include_pch:
-        case OPT_emit_pch:
-        case OPT__SLASH_Yc:
-        case OPT__SLASH_Yu:
-        case OPT__SLASH_Y_:
-        case OPT__SLASH_Fp:
-        case OPT_o:
-        case OPT_fmodule_output:
-        case OPT_fmodule_output_EQ: return ArgClass::Precompiled;
-    }
-    if(is_discarded_option(id) || is_codegen_option(id)) {
-        return std::nullopt;
-    }
-    if(is_user_content_option(id)) {
-        return ArgClass::UserContent;
-    }
-    if(is_diagnostics_option(id)) {
-        return ArgClass::Diagnostics;
-    }
-    return ArgClass::Semantic;
-}
-
-bool is_codegen_option(unsigned id) {
-    /// Debug info options form a group (-g, -gdwarf-*, -gsplit-dwarf, etc.).
-    if(auto opt = clang_options::table().option(id); opt && opt->matches(OPT_DebugInfo_Group)) {
-        return true;
-    }
-
-    switch(id) {
-        /// Frame pointer and unwind tables — pure codegen.
-        case OPT_mframe_pointer_EQ:
-        case OPT_fomit_frame_pointer:
-        case OPT_fno_omit_frame_pointer:
-        case OPT_funwind_tables:
-        case OPT_fno_unwind_tables:
-        case OPT_fasynchronous_unwind_tables:
-        case OPT_fno_asynchronous_unwind_tables:
-
-        /// Section splitting, semantic interposition — pure codegen/linker.
-        /// Not LTO: the driver allows -fsanitize=cfi and
-        /// -fwhole-program-vtables only with it.
-        case OPT_fdata_sections:
-        case OPT_fno_data_sections:
-        case OPT_ffunction_sections:
-        case OPT_fno_function_sections:
-        case OPT_fsemantic_interposition:
-        case OPT_fno_semantic_interposition:
-        case OPT_fvisibility_inlines_hidden:
-
-        /// Diagnostics output formatting — doesn't affect analysis.
-        case OPT_fcolor_diagnostics:
-        case OPT_fno_color_diagnostics:
-        case OPT_fdiagnostics_color_EQ:
-
-        /// Floating-point codegen — doesn't define macros (unlike -ffast-math).
-        case OPT_ftrapping_math:
-        case OPT_fno_trapping_math: return true;
-
-        default: return false;
-    }
-}
-
-bool is_diagnostics_option(unsigned id) {
-    if(id == OPT_w) {
-        return true;
-    }
-    if(auto opt = clang_options::table().option(id)) {
-        return opt->matches(OPT_Diag_Group) || opt->matches(OPT_pedantic_Group);
-    }
-    return false;
+    return option_classes()[id];
 }
 
 std::uint16_t written_alias(const cli::ParsedArg& parsed) {
@@ -670,7 +502,12 @@ std::string canonicalize(llvm::ArrayRef<std::string> args) {
             append(parse_args[result ? result->index : result.error().begin]);
             continue;
         }
-        if(!is_discarded_option(result->id) && !is_codegen_option(result->id)) {
+        std::vector<std::string> storage(result->values.begin(), result->values.end());
+        llvm::SmallVector<const char*, 2> values;
+        for(auto& value: storage) {
+            values.push_back(value.c_str());
+        }
+        if(auto cls = classify_option(result->id, values); cls && cls != ArgClass::Precompiled) {
             clang_options::table().render(*result, append);
         }
     }

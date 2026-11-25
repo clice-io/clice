@@ -478,7 +478,7 @@ ZEST_CASE(CodegenChangeIgnored) {
 
     write_json(tmp,
                {
-                   {tmp.root, "a.cpp", {"-fomit-frame-pointer", "-g"}}
+                   {tmp.root, "a.cpp", {"-fomit-frame-pointer", "-fdata-sections"}}
     });
     cdb.load(cdb_path);
 

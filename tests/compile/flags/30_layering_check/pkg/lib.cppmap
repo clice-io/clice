@@ -1,0 +1,9 @@
+module "//pkg:lib" {
+  export *
+  header "lib.h"
+  private header "internal.h"
+}
+module "//other:dep" {
+  export *
+  header "../other/dep.h"
+}

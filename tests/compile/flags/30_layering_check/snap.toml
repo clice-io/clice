@@ -1,0 +1,3 @@
+[test."main.cpp"]
+wrong = "the build rejects the include of a module the target does not depend on"
+diagnostics = []

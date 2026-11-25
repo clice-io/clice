@@ -36,7 +36,7 @@ CUDA 和 HIP 文件编译的是设备端代码，因为 Clang 会先执行这一
 | [格式化](./formatting.md)            | 支持 4 项                                 |
 | [C++20 模块](./modules.md)           | 支持 9 项                                 |
 | [头文件上下文](./header-contexts.md) | 支持 6 项                                 |
-| [编译](./compilation.md)             | 支持 9 项                                 |
+| [编译](./compilation.md)             | 支持 9 项 · 不支持 1 项                   |
 
 <!-- END GENERATED OVERVIEW -->
 

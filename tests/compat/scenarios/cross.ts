@@ -194,7 +194,7 @@ export const SCENARIOS: Scenario[] = [
     {
         // A build for WCH's RISC-V chips as MounRiver writes one, less WCH's
         // own `_xw` extension: clang knows -msmall-data-limit= as -G, which
-        // RISC-V GCC rejects.
+        // RISC-V GCC rejects, so its query must not get it as -G.
         name: "make bear riscv embedded",
         platforms: ["linux"],
         requires: ["bear", "make", "/usr/bin/riscv64-unknown-elf-gcc"],

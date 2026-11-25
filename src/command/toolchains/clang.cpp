@@ -124,17 +124,37 @@ std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, Comp
     // (`-Xpreprocessor -Werror`) they stay that option's.
     std::vector<std::string> result;
     std::size_t next = 0;
+    // The last of a switch and its negation decides.
+    bool sdl_checks = false;
+    bool control_flow_guard = false;
+    bool utf8 = false;
     auto parse_options = cli::ParseOptions{.visibility = family_visibility(family)};
     for(auto& parsed: clang_options::table().parse(flags, parse_options)) {
         if(!parsed) {
             continue;
         }
-        bool modules = family == CompilerFamily::GCC && parsed->id == clang_options::OPT_fmodules;
+        auto id = parsed->id;
+        bool cl = family == CompilerFamily::MSVC;
+        bool modules = family == CompilerFamily::GCC && id == clang_options::OPT_fmodules;
         bool runtime_checks =
-            family == CompilerFamily::MSVC && parsed->id == clang_options::OPT__SLASH_RTC;
+            cl && (id == clang_options::OPT__SLASH_RTC || id == clang_options::OPT__SLASH_GZ);
+        bool cl_switch =
+            cl && (id == clang_options::OPT__SLASH_sdl || id == clang_options::OPT__SLASH_sdl_ ||
+                   id == clang_options::OPT__SLASH_guard || id == clang_options::OPT__SLASH_utf8);
+        if(cl_switch) {
+            if(id == clang_options::OPT__SLASH_guard) {
+                llvm::StringRef value = parsed->values[0];
+                control_flow_guard = value == "cf" || (control_flow_guard && value != "cf-");
+            } else if(id == clang_options::OPT__SLASH_utf8) {
+                utf8 = true;
+            } else {
+                sdl_checks = id == clang_options::OPT__SLASH_sdl;
+            }
+        }
         llvm::StringRef warning =
-            parsed->id == clang_options::OPT_W_Joined ? llvm::StringRef(parsed->values[0]) : "";
-        if(!modules && !runtime_checks && warning != "error" && !warning.starts_with("error=")) {
+            id == clang_options::OPT_W_Joined ? llvm::StringRef(parsed->values[0]) : "";
+        if(!modules && !runtime_checks && !cl_switch && warning != "error" &&
+           !warning.starts_with("error=")) {
             continue;
         }
         result.insert(result.end(), flags.begin() + next, flags.begin() + parsed->index);
@@ -147,6 +167,15 @@ std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, Comp
         }
     }
     result.insert(result.end(), flags.begin() + next, flags.end());
+    if(sdl_checks) {
+        result.push_back("-D_GUARDOVERFLOW_CRT_ALLOCATORS=1");
+    }
+    if(control_flow_guard) {
+        result.push_back("-D_CONTROL_FLOW_GUARD=1");
+    }
+    if(utf8) {
+        result.push_back("-D_UTF8=1");
+    }
     return result;
 }
 

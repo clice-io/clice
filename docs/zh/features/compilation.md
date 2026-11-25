@@ -55,6 +55,20 @@ tests/compile/flags/19_deferred_template_bodies
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**分层检查（layering check）**
+
+构建的分层检查所拒绝的包含指令不显示错误
+
+Bazel 的 `layering_check`，以及所有让 Clang 检查模块映射（module map）所声明的使用关系（`-fmodules-decluse`）的构建，都会拒绝包含目标的依赖均未提供的头文件。clice 编译文件时视同没有任何模块映射列出它：这类包含指令在编辑器中编译不会报错，只有构建时才会报告。
+
+```case
+tests/compile/flags/30_layering_check
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 其他语言

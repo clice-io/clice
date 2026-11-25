@@ -11,7 +11,7 @@ g++ -std=c++20 -O2 -g -I../include -DNDEBUG -c src/foo.cpp
 It cannot run that command as it stands:
 
 - **It is a driver command.** `g++` picks a frontend, a standard library and system headers; clice runs Clang's frontend, which needs all of that spelled out — the target, the system include directories, the default language standard. None of it is in the database: the compiler supplies it.
-- **It carries options that change nothing a language server sees**: `-g`, `-c`, `-o`, dependency files.
+- **It carries options that change nothing a language server sees**: `-c`, `-o`, dependency files, `-ffunction-sections`.
 - **It repeats itself.** Ten thousand units of one target share a compiler and its options and differ in include paths and macros.
 
 What is missing hurts most: without the system headers, `#include <vector>` is "file not found" — consistently among clangd's most reported problems ([clangd#1262](https://github.com/clangd/clangd/issues/1262), [clangd#1691](https://github.com/clangd/clangd/issues/1691)). clangd asks a compiler only when `--query-driver` names it, which the user has to find out and configure ([clangd#1219](https://github.com/clangd/clangd/issues/1219)). clice asks every command's compiler, recognizes its family, and keeps the number of questions small.
@@ -20,7 +20,7 @@ What is missing hurts most: without the system headers, `#include <vector>` is "
 
 Each command is parsed once, with Clang's own option table, by option ID: every spelling of an option — joined, separate, cl's `/` — classifies alike. Each option is either left out or kept in a category:
 
-- **Left out**: what only the build reads — outputs, compile mode, dependency files, timings, the assembler's options, GCC's module mapper, cl's module interface outputs — and what only shapes the generated code (`-g`, `-ffunction-sections`). Options that look like code generation but change the preprocessor stay: `-O` defines `__OPTIMIZE__`, `-fPIC` defines `__PIC__`, and `-fsanitize=address` changes what `__has_feature` answers.
+- **Left out**: what only the build reads — outputs, compile mode, dependency files, timings, the assembler's and the linker's options, GCC's module mapper, cl's module interface outputs, Clang's header modules and the layering check they enforce — and what only shapes the generated code (`-ffunction-sections`, `-fno-plt`, the paths debug information records). Options that look like code generation but change the preprocessor stay: `-O` defines `__OPTIMIZE__`, `-fPIC` defines `__PIC__`, `-fsanitize=address` changes what `__has_feature` answers, and `-g` decides `__GCC_HAVE_DWARF2_CFI_ASM` in a C file without unwind tables.
 - **Diagnostics**: warning options. They change which diagnostics show, nothing else.
 - **User content**: what one file needs — include paths, macros, forced includes. It does not change what the compiler answers about itself.
 - **Semantic**: the rest — `-std`, `--target`, `-march` — which the compiler's answers depend on.

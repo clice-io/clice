@@ -1,0 +1,11 @@
+# Bazel's layering check: the target's own module map, its name, and the
+# check itself. The unit includes its own private header, which its build
+# allows, and a header of a module it does not depend on, which its build
+# rejects.
+[units]
+"main.cpp" = [
+    "-fmodule-name=//pkg:lib",
+    "-fmodule-map-file=pkg/lib.cppmap",
+    "-fmodules-strict-decluse",
+    "-Wprivate-header",
+]

@@ -86,9 +86,10 @@ constexpr bool reads_clang_config(CompilerFamily family) {
 unsigned family_visibility(CompilerFamily family);
 
 /// How an argument a command keeps participates in compilation semantics.
-/// The options the compile never takes — codegen-only ones, outputs,
-/// dependency files, those the driver ignores — leave the command when it
-/// is parsed (classify_option): commands differing only in them are one.
+/// The options clice's analysis never reads — code generation, linking,
+/// outputs, dependency files, what the driver ignores — leave the command
+/// when it is parsed (classify_option): commands differing only in them are
+/// one.
 enum class ArgClass : std::uint8_t {
     /// Affects frontend semantics (language, target, macros defined by mode).
     Semantic,
@@ -125,8 +126,8 @@ struct Arg {
     std::uint32_t opt_id = 0;
     ArgClass cls = ArgClass::Semantic;
 
-    /// The alias of the option the command wrote (`-msmall-data-limit=` for
-    /// -G), 0 when it wrote the option's own name.
+    /// The alias of the option the command wrote (`-trigraphs` for
+    /// -ftrigraphs), 0 when it wrote the option's own name.
     std::uint16_t alias = 0;
 
     /// Interned verbatim token, only for ArgClass::Unknown (nullptr otherwise).
@@ -160,32 +161,13 @@ struct LocalArg {
     }
 };
 
-/// Check if an option is a codegen-only flag that doesn't affect frontend
-/// semantics (parsing, diagnostics, code completion). These are pure
-/// backend/linker concerns irrelevant to an LSP server.
-///
-/// Note: options that DO affect semantics are intentionally kept:
-///   -fno-exceptions, -fno-rtti, -std=*, -march=*, -fsanitize=*, -O*, -W*,
-///   and -fPIC and -fstack-protector*, which define __PIC__ and __SSP__
-bool is_codegen_option(unsigned id);
-
-/// Options the compile never takes: outputs, dependency files, the
-/// precompiled files clice builds itself, the prebuilt modules of the build,
-/// and anything the driver itself accepts and ignores.
-bool is_discarded_option(unsigned id);
-
 /// The positions in `args` of the files the command forces in, in the order
 /// clang enters them: every `-imacros` (whose macros alone it keeps), then
 /// every `-include`, each in command order.
 llvm::SmallVector<std::size_t> forced_files(llvm::ArrayRef<Arg> args);
 
-/// User-content options that go into the per-file patch rather than the
-/// shared canonical command: -I, -D, -U, -include, -imacros, -isystem, -iquote,
-/// -idirafter.
-bool is_user_content_option(unsigned id);
-
-/// The class of option `id` given `values` in a command; none for an option
-/// the command leaves out.
+/// The class of option `id` given `values` in a command, as
+/// option_classes.inc gives it; none for an option the command leaves out.
 std::optional<ArgClass> classify_option(unsigned id, llvm::ArrayRef<const char*> values);
 
 /// Whether `value` of option `id` names a file or directory, which every
@@ -195,19 +177,11 @@ std::optional<ArgClass> classify_option(unsigned id, llvm::ArrayRef<const char*>
 /// `--config` name is searched in clang's configuration directories.
 bool names_path(unsigned id, llvm::StringRef value);
 
-/// Check if this is the -Xclang pass-through option.
-bool is_xclang_option(unsigned id);
-
 /// The option `arg` sets: the one a `/clang:` passes clang's driver
 /// (`/clang:-std=c++20`) or an `-Xclang` cc1
 /// (`-Xclang -fdelayed-template-parsing`), read by clang's table, else
 /// `arg`'s own.
 unsigned effective_option(const Arg& arg);
-
-/// Diagnostics-presentation options (-W*, -R*, -pedantic*, -w): they affect
-/// which warnings are emitted but never the token stream produced by
-/// preprocessing.
-bool is_diagnostics_option(unsigned id);
 
 /// Render one structured argument back into argv fragments. Unknown args
 /// render as their verbatim spelling; known options render through the
@@ -227,8 +201,8 @@ bool keeps_alias(const Arg& arg, CompilerFamily family);
 
 /// Render one argument for the command's own driver. A GCC-style driver
 /// gets an option as the command wrote it, which another compiler may know
-/// by that name alone: GCC's `-msmall-data-limit=8` is clang's `-G 8`,
-/// which RISC-V GCC rejects. A cl-mode driver reads a `-` spelling as its
+/// by that name alone: GCC's `-trigraphs` is clang's -ftrigraphs, which
+/// GCC rejects. A cl-mode driver reads a `-` spelling as its
 /// own option where one exists (`-Wall` is `/Wall`, -Weverything) and
 /// drops the GCC-style ones it lacks, so an argument the parse unaliased
 /// out of a cl spelling (`/W3` is -Wall, `/J` -funsigned-char) is spelled
@@ -238,9 +212,9 @@ void render_driver_arg(const Arg& arg,
                        llvm::function_ref<void(std::string_view)> cb);
 
 /// Render the frontend-semantic options of `args` — preprocessing,
-/// language and warnings, without codegen-only options and those clice
-/// manages itself — into a stable string suitable for hashing (fragments
-/// are NUL-separated).  This is a pure filter: the relative order of kept
+/// language and warnings, without the options a command leaves out and the
+/// precompiled files clice builds itself (classify_option) — into a stable string suitable for
+/// hashing (fragments are NUL-separated).  This is a pure filter: the relative order of kept
 /// options is preserved because it is semantically significant (-I/-D
 /// ordering).  args[0] must be the driver; it is always kept since it
 /// affects language defaults.  Arguments that fail to parse are kept

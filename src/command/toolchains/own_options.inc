@@ -9,7 +9,7 @@
 // that write it. nvcc's options are a table of their own (nvcc_options.inc).
 
 // A file of each unit the build writes, left out as clang's own outputs are
-// (is_discarded_option): GCC's module mapper and dependency scan output,
+// (option_classes.inc): GCC's module mapper and dependency scan output,
 // its SARIF and profile notes, Apple's index unit output.
 OWN_OPTION("-fmodule-mapper=", Joined, INVALID, all)
 OWN_OPTION("-fdeps-format=", Joined, INVALID, all)
