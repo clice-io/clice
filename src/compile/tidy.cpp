@@ -143,7 +143,7 @@ private:
         filename.setLiteralData(written.data());
         auto kind = file ? pp.getHeaderSearchInfo().getFileDirFlavor(*file) : clang::SrcMgr::C_User;
         delegate.InclusionDirective(
-            start.getLocWithOffset(directive.range.begin),
+            unit.create_location(pp.getSourceManager().getMainFileID(), directive.range.begin),
             include,
             name,
             angled,
