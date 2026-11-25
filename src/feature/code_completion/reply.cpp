@@ -1109,13 +1109,15 @@ void Reply::add_initializer(const clang::CodeCompletionResult& candidate, std::u
         .relevance = priority_weight(candidate.Priority),
         .order = order,
     };
-    // A member's candidate carries the member or its class, a dependent
-    // base's nothing.
+    // A member's candidate carries its class, or the member itself when its
+    // type is no class.
     auto fields = llvm::cast<clang::CXXConstructorDecl>(sema.CurContext)->getParent()->fields();
     if(auto field = ranges::find_if(fields,
                                     [&](const clang::FieldDecl* field) {
-                                        return candidate.Declaration &&
-                                               field->getName() == item.label;
+                                        const clang::NamedDecl* carried =
+                                            field->getType()->getAsCXXRecordDecl();
+                                        return field->getName() == item.label &&
+                                               candidate.Declaration == (carried ? carried : field);
                                     });
        field != fields.end()) {
         item.kind = protocol::CompletionItemKind::Field;
@@ -1143,8 +1145,10 @@ void Reply::add_initializer(const clang::CodeCompletionResult& candidate, std::u
     if(completing.options.bundle_overloads) {
         item.bundle = item.label;
     }
-    // A base's template arguments may be written already.
-    if(follows == Follows::Angle) {
+    // A base's qualifier or template arguments may be written already.
+    if(follows == Follows::Colon) {
+        item.insert = llvm::StringRef(item.label).split("::").first.str();
+    } else if(follows == Follows::Angle) {
         item.insert = without_template_arguments(item.label).str();
     } else if(follows != Follows::BracedInitializer) {
         insert_call(item, *pattern, /*called_here=*/true);

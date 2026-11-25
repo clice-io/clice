@@ -116,6 +116,22 @@ items = [
     { label = "Outer<int>::Inner<double>(double value)", kind = "Class", insert = "Outer<int>::Inner" },
 ]
 
+[default.base_named_as_member.completion]
+items = [
+    {
+        label = "Grain(…) +1 overload",
+        kind = "Class",
+        insert = "Grain($0)",
+        snippet = true,
+        documentation = "What a field grows from.",
+    },
+]
+
+[default.namespace_written.completion]
+items = [
+    { label = "ns::Seed(int value)", kind = "Class", insert = "ns" },
+]
+
 [default.pack_braces.completion]
 items = [
     { label = "Bases(Bases)", kind = "Class", insert = "Bases" },
@@ -305,6 +321,29 @@ items = [
 [unbundled.qualified_template_arguments.completion]
 items = [
     { label = "Outer<int>::Inner<double>(double value)", kind = "Class", insert = "Outer<int>::Inner" },
+]
+
+[unbundled.base_named_as_member.completion]
+items = [
+    {
+        label = "Grain(int value)",
+        kind = "Class",
+        insert = "Grain(${1:int value})",
+        snippet = true,
+        documentation = "What a field grows from.",
+    },
+    {
+        label = "Grain(int)",
+        kind = "Field",
+        insert = "Grain(${1:int})",
+        snippet = true,
+        documentation = "A member named after its base.",
+    },
+]
+
+[unbundled.namespace_written.completion]
+items = [
+    { label = "ns::Seed(int value)", kind = "Class", insert = "ns" },
 ]
 
 [unbundled.pack_braces.completion]

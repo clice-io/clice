@@ -88,6 +88,28 @@ struct Wrapped : Outer<int>::Inner<double> {
     Wrapped() : Inn§(qualified_template_arguments)<double>(1) {}
 };
 
+/// What a field grows from.
+struct Grain {
+    Grain(int value);
+};
+
+struct Planted : Grain {
+    /// A member named after its base.
+    int Grain;
+
+    Planted() : §(base_named_as_member) {}
+};
+
+namespace ns {
+struct Seed {
+    Seed(int value);
+};
+}  // namespace ns
+
+struct Seeded : ns::Seed {
+    Seeded() : n§(namespace_written)::Seed(1) {}
+};
+
 template <typename... Bases>
 struct Mixed : Bases... {
     Mixed() : Bas§(pack_braces){}... {}
