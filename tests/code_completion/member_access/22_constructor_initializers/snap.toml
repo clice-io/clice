@@ -1,0 +1,287 @@
+[default.in_class.completion]
+items = [
+    {
+        label = "Base(int seed)",
+        kind = "Class",
+        insert = "Base(${1:int seed})",
+        snippet = true,
+        documentation = "What every widget is built on.",
+    },
+    { label = "width(int)", kind = "Field", insert = "width(${1:int})", snippet = true },
+    {
+        label = "name(…) +1 overload",
+        kind = "Field",
+        insert = "name($0)",
+        snippet = true,
+        documentation = "The title of the window.",
+    },
+    { label = "origin(Point)", kind = "Field", insert = "origin(${1:Point})", snippet = true },
+]
+
+[default.after_base.completion]
+items = [
+    { label = "width(int)", kind = "Field", insert = "width(${1:int})", snippet = true },
+    {
+        label = "name(…) +1 overload",
+        kind = "Field",
+        insert = "name($0)",
+        snippet = true,
+        documentation = "The title of the window.",
+    },
+    { label = "origin(Point)", kind = "Field", insert = "origin(${1:Point})", snippet = true },
+]
+
+[default.template_arguments_written.completion]
+items = [
+    { label = "Tagged<int>(int tag)", kind = "Class", insert = "Tagged" },
+]
+
+[default.template_base_braces.completion]
+items = [
+    { label = "Tagged<int>(int tag)", kind = "Class", insert = "Tagged<int>" },
+]
+
+[default.template_arguments_spaced.completion]
+items = [
+    { label = "Tagged<int>(int tag)", kind = "Class", insert = "Tagged" },
+]
+
+[default.out_of_line.completion]
+items = [
+    {
+        label = "Base(…) +2 overloads",
+        kind = "Class",
+        insert = "Base($0)",
+        snippet = true,
+        documentation = "What every widget is built on.",
+    },
+    { label = "width(int)", kind = "Field", insert = "width(${1:int})", snippet = true },
+    {
+        label = "name(…) +3 overloads",
+        kind = "Field",
+        insert = "name($0)",
+        snippet = true,
+        documentation = "The title of the window.",
+    },
+    { label = "origin(…) +1 overload", kind = "Field", insert = "origin($0)", snippet = true },
+]
+
+[default.after_member.completion]
+items = [
+    {
+        label = "name(…) +3 overloads",
+        kind = "Field",
+        insert = "name($0)",
+        snippet = true,
+        documentation = "The title of the window.",
+    },
+    {
+        label = "Base(…) +2 overloads",
+        kind = "Class",
+        insert = "Base($0)",
+        snippet = true,
+        documentation = "What every widget is built on.",
+    },
+    { label = "origin(…) +1 overload", kind = "Field", insert = "origin($0)", snippet = true },
+]
+
+[default.arguments_written.completion]
+items = [
+    { label = "width(int)", kind = "Field", insert = "width" },
+]
+
+[default.braces_written.completion]
+items = [
+    { label = "width(int)", kind = "Field", insert = "width" },
+]
+
+[default.braces_spaced.completion]
+items = [
+    { label = "width(int)", kind = "Field", insert = "width" },
+]
+
+[default.dependent_base.completion]
+items = [
+    { label = "T(T)", kind = "Class", insert = "T(${1:T})", snippet = true },
+    { label = "value(T)", kind = "Field", insert = "value(${1:T})", snippet = true },
+]
+
+[default.typed.completion]
+items = [
+    { label = "width(int)", kind = "Field", insert = "width(${1:int})", snippet = true },
+]
+
+[unbundled.in_class.completion]
+items = [
+    {
+        label = "Base(int seed)",
+        kind = "Class",
+        insert = "Base(${1:int seed})",
+        snippet = true,
+        documentation = "What every widget is built on.",
+    },
+    { label = "width(int)", kind = "Field", insert = "width(${1:int})", snippet = true },
+    { label = "name()", kind = "Field", insert = "name()", documentation = "The title of the window." },
+    {
+        label = "name(const char *text)",
+        kind = "Field",
+        insert = "name(${1:const char *text})",
+        snippet = true,
+        documentation = "The title of the window.",
+    },
+    { label = "origin(Point)", kind = "Field", insert = "origin(${1:Point})", snippet = true },
+]
+
+[unbundled.after_base.completion]
+items = [
+    { label = "width(int)", kind = "Field", insert = "width(${1:int})", snippet = true },
+    { label = "name()", kind = "Field", insert = "name()", documentation = "The title of the window." },
+    {
+        label = "name(const char *text)",
+        kind = "Field",
+        insert = "name(${1:const char *text})",
+        snippet = true,
+        documentation = "The title of the window.",
+    },
+    { label = "origin(Point)", kind = "Field", insert = "origin(${1:Point})", snippet = true },
+]
+
+[unbundled.template_arguments_written.completion]
+items = [
+    { label = "Tagged<int>(int tag)", kind = "Class", insert = "Tagged" },
+]
+
+[unbundled.template_base_braces.completion]
+items = [
+    { label = "Tagged<int>(int tag)", kind = "Class", insert = "Tagged<int>" },
+]
+
+[unbundled.template_arguments_spaced.completion]
+items = [
+    { label = "Tagged<int>(int tag)", kind = "Class", insert = "Tagged" },
+]
+
+[unbundled.out_of_line.completion]
+items = [
+    {
+        label = "Base(int seed)",
+        kind = "Class",
+        insert = "Base(${1:int seed})",
+        snippet = true,
+        documentation = "What every widget is built on.",
+    },
+    {
+        label = "Base(const Base &)",
+        kind = "Class",
+        insert = "Base(${1:const Base &})",
+        snippet = true,
+        documentation = "What every widget is built on.",
+    },
+    {
+        label = "Base(Base &&)",
+        kind = "Class",
+        insert = "Base(${1:Base &&})",
+        snippet = true,
+        documentation = "What every widget is built on.",
+    },
+    { label = "width(int)", kind = "Field", insert = "width(${1:int})", snippet = true },
+    { label = "name()", kind = "Field", insert = "name()", documentation = "The title of the window." },
+    {
+        label = "name(const char *text)",
+        kind = "Field",
+        insert = "name(${1:const char *text})",
+        snippet = true,
+        documentation = "The title of the window.",
+    },
+    {
+        label = "name(const Name &)",
+        kind = "Field",
+        insert = "name(${1:const Name &})",
+        snippet = true,
+        documentation = "The title of the window.",
+    },
+    {
+        label = "name(Name &&)",
+        kind = "Field",
+        insert = "name(${1:Name &&})",
+        snippet = true,
+        documentation = "The title of the window.",
+    },
+    { label = "origin(const Point &)", kind = "Field", insert = "origin(${1:const Point &})", snippet = true },
+    { label = "origin(Point &&)", kind = "Field", insert = "origin(${1:Point &&})", snippet = true },
+]
+
+[unbundled.after_member.completion]
+items = [
+    { label = "name()", kind = "Field", insert = "name()", documentation = "The title of the window." },
+    {
+        label = "name(const char *text)",
+        kind = "Field",
+        insert = "name(${1:const char *text})",
+        snippet = true,
+        documentation = "The title of the window.",
+    },
+    {
+        label = "name(const Name &)",
+        kind = "Field",
+        insert = "name(${1:const Name &})",
+        snippet = true,
+        documentation = "The title of the window.",
+    },
+    {
+        label = "name(Name &&)",
+        kind = "Field",
+        insert = "name(${1:Name &&})",
+        snippet = true,
+        documentation = "The title of the window.",
+    },
+    {
+        label = "Base(int seed)",
+        kind = "Class",
+        insert = "Base(${1:int seed})",
+        snippet = true,
+        documentation = "What every widget is built on.",
+    },
+    {
+        label = "Base(const Base &)",
+        kind = "Class",
+        insert = "Base(${1:const Base &})",
+        snippet = true,
+        documentation = "What every widget is built on.",
+    },
+    {
+        label = "Base(Base &&)",
+        kind = "Class",
+        insert = "Base(${1:Base &&})",
+        snippet = true,
+        documentation = "What every widget is built on.",
+    },
+    { label = "origin(const Point &)", kind = "Field", insert = "origin(${1:const Point &})", snippet = true },
+    { label = "origin(Point &&)", kind = "Field", insert = "origin(${1:Point &&})", snippet = true },
+]
+
+[unbundled.arguments_written.completion]
+items = [
+    { label = "width(int)", kind = "Field", insert = "width" },
+]
+
+[unbundled.braces_written.completion]
+items = [
+    { label = "width(int)", kind = "Field", insert = "width" },
+]
+
+[unbundled.braces_spaced.completion]
+items = [
+    { label = "width(int)", kind = "Field", insert = "width" },
+]
+
+[unbundled.dependent_base.completion]
+items = [
+    { label = "T(T)", kind = "Class", insert = "T(${1:T})", snippet = true },
+    { label = "value(T)", kind = "Field", insert = "value(${1:T})", snippet = true },
+]
+
+[unbundled.typed.completion]
+items = [
+    { label = "width(int)", kind = "Field", insert = "width(${1:int})", snippet = true },
+]

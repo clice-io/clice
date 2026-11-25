@@ -106,7 +106,8 @@ struct Candidate {
     /// The symbol whose header accepting must include (ScopeCandidate::symbol).
     std::uint64_t include = 0;
 
-    /// Breaks ties in score: a field's place in a designated initializer.
+    /// Breaks ties in score: a field's place in a designated initializer, an
+    /// initializer's in a constructor's.
     std::optional<std::uint32_t> order;
 };
 
@@ -152,6 +153,10 @@ private:
         Parenthesis,
         Angle,
         Colon,
+        /// After a constructor's `:`, a brace group the next initializer's
+        /// `,` or the constructor's body follows: the initializer of the
+        /// base or member named, not the body.
+        BracedInitializer,
     };
 
     /// In `{ .` the fields rank in declaration order, the order C++
@@ -204,6 +209,14 @@ private:
     /// with it: not among the members of a class or a scope.
     bool unqualified() const;
 
+    /// After a constructor's `:`, the one place Sema reports a symbol
+    /// without a qualifier, it offers each base and member not initialized
+    /// yet, bases first, each in declaration order, as a pattern of its
+    /// name and the parameters of a constructor: a class with several comes
+    /// once for each, and a member of a class type carries the class rather
+    /// than itself.
+    bool constructor_initializers() const;
+
     /// Whether the context expects a function itself rather than the result
     /// of calling it: a function pointer or reference, a member pointer.
     bool expects_function() const;
@@ -226,6 +239,8 @@ private:
     void add_item(const Candidate& candidate);
 
     void add_pattern(const clang::CodeCompletionResult& candidate);
+
+    void add_initializer(const clang::CodeCompletionResult& candidate, std::uint32_t order);
 
     void add_keyword_pattern(const clang::CodeCompletionString& pattern, unsigned priority);
 
