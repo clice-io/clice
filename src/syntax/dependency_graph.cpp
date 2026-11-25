@@ -2,9 +2,11 @@ module clice;
 
 import :command.search_config;
 import :support.logging;
+import :support.process;
 import :syntax.dependency_graph;
 import :syntax.include_resolver;
 import :syntax.scan;
+import :vfs.dir_cache;
 import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
@@ -478,6 +480,15 @@ std::expected<ScannedText, vfs::FileError> read_and_scan(const char* path) {
     };
 }
 
+/// Where a lookup found an include's file, before it is interned.
+struct Found {
+    /// Its path as found, empty when found nowhere.
+    Spelling path;
+
+    /// The search dir it was found in.
+    std::optional<unsigned> found_dir_idx;
+};
+
 /// A resolved include: the file, and the search dir it was found in.
 struct CachedInclude {
     /// Invalid = the include is known-unresolvable under this config.
@@ -494,7 +505,7 @@ struct ProvidedModule {
 /// The per-file step of every scan, the full one and a single file's
 /// rescan alike: a file's scan under each of its contexts becomes its
 /// module syntax, a unit's forced includes, and its include edges. The
-/// listings, the groups' search configurations and the angled-include
+/// listings, the groups' search configurations and the include
 /// memo live as long as the operation, so they never serve a stale
 /// filesystem.
 struct FileScanner {
@@ -502,17 +513,20 @@ struct FileScanner {
         cdb(cdb), toolchain(toolchain), graph(graph), files(cdb.files()), scope(files.dirs) {}
 
     /// Record `path_id`'s scan of the bytes hashing to `hash` under each
-    /// of `contexts`, returning the modules its units' commands declare.
-    /// A file it includes or forces in that the scan reaches for the first
-    /// time gets its context and goes to `reach`.
+    /// of `contexts`, its includes found where `found` says for each,
+    /// returning the modules its units' commands declare. A file it includes
+    /// or forces in that the scan reaches for the first time gets its
+    /// context and goes to `reach`.
     llvm::SmallVector<ProvidedModule, 1> record(Fid path_id,
                                                 std::shared_ptr<const ScanResult> scan,
                                                 std::uint64_t hash,
                                                 llvm::ArrayRef<ScanContext> contexts,
+                                                llvm::ArrayRef<std::vector<Found>> found,
                                                 llvm::function_ref<void(Fid, ScanContext)> reach) {
         llvm::SmallVector<ProvidedModule, 1> declared;
-        for(auto context: contexts) {
-            if(auto module = record_under(path_id, context, scan, hash, reach);
+        auto read = scan.get();
+        for(auto [context, found_under]: views::zip(contexts, found)) {
+            if(auto module = record_under(path_id, context, scan, hash, read, found_under, reach);
                !module.name.empty()) {
                 declared.push_back(std::move(module));
             }
@@ -520,12 +534,16 @@ struct FileScanner {
         return declared;
     }
 
-    /// record() under one context; a unit's module declaration may find
-    /// the disk moved and rebuild `scan` and `hash` from the bytes it read.
+    /// record() under one context, `found` saying where the includes of
+    /// `read` are found; a unit's module declaration may find the disk moved
+    /// and rebuild `scan` and `hash` from the bytes it read, whose includes
+    /// are then looked up again.
     ProvidedModule record_under(Fid path_id,
                                 ScanContext context,
                                 std::shared_ptr<const ScanResult>& scan,
                                 std::uint64_t& hash,
+                                const ScanResult* read,
+                                llvm::ArrayRef<Found> found,
                                 llvm::function_ref<void(Fid, ScanContext)> reach) {
         // LIMITATION: a file is scanned under the first configuration that
         // reaches it: a header two units reach through different -I orders
@@ -539,7 +557,6 @@ struct FileScanner {
             }
         };
 
-        auto& search = search_of(context.group);
         ProvidedModule module;
         if(context.unit) {
             module = module_of(path_id, context, scan, hash);
@@ -549,59 +566,117 @@ struct FileScanner {
             }
         }
         graph.record_scan(path_id, *scan);
+        std::vector<Found> found_again;
+        if(scan.get() != read) {
+            found_again = resolve_here(path_id, *scan, context);
+            found = found_again;
+        }
 
+        llvm::SmallVector<IncludeEdge> edges;
+        edges.reserve(scan->includes.size());
+        for(auto [include, where]: views::zip(scan->includes, found)) {
+            if(where.path.empty()) {
+                unresolved.push_back(
+                    {.includer = path_id, .name = include.path, .angled = include.is_angled});
+                continue;
+            }
+            auto target = files.intern_spelled(where.path);
+            includes_resolved += 1;
+            edges.push_back({target, include.conditional});
+            reached(target, where.found_dir_idx);
+        }
+        graph.set_includes(path_id, context.group, std::move(edges));
+        return module;
+    }
+
+    /// Where each include of `path_id`'s `scan` under `context` is found,
+    /// in their order, against `scope`. Past the includer's own directory,
+    /// where a quoted include looks first, an include resolves the same
+    /// from every includer under one group: that search runs once per scan,
+    /// keyed by the group, the kind of include and the name, its result in
+    /// `known` or, new, in `learned`. It reads the scanner alone, so the
+    /// threads of a scan run it together (FullScan::resolve): the group's
+    /// search is prepared, and `scope` a thread's.
+    std::vector<Found> resolve(Fid path_id,
+                               const ScanResult& scan,
+                               ScanContext context,
+                               vfs::Scope& scope,
+                               const llvm::StringMap<Found>& known,
+                               llvm::StringMap<Found>& learned) const {
+        auto& search = *searches.find(context.group)->second;
         // Quoted includes start from the directory the build reaches the
         // includer through, as clang's do.
         auto includer_spelling = files.spelling(path_id).parent();
         llvm::StringRef includer_dir = includer_spelling;
         auto* includer_listing = &scope.list(includer_dir);
-
-        llvm::SmallVector<IncludeEdge> edges;
-        edges.reserve(scan->includes.size());
-        for(auto& include: scan->includes) {
-            // An angled include resolves the same from every includer
-            // under one group: resolve it once per scan. Most groups hold
-            // one unit, so the memo is one map keyed by group and name.
-            bool memoized = include.is_angled && !include.is_include_next;
-            llvm::SmallString<80> key;
-            if(memoized) {
-                key.append(reinterpret_cast<const char*>(&context.group),
-                           reinterpret_cast<const char*>(&context.group) + sizeof(std::uint32_t));
-                key += include.path;
-            }
-
-            CachedInclude resolved;
-            if(auto it = memoized ? angled.find(key) : angled.end(); it != angled.end()) {
-                resolved = it->second;
-            } else {
-                auto found = resolve_include(include.path,
-                                             include.is_angled,
-                                             includer_listing,
-                                             includer_dir,
-                                             include.is_include_next,
-                                             context.found_dir_idx,
-                                             search.resolved,
-                                             scope);
-                resolved = found ? CachedInclude{.path_id = files.intern_spelled(
-                                                     Spelling::absolute(found->path)),
-                                                 .found_dir_idx = found->found_dir_idx}
-                                 : CachedInclude{};
-                if(memoized) {
-                    angled.try_emplace(key, resolved);
+        auto as_found = [](const std::optional<ResolveResult>& result) {
+            return result ? Found{.path = Spelling::absolute(result->path),
+                                  .found_dir_idx = result->found_dir_idx}
+                          : Found{};
+        };
+        std::vector<Found> found;
+        found.reserve(scan.includes.size());
+        for(auto& include: scan.includes) {
+            if(!include.is_angled && !include.is_include_next && !path::is_absolute(include.path)) {
+                if(auto beside = resolve_beside(include.path,
+                                                *includer_listing,
+                                                includer_dir,
+                                                search.resolved,
+                                                scope)) {
+                    found.push_back(as_found(beside));
+                    continue;
                 }
             }
-
-            if(!resolved.path_id.valid()) {
-                unresolved.push_back(
-                    {.includer = path_id, .name = include.path, .angled = include.is_angled});
+            if(include.is_include_next) {
+                found.push_back(as_found(resolve_include(include.path,
+                                                         include.is_angled,
+                                                         includer_listing,
+                                                         includer_dir,
+                                                         true,
+                                                         context.found_dir_idx,
+                                                         search.resolved,
+                                                         scope)));
                 continue;
             }
-            includes_resolved += 1;
-            edges.push_back({resolved.path_id, include.conditional});
-            reached(resolved.path_id, resolved.found_dir_idx);
+            llvm::SmallString<80> key;
+            key.append(reinterpret_cast<const char*>(&context.group),
+                       reinterpret_cast<const char*>(&context.group) + sizeof(std::uint32_t));
+            key += include.is_angled ? '<' : '"';
+            key += include.path;
+            if(auto it = known.find(key); it != known.end()) {
+                found.push_back(it->second);
+                continue;
+            }
+            auto [it, inserted] = learned.try_emplace(key);
+            if(inserted) {
+                it->second = as_found(resolve_include(include.path,
+                                                      include.is_angled,
+                                                      nullptr,
+                                                      includer_dir,
+                                                      false,
+                                                      std::nullopt,
+                                                      search.resolved,
+                                                      scope));
+            }
+            found.push_back(it->second);
         }
-        graph.set_includes(path_id, context.group, std::move(edges));
-        return module;
+        return found;
+    }
+
+    /// resolve() on this thread, against the operation's own listings.
+    std::vector<Found> resolve_here(Fid path_id, const ScanResult& scan, ScanContext context) {
+        search_of(context.group);
+        llvm::StringMap<Found> learned;
+        auto found = resolve(path_id, scan, context, scope, searched, learned);
+        remember(learned);
+        return found;
+    }
+
+    /// Keep what a resolve() learned for the rest of the operation.
+    void remember(llvm::StringMap<Found>& learned) {
+        for(auto& entry: learned) {
+            searched.try_emplace(entry.getKey(), std::move(entry.second));
+        }
     }
 
     struct Search {
@@ -615,9 +690,17 @@ struct FileScanner {
         if(!search) {
             search = std::make_unique<Search>();
             search->config = toolchain.search_config(graph.group(group));
-            search->resolved = resolve_search_config(search->config, scope);
+            search->resolved = resolve_search_config(search->config, scope, &names);
+            index(search->resolved);
         }
         return *search;
+    }
+
+    /// Give the index of names the listings `search` looks in.
+    void index(const ResolvedSearchConfig& search) {
+        for(auto& dir: search.dirs) {
+            names.add(*dir.listing);
+        }
     }
 
     /// A group's forced includes, resolved; the compile reports the ones
@@ -682,7 +765,10 @@ struct FileScanner {
     vfs::Scope scope;
     llvm::DenseMap<std::uint32_t, std::unique_ptr<Search>> searches;
     llvm::DenseMap<std::uint32_t, llvm::SmallVector<CachedInclude>> forced_cache;
-    llvm::StringMap<CachedInclude> angled;
+    llvm::StringMap<Found> searched;
+
+    /// The names the groups' search directories hold.
+    NameIndex names;
 
     /// For the scan report: #include directives resolved, and not.
     std::size_t includes_resolved = 0;
@@ -735,6 +821,8 @@ struct FullScan {
             .count = static_cast<std::uint32_t>(contexts.size()),
         });
         wave.contexts.insert(wave.contexts.end(), contexts.begin(), contexts.end());
+        // Quoted includes start from the file's directory.
+        list_ahead(wave.reads, files.spelling(fid).parent());
         if(wave.scans.emplace_back(warm(fid))) {
             report.scan_cache_hits += 1;
             file.warm = true;
@@ -763,17 +851,20 @@ struct FullScan {
     /// pair confirms pins them: a rescan skips the read and the lex of
     /// every unchanged file, at the cost of one stat.
     std::optional<ScannedText> warm(Fid fid) {
-        auto status = statuses.status(files.resolve(fid));
-        if(!status) {
-            return std::nullopt;
-        }
-        auto stamp = vfs::Stamp::of(*status);
-        auto hash = files.disk.cached_hash(fid, stamp);
+        auto hash = files.disk.paired_hash(fid);
         if(!hash) {
             return std::nullopt;
         }
         auto it = graph.quick_scans.results.find({fid, *hash});
         if(it == graph.quick_scans.results.end()) {
+            return std::nullopt;
+        }
+        auto status = statuses.status(files.resolve(fid));
+        if(!status) {
+            return std::nullopt;
+        }
+        auto stamp = vfs::Stamp::of(*status);
+        if(!files.disk.cached_hash(fid, stamp)) {
             return std::nullopt;
         }
         return ScannedText{
@@ -782,10 +873,20 @@ struct FullScan {
         };
     }
 
-    /// List every search dir and every directory quoted includes of source
-    /// files start from on the thread pool, into the scanner's listings —
-    /// a listing the cache can still confirm skips the readdir; its one
-    /// validation stat happens lazily at first use. Returns how many.
+    /// List `dir` on the thread pool into the scanner's listings, unless
+    /// the cache can still confirm a listing of it — its one validation stat
+    /// happens lazily at first use — or the scan listed it already.
+    /// Whether it does.
+    bool list_ahead(async::task_group<>& listings, llvm::StringRef dir) {
+        if(files.dirs.kept(dir) || scanner.scope.held.contains(dir) ||
+           !listed_ahead.insert(dir).second) {
+            return false;
+        }
+        listings.spawn(list_into(scanner.scope, dir.str()));
+        return true;
+    }
+
+    /// List every search dir ahead. Returns how many.
     std::size_t list_directories(async::task_group<>& listings) {
         llvm::StringSet<> unique_dirs;
         Timer lookup;
@@ -797,19 +898,105 @@ struct FullScan {
         LOG_DEBUG("Dependency scan: {} kinds of command to search includes for, {:.1f} ms",
                   graph.groups().size(),
                   lookup.precise_ms());
-        for(auto& entry: cdb.entries()) {
-            unique_dirs.insert(files.spelling(entry.file).parent().str());
-        }
-
         std::size_t listed = 0;
         for(auto& entry: unique_dirs) {
-            if(files.dirs.kept(entry.getKey())) {
-                continue;
-            }
-            listings.spawn(list_into(scanner.scope, entry.getKey().str()));
-            listed += 1;
+            listed += list_ahead(listings, entry.getKey());
         }
         return listed;
+    }
+
+    /// Where the includes of a wave are found.
+    struct WaveIncludes {
+        std::vector<std::vector<Found>> found;
+
+        /// The files found there that the file table does not know yet.
+        llvm::StringSet<> unknown;
+    };
+
+    /// Where the includes of `wave`'s files are found under each of their
+    /// contexts, `found[i]` under `wave.contexts[i]`, and which of the files
+    /// found there the file table does not know yet. The search lists of
+    /// the groups the wave meets first, then the files, are split among the
+    /// threads of the pool, which list the directories they reach beside
+    /// one another.
+    async::task<WaveIncludes> resolve(const Wave& wave) {
+        std::vector<FileScanner::Search*> fresh;
+        for(auto context: wave.contexts) {
+            auto& search = scanner.searches[context.group];
+            if(!search) {
+                search = std::make_unique<FileScanner::Search>();
+                search->config = toolchain.search_config(graph.group(context.group));
+                fresh.push_back(search.get());
+            }
+        }
+        vfs::SharedListings shared;
+        co_await in_parts(fresh.size(), [&](std::size_t, std::size_t first, std::size_t end) {
+            vfs::Scope scope(scanner.scope, shared);
+            for(auto* search: llvm::ArrayRef(fresh).slice(first, end - first)) {
+                search->resolved = resolve_search_config(search->config, scope, &scanner.names);
+            }
+        });
+        for(auto* search: fresh) {
+            scanner.index(search->resolved);
+        }
+
+        WaveIncludes resolved{.found = std::vector<std::vector<Found>>(wave.contexts.size())};
+        auto parts = parts_of(wave.files.size());
+        std::vector<llvm::StringMap<Found>> learned(parts);
+        std::vector<llvm::StringSet<>> unknown(parts);
+        auto resolve_part = [&](std::size_t part, std::size_t first, std::size_t end) {
+            vfs::Scope scope(scanner.scope, shared);
+            for(auto index = first; index < end; index += 1) {
+                auto& file = wave.files[index];
+                auto& scanned = wave.scans[index];
+                if(!scanned) {
+                    continue;
+                }
+                for(auto slot = file.first; slot < file.first + file.count; slot += 1) {
+                    auto& found = resolved.found[slot];
+                    found = scanner.resolve(file.fid,
+                                            *scanned->result,
+                                            wave.contexts[slot],
+                                            scope,
+                                            scanner.searched,
+                                            learned[part]);
+                    for(auto& where: found) {
+                        if(!where.path.empty() && !files.knows(where.path)) {
+                            unknown[part].insert(where.path.str());
+                        }
+                    }
+                }
+            }
+        };
+        co_await in_parts(wave.files.size(), resolve_part);
+        scanner.scope.take(shared);
+        for(auto& part: learned) {
+            scanner.remember(part);
+        }
+        for(auto& part: unknown) {
+            for(auto& entry: part) {
+                resolved.unknown.insert(entry.getKey());
+            }
+        }
+        co_return resolved;
+    }
+
+    /// The identities of `unknown`, files the file table does not know yet,
+    /// resolved on the thread pool together rather than one by one as the
+    /// recording interns them: a system call each, which on Windows costs as
+    /// much as the rest of the recording.
+    async::task<> learn_identities(const llvm::StringSet<>& unknown) {
+        auto paths = ranges::to<std::vector<std::string>>(
+            views::transform(unknown, [](const auto& entry) { return entry.getKey().str(); }));
+        std::vector<std::optional<CanonicalPath>> identities(paths.size());
+        co_await in_parts(paths.size(), [&](std::size_t, std::size_t first, std::size_t end) {
+            for(auto index = first; index < end; index += 1) {
+                identities[index].emplace(Spelling::absolute(paths[index]));
+            }
+        });
+        for(auto [path, identity]: views::zip(paths, identities)) {
+            files.intern(Spelling::absolute(path), *identity);
+        }
     }
 
     static async::task<> list_into(vfs::Scope& scope, std::string dir) {
@@ -850,6 +1037,7 @@ struct FullScan {
         // run before the units' reads: query processes competing with the
         // reads for cores cost more than the overlap saves.
         toolchain.warm(graph.groups());
+        toolchain.learn_search_dirs(graph.groups());
 
         // A wave's reads write into its scans until they join: it stays
         // put on the heap while the loop hands it on.
@@ -868,6 +1056,9 @@ struct FullScan {
             Timer wave_timer;
             co_await wave->reads.join();
             auto waited = wave_timer.ms();
+            auto [found, unknown] = co_await resolve(*wave);
+            co_await learn_identities(unknown);
+            auto resolved = wave_timer.ms() - waited;
 
             auto next = std::make_unique<Wave>();
             auto reach = [&](Fid fid, ScanContext context) {
@@ -887,22 +1078,25 @@ struct FullScan {
                     report.not_utf8.push_back(file.fid);
                 }
                 auto contexts = llvm::ArrayRef(wave->contexts).slice(file.first, file.count);
-                for(auto& module: scanner.record(file.fid,
-                                                 std::move(scanned->result),
-                                                 scanned->obs.hash,
-                                                 contexts,
-                                                 reach)) {
+                for(auto& module:
+                    scanner.record(file.fid,
+                                   std::move(scanned->result),
+                                   scanned->obs.hash,
+                                   contexts,
+                                   llvm::ArrayRef(found).slice(file.first, file.count),
+                                   reach)) {
                     graph.add_module(module.name, file.fid, module.internal);
                 }
             }
 
             LOG_DEBUG(
-                "Dependency scan, wave {}: {} files, {} ms waiting for reads, {} ms "
-                "recording, {} files next",
+                "Dependency scan, wave {}: {} files, {} ms waiting for reads, {} ms resolving "
+                "what they include, {} ms recording, {} files next",
                 report.waves,
                 wave->files.size(),
                 waited,
-                wave_timer.ms() - waited,
+                resolved,
+                wave_timer.ms() - waited - resolved,
                 next->files.size());
             wave = std::move(next);
             report.waves += 1;
@@ -920,6 +1114,7 @@ struct FullScan {
     ScanReport& report;
     FileScanner scanner;
     vfs::StatusBatch statuses;
+    llvm::StringSet<> listed_ahead;
 };
 
 }  // namespace
@@ -956,12 +1151,13 @@ void rescan_dependency_graph(CompilationDatabase& cdb,
             return;
         }
         files.disk.observe(fid, observed->obs);
+        auto scanned = graph.quick_scans.scan_of(fid, observed->obs.hash, observed->text);
+        std::vector<std::vector<Found>> found;
+        for(auto context: contexts) {
+            found.push_back(scanner.resolve_here(fid, *scanned, context));
+        }
         auto declared =
-            scanner.record(fid,
-                           graph.quick_scans.scan_of(fid, observed->obs.hash, observed->text),
-                           observed->obs.hash,
-                           contexts,
-                           reach);
+            scanner.record(fid, std::move(scanned), observed->obs.hash, contexts, found, reach);
         // A unit provides what its commands declare, as on the full scan;
         // a name it keeps declaring keeps its place among the providers.
         if(ranges::any_of(contexts, [](ScanContext context) { return context.unit; })) {

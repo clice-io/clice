@@ -1,6 +1,7 @@
 module clice;
 
 import :command.argument;
+import :command.file_kind;
 import :command.normalize;
 import :command.table;
 import :command.toolchains.gcc;
@@ -284,6 +285,7 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
             }
         }
     }
+    bool gcc_host = family == CompilerFamily::GCC || command.host == CompilerFamily::GCC;
 
     std::vector<LocalArg> args;
     args.reserve(staged.size() + 1);
@@ -297,8 +299,9 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
     for(auto& parsed: staged) {
         auto id = parsed ? parsed->id : clang_options::OPT_UNKNOWN;
 
-        /// The entry's own input token becomes the slot, preserving its
-        /// position (language selectors before it govern it). Other inputs
+        /// The entry's own input token becomes the slot, where language
+        /// selectors before it govern it (the slot moves to the end when
+        /// none follows, below). Other inputs
         /// — nvcc query leftovers aside, a multi-input command — drop,
         /// paired with their per-file selectors. Input args carry their
         /// token as the spelling.
@@ -361,35 +364,85 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
             continue;
         }
 
-        auto local = commands.local_arg(parsed, parse_args);
-        if(!local) {
-            continue;
-        }
-
-        /// g++ knows warnings clang does not (-Wlogical-op, -Wuseless-cast),
-        /// each of which clang would report as unknown on every file: in its
-        /// commands, and in what nvcc passes it.
-        if((family == CompilerFamily::GCC || command.host == CompilerFamily::GCC) &&
-           id == clang_options::OPT_W_Joined && !clang_warning(local->values[0])) {
-            continue;
-        }
-
-        /// Path values absolutize where the compile runs, so the command
-        /// keeps meaning when consumed away from it: the toolchain query
-        /// runs elsewhere.
         // The working directory itself is relative to the entry's.
-        bool working = id == clang_options::OPT_working_directory;
-        for(auto& value: local->values) {
-            value = anchored(commands, id, value, working ? directory : anchor, mounts).data();
+        auto& base = id == clang_options::OPT_working_directory ? directory : anchor;
+        // An option reads the same wherever it stands, under one family,
+        // working directory and mount table: the commands of a build repeat
+        // most of theirs (Unreal's modules share most of their hundreds of
+        // -I and -D), which read once a load. One clang does not know is
+        // its token.
+        if(!parsed || id == clang_options::OPT_UNKNOWN) {
+            if(auto read = read_option(parsed, parse_args, gcc_host, base)) {
+                args.push_back(std::move(*read));
+            }
+            continue;
         }
-
-        args.push_back(std::move(*local));
+        auto [known, inserted] = read_options.try_emplace(option_key(*parsed, gcc_host, base));
+        if(inserted) {
+            known->second = read_option(parsed, parse_args, gcc_host, base);
+        }
+        if(known->second) {
+            args.push_back(*known->second);
+        }
     }
 
     if(!slot_placed) {
         place_slot();
     }
+    // The file compiles in the language of the last `-x` before it: with
+    // none after it, it goes last, so that commands naming their file at
+    // different places are one (Unreal names a `.gen.cpp` with the command
+    // of the `.cpp` including it, the `.cpp` before the flags it appends).
+    auto slot = ranges::find(args, ArgClass::Input, &LocalArg::cls);
+    if(ranges::none_of(std::next(slot), args.end(), [](const LocalArg& arg) {
+           return arg.opt_id == clang_options::OPT_x;
+       })) {
+        std::rotate(slot, std::next(slot), args.end());
+    }
     return commands.save(command, args);
+}
+
+std::string Normalizer::option_key(const cli::ParsedArg& parsed,
+                                   bool gcc_host,
+                                   const Spelling& anchor) const {
+    std::string key(anchor.str());
+    key += mounts ? '\1' : '\2';
+    key += gcc_host ? '\1' : '\2';
+    key.append(reinterpret_cast<const char*>(&parsed.id), sizeof(parsed.id));
+    auto alias = written_alias(parsed);
+    key.append(reinterpret_cast<const char*>(&alias), sizeof(alias));
+    for(auto value: parsed.values) {
+        key += '\0';
+        key += value;
+    }
+    return key;
+}
+
+std::optional<LocalArg>
+    Normalizer::read_option(const std::expected<cli::ParsedArg, cli::Error>& parsed,
+                            llvm::ArrayRef<std::string> tokens,
+                            bool gcc_host,
+                            const Spelling& anchor) {
+    auto id = parsed ? parsed->id : clang_options::OPT_UNKNOWN;
+    auto local = commands.local_arg(parsed, tokens);
+    if(!local) {
+        return std::nullopt;
+    }
+
+    /// g++ knows warnings clang does not (-Wlogical-op, -Wuseless-cast),
+    /// each of which clang would report as unknown on every file: in its
+    /// commands, and in what nvcc passes it.
+    if(gcc_host && id == clang_options::OPT_W_Joined && !clang_warning(local->values[0])) {
+        return std::nullopt;
+    }
+
+    /// Path values absolutize where the compile runs, so the command keeps
+    /// meaning when consumed away from it: the toolchain query runs
+    /// elsewhere.
+    for(auto& value: local->values) {
+        value = anchored(commands, id, value, anchor, mounts).data();
+    }
+    return local;
 }
 
 std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
@@ -420,7 +473,8 @@ kotatsu::string_list_ref Normalizer::split(llvm::StringRef command,
 
 std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
                                                 llvm::StringRef file,
-                                                kotatsu::string_list_ref command_line) const {
+                                                Fid entry,
+                                                kotatsu::string_list_ref command_line) {
     auto first = wrapper_prefix_len(command_line);
     if(first >= command_line.size()) {
         return std::nullopt;
@@ -429,6 +483,14 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
     auto family = with_driver_mode(driver_family(driver), driver, command_line);
     if(family == CompilerFamily::NVCC) {
         return std::nullopt;
+    }
+    // The response files the command names read in place; one they name in
+    // turn goes in by its content (`@`-tokens below).
+    std::vector<std::string> expanded;
+    if(ranges::any_of(command_line, [](llvm::StringRef token) { return token.starts_with("@"); })) {
+        expanded = expand_named_responses(command_line, directory, family);
+        family = with_driver_mode(driver_family(driver), driver, expanded);
+        command_line = expanded;
     }
     // Only spellings no other option shares are masked: in a cl command
     // `-MT` is the runtime library, not a dependency target.
@@ -468,27 +530,82 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
                                                   "clang:-MT",
                                                   "clang:-MQ",
                                                   "clang:-MJ"};
+    auto entry_name = path::filename(file);
+    // Whether the input `token` names the file `entry`. The directory is an
+    // identity, without links: the `..` a token starts with climbs out of it
+    // as written, and a path that reads as the entry's identity then is it,
+    // without asking the system.
+    auto names_entry = [&](llvm::StringRef token) {
+        if(!mounts) {
+            std::string base = directory.str();
+            llvm::StringRef rest = token;
+            while(rest.consume_front("../") ||
+                  (path::native_style == path::Style::Windows && rest.consume_front("..\\"))) {
+                base.resize(path::parent(base).size());
+            }
+            if(Spelling(rest, Spelling::absolute(base)).str() ==
+               llvm::StringRef(files.resolve(entry))) {
+                return true;
+            }
+        }
+        return files.find(spelled(token, directory, mounts)) == entry;
+    };
     auto visibility = family_visibility(family);
     std::string text(directory.str());
     // Paths read through a mount table normalize otherwise.
     text += mounts ? '\1' : '\2';
-    std::size_t files = 0;
+    std::size_t files_named = 0;
     bool value_next = false;
+    bool inputs_only = false;
+    // The driver, and zig's subcommand, are no inputs.
+    auto driver_end = first + (family == CompilerFamily::Zig ? 2 : 1);
     for(std::size_t i = 0; i < command_line.size(); i += 1) {
         llvm::StringRef token = command_line[i];
         text += '\0';
-        if(token.starts_with("@")) {
-            return std::nullopt;
-        }
         if(value_next) {
             value_next = false;
             text += "\x01value";
             continue;
         }
+        if(token.starts_with("@")) {
+            // One switching the command's driver mode would read its masks
+            // otherwise.
+            auto nested = nested_response(token.drop_front(), directory);
+            if(!nested || nested->sets_cl || (cl_mode(family) && nested->sets_driver_mode) ||
+               nested->names_source) {
+                return std::nullopt;
+            }
+            text += "\x01response";
+            text.append(reinterpret_cast<const char*>(&nested->hash), sizeof(nested->hash));
+            continue;
+        }
+        if(token.starts_with("-working-directory")) {
+            return std::nullopt;
+        }
         if(token == file) {
-            files += 1;
+            files_named += 1;
             text += "\x01file";
             continue;
+        }
+        // An input the command spells from the directory: the entry's own,
+        // or another source the compile leaves out (Unreal names a UHT
+        // `.gen.cpp` with the command of the `.cpp` including it).
+        bool option = token.starts_with("-") || (cl_mode(family) && token.starts_with("/"));
+        if(i >= driver_end && (inputs_only || !option) &&
+           (inputs_only || i == driver_end ||
+            !takes_next(command_line[i - 1], token, visibility))) {
+            // Told apart by identity, as the normalization does: Unreal spells
+            // a plugin's sources through `..` from the engine's directory.
+            if(llvm::StringRef(path::filename(token)).equals_insensitive(entry_name) &&
+               names_entry(token)) {
+                files_named += 1;
+                text += "\x01file";
+                continue;
+            }
+            if(is_c_family_file(token)) {
+                text += "\x01input";
+                continue;
+            }
         }
         if(cl_mode(family)) {
             // cl's own outputs, and the dependency files of clang's options
@@ -497,11 +614,10 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
             // spells with a `/` (`/docker/bin/clang-cl`,
             // `/imsvc /docker/include`).
             auto output = ranges::find_if(cl_outputs, [&](llvm::StringRef name) {
-                return (token.starts_with("/") || token.starts_with("-")) &&
-                       token.drop_front().starts_with(name);
+                return option && token.drop_front().starts_with(name);
             });
-            if(i <= first || output == cl_outputs.end() ||
-               (i > first + 1 && takes_next(command_line[i - 1], token, visibility))) {
+            if(i < driver_end || output == cl_outputs.end() ||
+               (i > driver_end && takes_next(command_line[i - 1], token, visibility))) {
                 text += token;
                 continue;
             }
@@ -518,7 +634,10 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
             }
             continue;
         }
-        if(ranges::contains(separate, token)) {
+        if(token == "--") {
+            inputs_only = true;
+            text += token;
+        } else if(ranges::contains(separate, token)) {
             value_next = true;
             text += token;
         } else if(auto prefix = ranges::find_if(
@@ -533,35 +652,87 @@ std::optional<SharedKey> Normalizer::shared_key(const Spelling& directory,
             text += token;
         }
     }
-    if(files != 1) {
+    // A cl command names its file in per-file selectors (`/Tcalpha.c`) too,
+    // which the key reads as written: there it must name it as an input.
+    if(files_named > 1 || (files_named == 0 && cl_mode(family))) {
         return std::nullopt;
     }
     auto hash = llvm::xxh3_128bits(llvm::arrayRefFromStringRef(text));
     return SharedKey{hash.high64, hash.low64};
 }
 
+std::vector<std::string> Normalizer::expand_named_responses(kotatsu::string_list_ref arguments,
+                                                            const Spelling& directory,
+                                                            CompilerFamily family) {
+    auto quoting = cl_mode(family) ? sys::cmd::Quoting::Windows : sys::cmd::Quoting::POSIX;
+    std::vector<std::string> expanded;
+    for(llvm::StringRef argument: arguments) {
+        if(!argument.starts_with("@")) {
+            expanded.emplace_back(argument);
+            continue;
+        }
+        // Read alone, the one it names in turn left as written.
+        bool named = false;
+        auto read = [&](kotatsu::buffer_ref out, std::string_view name) -> std::error_code {
+            if(named) {
+                return std::make_error_code(std::errc::operation_not_supported);
+            }
+            named = true;
+            return read_response(out, name, directory);
+        };
+        std::array<std::string_view, 1> one = {argument};
+        for(auto token: sys::cmd::expand(one, quoting, read)) {
+            expanded.emplace_back(token);
+        }
+    }
+    return expanded;
+}
+
+std::optional<Normalizer::Nested> Normalizer::nested_response(llvm::StringRef name,
+                                                              const Spelling& directory) {
+    auto path = spelled(name, directory, mounts);
+    auto [known, inserted] = nested_responses.try_emplace(path.str());
+    if(inserted) {
+        std::string text;
+        if(!read_response(text, name, directory)) {
+            known->second =
+                Nested{.hash = llvm::xxh3_64bits(text),
+                       .sets_driver_mode = llvm::StringRef(text).contains("--driver-mode="),
+                       .sets_cl = llvm::StringRef(text).contains("--driver-mode=cl"),
+                       .names_source = ranges::any_of(split_command(text), is_source_path)};
+        }
+    }
+    return known->second;
+}
+
+std::error_code Normalizer::read_response(kotatsu::buffer_ref out,
+                                          std::string_view name,
+                                          const Spelling& directory) {
+    auto file = files.intern(spelled(name, directory, mounts));
+    auto read = read_responses.find(file);
+    auto observed = read != read_responses.end()
+                        ? std::expected<ObservedFile, vfs::FileError>(read->second)
+                        : vfs::read_observed(files.resolve(file));
+    if(observed) {
+        files.disk.observe(file, observed->obs);
+    }
+    if(inputs) {
+        inputs->push_back(
+            {.file = file, .hash = observed ? std::optional(observed->obs.hash) : std::nullopt});
+    }
+    if(!observed) {
+        return observed.error().code;
+    }
+    out.assign(observed->text);
+    return {};
+}
+
 std::vector<std::string> Normalizer::expand_response_files(kotatsu::string_list_ref arguments,
                                                            const Spelling& directory,
                                                            CompilerFamily family,
                                                            unsigned depth) {
-    /// The text of the file `name`, which is among the load's inputs, read
-    /// or not.
-    auto read = [&](kotatsu::buffer_ref out, std::string_view name) -> std::error_code {
-        auto file = files.intern(spelled(name, directory, mounts));
-        auto observed = vfs::read_observed(files.resolve(file));
-        if(observed) {
-            files.disk.observe(file, observed->obs);
-        }
-        if(inputs) {
-            inputs->push_back(
-                {.file = file,
-                 .hash = observed ? std::optional(observed->obs.hash) : std::nullopt});
-        }
-        if(!observed) {
-            return observed.error().code;
-        }
-        out.assign(observed->text);
-        return {};
+    auto read = [&](kotatsu::buffer_ref out, std::string_view name) {
+        return read_response(out, name, directory);
     };
     auto quoting = cl_mode(family) ? sys::cmd::Quoting::Windows : sys::cmd::Quoting::POSIX;
     /// An unreadable response file stays as written, an input the parse

@@ -67,7 +67,9 @@ void watch_inputs(Project& project, WatchedDatabase& database) {
     database.inputs.truncate(1);
     for(auto& input: project.cdb.inputs(database.id).drop_front()) {
         database.inputs.push_back(
-            project.file_table.disk.watch(project.file_table.resolve(input.file).str()));
+            project.file_table.disk.watch(project.file_table.resolve(input.file).str(),
+                                          {},
+                                          vfs::DiskState::Pace::Rotating));
     }
 }
 

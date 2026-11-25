@@ -2,21 +2,16 @@ module clice;
 
 import :command.argument;
 import :command.search_config;
+import :vfs.file_table;
 import :vfs.path;
 
 namespace clice {
 
 using namespace clang_options;
 
-std::string SearchDir::identity() const {
-    auto key = CanonicalPath(Spelling::absolute(path)).str();
-    if(framework) {
-        key += '\0';
-    }
-    return key;
-}
-
-SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef directory) {
+SearchConfig extract_search_config(llvm::ArrayRef<Arg> args,
+                                   llvm::StringRef directory,
+                                   FileTable& files) {
     // clang's layout (ParseHeaderSearchArgs, then InitHeaderSearch::Realize):
     // Quoted (-iquote) → Angled (-I and -F, then -iwithprefixbefore) →
     // System (-isystem and -iwithsysroot, -iframework,
@@ -186,9 +181,11 @@ SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef dir
     // the same directory searched for plain headers.
     std::vector<bool> removed(config.dirs.size());
     auto remove_duplicates = [&](unsigned first, unsigned end) {
-        llvm::StringMap<unsigned> seen;
+        llvm::DenseMap<std::pair<Fid, unsigned>, unsigned> seen;
         for(unsigned i = first; i < end; i += 1) {
-            auto [it, inserted] = seen.try_emplace(config.dirs[i].identity(), i);
+            auto& dir = config.dirs[i];
+            auto [it, inserted] =
+                seen.try_emplace({files.intern(Spelling::absolute(dir.path)), dir.framework}, i);
             if(inserted) {
                 continue;
             }

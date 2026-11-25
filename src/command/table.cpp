@@ -156,6 +156,7 @@ BuiltinHeader builtin_header(llvm::StringRef name) {
 
 void CommandTable::set_project_root(CanonicalRef path) {
     root = path;
+    portable_values.clear();
 }
 
 const Command& CommandTable::get(CommandID id) const {
@@ -243,14 +244,17 @@ void CommandTable::render_identity(CommandID id, std::string& out) {
         out += '\0';
     };
 
-    llvm::BumpPtrAllocator allocator;
-    llvm::StringSaver saver(allocator);
     auto render_portable = [&](const Arg& arg) {
         llvm::SmallVector<const char*, 2> values;
         for(const char* value: arg.values) {
-            llvm::SmallString<256> storage;
-            auto name = path::portable(value, root, storage);
-            values.push_back(name.data() == value ? value : saver.save(name).data());
+            auto [it, inserted] = portable_values.try_emplace(value, value);
+            if(inserted) {
+                llvm::SmallString<256> storage;
+                if(auto name = path::portable(value, root, storage); name.data() != value) {
+                    it->second = strings.save(name).data();
+                }
+            }
+            values.push_back(it->second);
         }
         render_arg(
             {.opt_id = arg.opt_id, .cls = arg.cls, .spelling = arg.spelling, .values = values},

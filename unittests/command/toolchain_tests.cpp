@@ -81,6 +81,30 @@ ZEST_CASE(KeyIgnoresCodegen) {
     ZEXPECT(f.key(base) != f.key(off));
 }
 
+ZEST_CASE(KeyIgnoresFrontendFlags) {
+    /// Chromium sets each target's warnings apart: keyed on them, the
+    /// compiler would be asked once a target.
+    auto base = f.add("/fake", "/tmp/a.cpp", {"clang++", "-std=c++23", "/tmp/a.cpp"});
+    auto frontend =
+        f.add("/fake",
+              "/tmp/b.cpp",
+              {"clang++", "-std=c++23", "-Wall", "-Wno-unused", "-Werror", "/tmp/b.cpp"});
+    ZEXPECT(f.key(base) == f.key(frontend));
+
+    /// But not the warnings clang's driver reads itself: `-Wno-deprecated`
+    /// leaves C++'s `__DEPRECATED` undefined, `-Wwrite-strings` makes C's
+    /// string literals const, a `-no-pedantic` cancels `-pedantic`.
+    auto deprecated =
+        f.add("/fake", "/tmp/c.cpp", {"clang++", "-std=c++23", "-Wno-deprecated", "/tmp/c.cpp"});
+    ZEXPECT(f.key(base) != f.key(deprecated));
+    auto pedantic =
+        f.add("/fake", "/tmp/d.cpp", {"clang++", "-std=c++23", "-pedantic", "/tmp/d.cpp"});
+    ZEXPECT(f.key(base) != f.key(pedantic));
+    auto c = f.add("/fake", "/tmp/a.c", {"clang", "/tmp/a.c"});
+    auto strings = f.add("/fake", "/tmp/b.c", {"clang", "-Wwrite-strings", "/tmp/b.c"});
+    ZEXPECT(f.key(c) != f.key(strings));
+}
+
 ZEST_CASE(KeyTracksSemantics) {
     auto base = f.add("/fake", "/tmp/a.cpp", {"clang++", "-std=c++23", "/tmp/a.cpp"});
 
@@ -459,6 +483,13 @@ ZEST_CASE(UserContentAttached) {
     ZEXPECT(adjacent(argv, "-D", "FOO=1"));
 }
 
+ZEST_CASE(FrontendFlagsAttached) {
+    // Nor what the frontend takes as written, which the render puts back.
+    auto driver = fake_clang(clang_job);
+    auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-Wshadow"}));
+    ZEXPECT(contains(argv, "-Wshadow"));
+}
+
 ZEST_CASE(XclangAfterUserContent) {
     // As CMake builds a target's PCH: the driver passes the -Xclang values
     // on after the command's own -include, which the PCH header needs first.
@@ -600,6 +631,23 @@ ZEST_CASE(ForeignBuiltinHeaders) {
     auto foreign = tmp.path("clang-23/include");
     auto driver = fake_clang(clang_job);
     auto argv = f.resolve(add("a.cpp", {driver.c_str(), "-isystem", foreign.c_str()}));
+    ZEXPECT(adjacent(argv, "-isystem", path::join(resource_dir(), "include")));
+    ZEXPECT(!contains(argv, foreign));
+}
+
+ZEST_CASE(SearchDirsLearnedAhead) {
+    /// What the scan asks the disk of the directories the commands name
+    /// before it builds their search configurations, which then read it.
+    tmp.mkdir("inc");
+    tmp.touch("clang-23/include/__stddef_max_align_t.h");
+    auto foreign = tmp.path("clang-23/include");
+    auto driver = fake_clang(clang_job);
+    auto ref = add("a.cpp", {driver.c_str(), "-I", tmp.c_path("inc"), "-isystem", foreign.c_str()});
+    llvm::SmallVector<CommandRef> refs = {ref};
+    f.toolchain.learn_search_dirs(refs);
+    ZEXPECT(f.db.files().knows(Spelling::absolute(tmp.path("inc"))));
+    ZASSERT(fs::remove(path::join(foreign, "__stddef_max_align_t.h")));
+    auto argv = f.resolve(ref);
     ZEXPECT(adjacent(argv, "-isystem", path::join(resource_dir(), "include")));
     ZEXPECT(!contains(argv, foreign));
 }

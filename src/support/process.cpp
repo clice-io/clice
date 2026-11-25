@@ -12,6 +12,21 @@ import :support.process;
 
 namespace clice {
 
+async::task<> in_parts(std::size_t size,
+                       llvm::function_ref<void(std::size_t, std::size_t, std::size_t)> work) {
+    auto count = parts_of(size);
+    async::task_group<> parts;
+    for(std::size_t part = 0; part < count; part += 1) {
+        parts.spawn([](llvm::function_ref<void(std::size_t, std::size_t, std::size_t)> work,
+                       std::size_t part,
+                       std::size_t first,
+                       std::size_t end) -> async::task<> {
+            co_await async::queue([&] { work(part, first, end); });
+        }(work, part, size * part / count, size * (part + 1) / count));
+    }
+    co_await parts.join();
+}
+
 std::expected<std::string, std::string> temp_root() {
     std::string dir;
     if(auto error = sys::temp_dir(dir)) {

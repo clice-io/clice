@@ -88,7 +88,10 @@ ZEST_CASE(SharedKeys) {
     Normalizer normalizer{.commands = commands, .files = file_table};
     auto directory = Spelling::absolute("/ws");
     auto key = [&](llvm::StringRef file, llvm::StringRef line) {
-        return normalizer.shared_key(directory, file, split_command(line));
+        return normalizer.shared_key(directory,
+                                     file,
+                                     file_table.intern(Spelling(file, directory)),
+                                     split_command(line));
     };
     auto command = [&](llvm::StringRef file, llvm::StringRef line) {
         return normalizer.normalize(directory, file_table.intern(Spelling(file, directory)), line);
@@ -131,6 +134,75 @@ ZEST_CASE(SharedKeys) {
     ZEXPECT(!key("a.cpp", "clang++ @a.rsp a.cpp").has_value());
     ZEXPECT(!key("a.cu", "nvcc -c a.cu").has_value());
     ZEXPECT(!key("a.cpp", "clang++ -include a.cpp a.cpp").has_value());
+
+    /// A cl command naming its file in a per-file selector alone has none:
+    /// the selector reads as written.
+    ZEXPECT(!key("alpha.c", "cl /Tcalpha.c /Tpbeta.c /c").has_value());
+};
+
+ZEST_CASE(ResponseFileKeys) {
+    /// Commands kept in response files share keys as written ones do: the
+    /// file's own response file is read in place, a shared one it names by
+    /// its content, the input as spelled from the directory is the entry's.
+    /// One naming another source than its entry (Unreal's `.gen.cpp`) keys
+    /// that source as an input the compile leaves out.
+    TempDir tmp;
+    tmp.touch("shared.rsp", "-DSHARED -Iinclude");
+    tmp.touch("other.rsp", "-DOTHER -Iinclude");
+    for(auto name: {"a", "b", "c"}) {
+        tmp.touch(
+            std::format("{}.rsp", name),
+            std::format("@shared.rsp -std=c++20 src/{}.cpp -MD -MF{}.d -o {}.o", name, name, name));
+    }
+    tmp.touch("d.rsp", "@other.rsp -std=c++20 src/d.cpp -MD -MFd.d -o d.o");
+    for(auto name: {"a", "b"}) {
+        tmp.touch(std::format("cl-{}.rsp", name),
+                  std::format("\"src/{}.cpp\" @shared.rsp /std:c++20 /clang:-MD "
+                              "/clang:-MF\"{}.d\" /Fo\"{}.obj\"",
+                              name,
+                              name,
+                              name));
+    }
+    tmp.touch("ga.rsp", "@shared.rsp -std=c++20 src/a.cpp -o a.o");
+    tmp.touch("gb.rsp", "@shared.rsp -std=c++20 src/b.cpp -o b.o");
+    FileTable file_table;
+    CommandTable commands;
+    Normalizer normalizer{.commands = commands, .files = file_table};
+    auto directory = Spelling::absolute(tmp.root);
+    auto entry = [&](llvm::StringRef file) {
+        return file_table.intern(Spelling(file, directory));
+    };
+    auto key = [&](llvm::StringRef file, llvm::StringRef line) {
+        return normalizer.shared_key(directory, file, entry(file), split_command(line));
+    };
+    auto command = [&](llvm::StringRef file, llvm::StringRef line) {
+        return normalizer.normalize(directory, entry(file), line);
+    };
+    auto a = key(tmp.path("src/a.cpp"), "clang++ @a.rsp");
+    ZASSERT(a.has_value());
+    ZEXPECT(a == key(tmp.path("src/b.cpp"), "clang++ @b.rsp"));
+    ZEXPECT(command(tmp.path("src/a.cpp"), "clang++ @a.rsp") ==
+            command(tmp.path("src/b.cpp"), "clang++ @b.rsp"));
+    ZEXPECT(a != key(tmp.path("src/d.cpp"), "clang++ @d.rsp"));
+
+    auto cl = key(tmp.path("src/a.cpp"), "clang-cl @cl-a.rsp");
+    ZASSERT(cl.has_value());
+    ZEXPECT(cl == key(tmp.path("src/b.cpp"), "clang-cl @cl-b.rsp"));
+    ZEXPECT(command(tmp.path("src/a.cpp"), "clang-cl @cl-a.rsp") ==
+            command(tmp.path("src/b.cpp"), "clang-cl @cl-b.rsp"));
+
+    auto generated = key(tmp.path("gen/a.gen.cpp"), "clang++ @ga.rsp");
+    ZASSERT(generated.has_value());
+    ZEXPECT(generated != a);
+    ZEXPECT(generated == key(tmp.path("gen/b.gen.cpp"), "clang++ @gb.rsp"));
+    ZEXPECT(command(tmp.path("gen/a.gen.cpp"), "clang++ @ga.rsp") ==
+            command(tmp.path("gen/b.gen.cpp"), "clang++ @gb.rsp"));
+
+    /// One whose response file inside another names the sources has none:
+    /// its content cannot place them, the language each compiles in.
+    tmp.touch("sources.rsp", "-x c src/a.c -x c++ src/b.cpp");
+    tmp.touch("outer.rsp", "@sources.rsp");
+    ZEXPECT(!key(tmp.path("src/a.c"), "clang -c @outer.rsp").has_value());
 };
 
 ZEST_CASE(UnreadableResponseRecorded) {

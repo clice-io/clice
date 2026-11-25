@@ -146,9 +146,13 @@ std::expected<ObservedFile, FileError> read_observed(llvm::StringRef path, std::
 /// The file statuses of one operation (a dependency check, a compile). On
 /// Windows a directory asked about often enough within the operation is
 /// listed once, and its entries answer the rest: one listing costs about
-/// what a few statuses by name do. A name the listing lacks, a link, a
-/// remote or oversized directory and a directory seen to hold hard links
-/// take fs::status. Elsewhere every status is fs::status.
+/// what a few statuses by name do, and a name it lacks in any case is
+/// missing, as is any in a directory that is not there — the answer to
+/// most of what a compile asks, its include searching each of hundreds of
+/// directories a header is not in. A name the listing holds under another
+/// case, one it lacks that is not ASCII or may be a short name (`~`), a
+/// link, a remote or oversized directory and a directory seen to hold hard
+/// links take fs::status. Elsewhere every status is fs::status.
 class StatusBatch {
 public:
     std::expected<fs::Status, std::error_code> status(llvm::StringRef path);
@@ -159,8 +163,16 @@ private:
     struct Directory {
         unsigned asked = 0;
         bool listed = false;
-        /// Empty when the directory could not be listed.
+
+        /// Whether a listing read it in full: else `entries` and `folded`
+        /// are empty.
+        bool complete = false;
+
+        /// The statuses of its entries but links.
         llvm::StringMap<fs::Status> entries;
+
+        /// Every entry's name, links among them, with ASCII letters lowered.
+        llvm::StringSet<> folded;
     };
 
     llvm::StringMap<Directory> directories;

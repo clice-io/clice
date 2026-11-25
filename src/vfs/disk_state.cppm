@@ -132,6 +132,11 @@ public:
                                  const fs::Status& status,
                                  std::int64_t baseline_before_ns);
 
+    /// The hash cached_hash() confirms for a status of the stamp the last
+    /// reliable read through this fid saw, without I/O; nullopt when no
+    /// such read was made.
+    std::optional<std::uint64_t> paired_hash(Fid fid) const;
+
     /// The hash the last reliable read through this fid guarantees at
     /// exactly this stamp, recorded as a look; nullopt when someone must
     /// read. Equality, never a watermark: the hash is "the hash of the
@@ -190,9 +195,10 @@ public:
     /// Make every file under the directory `dir` (an identity) due now.
     void expire_under(llvm::StringRef dir);
 
-    /// Look at every watched flag, then at the files that are due, longest
-    /// due first, for about `budget` of wall time. Returns how many files
-    /// the looks found changed.
+    /// Look at the flags watched at every tick, then at the rotating flags
+    /// in turn for about `budget` of wall time, then at the files that are
+    /// due, longest due first, for about `budget` more. Returns how many
+    /// files the looks found changed.
     std::size_t tick(Clock::duration budget);
 
     /// Look at these files now, due or not, under any policy.
@@ -206,13 +212,25 @@ public:
     /// deterministic stand-in for the ticks.
     void look_all();
 
-    /// Look at every watched flag now, as a tick does first.
+    /// Look at every watched flag now, whatever its pace.
     void look_flags();
 
-    /// Look at `path` at every tick from now on, until the returned flag is
+    /// How often tick() looks at a watched flag.
+    enum class Pace : std::uint8_t {
+        /// At every tick.
+        EveryTick,
+        /// Within the tick's budget, these flags taking turns: a database's
+        /// response files, which an Unreal database counts in tens of
+        /// thousands, would stall every tick, a status each.
+        Rotating,
+    };
+
+    /// Look at `path` at the `pace` from now on, until the returned flag is
     /// dropped, calling `on_change`, when given, at a look that finds other
     /// content than the one before. Its first look is taken now.
-    std::shared_ptr<const Flag> watch(std::string path, std::function<void()> on_change = {});
+    std::shared_ptr<const Flag> watch(std::string path,
+                                      std::function<void()> on_change = {},
+                                      Pace pace = Pace::EveryTick);
 
     /// The time of the schedule; tests turn it.
     std::function<Clock::time_point()> now = Clock::now;
@@ -294,7 +312,8 @@ private:
         return file.root == no_root ? workspace_policy : roots[file.root].policy;
     }
 
-    std::uint32_t root_of(llvm::StringRef path) const;
+    /// The root of the files in `dir`: the longest root it is or lies under.
+    std::uint32_t root_of(llvm::StringRef dir);
 
     /// Make the file due at `at`, queueing it.
     void schedule(Fid fid, File& file, Clock::time_point at);
@@ -304,6 +323,13 @@ private:
 
     /// A background look at a file.
     void look_at(Fid fid, StatusBatch& statuses);
+
+    /// Look at the flags watched at every tick, as a tick does first.
+    void look_every_tick();
+
+    /// Look at the rotating flags from where the last look stopped, one at
+    /// least, until `deadline`.
+    void look_rotating(Clock::time_point deadline);
 
     struct Watch {
         Flag flag;
@@ -326,11 +352,20 @@ private:
 
     llvm::SmallVector<Root> roots;
 
+    /// root_of() each directory, until a root is added: the files of a
+    /// project lie in far fewer directories than there are files.
+    llvm::StringMap<std::uint32_t> dir_roots;
+
     /// A min-heap on `at`. An entry whose time is not its file's `queued`
     /// is a leftover of a rescheduling, skipped when it comes up.
     llvm::SmallVector<Due> queue;
 
     llvm::SmallVector<std::weak_ptr<Watch>> watches;
+
+    std::vector<std::weak_ptr<Watch>> rotating;
+
+    /// The rotating flag to look at next.
+    std::size_t rotation = 0;
 
     /// The install history watched for each conda environment.
     llvm::StringMap<std::shared_ptr<const Flag>> environments;

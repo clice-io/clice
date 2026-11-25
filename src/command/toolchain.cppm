@@ -3,11 +3,13 @@ module clice:command.toolchain;
 import :command.argument;
 import :command.search_config;
 import :command.table;
+import :command.toolchain_query;
 import :command.toolchains.clang;
 import :support.failure;
 import :support.prelude;
 import :vfs.file_system;
 import :vfs.file_table;
+import :vfs.path;
 
 namespace clice {
 
@@ -95,6 +97,13 @@ public:
     /// (cc1) command — memoized — else from the driver-level command.
     SearchConfig search_config(const CommandRef& ref);
 
+    /// Ask the disk, on the thread pool and together, what building the
+    /// search configurations of `refs` asks of each directory their commands
+    /// name: its identity, and whether it holds another clang's builtin
+    /// headers. A system call each, which on Windows costs as much as
+    /// building the configurations otherwise (Unreal's name 18,000).
+    void learn_search_dirs(llvm::ArrayRef<CommandRef> refs);
+
     std::string query_key_for(CommandID id, InputKind input) {
         return query_key(id, input).key;
     }
@@ -173,6 +182,18 @@ private:
         return resolved_configs[id];
     }
 
+    /// clice's own counterpart of a path another clang's job or the command
+    /// names, if it has one: the job's resource directory (`job_resource_dir`)
+    /// and its builtin headers, or another clang's builtin header directory a
+    /// search option names (the command's `-isystem <clang>/lib/clang/23/include`,
+    /// zig's lib/include). The rest of a resource tree stays external —
+    /// sanitizer ignorelists under share/, runtime libraries under lib/: the
+    /// driver verified those files exist there, clice's tree ships include/
+    /// alone, and cc1 aborts the process on an ignorelist it cannot open.
+    std::optional<std::string> ours_for(unsigned id,
+                                        llvm::StringRef value,
+                                        llvm::StringRef job_resource_dir);
+
     /// The frontend of a query's job (the program, -cc1, its arguments),
     /// queried for `command` or another command of its key: what only the
     /// query asked for goes (its action, input and outputs),
@@ -180,6 +201,15 @@ private:
     /// not know, codegen flags, CPU and ABI names clang's target does not
     /// know. Another clang's builtin headers go behind ours.
     Frontend frontend(const Job& job, const Command& command);
+
+    /// What the compiles of a job whose search list is `search` do not see
+    /// of the builtin headers of another compiler in its `shadowed`
+    /// directories, clang's own placed right before each: those clang has as
+    /// well, and past the directory, the copies of one whose own does not
+    /// #include_next, which that compiler never reaches (newlib's
+    /// stdatomic.h behind GCC's).
+    std::shared_ptr<const vfs::HiddenFiles> hidden_files(const SearchConfig& search,
+                                                         llvm::ArrayRef<Spelling> shadowed);
 
     /// The frontend with the command's own user content re-attached.
     ResolvedID synthesize(CommandID id, const Frontend& query);
@@ -192,10 +222,13 @@ private:
                                                                std::string failure);
 
     /// What the query caches say about a (command, input) key: a live
-    /// query, a failure still cooling down, or the query to run. A
+    /// query, a failure still cooling down, or a query to run. A
     /// cooled-down failure stays until the query commits.
     struct QueryAdmission;
     QueryAdmission admit_query(CommandID id, InputKind input);
+
+    /// The query of an admission to run for the command `id`.
+    QuerySpec query_spec(const QueryAdmission& admission, CommandID id, InputKind input);
 
     /// Commits the result of the query for the command `id`: the job's
     /// frontend into the query cache, a failure into the negative cache with
@@ -245,6 +278,25 @@ private:
     std::vector<Resolved> resolved_configs;
 
     llvm::DenseMap<std::uint32_t, SearchConfig> search_configs;
+
+    /// Whether a directory a search option names holds another clang's
+    /// builtin headers (ours_for), looked into once: the commands of a
+    /// project name the same directories over and over.
+    llvm::StringMap<bool> builtin_header_dirs;
+
+    /// The builtin headers in a directory of another compiler's a job
+    /// shadows (hidden_files), read once: each query of a project names it
+    /// again, an Unreal clang-cl database's hundreds of them.
+    struct ShadowedHeaders {
+        /// Their paths relative to the directory, `/`-separated.
+        std::vector<std::string> names;
+
+        /// Whether one of them #include_next's the copies past it, read the
+        /// first time a later directory holds one.
+        llvm::StringMap<bool> defers;
+    };
+
+    llvm::StringMap<ShadowedHeaders> shadowed_headers;
 };
 
 }  // namespace clice

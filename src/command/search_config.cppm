@@ -2,6 +2,7 @@ module clice:command.search_config;
 
 import :support.prelude;
 import :vfs.file_system;
+import :vfs.file_table;
 
 namespace clice {
 
@@ -18,11 +19,6 @@ struct SearchDir {
     /// `<Foo/Bar.h>` is `Foo.framework/Headers/Bar.h` below it, else
     /// `Foo.framework/PrivateHeaders/Bar.h`.
     bool framework = false;
-
-    /// What tells two entries apart as clang's duplicate removal does: the
-    /// directory itself, however spelled, and whether it is searched for
-    /// frameworks.
-    std::string identity() const;
 };
 
 /// Header search configuration extracted from compilation arguments.
@@ -55,7 +51,11 @@ struct SearchConfig {
 /// Extract header search configuration from a structured command (driver
 /// level or resolved cc1 level — the internal cc1 spellings are covered).
 /// Relative paths are resolved against the given working directory and
-/// normalized with remove_dots().
-SearchConfig extract_search_config(llvm::ArrayRef<Arg> args, llvm::StringRef directory);
+/// normalized with remove_dots(). Duplicates go as clang's duplicate
+/// removal takes them out, by the directory itself however spelled, as
+/// `files` names it.
+SearchConfig extract_search_config(llvm::ArrayRef<Arg> args,
+                                   llvm::StringRef directory,
+                                   FileTable& files);
 
 }  // namespace clice

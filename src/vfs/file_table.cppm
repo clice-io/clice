@@ -85,6 +85,17 @@ struct FileTable {
     /// An identity names its own file.
     Fid intern(CanonicalRef identity);
 
+    /// Intern `path`, whose identity was resolved elsewhere (off the
+    /// thread owning the table, many at once): intern() then finds it
+    /// without asking the system.
+    Fid intern(const Spelling& path, CanonicalRef identity);
+
+    /// Whether `path` is interned already, which interning it again finds
+    /// without asking the system.
+    bool knows(const Spelling& path) const {
+        return ids.contains(path);
+    }
+
     CanonicalRef resolve(Fid fid) const {
         assert(fid.raw < spellings.size());
         return CanonicalRef(spellings[fid.raw]);

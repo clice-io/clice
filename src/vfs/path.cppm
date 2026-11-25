@@ -27,6 +27,40 @@ inline void canonicalize(kotatsu::buffer_ref p) {
     path::lowercase_drive(p);
 }
 
+/// Whether `p` reads as a Spelling already: absolute, `/`-separated past
+/// its root (a POSIX `/`, a lowercase Windows drive), without empty or `.`
+/// segments or a trailing separator. Most paths a normalized command or a
+/// search list holds are: spelling one again changes nothing.
+inline bool spelled_already(llvm::StringRef p) {
+    llvm::StringRef rest = p;
+    if constexpr(native_style == Style::Windows) {
+        if(p.size() < 3 || !llvm::isLower(p[0]) || p[1] != ':' || p[2] != '/') {
+            return false;
+        }
+        rest = p.drop_front(3);
+    } else if(!rest.consume_front("/")) {
+        return false;
+    }
+    // One pass: each segment non-empty and not `.`, no `\` on Windows.
+    std::size_t segment = 0;
+    bool dot = false;
+    for(char c: rest) {
+        if(c == '/') {
+            if(segment == 0 || (segment == 1 && dot)) {
+                return false;
+            }
+            segment = 0;
+            continue;
+        }
+        if(native_style == Style::Windows && c == '\\') {
+            return false;
+        }
+        dot = segment == 0 && c == '.';
+        segment += 1;
+    }
+    return rest.empty() || (segment != 0 && !(segment == 1 && dot));
+}
+
 /// `path` with the drive letter of `written`, a path on the same drive, in
 /// the case `written` has it: canonicalization lowers it.
 inline std::string with_drive_of(std::string path, llvm::StringRef written) {

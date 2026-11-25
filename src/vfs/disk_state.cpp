@@ -77,6 +77,14 @@ std::uint64_t DiskState::unchanged_hash(Fid fid,
     return observed && observed->stamp == stamp ? observed->hash : 0;
 }
 
+std::optional<std::uint64_t> DiskState::paired_hash(Fid fid) const {
+    auto it = files.find(fid);
+    if(it == files.end() || !it->second.pair) {
+        return std::nullopt;
+    }
+    return it->second.pair->hash;
+}
+
 std::optional<std::uint64_t> DiskState::cached_hash(Fid fid, const Stamp& stamp) {
     auto it = files.find(fid);
     if(it == files.end() || !it->second.pair || it->second.pair->stamp != stamp) {
@@ -128,10 +136,17 @@ void DiskState::add_root(llvm::StringRef dir, Policy rule) {
     } else {
         roots.push_back({.dir = dir.str(), .policy = rule});
     }
+    dir_roots.clear();
+    llvm::StringMap<bool> under;
     for(auto& [fid, file]: files) {
-        if(path::is_within(path(fid), dir)) {
+        auto parent = path::parent(path(fid));
+        auto [it, inserted] = under.try_emplace(parent);
+        if(inserted) {
+            it->second = path::is_within(parent, dir);
+        }
+        if(it->second) {
             // Under another policy the backoff starts over.
-            file.root = root_of(path(fid));
+            file.root = root_of(parent);
             file.interval = policy(file).min;
             schedule(fid, file, std::min(file.due, now() + file.interval));
         }
@@ -174,7 +189,8 @@ void DiskState::add_package(llvm::StringRef dir) {
 
 std::size_t DiskState::tick(Clock::duration budget) {
     auto before = changes.size();
-    look_flags();
+    look_every_tick();
+    look_rotating(Clock::now() + budget);
 
     // Due by the schedule's clock; the budget is wall time, and every tick
     // looks at one file at least.
@@ -259,21 +275,43 @@ void DiskState::look_all() {
         views::transform(files, [](auto& entry) { return entry.first; })));
 }
 
-std::shared_ptr<const Flag> DiskState::watch(std::string path, std::function<void()> on_change) {
+std::shared_ptr<const Flag> DiskState::watch(std::string path,
+                                             std::function<void()> on_change,
+                                             Pace pace) {
     auto watch = std::make_shared<Watch>(Watch{
         .flag = {.path = std::move(path)},
         .on_change = std::move(on_change),
     });
     watch->flag.look();
-    watches.push_back(watch);
+    if(pace == Pace::EveryTick) {
+        watches.push_back(watch);
+    } else {
+        rotating.push_back(watch);
+    }
     return std::shared_ptr<const Flag>(watch, &watch->flag);
+}
+
+void DiskState::look_rotating(Clock::time_point deadline) {
+    std::erase_if(rotating, [](const std::weak_ptr<Watch>& watch) { return watch.expired(); });
+    for(std::size_t looked = 0; looked < rotating.size(); looked += 1) {
+        if(looked != 0 && Clock::now() >= deadline) {
+            return;
+        }
+        rotation %= rotating.size();
+        // An owner may watch or drop flags when it hears of a change.
+        auto watch = rotating[rotation].lock();
+        rotation += 1;
+        if(watch && watch->flag.look() && watch->on_change) {
+            watch->on_change();
+        }
+    }
 }
 
 void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool stable) {
     auto [it, first] = files.try_emplace(fid);
     auto& file = it->second;
     if(first) {
-        file.root = root_of(path(fid));
+        file.root = root_of(path::parent(path(fid)));
     }
     auto previous = std::exchange(file.seen, hash);
     bool moved = !first && previous != hash;
@@ -369,15 +407,17 @@ void DiskState::verify(Fid fid, const Look& found) {
     }
 }
 
-std::uint32_t DiskState::root_of(llvm::StringRef path) const {
-    auto found = no_root;
-    for(auto [index, root]: views::enumerate(roots)) {
-        if(path::is_within(path, root.dir) &&
-           (found == no_root || root.dir.size() > roots[found].dir.size())) {
-            found = static_cast<std::uint32_t>(index);
+std::uint32_t DiskState::root_of(llvm::StringRef dir) {
+    auto [it, inserted] = dir_roots.try_emplace(dir, no_root);
+    if(inserted) {
+        for(auto [index, root]: views::enumerate(roots)) {
+            if(path::is_within(dir, root.dir) &&
+               (it->second == no_root || root.dir.size() > roots[it->second].dir.size())) {
+                it->second = static_cast<std::uint32_t>(index);
+            }
         }
     }
-    return found;
+    return it->second;
 }
 
 void DiskState::schedule(Fid fid, File& file, Clock::time_point at) {
@@ -395,6 +435,11 @@ void DiskState::enqueue(Fid fid, File& file, Clock::time_point at) {
 }
 
 void DiskState::look_flags() {
+    look_every_tick();
+    look_rotating(Clock::time_point::max());
+}
+
+void DiskState::look_every_tick() {
     // An owner may watch or drop flags when it hears of a change.
     watches.erase(
         ranges::remove_if(watches,

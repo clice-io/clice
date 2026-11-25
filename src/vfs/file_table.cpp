@@ -62,6 +62,12 @@ Fid FileTable::intern_entry(const Spelling& path) {
     return fid;
 }
 
+Fid FileTable::intern(const Spelling& path, CanonicalRef identity) {
+    auto fid = intern(identity);
+    ids.try_emplace(path, fid);
+    return fid;
+}
+
 Fid FileTable::intern(CanonicalRef identity) {
     auto [it, inserted] =
         ids.try_emplace(identity, Fid{static_cast<std::uint32_t>(spellings.size())});

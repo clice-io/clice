@@ -314,6 +314,21 @@ ZEST_CASE(ListingKnowsDirectories) {
 #endif
 }
 
+ZEST_CASE(ListingMissingDirectory) {
+    // A directory a command names before the build makes it lists as empty,
+    // and the operation after it is made lists it.
+    TempDir tmp;
+    auto dir = tmp.path("gen");
+    vfs::DirCache cache;
+    {
+        vfs::Scope before_build(cache);
+        ZEXPECT(before_build.list(dir).entries.empty());
+    }
+    tmp.touch("gen/a.h", "");
+    vfs::Scope after_build(cache);
+    ZEXPECT(after_build.list(dir).contains_file("a.h"));
+}
+
 ZEST_CASE(ListingSeesNewFile) {
     // An external generator dropping a header into a cached directory
     // produces no event; the directory's own mtime is the anchor that

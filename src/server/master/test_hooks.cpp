@@ -83,17 +83,22 @@ std::vector<std::string> MasterServer::pending_work(const ipc::JSONPeer& editor)
         }
     }
     for(auto& project: projects) {
+        // In the order of what they name: the graph's map orders them by
+        // their files' ids, which depend on what the file table met first.
+        std::vector<std::string> running;
         for(auto id: project->project.graph.compiling()) {
             auto file = [&] {
                 return files.display(id.file());
             };
             switch(id.kind) {
-                case NodeKind::AST: lines.push_back(std::format("compile {}", file())); break;
-                case NodeKind::Unit: lines.push_back(std::format("index {}", file())); break;
-                case NodeKind::PCM: lines.push_back(std::format("pcm {}", file())); break;
-                case NodeKind::PCH: lines.push_back(std::format("pch #{}", id.key)); break;
+                case NodeKind::AST: running.push_back(std::format("compile {}", file())); break;
+                case NodeKind::Unit: running.push_back(std::format("index {}", file())); break;
+                case NodeKind::PCM: running.push_back(std::format("pcm {}", file())); break;
+                case NodeKind::PCH: running.push_back(std::format("pch #{}", id.key)); break;
             }
         }
+        ranges::sort(running);
+        lines.insert(lines.end(), running.begin(), running.end());
         if(indexing(*project)) {
             auto& background = project->project.background_index;
             lines.push_back(std::format("index pass at {}/{}, {} files queued",

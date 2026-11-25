@@ -145,7 +145,53 @@ bool names_unknown(const cli::ParsedArg& arg,
     return unknown.contains({given, name.str()});
 }
 
+/// The failure of a query `compiler` did not answer within `bound`.
+std::string stopped(llvm::StringRef compiler, chrono::milliseconds bound) {
+    return std::format("{} did not finish within {} ms and was stopped", compiler, bound.count());
+}
+
+/// How long a query may run (QueryBatch::bound).
+chrono::milliseconds query_bound() {
+    // Lets tests stand in a hung compiler without waiting out the bound, and
+    // the cases' warm-up wait out a cold compiler's first start.
+    if(auto ms = env_integer("CLICE_TEST_QUERY_BOUND_MS")) {
+        return chrono::milliseconds(*ms);
+    }
+    return chrono::seconds(10);
+}
+
 }  // namespace
+
+QueryBatch::QueryBatch() : bound(query_bound()) {}
+
+async::task<std::expected<ProgramOutput, std::string>>
+    QueryBatch::ask_cl(std::vector<std::string> question, llvm::StringRef input, std::string cwd) {
+    auto key = std::format("{}\n{}\n{}", llvm::join(question, "\n"), path::extension(input), cwd);
+    auto [it, inserted] = answers.try_emplace(key);
+    if(!inserted) {
+        auto answer = it->second;
+        co_await answer->ready.wait();
+        co_return answer->output;
+    }
+    auto answer = it->second = std::make_shared<Answer>();
+    auto compiler = question[0];
+    // The bound of the query running it stops the queries waiting too.
+    auto stopping = llvm::make_scope_exit([&] {
+        if(!answer->ready.is_set()) {
+            answer->output = std::unexpected(stopped(compiler, bound));
+            answer->ready.set();
+        }
+    });
+    if(auto error = fs::write_file(input, cl_query_source)) {
+        answer->output =
+            std::unexpected(std::format("Failed to write {}: {}", input.str(), error.message()));
+    } else {
+        question.push_back(input.str());
+        answer->output = co_await execute(std::move(question), std::move(cwd));
+    }
+    answer->ready.set();
+    co_return answer->output;
+}
 
 /// Ask the compiler of `command` for the job it runs.
 static async::task<std::expected<Job, std::string>> ask_compiler(std::vector<std::string> args,
@@ -153,9 +199,14 @@ static async::task<std::expected<Job, std::string>> ask_compiler(std::vector<std
                                                                  std::string input,
                                                                  std::string kind,
                                                                  std::size_t driver_tokens,
-                                                                 std::string cwd) {
+                                                                 std::string cwd,
+                                                                 QueryBatch& batch) {
     if(cl_mode(command.family)) {
-        co_return co_await ask_cl(args, command, input, cwd);
+        auto answer = co_await batch.ask_cl(cl_question(args, command), input, cwd);
+        if(!answer) {
+            co_return std::unexpected(std::move(answer.error()));
+        }
+        co_return read_cl_answer(args, command, *answer, cwd);
     }
     if(command.family == CompilerFamily::NVCC) {
         co_return co_await ask_nvcc(args, command, input, kind, cwd);
@@ -167,7 +218,7 @@ bool driver_found(const QuerySpec& spec) {
     return find_driver(spec.argv[0], spec.cwd).has_value();
 }
 
-async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
+async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec, QueryBatch& batch) {
     auto& command = *spec.command;
     auto driver = find_driver(spec.argv[0], spec.cwd);
     if(!driver && command.query_toolchain) {
@@ -208,12 +259,6 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
         }
         co_return std::move(read_as_clang(std::move(args), option_family(command), spec.cwd).job);
     }
-    // Lets tests stand in a hung compiler without waiting out the bound, and
-    // the cases' warm-up wait out a cold compiler's first start.
-    chrono::milliseconds bound = chrono::seconds(10);
-    if(auto ms = env_integer("CLICE_TEST_QUERY_BOUND_MS")) {
-        bound = chrono::milliseconds(*ms);
-    }
     auto compiler = args[0];
     std::size_t driver_tokens = command.family == CompilerFamily::Zig ? 2 : 1;
     // Hang detection: a query answers in well under a second, a cold
@@ -231,11 +276,11 @@ async::task<std::expected<Job, std::string>> query_one(const QuerySpec& spec) {
                                                            std::string(input->path()),
                                                            spec.kind,
                                                            driver_tokens,
-                                                           spec.cwd),
-                                              bound);
+                                                           spec.cwd,
+                                                           batch),
+                                              batch.bound);
     if(asked.is_cancelled()) {
-        co_return std::unexpected(
-            std::format("{} did not finish within {} ms and was stopped", compiler, bound.count()));
+        co_return std::unexpected(stopped(compiler, batch.bound));
     }
     co_return std::move(*asked);
 }
