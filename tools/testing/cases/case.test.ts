@@ -70,6 +70,8 @@ describe("loadCases", () => {
         write("hover/test.ts", "");
         write("hover/macros/01_one/b.cpp", "int §b; int §(z)c;\n");
         write("hover/macros/01_one/a.cpp", "int §(y)⟦é⟧; int §a;\n");
+        // A byte order mark is no part of the text the markers count in.
+        write("hover/macros/01_one/c.cpp", "\uFEFFint §(x)⟦é⟧;\n");
         const [c] = loadCases(root);
         expect(
             c?.markers.map(({ path: file, name, begin, end, range }) => [
@@ -84,6 +86,7 @@ describe("loadCases", () => {
             ["a.cpp", "nameless_0", 11, 11, false],
             ["b.cpp", "nameless_1", 4, 4, false],
             ["b.cpp", "z", 11, 11, false],
+            ["c.cpp", "x", 4, 5, true],
         ]);
         fs.rmSync(root, { recursive: true });
     });

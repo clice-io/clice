@@ -16,6 +16,14 @@ bool DiskState::seen_missing(Fid fid) const {
     return it != files.end() && !it->second.seen;
 }
 
+bool DiskState::marked(Fid fid) {
+    if(auto it = files.find(fid); it != files.end() && it->second.marked) {
+        return *it->second.marked;
+    }
+    auto observed = current(fid);
+    return observed && observed->marked;
+}
+
 llvm::SmallVector<Fid> DiskState::take_changes() {
     changed.clear();
     return std::exchange(changes, {});
@@ -25,13 +33,13 @@ llvm::SmallVector<Fid> DiskState::take_changes() {
 /// a directory unreadable for a moment reads as a delete (dependents
 /// invalidated, the file's index entries withheld) and then as a change.
 void DiskState::saw_missing(Fid fid) {
-    saw(fid, std::nullopt, true);
+    saw(fid, std::nullopt, true, std::nullopt);
 }
 
 void DiskState::observe(Fid fid, const DiskObservation& obs) {
-    saw(fid, obs.hash, obs.reliable);
+    saw(fid, obs.hash, obs.reliable, obs.marked);
     if(obs.reliable) {
-        files[fid].pair = Pair{.stamp = obs.stamp, .hash = obs.hash};
+        files[fid].pair = Pair{.stamp = obs.stamp, .hash = obs.hash, .marked = obs.marked};
     }
 }
 
@@ -59,9 +67,8 @@ std::optional<DiskObservation> DiskState::current(Fid fid) {
 }
 
 std::optional<DiskObservation> DiskState::observe_for(Fid fid, const fs::Status& status) {
-    auto stamp = Stamp::of(status);
-    if(auto hash = cached_hash(fid, stamp)) {
-        return DiskObservation{.stamp = stamp, .hash = *hash, .paired = true, .reliable = true};
+    if(auto observed = cached(fid, Stamp::of(status))) {
+        return observed;
     }
     return read(fid);
 }
@@ -77,14 +84,18 @@ std::uint64_t DiskState::unchanged_hash(Fid fid,
     return observed && observed->stamp == stamp ? observed->hash : 0;
 }
 
-std::optional<std::uint64_t> DiskState::cached_hash(Fid fid, const Stamp& stamp) {
+std::optional<DiskObservation> DiskState::cached(Fid fid, const Stamp& stamp) {
     auto it = files.find(fid);
     if(it == files.end() || !it->second.pair || it->second.pair->stamp != stamp) {
         return std::nullopt;
     }
-    auto hash = it->second.pair->hash;
-    saw(fid, hash, true);
-    return hash;
+    auto pair = *it->second.pair;
+    saw(fid, pair.hash, true, pair.marked);
+    return DiskObservation{.stamp = stamp,
+                           .hash = pair.hash,
+                           .marked = pair.marked,
+                           .paired = true,
+                           .reliable = true};
 }
 
 void DiskState::end_turn() {
@@ -140,7 +151,7 @@ void DiskState::add_root(llvm::StringRef dir, Policy rule) {
 
 void DiskState::consumed(Fid fid, std::uint64_t hash) {
     if(!files.contains(fid)) {
-        saw(fid, hash, false);
+        saw(fid, hash, false, std::nullopt);
     }
 }
 
@@ -269,16 +280,24 @@ std::shared_ptr<const Flag> DiskState::watch(std::string path, std::function<voi
     return std::shared_ptr<const Flag>(watch, &watch->flag);
 }
 
-void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool stable) {
+void DiskState::saw(Fid fid,
+                    std::optional<std::uint64_t> hash,
+                    bool stable,
+                    std::optional<bool> marked) {
     auto [it, first] = files.try_emplace(fid);
     auto& file = it->second;
     if(first) {
         file.root = root_of(path(fid));
     }
     auto previous = std::exchange(file.seen, hash);
-    bool moved = !first && previous != hash;
+    bool remarked = marked && file.marked && *marked != *file.marked;
+    bool moved = !first && (previous != hash || remarked);
+    if(marked) {
+        file.marked = marked;
+    }
     if(!hash) {
         file.pair.reset();
+        file.marked.reset();
     }
     if(turn_open) {
         turn_looks.insert_or_assign(fid,

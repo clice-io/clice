@@ -203,9 +203,8 @@ std::unique_ptr<clang::CompilerInvocation>
             // only the mtime and must not make clang reject a PCH the master
             // still considers fresh. The size check stays, as it guards the
             // reader against offsets past the end of a shrunk file. A byte
-            // order mark added or dropped changes the size and not the text
-            // the master compares: the consumer finds the PCH unreadable,
-            // and it is built again (pch_suspect).
+            // order mark added or dropped changes the size and not the
+            // text: the master's check sees it too (Input::marked).
             front_opts.IncludeTimestamps = false;
             lang_opts.CompilingPCH = true;
             // The function templates the preamble uses are instantiated once,

@@ -225,13 +225,15 @@ public:
         if(!status || !buffer) {
             return status ? buffer.getError() : status.getError();
         }
+        auto bytes = (*buffer)->getBuffer();
         files.push_back({.path = path.str(),
-                         .hash = llvm::xxh3_64bits(vfs::without_bom((*buffer)->getBuffer()))});
+                         .hash = llvm::xxh3_64bits(vfs::without_bom(bytes)),
+                         .marked = vfs::bom_length(bytes) != 0});
         return std::make_unique<ReadFile>(*status, std::move(*buffer));
     }
 
 private:
-    /// The text a recorded read hands on, so the provider parses the bytes
+    /// The bytes a recorded read hands on, so the provider parses the file
     /// the record hashed.
     class ReadFile : public llvm::vfs::File {
     public:
@@ -293,7 +295,11 @@ struct ConfigFiles : clang::tidy::FileOptionsProvider {
     /// The places in them the parser's messages point at.
     std::vector<ErrorLocation> locations;
 
-    llvm::ErrorOr<clang::tidy::ClangTidyOptions> parse(llvm::MemoryBufferRef config) {
+    llvm::ErrorOr<clang::tidy::ClangTidyOptions> parse(llvm::MemoryBufferRef bytes) {
+        // Parsed as its text, so the parser's lines, columns and places are
+        // where the editor shows them.
+        llvm::MemoryBufferRef config(vfs::without_bom(bytes.getBuffer()),
+                                     bytes.getBufferIdentifier());
         std::string messages;
         llvm::raw_string_ostream os(messages);
         auto parsed = clang::tidy::parseConfigurationWithDiags(
@@ -859,9 +865,8 @@ auto CompilationUnit::take_tidy_findings() -> std::vector<clang::tidy::ClangTidy
         if(message.FilePath.empty()) {
             return;
         }
-        if(auto fid = file_id(message.FilePath); fid.isValid()) {
-            message.FileOffset = decompose(SM().getComposedLoc(fid, message.FileOffset)).offset;
-        }
+        auto fid = file_id(message.FilePath);
+        message.FileOffset = decompose(SM().getComposedLoc(fid, message.FileOffset)).offset;
     };
     for(auto& finding: findings) {
         if(auto it = reworded.find(finding.Message.Message); it != reworded.end()) {

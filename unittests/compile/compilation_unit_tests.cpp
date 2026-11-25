@@ -8,6 +8,7 @@ import :unittests.utils;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
 import :vfs.file_system;
+import :vfs.file_table;
 import :vfs.path;
 
 namespace clice::testing {
@@ -361,6 +362,12 @@ ZEST_CASE(MarkedFileText) {
     ZEXPECT(unit->create_location(header, 4) == location);
     // A place in the mark itself is the start of the text.
     ZEXPECT(unit->written_at(location.getLocWithOffset(-7)) == FileOffset{header, 0});
+    // The compile read the text and the mark.
+    auto deps = unit->deps();
+    auto dep = ranges::find(deps, TestVFS::path("a.h"), &ReportedInput::path);
+    ZASSERT(dep != deps.end());
+    ZEXPECT(dep->hash == llvm::xxh3_64bits("int a;\n"));
+    ZEXPECT(dep->marked);
 }
 
 ZEST_CASE(PrecompiledHeaderWhole) {

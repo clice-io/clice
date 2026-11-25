@@ -28,7 +28,7 @@ std::uint64_t consumed_hash(llvm::StringRef path) {
 bool confirmed(FileTable& pool, llvm::StringRef path) {
     auto status = fs::status(path);
     return status &&
-           pool.disk.cached_hash(pool.intern(Spelling::absolute(path)), vfs::Stamp::of(*status));
+           pool.disk.cached(pool.intern(Spelling::absolute(path)), vfs::Stamp::of(*status));
 }
 
 ZEST_SUITE(Inputs) {
@@ -94,6 +94,41 @@ ZEST_CASE(ImmediateEditDetected) {
                               generous_started_at());
     tmp.touch("dep.h", "int renamed();\n");
     ZASSERT(!inputs_hold(pool, snap));
+}
+
+ZEST_CASE(MarkAddedDetected) {
+    // The text stays as it was, but the compile read no byte order mark,
+    // which clang counts in what it built.
+    TempDir tmp;
+    tmp.touch("dep.h", "int value();\n");
+    auto dep = tmp.path("dep.h");
+    age_file(dep);
+
+    FileTable pool;
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
+    },
+                              generous_started_at());
+    ZASSERT(inputs_hold(pool, snap));
+    tmp.touch("dep.h", "\xEF\xBB\xBFint value();\n");
+    ZASSERT(!inputs_hold(pool, snap));
+}
+
+ZEST_CASE(MarkedBytesHold) {
+    TempDir tmp;
+    tmp.touch("dep.h", "\xEF\xBB\xBFint value();\n");
+    auto dep = tmp.path("dep.h");
+    age_file(dep);
+
+    FileTable pool;
+    auto snap =
+        intern_inputs(pool,
+                      {
+                          ReportedInput{.path = dep, .hash = consumed_hash(dep), .marked = true}
+    },
+                      generous_started_at());
+    ZASSERT(inputs_hold(pool, snap));
 }
 
 ZEST_CASE(EveryChangeFound) {

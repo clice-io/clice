@@ -103,7 +103,7 @@ tests/compile/languages/01_assembler
 
 保存为带字节顺序标记的 UTF-8 文件可与其他文件一样正常使用
 
-位置计算会跳过该标记，与编辑器显示文件的方式一致；编译则按编译器的方式读取文件，因此文件内嵌入的数据保留原始字节。
+位置计算会跳过该标记，与编辑器显示文件的方式一致；clice 则按编译器的方式读取文件：文件嵌入的数据保留原始字节。
 
 ```case
 tests/compile/encoding/01_byte_order_mark

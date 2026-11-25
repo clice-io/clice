@@ -186,8 +186,9 @@ public:
         auto bytes = buffer->getBuffer();
         auto [known, fresh] = files.try_emplace(&file.getFileEntry());
         if(fresh) {
-            known->second = {input_path(instance->getFileManager(), file),
-                             llvm::xxh3_64bits(vfs::without_bom(bytes))};
+            known->second = {.path = input_path(instance->getFileManager(), file),
+                             .hash = llvm::xxh3_64bits(vfs::without_bom(bytes)),
+                             .marked = vfs::bom_length(bytes) != 0};
         }
         auto entry = cache->directives(known->second.path, known->second.hash, bytes);
         if(!entry) {
@@ -211,6 +212,8 @@ public:
         std::string path;
 
         std::uint64_t hash = 0;
+
+        bool marked = false;
     };
 
     llvm::DenseMap<const clang::FileEntry*, Read> files;
@@ -294,7 +297,7 @@ public:
     }
 
     /// Fill ScanResult::deps once the scan ended: the files entered, by the
-    /// bytes read, and the places looked at that still hold nothing. A file
+    /// text read, and the places looked at that still hold nothing. A file
     /// `getter` read for its directives is known already.
     void finish(const DirectivesGetter& getter) {
         auto& files = sources.getFileManager();
@@ -307,7 +310,9 @@ public:
             if(auto known = getter.files.find(&entry->getFileEntry());
                known != getter.files.end()) {
                 if(seen.insert(known->second.path).second) {
-                    result.deps.push_back({.path = known->second.path, .hash = known->second.hash});
+                    result.deps.push_back({.path = known->second.path,
+                                           .hash = known->second.hash,
+                                           .marked = known->second.marked});
                 }
                 continue;
             }
@@ -318,7 +323,8 @@ public:
             auto buffer = sources.getBufferDataOrNone(fid);
             result.deps.push_back(
                 {.path = std::move(path),
-                 .hash = buffer ? llvm::xxh3_64bits(vfs::without_bom(*buffer)) : 0});
+                 .hash = buffer ? llvm::xxh3_64bits(vfs::without_bom(*buffer)) : 0,
+                 .marked = buffer && vfs::bom_length(*buffer) != 0});
         }
         // A file a check found was looked at, not read: it counts by what
         // the disk holds as the scan started.

@@ -14,7 +14,7 @@ struct IncludeTree {
     /// inclusion of it introduces a new node; the path is stored once.
     std::vector<std::string> paths;
 
-    /// Parallel to `paths`: hash of the bytes this compilation actually
+    /// Parallel to `paths`: hash of the text this compilation actually
     /// consumed per file (0 = the buffer was unavailable for hashing).
     /// Freshness baselines built from these describe what the index was
     /// built from, never a later disk state.

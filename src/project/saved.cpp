@@ -35,6 +35,11 @@ struct SavedInput {
 
     std::uint64_t hash;
 
+    /// Input::marked; absent from the records of a binary before it, whose
+    /// compiles read a file's text.
+    KANNOTATE(&marked, presence = optional)
+    bool marked = false;
+
     bool missing;
 };
 
@@ -727,7 +732,10 @@ std::string Project::serialize_precompiled_records() {
     auto dump_deps = [&](const Inputs& snap, std::vector<SavedInput>& out) {
         for(auto& dep: snap) {
             auto hash = dep.version.valid() ? file_table.version(dep.version).content_hash : 0;
-            out.push_back({table.add(dep.file), hash, dep.absent});
+            out.push_back({.path = table.add(dep.file),
+                           .hash = hash,
+                           .marked = dep.marked.value_or(false),
+                           .missing = dep.absent});
         }
     };
 
@@ -803,6 +811,7 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
                 continue;
             auto& input = inputs.emplace_back();
             input.file = *dep_file;
+            input.marked = dep.marked;
             input.absent = dep.missing;
             if(dep.hash != 0) {
                 input.version = file_table.intern_version(input.file, dep.hash);

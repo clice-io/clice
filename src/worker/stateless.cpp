@@ -172,8 +172,9 @@ static std::vector<ReportedInput> precompiled_deps(CompilationUnit& unit, bool s
     deps = unit.deps();
     if(source) {
         auto focus = unit.focus_file();
-        deps.emplace_back(std::string(unit.file_path(focus.file())),
-                          llvm::xxh3_64bits(focus.content()));
+        deps.push_back({.path = std::string(unit.file_path(focus.file())),
+                        .hash = llvm::xxh3_64bits(focus.content()),
+                        .marked = unit.marked(focus.file())});
     }
     return deps;
 }

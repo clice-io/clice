@@ -64,6 +64,9 @@ llvm::vfs::Status to_llvm(const fs::Status& status, llvm::StringRef name);
 struct DiskObservation {
     vfs::Stamp stamp;
     std::uint64_t hash = 0;
+    /// Whether the bytes start with a byte order mark, which the text the
+    /// hash describes leaves out.
+    bool marked = false;
     bool paired = false;
     bool reliable = false;
 };

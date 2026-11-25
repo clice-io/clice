@@ -798,7 +798,7 @@ struct Project {
     TreeRequest tree_request(Fid unit, const Candidate& candidate);
 
     /// Remember the tree a preprocess run under `request` took: the files it
-    /// read (`paths` with the hashes of the bytes read, the unit's own last),
+    /// read (`paths` with the hashes of the text read, the unit's own last),
     /// its include nodes over them, and every file it read or looked for
     /// (`deps`), the run started at `started_at`.
     void commit_tree(const TreeRequest& request,

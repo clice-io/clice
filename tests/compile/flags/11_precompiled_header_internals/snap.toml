@@ -324,3 +324,17 @@ references = ["include/shapes.h │ return 2 * shape.⟦radius⟧;", "double ⟦
 
 ["the server reads them alike".scoped]
 references = ["include/shapes.h │ return 2 * shape.⟦radius⟧;", "double ⟦radius⟧ = 0;"]
+
+["a mark added to the header"."$ clice index"]
+stdout = '''
+Indexed 5 translation units in #s: 6 file shards (# KB), 10 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["a mark added to the header"."$ clice index #2"]
+stdout = '''
+Indexed 1 translation unit in #s: 6 file shards (# KB), 10 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0

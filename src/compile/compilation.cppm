@@ -507,6 +507,10 @@ public:
     /// context's suffix.
     auto file_content(clang::FileID fid) -> llvm::StringRef;
 
+    /// Whether clang's buffer of `fid` starts with a byte order mark, which
+    /// its text leaves out (file_content).
+    bool marked(clang::FileID fid);
+
     /// The text of the buffer this compilation read for `fid`, or nullopt
     /// when it was never loaded here (e.g. a preamble header served from a
     /// PCH). Unlike file_content, never falls back to a fake buffer.
@@ -688,7 +692,7 @@ public:
     clang::TranslationUnitDecl* tu();
 
     /// The files this compilation read (include and __has_include targets),
-    /// each with the hash of the bytes the compiler actually consumed, and
+    /// each with the hash of the text the compiler actually consumed, and
     /// the places its failed lookups looked (see absent), hash 0.
     std::vector<ReportedInput> deps();
 

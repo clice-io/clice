@@ -159,7 +159,7 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
         tree.links.push_back(std::move(link));
     }
 
-    // Hash the consumed bytes per path from the compiler's own buffers.
+    // Hash the consumed text per path from the compiler's own buffers.
     // Freshness checks compare the disk against these, so they must
     // describe what the index was built from — a fid whose buffer never
     // loaded here (preamble header behind a PCH) contributes no hash and

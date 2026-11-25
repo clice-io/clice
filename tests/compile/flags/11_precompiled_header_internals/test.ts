@@ -51,3 +51,12 @@ test("the server reads them alike", async (t) => {
     await t.show("local", s.references(t.at("src/local.cpp", "double |radius;")));
     await t.show("scoped", s.references(t.at("src/local.cpp", "double |radius = 0")));
 });
+
+test("a mark added to the header", async (t) => {
+    // The header's text stays as it was, but the PCH holds its bytes: the
+    // run after an edit builds the PCH again for the unit it indexes.
+    await t.cli("index");
+    t.disk.write("include/shapes.h", "\uFEFF" + t.disk.read("include/shapes.h"));
+    t.disk.write("src/main.cpp", t.disk.read("src/main.cpp") + "\n");
+    await t.cli("index");
+});

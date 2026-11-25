@@ -44,10 +44,10 @@ ZEST_CASE(HardlinksReadApart) {
     ZASSERT(pool.disk.read(a_id));
 
     auto stamp = stamp_of(b);
-    ZASSERT(pool.disk.cached_hash(a_id, stamp));
-    ZASSERT(!pool.disk.cached_hash(b_id, stamp).has_value());
+    ZASSERT(pool.disk.cached(a_id, stamp));
+    ZASSERT(!pool.disk.cached(b_id, stamp).has_value());
     ZASSERT(pool.disk.read(b_id));
-    ZASSERT(pool.disk.cached_hash(b_id, stamp));
+    ZASSERT(pool.disk.cached(b_id, stamp));
 }
 
 ZEST_CASE(RenameSaveReads) {
@@ -71,12 +71,12 @@ ZEST_CASE(RenameSaveReads) {
     auto stamp = stamp_of(f);
     ZASSERT(stamp.size == first->stamp.size);
     ZASSERT(stamp.mtime_ns == first->stamp.mtime_ns);
-    ZASSERT(!pool.disk.cached_hash(fid, stamp).has_value());
+    ZASSERT(!pool.disk.cached(fid, stamp).has_value());
 
     auto reread = pool.disk.read(fid);
     ZASSERT(reread);
     ZASSERT(reread->hash != first->hash);
-    ZASSERT(pool.disk.cached_hash(fid, reread->stamp));
+    ZASSERT(pool.disk.cached(fid, reread->stamp));
 }
 
 ZEST_CASE(FastPathChecksIdentity) {
@@ -93,7 +93,7 @@ ZEST_CASE(FastPathChecksIdentity) {
     auto read = pool.disk.read(fid);
     ZASSERT(read);
     auto vid = pool.intern_version(fid, read->hash);
-    ZASSERT(pool.disk.cached_hash(fid, read->stamp));
+    ZASSERT(pool.disk.cached(fid, read->stamp));
 
     tmp.touch("f.h.tmp", "int v2();\n");
     ZASSERT(!fs::rename(tmp.path("f.h.tmp"), f));
@@ -118,7 +118,7 @@ ZEST_CASE(PairNeedsSameFile) {
     auto other = read->stamp;
     other.id.device += 1;
     other.id.file += 1;
-    ZASSERT(!pool.disk.cached_hash(fid, other).has_value());
+    ZASSERT(!pool.disk.cached(fid, other).has_value());
 }
 
 #ifndef _WIN32
@@ -219,7 +219,7 @@ ZEST_CASE(FreshReadNotConfirmed) {
     auto vid = pool.intern_version(fid, read->hash);
 
     ZASSERT(pool.check_version(vid) == vfs::DiskState::CheckResult::Fresh);
-    ZASSERT(!pool.disk.cached_hash(fid, read->stamp).has_value());
+    ZASSERT(!pool.disk.cached(fid, read->stamp).has_value());
 }
 
 ZEST_CASE(ReadDropsBom) {

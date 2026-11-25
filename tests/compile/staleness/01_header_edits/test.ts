@@ -86,12 +86,15 @@ test("same bytes are no change", async (t) => {
 });
 
 test("a mark added to a precompiled header", async (t) => {
-    // The text stays as it was, but clang checks a precompiled input by its
-    // size: the next compile finds the PCH unreadable and it is built again.
+    // The text stays as it was, but the PCH holds the header's bytes: the
+    // next compile builds it again, once.
     const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("main.cpp")).toEqual([]);
     t.disk.write("pre.h", "\uFEFF" + t.disk.read("pre.h"));
     s.edit("main.cpp", { replace: "return pre();", with: "return pre() + 0;" });
+    expect(await s.errors("main.cpp")).toEqual([]);
+    expect((await builds(s, "main.cpp")).pch).toBe(2);
+    s.edit("main.cpp", { replace: "return pre() + 0;", with: "return pre() + 1;" });
     expect(await s.errors("main.cpp")).toEqual([]);
     expect((await builds(s, "main.cpp")).pch).toBe(2);
 });

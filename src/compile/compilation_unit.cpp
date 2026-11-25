@@ -570,11 +570,21 @@ auto CompilationUnit::create_location(clang::FileID fid, std::uint32_t offset)
 auto CompilationUnit::bom_length(clang::FileID fid) -> std::uint32_t {
     auto [it, inserted] = bom_lengths.try_emplace(fid, 0);
     if(inserted) {
-        if(auto buffer = SM().getBufferDataOrNone(fid)) {
+        if(auto buffer = SM().getBufferDataIfLoaded(fid)) {
             it->second = vfs::bom_length(*buffer);
+        } else if(SM().getFileEntryRefForID(fid)) {
+            // A PCH or a module holds the file, which this compile never
+            // read: its build read the bytes the disk holds (Input::marked),
+            // and loading them here would make them read
+            // (loaded_file_content).
+            it->second = vfs::starts_with_bom(file_path(fid)) ? vfs::byte_order_mark.size() : 0;
         }
     }
     return it->second;
+}
+
+bool CompilationUnit::marked(clang::FileID fid) {
+    return bom_length(fid) != 0;
 }
 
 auto FocusFile::file() -> clang::FileID {
@@ -748,9 +758,13 @@ auto CompilationUnit::keywords() -> const clang::IdentifierTable& {
 }
 
 std::vector<ReportedInput> CompilationUnit::deps() {
-    llvm::StringMap<std::uint64_t> deps;
+    llvm::StringMap<ReportedInput> deps;
+    auto consumed = [](ReportedInput& dep, llvm::StringRef bytes) {
+        dep.hash = llvm::xxh3_64bits(vfs::without_bom(bytes));
+        dep.marked = vfs::bom_length(bytes) != 0;
+    };
 
-    // Hash the buffer the compiler read for this fid — the consumed bytes.
+    // Hash the text of the buffer the compiler read for this fid.
     // The same path can appear under several fids (repeated includes); any
     // of their buffers holds the same content, so the first one wins.
     // LIMITATION: clang gives the hardlinked spellings of one file one
@@ -764,10 +778,10 @@ std::vector<ReportedInput> CompilationUnit::deps() {
         if(path.empty()) {
             return;
         }
-        auto it = deps.try_emplace(path, 0).first;
-        if(it->second == 0) {
+        auto& dep = deps[path];
+        if(dep.hash == 0) {
             if(auto buffer = SM().getBufferDataOrNone(fid)) {
-                it->second = llvm::xxh3_64bits(vfs::without_bom(*buffer));
+                consumed(dep, *buffer);
             }
         }
     };
@@ -788,10 +802,10 @@ std::vector<ReportedInput> CompilationUnit::deps() {
         if(path.empty()) {
             return;
         }
-        auto it = deps.try_emplace(path, 0).first;
-        if(it->second == 0) {
+        auto& dep = deps[path];
+        if(dep.hash == 0) {
             if(auto buffer = SM().getMemoryBufferForFileOrNone(*file)) {
-                it->second = llvm::xxh3_64bits(vfs::without_bom(buffer->getBuffer()));
+                consumed(dep, buffer->getBuffer());
             }
         }
     };
@@ -826,7 +840,8 @@ std::vector<ReportedInput> CompilationUnit::deps() {
     result.reserve(deps.size());
 
     for(auto& dep: deps) {
-        result.emplace_back(dep.getKey().str(), dep.getValue());
+        dep.second.path = dep.getKey().str();
+        result.push_back(std::move(dep.second));
     }
     for(auto& path: absent()) {
         result.push_back({.path = std::move(path), .absent = true});

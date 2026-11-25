@@ -167,7 +167,8 @@ bool inputs_hold(FileTable& files, const Inputs& snap, Fid any_text) {
         // Missing means gone now — a change, since the build saw the file.
         // Unreadable cannot prove the disk unchanged and counts as changed
         // — conservative, retried by the rebuild's capture.
-        return files.check_version(dep.version) != vfs::DiskState::CheckResult::Fresh;
+        return files.check_version(dep.version) != vfs::DiskState::CheckResult::Fresh ||
+               (dep.marked && files.disk.marked(dep.file) != *dep.marked);
     };
     return ranges::count_if(snap, [&](const Input& dep) {
                return changed(dep) && (dep.absent || dep.file != any_text);
@@ -220,8 +221,10 @@ Inputs intern_inputs(FileTable& files,
             if(hash == 0) {
                 continue;
             }
+            dep.marked = files.disk.marked(dep.file);
         } else {
             files.disk.consumed(dep.file, hash);
+            dep.marked = file.marked;
         }
 
         dep.version = files.intern_version(dep.file, hash);

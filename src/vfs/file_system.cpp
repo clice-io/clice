@@ -446,6 +446,7 @@ std::expected<ObservedFile, FileError> read_observed(llvm::StringRef path, std::
     if(auto error = file->read_to_end(result.text)) {
         return failed(FileError::Operation::Read, path, error);
     }
+    result.obs.marked = bom_length(result.text) != 0;
     result.text.erase(0, result.text.size() - without_bom(result.text).size());
     result.obs.hash = llvm::xxh3_64bits(result.text);
 
