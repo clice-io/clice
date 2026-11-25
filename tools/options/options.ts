@@ -1056,11 +1056,18 @@ async function main(): Promise<void> {
             hostTriple() ??
             usageError(`no xclang for ${process.platform}: pass --include and --clang`);
         const external = bazelExternal();
-        include ??= path.join(external, `xclang++xclang+libclang_${triple}`, "include");
-        clang ??= path.join(external, `xclang++xclang+xclang_${triple}`, "bin", "clang");
-        for (const fetched of [include, clang]) {
-            if (!fs.existsSync(fetched)) {
-                fail(`${fetched} is missing: build clice first, or pass --include and --clang`);
+        const fetched: string[] = [];
+        if (include === undefined) {
+            include = path.join(external, `xclang++xclang+libclang_${triple}`, "include");
+            fetched.push(include);
+        }
+        if (clang === undefined) {
+            clang = path.join(external, `xclang++xclang+xclang_${triple}`, "bin", "clang");
+            fetched.push(clang);
+        }
+        for (const file of fetched) {
+            if (!fs.existsSync(file)) {
+                fail(`${file} is missing: build clice first, or pass --include and --clang`);
             }
         }
     }
