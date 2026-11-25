@@ -1,7 +1,6 @@
 // The class name highlights wherever it names the class, inside `~Name` too;
-// a constructor or destructor only its own declarations and uses. A
-// construction that spells no constructor name reaches the constructor
-// through its parenthesis.
+// a constructor or destructor only its own declarations and uses, a
+// construction at the class's name that calls the constructor.
 
 struct §(class_decl)Session {
     §(ctor_decl)Session(int id);

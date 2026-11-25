@@ -78,6 +78,26 @@ Holder() = default
 '''
 range = "⟦Holder⟧() = default;"
 
+[test.initializers.index]
+markdown = '''
+**method** `Sized` · struct `Sized`
+
+```cpp
+Sized(int size) noexcept
+```
+'''
+range = "⟦Sized⟧(int size) noexcept : Base(size), area{size * size} {}"
+
+[test.initializers.ast]
+markdown = '''
+**method** `Sized` · struct `Sized`
+
+```cpp
+Sized(int size) noexcept
+```
+'''
+range = "⟦Sized⟧(int size) noexcept : Base(size), area{size * size} {}"
+
 [test.record.index]
 markdown = '''
 **struct** `Point`
