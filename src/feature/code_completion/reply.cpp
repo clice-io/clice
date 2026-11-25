@@ -502,6 +502,58 @@ bool in_global_fragment(llvm::StringRef content,
     return fragment;
 }
 
+/// Whether `text` starts with a brace group the next initializer's `,`,
+/// a pack's `...` or the constructor's body follows, rather than with the
+/// body itself.
+bool braced_initializer(llvm::StringRef text, const clang::LangOptions& options) {
+    Lexer lexer(text, options);
+    if(lexer.advance().kind != clang::tok::l_brace) {
+        return false;
+    }
+    for(std::uint32_t depth = 1; depth != 0;) {
+        auto token = lexer.advance();
+        if(token.is_eof()) {
+            return false;
+        }
+        if(token.kind == clang::tok::l_brace) {
+            depth += 1;
+        } else if(token.kind == clang::tok::r_brace) {
+            depth -= 1;
+        }
+    }
+    auto next = lexer.advance().kind;
+    return next == clang::tok::comma || next == clang::tok::l_brace || next == clang::tok::ellipsis;
+}
+
+/// What of `name`, a base's or a member's, the name typed stands for when
+/// `rest`, the text after it, writes the rest of a name: the head of `name`
+/// whose tail `rest` starts with, `ns` of `ns::Seed` before `::Seed(1)`;
+/// otherwise `name` without the template arguments it ends in, which `rest`
+/// spells another way.
+llvm::StringRef written_head(llvm::StringRef name, llvm::StringRef rest) {
+    for(std::size_t i = 1; i < name.size(); i += 1) {
+        auto tail = name.drop_front(i);
+        if((tail.starts_with("<") || tail.starts_with("::")) && rest.starts_with(tail)) {
+            return name.take_front(i);
+        }
+    }
+    if(!name.ends_with(">")) {
+        return name;
+    }
+    std::uint32_t depth = 0;
+    for(auto i = name.size(); i != 0; i -= 1) {
+        if(name[i - 1] == '>') {
+            depth += 1;
+        } else if(name[i - 1] == '<') {
+            depth -= 1;
+            if(depth == 0) {
+                return name.take_front(i - 1);
+            }
+        }
+    }
+    return name;
+}
+
 /// What a member access reaches without an object: a static member.
 bool static_member(const clang::NamedDecl* decl) {
     if(const auto* method = llvm::dyn_cast_or_null<clang::CXXMethodDecl>(decl->getAsFunction())) {
@@ -758,7 +810,9 @@ Reply::Reply(Completing& completing,
     follows = after.starts_with("(")   ? Follows::Parenthesis
               : after.starts_with("<") ? Follows::Angle
               : after.starts_with(":") ? Follows::Colon
-                                       : Follows::Nothing;
+              : constructor_initializers() && braced_initializer(after, sema.getLangOpts())
+                  ? Follows::BracedInitializer
+                  : Follows::Nothing;
 
     auto* module = sema.getCurrentModule();
     bool named_module = module && module->isNamedModule();
@@ -816,13 +870,20 @@ bool Reply::unqualified() const {
         case Kind::CCC_ParenthesizedExpression:
         case Kind::CCC_Type:
         case Kind::CCC_TopLevelOrExpression: return true;
-        case Kind::CCC_Symbol:
+        // Unqualified, a symbol is a constructor's initializer: a base or a
+        // member, never another namespace's name.
+        case Kind::CCC_Symbol: return false;
         case Kind::CCC_SymbolOrNewName: {
             auto spec = context.getCXXScopeSpecifier();
             return !spec || (*spec)->isEmpty();
         }
         default: return false;
     }
+}
+
+bool Reply::constructor_initializers() const {
+    return context.getKind() == clang::CodeCompletionContext::CCC_Symbol &&
+           !context.getCXXScopeSpecifier();
 }
 
 bool Reply::expects_function() const {
@@ -960,7 +1021,7 @@ void Reply::add_item(const Candidate& candidate) {
 void Reply::add_candidates(llvm::MutableArrayRef<clang::CodeCompletionResult> candidates) {
     types::TemplateResolver resolver(sema.getASTContext());
     auto* naming = unchecked_naming_class(sema, context);
-    for(auto& candidate: candidates) {
+    for(auto [index, candidate]: views::enumerate(candidates)) {
         switch(candidate.Kind) {
             case clang::CodeCompletionResult::RK_Keyword:
                 if(allowed(candidate.Keyword)) {
@@ -970,7 +1031,13 @@ void Reply::add_candidates(llvm::MutableArrayRef<clang::CodeCompletionResult> ca
                 }
                 break;
 
-            case clang::CodeCompletionResult::RK_Pattern: add_pattern(candidate); break;
+            case clang::CodeCompletionResult::RK_Pattern:
+                if(constructor_initializers()) {
+                    add_initializer(candidate, index);
+                } else {
+                    add_pattern(candidate);
+                }
+                break;
 
             case clang::CodeCompletionResult::RK_Macro: add_macro(candidate); break;
 
@@ -1040,6 +1107,66 @@ void Reply::add_pattern(const clang::CodeCompletionResult& candidate) {
     if(allowed(pattern.getTypedText())) {
         add_keyword_pattern(pattern, candidate.Priority);
     }
+}
+
+void Reply::add_initializer(const clang::CodeCompletionResult& candidate, std::uint32_t order) {
+    const auto* pattern = candidate.Pattern;
+    // LIMITATION: a virtual base is initialized before the other bases,
+    // where Sema does not list it: with one, the order shown and the
+    // initializer ranked next may be off.
+    Candidate item{
+        .label = pattern->getTypedText(),
+        .kind = protocol::CompletionItemKind::Class,
+        .documented = candidate.Declaration,
+        .relevance = priority_weight(candidate.Priority),
+        .order = order,
+    };
+    auto fields = llvm::cast<clang::CXXConstructorDecl>(sema.CurContext)->getParent()->fields();
+    if(auto field = ranges::find_if(
+           fields,
+           [&](const clang::FieldDecl* field) { return field->getName() == item.label; });
+       field != fields.end()) {
+        // A member's candidate carries its class, or the member itself when
+        // its type is no class. A base the member's name hides cannot be
+        // initialized by that name.
+        const auto* record = (*field)->getType()->getAsCXXRecordDecl();
+        if(candidate.Declaration !=
+           (record ? static_cast<const clang::NamedDecl*>(record) : *field)) {
+            return;
+        }
+        item.kind = protocol::CompletionItemKind::Field;
+        item.documented = *field;
+        // For a member whose class has declared no constructor yet, as an
+        // aggregate's implicit ones are declared when first needed, Sema
+        // names the placeholder after the member rather than its type.
+        if(record) {
+            auto& ast = sema.getASTContext();
+            auto name = ast.DeclarationNames.getCXXConstructorName(ast.getCanonicalTagType(record));
+            if(record->lookup(name).empty()) {
+                using CK = clang::CodeCompletionString::ChunkKind;
+                clang::CodeCompletionBuilder builder(completing.info.getAllocator(),
+                                                     completing.info);
+                auto type = (*field)->getType().getAsString(completion_policy(sema));
+                builder.AddTypedTextChunk(builder.getAllocator().CopyString(item.label));
+                builder.AddChunk(CK::CK_LeftParen);
+                builder.AddPlaceholderChunk(builder.getAllocator().CopyString(type));
+                builder.AddChunk(CK::CK_RightParen);
+                pattern = builder.TakeString();
+            }
+        }
+    }
+    item.signature = extract_signature(*pattern, /*qualifiers=*/false);
+    if(completing.options.bundle_overloads) {
+        item.bundle = item.label;
+    }
+    // The name typed begins a base's name written already.
+    if(follows == Follows::Colon || follows == Follows::Angle) {
+        item.insert =
+            written_head(item.label, completing.text.drop_front(prefix.whole.end).ltrim()).str();
+    } else if(follows != Follows::BracedInitializer) {
+        insert_call(item, *pattern, /*called_here=*/true);
+    }
+    add_item(item);
 }
 
 void Reply::add_keyword_pattern(const clang::CodeCompletionString& pattern, unsigned priority) {
