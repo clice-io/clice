@@ -106,6 +106,21 @@ items = [
     { label = "value(T)", kind = "Field", insert = "value(${1:T})", snippet = true },
 ]
 
+[default.member_named_as_base.completion]
+items = [
+    { label = "Base(…) +1 overload", kind = "Class", insert = "Base($0)", snippet = true },
+]
+
+[default.qualified_template_arguments.completion]
+items = [
+    { label = "Outer<int>::Inner<double>(double value)", kind = "Class", insert = "Outer<int>::Inner" },
+]
+
+[default.pack_braces.completion]
+items = [
+    { label = "Bases(Bases)", kind = "Class", insert = "Bases" },
+]
+
 [default.typed.completion]
 items = [
     { label = "width(int)", kind = "Field", insert = "width(${1:int})", snippet = true },
@@ -279,6 +294,22 @@ items = [
 items = [
     { label = "T(T)", kind = "Class", insert = "T(${1:T})", snippet = true },
     { label = "value(T)", kind = "Field", insert = "value(${1:T})", snippet = true },
+]
+
+[unbundled.member_named_as_base.completion]
+items = [
+    { label = "Base(Base)", kind = "Class", insert = "Base(${1:Base})", snippet = true },
+    { label = "Base(int)", kind = "Field", insert = "Base(${1:int})", snippet = true },
+]
+
+[unbundled.qualified_template_arguments.completion]
+items = [
+    { label = "Outer<int>::Inner<double>(double value)", kind = "Class", insert = "Outer<int>::Inner" },
+]
+
+[unbundled.pack_braces.completion]
+items = [
+    { label = "Bases(Bases)", kind = "Class", insert = "Bases" },
 ]
 
 [unbundled.typed.completion]

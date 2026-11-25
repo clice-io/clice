@@ -502,8 +502,9 @@ bool in_global_fragment(llvm::StringRef content,
     return fragment;
 }
 
-/// Whether `text` starts with a brace group the next initializer's `,` or
-/// the constructor's body follows, rather than with the body itself.
+/// Whether `text` starts with a brace group the next initializer's `,`,
+/// a pack's `...` or the constructor's body follows, rather than with the
+/// body itself.
 bool braced_initializer(llvm::StringRef text, const clang::LangOptions& options) {
     Lexer lexer(text, options);
     if(lexer.advance().kind != clang::tok::l_brace) {
@@ -521,7 +522,24 @@ bool braced_initializer(llvm::StringRef text, const clang::LangOptions& options)
         }
     }
     auto next = lexer.advance().kind;
-    return next == clang::tok::comma || next == clang::tok::l_brace;
+    return next == clang::tok::comma || next == clang::tok::l_brace || next == clang::tok::ellipsis;
+}
+
+/// `name` without the template arguments it ends in: `Outer<int>::Inner`
+/// of `Outer<int>::Inner<double>`.
+llvm::StringRef without_template_arguments(llvm::StringRef name) {
+    if(!name.ends_with(">")) {
+        return name;
+    }
+    std::uint32_t depth = 0;
+    for(auto i = name.size(); i != 0; i -= 1) {
+        if(name[i - 1] == '>') {
+            depth += 1;
+        } else if(name[i - 1] == '<' && --depth == 0) {
+            return name.take_front(i - 1);
+        }
+    }
+    return name;
 }
 
 /// What a member access reaches without an object: a static member.
@@ -1091,10 +1109,14 @@ void Reply::add_initializer(const clang::CodeCompletionResult& candidate, std::u
         .relevance = priority_weight(candidate.Priority),
         .order = order,
     };
+    // A member's candidate carries the member or its class, a dependent
+    // base's nothing.
     auto fields = llvm::cast<clang::CXXConstructorDecl>(sema.CurContext)->getParent()->fields();
-    if(auto field = ranges::find_if(
-           fields,
-           [&](const clang::FieldDecl* field) { return field->getName() == item.label; });
+    if(auto field = ranges::find_if(fields,
+                                    [&](const clang::FieldDecl* field) {
+                                        return candidate.Declaration &&
+                                               field->getName() == item.label;
+                                    });
        field != fields.end()) {
         item.kind = protocol::CompletionItemKind::Field;
         item.documented = *field;
@@ -1123,7 +1145,7 @@ void Reply::add_initializer(const clang::CodeCompletionResult& candidate, std::u
     }
     // A base's template arguments may be written already.
     if(follows == Follows::Angle) {
-        item.insert = llvm::StringRef(item.label).split('<').first.str();
+        item.insert = without_template_arguments(item.label).str();
     } else if(follows != Follows::BracedInitializer) {
         insert_call(item, *pattern, /*called_here=*/true);
     }

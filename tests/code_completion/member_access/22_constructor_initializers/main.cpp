@@ -68,4 +68,29 @@ struct Holder : T {
     Holder() : §(dependent_base) {}
 };
 
+template <typename T>
+struct Outer {
+    using Base = T;
+
+    template <typename U>
+    struct Inner {
+        Inner(U value);
+    };
+
+    struct Derived : Base {
+        int Base;
+
+        Derived() : §(member_named_as_base) {}
+    };
+};
+
+struct Wrapped : Outer<int>::Inner<double> {
+    Wrapped() : Inn§(qualified_template_arguments)<double>(1) {}
+};
+
+template <typename... Bases>
+struct Mixed : Bases... {
+    Mixed() : Bas§(pack_braces){}... {}
+};
+
 Widget::Widget(char) : wi§(typed) {}
