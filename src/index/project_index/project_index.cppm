@@ -758,11 +758,6 @@ private:
     /// Files whose internals record the next save rewrites.
     llvm::DenseSet<Fid> internals_changed;
 
-    /// The bytes of the files each unit's last run read that the disk no
-    /// longer held: a run reading them again reads them every time, and is
-    /// worth no reindex.
-    llvm::DenseMap<Fid, llvm::SmallVector<VersionID, 1>> stale_reads;
-
     /// The name search index with what it has not taken in yet.
     struct Search {
         SearchIndex index;

@@ -14,6 +14,17 @@ import :vfs.file_table;
 
 namespace clice::index {
 
+/// Whether `hash` names the bytes of the file at `path` with its byte order
+/// mark, which its text leaves out: a parse that took the file as embedded
+/// data before it included it reads those.
+static bool holds_bytes(llvm::StringRef path, std::uint64_t hash) {
+    if(!vfs::starts_with_bom(path)) {
+        return false;
+    }
+    auto bytes = vfs::read_bytes(path);
+    return bytes && llvm::xxh3_64bits(*bytes) == hash;
+}
+
 std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_index,
                                                            llvm::ArrayRef<Input> imports,
                                                            std::uint64_t command,
@@ -272,13 +283,10 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // A file the parse read whose bytes the disk no longer holds leaves the
     // index stale on arrival, though no look may ever report a change: a
     // parse reading it mid-write (a save in place truncates it first) read
-    // bytes the disk held for a moment. Not when the unit's last run read
-    // the same bytes as gone: every run reads them then (a header the parse
-    // holds as embedded bytes keeps the byte order mark the disk's hash
-    // leaves out). Nor for a file read through a module or the precompiled
-    // header: a reindex would read the same build again, which only a
-    // change reaching it rebuilds.
-    llvm::SmallVector<std::uint32_t> moved_on;
+    // bytes the disk held for a moment. Not one read through a module or
+    // the precompiled header: a reindex would read the same build again,
+    // which only a change reaching it rebuilds.
+    Fid moved_on;
     for(std::uint32_t i = 0; i < view.path_count(); i += 1) {
         llvm::StringRef path = view.path(i);
         auto hash = read_hash(i);
@@ -287,9 +295,11 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         // shard or build recorded one.
         if(hash != 0) {
             files.disk.consumed(file_ids_map[i], hash);
-            if(view.content_hash(i) != 0 && files.disk.seen_hash(file_ids_map[i]) != hash &&
-               files.disk.check(file_ids_map[i], hash) != vfs::DiskState::CheckResult::Fresh) {
-                moved_on.push_back(i);
+            if(view.content_hash(i) != 0 && !moved_on.valid() &&
+               files.disk.seen_hash(file_ids_map[i]) != hash &&
+               files.disk.check(file_ids_map[i], hash) != vfs::DiskState::CheckResult::Fresh &&
+               !holds_bytes(path, hash)) {
+                moved_on = file_ids_map[i];
             }
         } else if(auto status = fs::status(path)) {
             hash = files.disk.unchanged_hash(file_ids_map[i], *status, baseline_before_ns);
@@ -333,24 +343,11 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         }
         manifest.absent.push_back(files.intern_version(fid, 0));
     }
-    auto last = stale_reads.lookup(tu_path_id);
-    if(auto it = ranges::find_if(
-           moved_on,
-           [&](std::uint32_t local_id) { return !ranges::contains(last, version_of[local_id]); });
-       it != moved_on.end()) {
+    if(moved_on.valid()) {
         LOG_INFO("The index of {} read {} as the disk no longer holds it; it is indexed again",
                  tu_path,
-                 files.resolve(file_ids_map[*it]));
+                 files.resolve(moved_on));
         report.add_reindex(tu_path_id);
-    }
-    if(moved_on.empty()) {
-        stale_reads.erase(tu_path_id);
-    } else {
-        auto& stale = stale_reads[tu_path_id];
-        stale.clear();
-        for(auto local_id: moved_on) {
-            stale.push_back(version_of[local_id]);
-        }
     }
 
     // The inputs of the imported modules and of the precompiled header
