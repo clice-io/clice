@@ -177,9 +177,6 @@ std::optional<ArgClass> classify_option(unsigned id, llvm::ArrayRef<const char*>
 /// `--config` name is searched in clang's configuration directories.
 bool names_path(unsigned id, llvm::StringRef value);
 
-/// Check if this is the -Xclang pass-through option.
-bool is_xclang_option(unsigned id);
-
 /// The option `arg` sets: the one a `/clang:` passes clang's driver
 /// (`/clang:-std=c++20`) or an `-Xclang` cc1
 /// (`-Xclang -fdelayed-template-parsing`), read by clang's table, else

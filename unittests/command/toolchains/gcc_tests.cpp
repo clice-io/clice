@@ -719,7 +719,10 @@ echo ' {} -E -quiet query.c -dM' >&2
     f.resolve(edited);
     passed = vfs::read_text(args);
     ZASSERT(passed);
-    ZEXPECT(llvm::StringRef(*passed).contains("-trigraphs\n"));
+    lines.clear();
+    llvm::StringRef(*passed).split(lines, '\n', -1, false);
+    ZEXPECT(contains(lines, "-trigraphs"));
+    ZEXPECT(!contains(lines, "-ftrigraphs"));
 
     /// Two names of one option are two queries: GCC may take one alone.
     auto clang_name = add("b.c", {driver.c_str(), "-ftrigraphs", "-c"});

@@ -221,7 +221,7 @@ ZEST_CASE(LeftOutOptionsShare) {
     ZEXPECT(command("e.cpp") == command("f.cpp"));
 };
 
-ZEST_CASE(HeaderModuleFilesLeftOut) {
+ZEST_CASE(HeaderModuleFilesDropped) {
     /// The module files of a header module build are its header modules; a
     /// bare one elsewhere is a C++20 header unit, and GCC's -fmodules is its
     /// C++20 modules.
@@ -233,6 +233,13 @@ ZEST_CASE(HeaderModuleFilesLeftOut) {
                          "clang++ -std=c++20 -fmodules -fmodule-file=dep.pcm a.cpp"sv);
     database.add_command("/fake", "b.cpp", "clang++ -std=c++20 -fmodule-file=unit.pcm b.cpp"sv);
     database.add_command("/fake", "c.cpp", "g++ -std=c++20 -fmodules c.cpp"sv);
+    database.add_command("/fake",
+                         "d.cpp",
+                         "clang++ -std=c++20 -fmodule-file=dep.pcm -fmodules d.cpp"sv);
+    database.add_command(
+        "/fake",
+        "e.cpp",
+        "clang++ -std=c++20 -fmodules -fno-modules -fmodule-file=unit.pcm e.cpp"sv);
     auto rendered = [&](llvm::StringRef file) {
         return join_command(
             commands.render_full(database.candidate_entries(fake(file)).front().command));
@@ -240,6 +247,8 @@ ZEST_CASE(HeaderModuleFilesLeftOut) {
     ZEXPECT(rendered("a.cpp") == "clang++ -std=c++20");
     ZEXPECT(llvm::StringRef(rendered("b.cpp")).contains("-fmodule-file="));
     ZEXPECT(rendered("c.cpp") == "g++ -std=c++20 -fmodules");
+    ZEXPECT(rendered("d.cpp") == "clang++ -std=c++20");
+    ZEXPECT(llvm::StringRef(rendered("e.cpp")).contains("-fmodule-file="));
 };
 
 ZEST_CASE(KeptOptionsStayApart) {

@@ -97,6 +97,7 @@ ZEST_CASE(LeftOutOptions) {
                   OPT_fmodules_strict_decluse,
                   OPT_fmodules_cache_path,
                   OPT_fimplicit_module_maps,
+                  OPT_fmodule_format_EQ,
                   OPT_fplugin_EQ,
                   OPT_moutline_atomics,
                   OPT_fsanitize_recover_EQ,
@@ -133,9 +134,14 @@ ZEST_CASE(KeptOptions) {
     /// (__GCC_HAVE_DWARF2_CFI_ASM), the runtime library AArch64's function
     /// multiversioning follows, cl's /Zl (_VC_NODEFAULTLIB), ASan's field
     /// padding and the ignore lists exempting types from it, which change a
-    /// record's layout, the options undoing others that stay, and debug
+    /// record's layout, the options undoing others that stay, debug
     /// information (__GCC_HAVE_DWARF2_CFI_ASM in a C file without unwind
-    /// tables).
+    /// tables), the default DWARF version -gembed-source requires, the
+    /// integrated assembler (ARM's crypto macros), forced vtables,
+    /// speculative load hardening's __has_feature, the vector library
+    /// (__NO_MATH_ERRNO__), soft float, -undef, a specs file's include
+    /// directories, -nostdlib++, the tab stop -Wmisleading-indentation
+    /// measures by, and MinGW GCC's -mthreads (_MT).
     for(auto id: {OPT_O,
                   OPT_fPIC,
                   OPT_fstack_protector_strong,
@@ -177,7 +183,19 @@ ZEST_CASE(KeptOptions) {
                   OPT_falloc_token_max_EQ,
                   OPT_mllvm,
                   OPT_fuse_ld_EQ,
-                  OPT_nostdlib}) {
+                  OPT_nostdlib,
+                  OPT_fdebug_default_version,
+                  OPT_fno_integrated_as,
+                  OPT_fforce_emit_vtables,
+                  OPT_mspeculative_load_hardening,
+                  OPT_fveclib,
+                  OPT_msoft_float,
+                  OPT_undef,
+                  OPT_specs_EQ,
+                  OPT_nostdlibxx,
+                  OPT_mconstant_cfstrings,
+                  OPT_ftabstop,
+                  OPT_mthreads}) {
         ZEXPECT((classify_option(id, {}) == ArgClass::Semantic));
     }
     ZEXPECT((classify_option(OPT_W_Joined, {}) == ArgClass::Diagnostics));

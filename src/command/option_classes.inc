@@ -176,8 +176,11 @@ OPTION(fmodules_driver, LeftOut)
 
 // Clang's header modules and the layering check they enforce, which clice does
 // not build: a file compiles as if no module map named it (`-fmodules` itself
-// is Normalizer::normalize's: GCC's is its C++20 modules).
+// is Normalizer::normalize's: GCC's is its C++20 modules). The container of
+// its modules too, which -gmodules makes an object file: clice reads only the
+// raw ones it builds.
 OPTION(fmodule_name_EQ, LeftOut)
+OPTION(fmodule_format_EQ, LeftOut)
 OPTION(fmodule_map_file, LeftOut)
 OPTION(fmodules_decluse, LeftOut)
 OPTION(fmodules_strict_decluse, LeftOut)
@@ -270,7 +273,6 @@ OPTION(static_openmp, LeftOut)
 OPTION(mwindows, LeftOut)
 OPTION(mconsole, LeftOut)
 OPTION(mdll, LeftOut)
-OPTION(mthreads, LeftOut)
 OPTION(framework, LeftOut)
 OPTION(fapple_link_rtlib, LeftOut)
 OPTION(frtlib_add_rpath, LeftOut)
@@ -280,8 +282,10 @@ OPTION(time, LeftOut)
 
 // ...but Darwin's -static (__STATIC__), -undef, a specs file, which adds
 // include directories (newlib-nano's), the linker's name, by which the driver
-// picks the Windows toolchain (-fuse-ld=bfd), and -nostdlib and -nostdlib++, by
-// which PowerPC's driver accepts an IEEE long double.
+// picks the Windows toolchain (-fuse-ld=bfd), -nostdlib and -nostdlib++, by
+// which PowerPC's driver accepts an IEEE long double, and MinGW GCC's
+// -mthreads (_MT).
+OPTION(mthreads, Semantic)
 OPTION(nostdlib, Semantic)
 OPTION(static, Semantic)
 OPTION(undef, Semantic)

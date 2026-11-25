@@ -240,10 +240,6 @@ bool names_path(unsigned id, llvm::StringRef value) {
     }
 }
 
-bool is_xclang_option(unsigned id) {
-    return id == OPT_Xclang;
-}
-
 unsigned effective_option(const Arg& arg) {
     if(arg.opt_id != OPT__SLASH_clang && arg.opt_id != OPT_Xclang) {
         return arg.opt_id;

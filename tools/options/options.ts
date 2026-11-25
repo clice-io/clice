@@ -17,11 +17,12 @@
 /// them. --llvm is an llvm-project checkout of the release, for the driver's
 /// reads. The Markdown report goes to stdout, or to --out.
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
+import { runProcess } from "../client/process.ts";
 import { REPO_ROOT } from "../repo.ts";
 
 const INVALID = "INVALID";
@@ -729,29 +730,15 @@ function limiter(limit: number): <T>(task: () => Promise<T>) => Promise<T> {
 
 /// A compiler's run with what it printed, undecodable bytes replaced: some
 /// options make it print binary.
-function compile(clang: string, args: readonly string[], cwd: string): Promise<Ran> {
-    return new Promise((resolve) => {
-        const child = spawn(clang, args, {
-            cwd,
-            stdio: ["ignore", "pipe", "pipe"],
-            timeout: COMPILE_TIMEOUT,
-        });
-        const stdout: Buffer[] = [];
-        const stderr: Buffer[] = [];
-        child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
-        child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-        child.on("error", (error) => {
-            resolve({ status: null, stdout: "", stderr: `error: ${error.message}` });
-        });
-        child.on("close", (status, signal) => {
-            const printed = Buffer.concat(stderr).toString("utf8");
-            resolve({
-                status,
-                stdout: Buffer.concat(stdout).toString("utf8"),
-                stderr: signal === null ? printed : `${printed}\nerror: killed by ${signal}`,
-            });
-        });
-    });
+async function compile(clang: string, args: readonly string[], cwd: string): Promise<Ran> {
+    const ran = await runProcess(clang, args, { cwd, timeout: COMPILE_TIMEOUT });
+    let stderr = ran.stderr;
+    if (ran.error !== undefined) {
+        stderr += `\nerror: ${ran.error.message}`;
+    } else if (ran.signal !== null) {
+        stderr += `\nerror: killed by ${ran.signal}`;
+    }
+    return { status: ran.status, stdout: ran.stdout, stderr };
 }
 
 function firstError(stderr: string): string | undefined {
@@ -807,15 +794,19 @@ class Prober {
         const key = `${target.triple} ${target.cl}`;
         let baseline = this.baselines.get(key);
         if (baseline === undefined) {
-            baseline = this.compiled(target, []);
+            baseline = this.compiled(target, [], this.scratch);
             this.baselines.set(key, baseline);
         }
         return baseline;
     }
 
-    /// The compile of `args` on a target, or why it is no evidence: its cc1
-    /// job is rejected, or its preprocessor runs fail.
-    async compiled(target: Target, args: readonly string[]): Promise<Compiled | string> {
+    /// The compile of `args` on a target in `cwd`, or why it is no evidence:
+    /// its cc1 job is rejected, or its preprocessor runs fail.
+    async compiled(
+        target: Target,
+        args: readonly string[],
+        cwd: string,
+    ): Promise<Compiled | string> {
         const driver = [
             ...(target.cl ? ["--driver-mode=cl"] : []),
             "--no-default-config",
@@ -833,7 +824,7 @@ class Prober {
                     ...args,
                     this.input,
                 ],
-                this.scratch,
+                cwd,
             ),
         );
         const tokens = job.status === 0 ? compileJob(job.stderr) : undefined;
@@ -842,11 +833,7 @@ class Prober {
         }
         const preprocess = (extra: readonly string[], file: string): Promise<Ran> =>
             this.run(() =>
-                compile(
-                    this.clang,
-                    [...driver, ...language, ...extra, ...args, file],
-                    this.scratch,
-                ),
+                compile(this.clang, [...driver, ...language, ...extra, ...args, file], cwd),
             );
         const [macros, features] = await Promise.all([
             preprocess(target.cl ? ["/E", "/clang:-dM"] : ["-E", "-dM"], this.input),
@@ -894,7 +881,7 @@ class Prober {
                 }
                 const results: (Compiled | string)[] = [];
                 for (const args of variants(option, file)) {
-                    results.push(await this.compiled(target, args));
+                    results.push(await this.compiled(target, args, directory));
                 }
                 return { target, baseline, results };
             }),

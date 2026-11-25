@@ -1,3 +1,4 @@
-# -fwhole-program-vtables is only allowed with -flto.
+# -fsanitize=cfi is only allowed with -flto and -fvisibility=. The test's
+# compiler ships no CFI ignore list, which the driver would require.
 [units]
-"main.cpp" = ["-flto", "-fwhole-program-vtables"]
+"main.cpp" = ["-flto", "-fvisibility=hidden", "-fsanitize=cfi", "-fno-sanitize-ignorelist"]
