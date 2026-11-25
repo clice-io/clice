@@ -1121,23 +1121,25 @@ void Reply::add_initializer(const clang::CodeCompletionResult& candidate, std::u
         .relevance = priority_weight(candidate.Priority),
         .order = order,
     };
-    // A member's candidate carries its class, or the member itself when its
-    // type is no class.
     auto fields = llvm::cast<clang::CXXConstructorDecl>(sema.CurContext)->getParent()->fields();
-    if(auto field = ranges::find_if(fields,
-                                    [&](const clang::FieldDecl* field) {
-                                        const clang::NamedDecl* carried =
-                                            field->getType()->getAsCXXRecordDecl();
-                                        return field->getName() == item.label &&
-                                               candidate.Declaration == (carried ? carried : field);
-                                    });
+    if(auto field = ranges::find_if(
+           fields,
+           [&](const clang::FieldDecl* field) { return field->getName() == item.label; });
        field != fields.end()) {
+        // A member's candidate carries its class, or the member itself when
+        // its type is no class. A base the member's name hides cannot be
+        // initialized by that name.
+        const auto* record = (*field)->getType()->getAsCXXRecordDecl();
+        if(candidate.Declaration !=
+           (record ? static_cast<const clang::NamedDecl*>(record) : *field)) {
+            return;
+        }
         item.kind = protocol::CompletionItemKind::Field;
         item.documented = *field;
         // For a member whose class has declared no constructor yet, as an
         // aggregate's implicit ones are declared when first needed, Sema
         // names the placeholder after the member rather than its type.
-        if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(candidate.Declaration)) {
+        if(record) {
             auto& ast = sema.getASTContext();
             auto name = ast.DeclarationNames.getCXXConstructorName(ast.getCanonicalTagType(record));
             if(record->lookup(name).empty()) {

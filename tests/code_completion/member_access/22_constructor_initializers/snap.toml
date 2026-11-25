@@ -46,6 +46,11 @@ items = [
     { label = "Tagged<int>(int tag)", kind = "Class", insert = "Tagged" },
 ]
 
+[default.template_arguments_spelled_apart.completion]
+items = [
+    { label = "Tagged<int>(int tag)", kind = "Class", insert = "Tagged" },
+]
+
 [default.out_of_line.completion]
 items = [
     {
@@ -108,7 +113,7 @@ items = [
 
 [default.member_named_as_base.completion]
 items = [
-    { label = "Base(…) +1 overload", kind = "Class", insert = "Base($0)", snippet = true },
+    { label = "Base(int)", kind = "Field", insert = "Base(${1:int})", snippet = true },
 ]
 
 [default.qualified_template_arguments.completion]
@@ -124,17 +129,25 @@ items = [
 [default.base_named_as_member.completion]
 items = [
     {
-        label = "Grain(…) +1 overload",
-        kind = "Class",
-        insert = "Grain($0)",
+        label = "Grain(int)",
+        kind = "Field",
+        insert = "Grain(${1:int})",
         snippet = true,
-        documentation = "What a field grows from.",
+        documentation = "A member named after its base.",
     },
 ]
 
 [default.namespace_written.completion]
 items = [
     { label = "ns::Seed(int value)", kind = "Class", insert = "ns" },
+]
+
+[default.anonymous_union]
+wrong = "integer and real, the members of the anonymous union, are missing: clang skips a member without a name, and clice adds none"
+
+[default.anonymous_union.completion]
+items = [
+    { label = "is_int(bool)", kind = "Field", insert = "is_int(${1:bool})", snippet = true },
 ]
 
 [default.pack_braces.completion]
@@ -193,6 +206,11 @@ items = [
 ]
 
 [unbundled.template_arguments_spaced.completion]
+items = [
+    { label = "Tagged<int>(int tag)", kind = "Class", insert = "Tagged" },
+]
+
+[unbundled.template_arguments_spelled_apart.completion]
 items = [
     { label = "Tagged<int>(int tag)", kind = "Class", insert = "Tagged" },
 ]
@@ -319,7 +337,6 @@ items = [
 
 [unbundled.member_named_as_base.completion]
 items = [
-    { label = "Base(Base)", kind = "Class", insert = "Base(${1:Base})", snippet = true },
     { label = "Base(int)", kind = "Field", insert = "Base(${1:int})", snippet = true },
 ]
 
@@ -336,13 +353,6 @@ items = [
 [unbundled.base_named_as_member.completion]
 items = [
     {
-        label = "Grain(int value)",
-        kind = "Class",
-        insert = "Grain(${1:int value})",
-        snippet = true,
-        documentation = "What a field grows from.",
-    },
-    {
         label = "Grain(int)",
         kind = "Field",
         insert = "Grain(${1:int})",
@@ -354,6 +364,14 @@ items = [
 [unbundled.namespace_written.completion]
 items = [
     { label = "ns::Seed(int value)", kind = "Class", insert = "ns" },
+]
+
+[unbundled.anonymous_union]
+wrong = "integer and real, the members of the anonymous union, are missing: clang skips a member without a name, and clice adds none"
+
+[unbundled.anonymous_union.completion]
+items = [
+    { label = "is_int(bool)", kind = "Field", insert = "is_int(${1:bool})", snippet = true },
 ]
 
 [unbundled.pack_braces.completion]

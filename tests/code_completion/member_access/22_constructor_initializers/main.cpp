@@ -49,6 +49,8 @@ struct Label : Tagged<int> {
     Label(int) : Tag§(template_base_braces){1} {}
 
     Label(long) : Tagged§(template_arguments_spaced) <int>(1) {}
+
+    Label(short) : Tagged§(template_arguments_spelled_apart)< int >(1) {}
 };
 
 Widget::Widget(long) : §(out_of_line) {}
@@ -110,6 +112,17 @@ struct Seed {
 
 struct Seeded : ns::Seed {
     Seeded() : n§(namespace_written)::Seed(1) {}
+};
+
+struct Value {
+    bool is_int;
+
+    union {
+        int integer;
+        double real;
+    };
+
+    Value() : §(anonymous_union) {}
 };
 
 template <typename... Bases>
