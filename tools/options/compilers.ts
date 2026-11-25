@@ -152,7 +152,7 @@ function cl(program: string, scratch: string): Compiler {
     };
 }
 
-interface Finding {
+export interface Finding {
     option: Option;
     compiler: string;
     language: string;
@@ -160,15 +160,23 @@ interface Finding {
     changes: string[];
 }
 
-export function render(header: readonly string[], findings: readonly Finding[]): string {
+/// The changes clice does not follow by design, by option, with the reason
+/// a report gives.
+export const ACCEPTED: ReadonlyMap<string, string> = new Map([
+    [
+        "_SLASH_Zc___cplusplus",
+        "clang-cl's __cplusplus follows the standard whatever /Zc:__cplusplus says, and a cl command gets clang-cl's",
+    ],
+]);
+
+/// Each option's findings, one line per sample, the compilers sharing a
+/// change on one line.
+function optionLines(findings: readonly Finding[]): string[] {
     const groups = new Map<string, Finding[]>();
     for (const finding of findings) {
         groups.set(finding.option.id, [...(groups.get(finding.option.id) ?? []), finding]);
     }
-    const lines = [...header, "", "## Options the table must keep", ""];
-    if (groups.size === 0) {
-        lines.push("None.");
-    }
+    const lines: string[] = [];
     for (const group of [...groups.values()].sort((a, b) =>
         (a[0]?.option.spelling ?? "").localeCompare(b[0]?.option.spelling ?? ""),
     )) {
@@ -176,7 +184,11 @@ export function render(header: readonly string[], findings: readonly Finding[]):
         if (first === undefined) {
             continue;
         }
-        lines.push(`- \`${first.option.spelling}\` ${first.option.id}`);
+        const reason = ACCEPTED.get(first.option.id);
+        lines.push(
+            `- \`${first.option.spelling}\` ${first.option.id}` +
+                (reason === undefined ? "" : `: ${reason}`),
+        );
         const shown = new Map<string, Finding>();
         for (const finding of group) {
             const key = `${finding.variant.join(" ")} ${finding.changes.join(" ")}`;
@@ -194,6 +206,23 @@ export function render(header: readonly string[], findings: readonly Finding[]):
             );
         }
     }
+    return lines;
+}
+
+/// The report: the options the table must keep, then the changes accepted.
+export function render(header: readonly string[], findings: readonly Finding[]): string {
+    const fresh = optionLines(findings.filter((finding) => !ACCEPTED.has(finding.option.id)));
+    const lines = [
+        ...header,
+        "",
+        "## Options the table must keep",
+        "",
+        ...(fresh.length === 0 ? ["None."] : fresh),
+        "",
+        "## Accepted",
+        "",
+        ...optionLines(findings.filter((finding) => ACCEPTED.has(finding.option.id))),
+    ];
     return `${lines.join("\n")}\n`;
 }
 
