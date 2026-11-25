@@ -52,6 +52,16 @@ describe("unlabelledOffsets", () => {
         ).toEqual(["src/feature/a.cpp:3: auto offset = SM.getFileOffset(location);"]);
     });
 
+    test("a statement ends before its trailing comment", () => {
+        expect(
+            unlabelled(
+                "// Clang's offsets: read in the buffer they come from.",
+                "auto offset = SM.getFileOffset(location); // in the buffer",
+                "auto start = SM.getLocForStartOfFile(fid);",
+            ),
+        ).toEqual(["src/feature/a.cpp:3: auto start = SM.getLocForStartOfFile(fid);"]);
+    });
+
     test("the unit and its token map convert, and need none", () => {
         const line = "auto [fid, offset] = SM().getDecomposedLoc(location);";
         expect(unlabelledOffsets("src/compile/compilation_unit.cpp", line)).toEqual([]);

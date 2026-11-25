@@ -33,7 +33,7 @@ const COMMENT = /^\s*\/\//;
 /// it: a zero inside another call's arguments does not.
 const EXEMPT =
     /(?:\basync::sleep|timer->start|\bsleep_for)\((?:(?:chrono::)?milliseconds\(0\)|test_jitter\(\))\)/g;
-const STATEMENT_BOUNDARY = /[;{}]\s*$|^\s*\/\//;
+const STATEMENT_BOUNDARY = /[;{}]\s*(?:\/\/.*)?$|^\s*\/\//;
 
 function labelled(lines: readonly string[], index: number): boolean {
     // Back to the first line of the statement: the one after a line that

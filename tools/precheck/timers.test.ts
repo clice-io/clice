@@ -71,6 +71,16 @@ describe("unlabelledTimers", () => {
         ).toEqual(["src/a.cpp:3: co_await async::sleep(1s);"]);
     });
 
+    test("a statement ends before its trailing comment", () => {
+        expect(
+            unlabelled(
+                "// Hang detection: a hang.",
+                "co_await async::sleep(1s); // the first",
+                "co_await async::sleep(2s);",
+            ),
+        ).toEqual(["src/a.cpp:3: co_await async::sleep(2s);"]);
+    });
+
     test("a label without its why, or in prose, does not count", () => {
         expect(
             unlabelled(

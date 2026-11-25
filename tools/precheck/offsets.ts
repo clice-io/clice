@@ -31,7 +31,7 @@ const OFFSETS =
     /\b(?:getDecomposed(?:Expansion|Spelling)?Loc|getFileOffset|getComposedLoc|getLocForStartOfFile|getRawEncoding|translate(?:File)?LineCol|get(?:Spelling|Expansion|Presumed)?(?:Line|Column)Number)\(/;
 const LABEL = /^\s*\/\/+\s*Clang's offsets: \S/;
 const COMMENT = /^\s*\/\//;
-const STATEMENT_BOUNDARY = /[;{}]\s*$|^\s*\/\//;
+const STATEMENT_BOUNDARY = /[;{}]\s*(?:\/\/.*)?$|^\s*\/\//;
 
 function labelled(lines: readonly string[], index: number): boolean {
     // Back to the first line of the statement: the one after a line that
