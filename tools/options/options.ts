@@ -311,6 +311,19 @@ const CL_TARGET: Target = { name: "cl", triple: "x86_64-pc-windows-msvc", cl: tr
 /// The targets an option is probed on: cl's options in its driver mode, a
 /// target's options on every target, the rest on a few, and in cl's driver
 /// mode too when it takes them.
+/// What every probe of a target runs clang with: the target in its driver
+/// mode, and the language, C++ as clang-cl reads it or C++20.
+export function targetArguments(target: Target): { driver: string[]; language: string[] } {
+    return {
+        driver: [
+            ...(target.cl ? ["--driver-mode=cl"] : []),
+            "--no-default-config",
+            `--target=${target.triple}`,
+        ],
+        language: target.cl ? ["/TP"] : ["-x", "c++", "-std=c++20"],
+    };
+}
+
 export function probeTargets(option: Option, chain: readonly string[]): readonly Target[] {
     const cl = option.visibility.includes("CLOption");
     if (option.spelling.startsWith("/") || (cl && !option.visibility.includes("DefaultVis"))) {
@@ -325,6 +338,34 @@ export function probeTargets(option: Option, chain: readonly string[]): readonly
     return cl ? [...targets, CL_TARGET] : targets;
 }
 
+/// The values cl's own options commonly take (`/guard:cf`, `/fp:fast`,
+/// `/arch:AVX2`, `/Zc:inline`).
+const CL_SAMPLE = [
+    "1",
+    "2",
+    "3",
+    "4",
+    "-",
+    "cf",
+    "cf-",
+    "ehcont",
+    "s",
+    "t",
+    "d",
+    "fast",
+    "strict",
+    "precise",
+    "except",
+    "AVX2",
+    "AVX512",
+    "IA32",
+    "c++20",
+    "c++latest",
+    "c17",
+    "inline",
+    "strictStrings",
+];
+
 /// The arguments an option is probed with: a value of those the table
 /// lists, or a sample of the values options commonly take.
 export function variants(option: Option, file: string, previous?: Option): string[][] {
@@ -336,21 +377,24 @@ export function variants(option: Option, file: string, previous?: Option): strin
             ? []
             : (option.values ?? []).filter((value) => !(previous.values ?? []).includes(value));
     const listed = option.values && [...new Set([...added, ...option.values.slice(0, 8)])];
-    const values = listed ?? [
-        "1",
-        "2",
-        "none",
-        "all",
-        "default",
-        "full",
-        file,
-        "foo",
-        "fast",
-        "on",
-        "generic",
-        "hidden",
-        "static",
-    ];
+    const sample = option.spelling.startsWith("/")
+        ? [...CL_SAMPLE, file]
+        : [
+              "1",
+              "2",
+              "none",
+              "all",
+              "default",
+              "full",
+              file,
+              "foo",
+              "fast",
+              "on",
+              "generic",
+              "hidden",
+              "static",
+          ];
+    const values = listed ?? sample;
     return values.map((value) =>
         option.kind === "Separate" ? [option.spelling, value] : [option.spelling + value],
     );
@@ -705,14 +749,14 @@ const COMPILE_TIMEOUT = 60_000;
 /// The compiler runs at once.
 const JOBS = 8;
 
-interface Ran {
+export interface Ran {
     status: number | null;
     stdout: string;
     stderr: string;
 }
 
 /// Runs `task`s at most `limit` at a time.
-function limiter(limit: number): <T>(task: () => Promise<T>) => Promise<T> {
+export function limiter(limit: number): <T>(task: () => Promise<T>) => Promise<T> {
     let active = 0;
     const waiting: (() => void)[] = [];
     return async (task) => {
@@ -736,7 +780,7 @@ function limiter(limit: number): <T>(task: () => Promise<T>) => Promise<T> {
 
 /// A compiler's run with what it printed, undecodable bytes replaced: some
 /// options make it print binary.
-async function compile(clang: string, args: readonly string[], cwd: string): Promise<Ran> {
+export async function compile(clang: string, args: readonly string[], cwd: string): Promise<Ran> {
     const ran = await runProcess(clang, args, { cwd, timeout: COMPILE_TIMEOUT });
     let stderr = ran.stderr;
     if (ran.error !== undefined) {
@@ -761,7 +805,7 @@ function failure(ran: Ran): string {
     return firstError(ran.stderr) ?? printed?.trim() ?? `exit ${ran.status ?? "without status"}`;
 }
 
-interface Compiled {
+export interface Compiled {
     cc1: Cc1Argument[];
     /// None where the run printed no macro dump or feature answers: an option
     /// sending the output elsewhere (`-o`) or printing another (`-M`).
@@ -771,7 +815,7 @@ interface Compiled {
 
 /// Runs a clang on each option's sample values, a few runs at a time, against
 /// each target's compile without them.
-class Prober {
+export class Prober {
     private readonly run = limiter(JOBS);
     private readonly clang: string;
     private readonly scratch: string;
@@ -815,12 +859,7 @@ class Prober {
         args: readonly string[],
         cwd: string,
     ): Promise<Compiled | string> {
-        const driver = [
-            ...(target.cl ? ["--driver-mode=cl"] : []),
-            "--no-default-config",
-            `--target=${target.triple}`,
-        ];
-        const language = target.cl ? ["/TP"] : ["-x", "c++", "-std=c++20"];
+        const { driver, language } = targetArguments(target);
         const job = await this.run(() =>
             compile(
                 this.clang,
@@ -972,7 +1011,7 @@ export function featureProbes(featuresDef: string): string {
         .join("");
 }
 
-function fail(message: string): never {
+export function fail(message: string): never {
     console.error(message);
     process.exit(1);
 }
@@ -1031,7 +1070,41 @@ function bazelExternal(): string {
     return path.join(result.stdout.trim(), "external");
 }
 
-function read(file: string): string {
+/// The libclang include directory and the clang of the release: those given,
+/// else the host's xclang repositories in Bazel's output base.
+export function releaseTools(
+    include: string | undefined,
+    clang: string | undefined,
+): { include: string; clang: string } {
+    // The probes run in directories of their own: a path relative to here
+    // would name nothing there, a bare name still goes through PATH.
+    if (clang !== undefined && path.basename(clang) !== clang) {
+        clang = path.resolve(clang);
+    }
+    if (include !== undefined && clang !== undefined) {
+        return { include, clang };
+    }
+    const triple =
+        hostTriple() ?? fail(`no xclang for ${process.platform}: pass --include and --clang`);
+    const external = bazelExternal();
+    const fetched: string[] = [];
+    if (include === undefined) {
+        include = path.join(external, `xclang++xclang+libclang_${triple}`, "include");
+        fetched.push(include);
+    }
+    if (clang === undefined) {
+        clang = path.join(external, `xclang++xclang+xclang_${triple}`, "bin", "clang");
+        fetched.push(clang);
+    }
+    for (const file of fetched) {
+        if (!fs.existsSync(file)) {
+            fail(`${file} is missing: build clice first, or pass --include and --clang`);
+        }
+    }
+    return { include, clang };
+}
+
+export function read(file: string): string {
     try {
         return fs.readFileSync(file, "utf8");
     } catch (error) {
@@ -1045,32 +1118,7 @@ async function main(): Promise<void> {
         console.log(USAGE);
         return;
     }
-    let { include, clang } = values;
-    // The probes run in directories of their own: a path relative to here
-    // would name nothing there, a bare name still goes through PATH.
-    if (clang !== undefined && path.basename(clang) !== clang) {
-        clang = path.resolve(clang);
-    }
-    if (include === undefined || clang === undefined) {
-        const triple =
-            hostTriple() ??
-            usageError(`no xclang for ${process.platform}: pass --include and --clang`);
-        const external = bazelExternal();
-        const fetched: string[] = [];
-        if (include === undefined) {
-            include = path.join(external, `xclang++xclang+libclang_${triple}`, "include");
-            fetched.push(include);
-        }
-        if (clang === undefined) {
-            clang = path.join(external, `xclang++xclang+xclang_${triple}`, "bin", "clang");
-            fetched.push(clang);
-        }
-        for (const file of fetched) {
-            if (!fs.existsSync(file)) {
-                fail(`${file} is missing: build clice first, or pass --include and --clang`);
-            }
-        }
-    }
+    const { include, clang } = releaseTools(values.include, values.clang);
     const version = spawnSync(clang, ["--version"], { encoding: "utf8" });
     if (version.status !== 0) {
         fail(`${clang} --version: ${version.error?.message ?? version.stderr}`);

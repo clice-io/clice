@@ -101,7 +101,27 @@ box run $linux 'pixi run node tools/options/options.ts --previous ~/Options.inc.
 box cp $linux . build/options.md
 ```
 
-Hand the report and `option_classes.inc` to codex (the external-agents skill), to decide each suspicious and each new option against the criterion of the `.inc`'s header and answer each class it disputes with a counterexample: the command, the target, and what the analysis then reads otherwise. Probe each one with the release's clang, apply those that hold to the `.inc` (a line in its section, under a comment saying what the analysis reads), run the tool again, and resume the same codex session with the new report until a round brings no new confirmed counterexample. The unit tests and the cases run after the last change.
+Hand the report and `option_classes.inc` to codex (the external-agents skill), to decide each suspicious and each new option against the criterion of the `.inc`'s header and answer each class it disputes with a counterexample: the command, the target, and what the analysis then reads otherwise. Probe each one with the release's clang, apply those that hold to the `.inc` (a line in its section, under a comment saying what the analysis reads), run the tool again, and resume the same codex session with the new report until a round brings no new confirmed counterexample.
+
+Then check the whole table against what reads it, each report listing only what is new; a finding is an option to class again, or a disagreement clice keeps by design, added with its reason to the accepted list of the tool that reported it:
+
+- `tools/options/agreement.ts`: clice against clang. Every option the table keeps, with its sample values on its targets, becomes a compile_commands.json clice compiles (`clice inspect`), checked against clang's own macros and `__has_feature` answers for the command. A crash or a disagreement is a finding. About 40 minutes on the Linux box, after the build:
+
+  ```bash
+  box run $linux 'pixi run node tools/options/agreement.ts --clice build/RelWithDebInfo/bin/bin/clice --out build/agreement.md'
+  ```
+
+- `tools/options/compilers.ts`: the options the table leaves out, against the compilers clice queries but does not compile with: GCC's macros and include search for a GCC command, cl's macros for a cl command. A left-out option that changes them is a finding. GCC on a Linux box with the cross compilers compat installs and a few more, cl on a Windows box (its `/PD`), with the release's option table copied over:
+
+  ```bash
+  box run $linux 'sudo apt-get install -y -qq g++ g++-aarch64-linux-gnu g++-arm-linux-gnueabihf g++-riscv64-linux-gnu g++-powerpc64le-linux-gnu g++-s390x-linux-gnu g++-mipsel-linux-gnu g++-mingw-w64-x86-64 g++-mingw-w64-i686 gcc-arm-none-eabi gcc-riscv64-unknown-elf'
+  box run $linux 'pixi run node tools/options/compilers.ts --out build/gcc.md $(for g in gcc g++ aarch64-linux-gnu-g++ arm-linux-gnueabihf-g++ riscv64-linux-gnu-g++ powerpc64le-linux-gnu-g++ s390x-linux-gnu-g++ mipsel-linux-gnu-g++ x86_64-w64-mingw32-g++ i686-w64-mingw32-g++ arm-none-eabi-gcc riscv64-unknown-elf-gcc; do echo --gcc=$(command -v $g); done)'
+  box run $linux 'mkdir -p build/libclang/clang && cp -rL $(npx bazel info output_base)/external/xclang++xclang+libclang_x86_64-unknown-linux-gnu/include/clang/Options build/libclang/clang/'
+  box cp $linux $windows build/libclang
+  box run $windows 'vs=$("/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" -latest -property installationPath); pixi run node tools/options/compilers.ts --include build/libclang --cl "$(ls "$vs"/VC/Tools/MSVC/*/bin/Hostx64/x64/cl.exe | tail -n 1)" --out build/cl.md'
+  ```
+
+The unit tests and the cases run after the last change.
 
 ## Step 7: Write the Changelogs (REQUIRED)
 
