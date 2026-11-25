@@ -267,13 +267,13 @@ tests/code_completion/member_access/17_dot_on_pointer
 
 <!-- END CAPABILITY -->
 
-<!-- BEGIN CAPABILITY: supported -->
+<!-- BEGIN CAPABILITY: partial -->
 
 **Constructor initializers**
 
 After a constructor's `:` the bases and members not initialized yet are offered, bases first, in declaration order
 
-The one to initialize next comes first, by the order the bases and members are declared in, even where C++ initializes a virtual base before the others. Each takes the arguments of its constructor, and a base or member with several constructors is one item, unless overloads are listed apart. Names of other namespaces are not offered there.
+The one to initialize next comes first, though in a class with a virtual base it may not be. Each inserts the parameters of its constructor as placeholders, and a base or member with several constructors is one item, its parentheses left empty, unless overloads are listed apart. Names of other namespaces are not offered there.
 
 ```case
 tests/code_completion/member_access/22_constructor_initializers
