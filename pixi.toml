@@ -42,7 +42,7 @@ editor = ["editor", "node"]
 nodejs = ">=24"
 # The LLVM tools the package checks run (tools/release/system_libraries.ts), of
 # the xclang release MODULE.bazel builds with.
-xclang = "==23.1.5.2"
+xclang = "==23.1.5.3"
 
 # nodejs bundles npm on every platform including win-arm64. Floor 24: the tools
 # run as bare .ts (type stripping, default since node 23.6) and the
@@ -59,7 +59,7 @@ ninja = "*"
 [feature.test.target.linux-64.dependencies]
 # tools/release/symbolize.ts reads the release's GSYM with llvm-gsymutil, here
 # xclang's.
-xclang = "==23.1.5.2"
+xclang = "==23.1.5.3"
 
 # The NVCC toolchain tests drive a real nvcc; cudart is the runtime the
 # query compiles against and curand is included unconditionally by clang's
@@ -74,7 +74,7 @@ libcurand-dev = "*"
 [feature.toolchains.target.linux-64.dependencies]
 gxx = "15.*"
 clangxx = "21.*"
-xclang = "==23.1.5.2"
+xclang = "==23.1.5.3"
 dpcpp_linux-64 = "2026.2.*"
 
 [feature.toolchains.target.win-64.dependencies]
@@ -85,16 +85,16 @@ libcurand-dev = "*"
 
 # The same tools on arm64 Linux.
 [feature.test.target.linux-aarch64.dependencies]
-xclang = "==23.1.5.2"
+xclang = "==23.1.5.3"
 
 # On macOS, the system Apple clang emits vendor-specific flags that upstream
 # LLVM cannot parse. Providing upstream clang in PATH prevents fallback to
 # /usr/bin/clang++ for the tests.
 [feature.test.target.osx-64.dependencies]
-xclang = "==23.1.5.2"
+xclang = "==23.1.5.3"
 
 [feature.test.target.osx-arm64.dependencies]
-xclang = "==23.1.5.2"
+xclang = "==23.1.5.3"
 
 # On Windows LLVM's tools alone, for llvm-gsymutil: the clang the tests find
 # stays the one they find without it.
@@ -242,10 +242,10 @@ platforms = ["win-64", "linux-64", "osx-arm64", "osx-64", "linux-aarch64"]
 # Same mitigation as feature.test: the server the editors start queries
 # xclang's clang for the fixtures' commands.
 [feature.editor.target.osx-arm64.dependencies]
-xclang = "==23.1.5.2"
+xclang = "==23.1.5.3"
 
 [feature.editor.target.osx-64.dependencies]
-xclang = "==23.1.5.2"
+xclang = "==23.1.5.3"
 
 # The editors' fixtures (tests/editors/NN_name) copied for one editor's
 # end-to-end tests under .cache/editors/<editor>, each named after its

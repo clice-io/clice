@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect } from "vitest";
 import { test, type TestContext, type WorkerFault } from "@clice/tools/testing";
@@ -136,3 +137,33 @@ test("stack overflow while indexing", async (t) => {
     await t.show("crashes", await s.crashes());
     checkTrace(readLogs(t), "SL-");
 });
+
+// The trace is the crash's record: no clice process leaves the system a core
+// dump, which a core dump service (systemd-coredump, apport) would read whole
+// before the process dies, while a crashed worker's requests wait.
+test(
+    "no core dump",
+    {
+        except: {
+            win32: "Windows has no core limit",
+            darwin: "only Linux shows another process's limits",
+        },
+    },
+    async (t) => {
+        const s = await t.start({});
+        await s.diagnostics("main.cpp");
+        const { stateful, stateless } = (await s.stats()).workers;
+        const refused = [s.client.child.pid, ...stateful, ...stateless].map((pid) => {
+            const [, soft, hard] =
+                /^Max core file size\s+(\S+)\s+(\S+)/m.exec(
+                    fs.readFileSync(`/proc/${String(pid)}/limits`, "utf8"),
+                ) ?? [];
+            const filter = fs.readFileSync(`/proc/${String(pid)}/coredump_filter`, "utf8");
+            // A hard limit of 0, inherited, leaves no room for 1.
+            return soft === (hard === "0" ? "0" : "1") && Number.parseInt(filter, 16) === 0;
+        });
+        // The master and the worker that compiled the file at least.
+        expect(stateful.length + stateless.length).toBeGreaterThan(0);
+        expect(refused).toEqual(refused.map(() => true));
+    },
+);

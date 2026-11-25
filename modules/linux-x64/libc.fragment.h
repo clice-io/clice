@@ -2,3 +2,5 @@
 #include <stdio.h>
 #include <signal.h>
 #include <sys/types.h>
+#undef stdout
+#undef stderr

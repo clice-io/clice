@@ -61,6 +61,9 @@ struct SchedulerSample {
     /// can still give before reclaim starts to hurt (worker/resources).
     std::uint64_t headroom = 0;
 
+    /// Where `headroom` comes from.
+    sys::MemorySource source = sys::MemorySource::System;
+
     /// The headroom kept free: below it background work is killed, and no
     /// background request starts unless it leaves this much.
     std::uint64_t reserve = 0;
@@ -297,10 +300,8 @@ public:
     constexpr static chrono::seconds idle_scale_down{30};
 
     /// What an idle stateless process may hold of its own before a fresh
-    /// one, which holds a few MiB, replaces it. After a few requests an idle
-    /// worker held 58 to 104 MiB on macOS and Windows, in pages mimalloc keeps
-    /// past every collect and only the end of the process frees, and 28 MiB
-    /// on Linux.
+    /// one, which holds a few MiB, replaces it: what mimalloc keeps past
+    /// every collect only the end of the process frees.
     constexpr static std::uint64_t replace_above = 32ull << 20;
 
     /// A foreground request waiting this long with no idle worker grows the

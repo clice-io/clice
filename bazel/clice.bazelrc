@@ -13,18 +13,20 @@ common --cxxopt=-std=c++23 --host_cxxopt=-std=c++23
 # libc++'s std, which compiles like clice, without exceptions or RTTI.
 common --experimental_cpp_modules
 common --per_file_copt=.*/share/libc[+][+]/v1/std.*[.]cppm@-fno-rtti,-fno-exceptions
-common:macos --macos_minimum_os=15.0
+# The macOS clice runs on, for every host: on a Mac, Bazel would take its
+# SDK's version.
+common --macos_minimum_os=13.0
 
 # clice builds without exceptions or RTTI, and its libraries are configured
 # to match.
 common --@kotatsu//bazel:exceptions=false --@kotatsu//bazel:rtti=false
 common --@simdjson//:exceptions=false
-# The allocator of the Windows and macOS executables (src/mimalloc.cc)
-# leaves its memory to the process exit. On macOS mimalloc takes malloc over
-# itself, as its malloc zone also serves the system libraries; under ASan
-# (Debug), ASan's allocator does.
+# The executables' allocator (src/mimalloc.cc) leaves its memory to the
+# process exit. On Linux and macOS mimalloc takes malloc over itself, the
+# system libraries' allocations included (on Windows the flag does nothing:
+# src/mimalloc.cc routes them); under ASan (Debug), ASan's allocator does.
 common --@mimalloc//:skip_collect_on_exit=true
-common:macos --@mimalloc//:override=true
+common --@mimalloc//:override=true
 
 # The build types, each in a directory of its own: build/<type>/bin is
 # Bazel's output tree of it, clice and unittests in its bin/, clang's

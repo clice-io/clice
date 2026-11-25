@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <wchar.h>
 #include <signal.h>
 #include <time.h>
 #include <arm_neon.h>
@@ -153,6 +152,7 @@ import std.compat;
 #include "llvm/TargetParser/RISCVISAInfo.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/WindowsDriver/MSVCPaths.h"
+#include "simdjson.h"
 #include "kotatsu/async/async.h"
 #include "kotatsu/cli/cli.h"
 #include "kotatsu/cli/table.h"
@@ -212,6 +212,5 @@ import std.compat;
 #include "kotatsu/sys/windows.h"
 #include "kotatsu/zest/async.h"
 #include "kotatsu/zest/zest.h"
-#include "simdjson.h"
 #include "roaring/roaring.hh"
 #include "lmdb.h"

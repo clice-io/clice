@@ -983,10 +983,11 @@ struct Project {
     bool forget_pch_failure(llvm::StringRef pch_key);
 
     /// A document using the key's PCH was saved: its next build looks again
-    /// for the files this one did not find, which may have appeared where
-    /// its lookups record no place (a framework directory, a header map). A
-    /// build in flight looked before the save: it is overtaken, unless an
-    /// earlier save already waits for it.
+    /// for the files this one did not find or open, which may have appeared
+    /// where its lookups record no place (a framework directory, a header
+    /// map) or been let go by a program holding them. A build in flight
+    /// looked before the save: it is overtaken, unless an earlier save
+    /// already waits for it.
     void look_again(llvm::StringRef pch_key);
 
     /// A parse reading the pair died or found it unreadable: remove both

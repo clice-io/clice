@@ -53,6 +53,8 @@ jobs:
           MISSING=""
           for NAME in package-clice.x86_64-unknown-linux-gnu.tar.gz \
                       package-clice.aarch64-unknown-linux-gnu.tar.gz \
+                      package-clice.x86_64-unknown-linux-musl.tar.gz \
+                      package-clice.aarch64-unknown-linux-musl.tar.gz \
                       package-clice.aarch64-apple-darwin.tar.gz \
                       package-clice.x86_64-apple-darwin.tar.gz \
                       package-clice.x86_64-w64-mingw32.zip \
@@ -98,6 +100,12 @@ jobs:
             ext: tar.gz
             symbol_ext: tar.xz
           - triple: aarch64-unknown-linux-gnu
+            ext: tar.gz
+            symbol_ext: tar.xz
+          - triple: x86_64-unknown-linux-musl
+            ext: tar.gz
+            symbol_ext: tar.xz
+          - triple: aarch64-unknown-linux-musl
             ext: tar.gz
             symbol_ext: tar.xz
           - triple: aarch64-apple-darwin

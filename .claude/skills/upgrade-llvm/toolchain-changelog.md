@@ -33,6 +33,16 @@ files.
   on x64 Linux. CI builds every target on x64 Linux (`build_os` in `test.yml`)
   and tests on the target's runner. Check: `npx bazel build --platforms=@xclang//platforms:aarch64-apple-darwin //modules:demand`
   on x64 Linux.
+- **A bazelrc setting for one target OS never reaches the releases.**
+  `--enable_platform_specific_config` picks a `common:<os>` line by the
+  host, and CI builds every target on Linux: the line
+  `common:macos --@mimalloc//:override=true` reached only builds run on a
+  Mac, so the macOS releases allocated through libmalloc. A setting that
+  depends on the target is a `select()` on its constraints: the registry's
+  mimalloc takes malloc over on Linux and macOS alone, and clice sets the
+  flag for every target. Check: on Linux, `npx bazel aquery --platforms=@xclang//platforms:aarch64-apple-darwin 'mnemonic("CppCompile", @mimalloc//:mimalloc)'`
+  lists `-DMI_MALLOC_OVERRIDE`; `tools/release/system_libraries.ts` fails a
+  Linux or macOS package whose malloc is the system's.
 - **Every link of clice takes minutes.** The libclang archives hold ThinLTO
   bitcode; lld redoes its code generation on every link unless its cache has
   it. The cache directory is one path per OS (`.bazelrc`: the path is in the
@@ -66,6 +76,25 @@ files.
   23.1.2.8 puts `preprocessor_defines_feature` in the list. Check:
   `npx bazel aquery 'mnemonic("CppCompile", //modules:third_party)'` on macOS lists
   `-DSPDLOG_COMPILED_LIB`.
+
+## musl
+
+- **A musl build takes glibc's settings, or fails to choose.** glibc and
+  musl targets share `@platforms//os:linux` and the cpu, so a
+  `config_setting` of those two matches both (the version's triple in
+  `bazel/BUILD.bazel`), and a `modules/` condition of `__linux__` and the
+  cpu holds in both. The C library is `@xclang//platforms/libc:glibc` or
+  `:musl` for Bazel; for the preprocessor, which no macro tells,
+  `__has_include(<gnu/libc-version.h>)` (`tools/modules/modules.ts`).
+  Check: a musl build's crash report, which `tools/release/crash_symbols.ts`
+  makes, names a `-linux-musl` target.
+- **A library fails to compile for musl only.** A package that names a
+  glibc function for every Linux target, as the registry's cpptrace did
+  `dladdr1` until `1.0.4.clice.3`, builds everywhere CI ran before the musl
+  targets; a `modules/` export that musl defines as a macro needs the
+  `#undef` `clice modularize` writes (`#define stdout (stdout)`). Check:
+  `pixi run build RelWithDebInfo -- --platforms=@xclang//platforms:x86_64-unknown-linux-musl --keep_going`
+  lists every such failure at once.
 
 ## macOS
 

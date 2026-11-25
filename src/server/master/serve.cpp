@@ -144,7 +144,7 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
                 // reads its first message — because initialize() spawns
                 // background tasks that need the running loop context.
                 if(!root.empty()) {
-                    server.change_folders({}, {Spelling(root, Spelling::cwd())});
+                    server.change_folders({}, {Spelling(root, Spelling::cwd()).str()});
                     server.initialize();
                 }
                 co_await serve(server, peer.run(), &peer);
@@ -167,7 +167,7 @@ int run_serve_mode(const ServerOptions& opts, llvm::StringRef configuration) {
         // See the pipe-mode comment: pre-initialization must run
         // inside the loop.
         if(!root.empty()) {
-            server.change_folders({}, {Spelling(root, Spelling::cwd())});
+            server.change_folders({}, {Spelling(root, Spelling::cwd()).str()});
             server.initialize();
         }
         co_await serve(server,

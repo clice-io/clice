@@ -1,11 +1,15 @@
 module;
 
-#if defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)
+#if defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)
 #include "linux-x64/third_party.fragment.h"
-#elif defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)
+#elif defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && !defined(NDEBUG)
 #include "linux-x64-debug/third_party.fragment.h"
-#elif defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)
+#elif defined(__linux__) && defined(__aarch64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)
 #include "linux-arm64/third_party.fragment.h"
+#elif defined(__linux__) && defined(__x86_64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)
+#include "linux-x64-musl/third_party.fragment.h"
+#elif defined(__linux__) && defined(__aarch64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)
+#include "linux-arm64-musl/third_party.fragment.h"
 #elif defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)
 #include "macos-arm64/third_party.fragment.h"
 #elif defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)
@@ -6830,6 +6834,7 @@ using ::kotatsu::sys::EnvChange;
 using ::kotatsu::sys::EnvVar;
 using ::kotatsu::sys::ExitStatus;
 using ::kotatsu::sys::Memory;
+using ::kotatsu::sys::MemorySource;
 using ::kotatsu::sys::OS;
 using ::kotatsu::sys::Priority;
 using ::kotatsu::sys::ProcessStats;
@@ -10046,7 +10051,7 @@ using ::toml::impl::value_variadic_ctor_allowed;
 using ::toml::impl::wrap_node;
 }
 
-#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG))
+#if (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG))
 export namespace llvm::sys::fs {
 using ::llvm::sys::fs::changeFileOwnership;
 }
@@ -10056,12 +10061,19 @@ using ::simdjson::padded_memory_map;
 }
 #endif
 
-#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
+#if (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && !defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
 export using ::_CXChildVisitResult;
 export using ::_CXCursorAndRangeVisitorBlock;
 #endif
 
-#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG))
+#if (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG))
+export namespace llvm {
+using ::llvm::DisableABIBreakingChecks;
+using ::llvm::VerifyDisableABIBreakingChecks;
+}
+#endif
+
+#if (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && !defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(_WIN32) && defined(__x86_64__) && defined(NDEBUG))
 export namespace roaring::internal {
 using ::roaring::internal::avx512_array_container_to_uint32_array;
 using ::roaring::internal::avx512_union_uint16;
@@ -10211,14 +10223,7 @@ using ::simdjson::internal::escape_sse2::write_string_escaped;
 }
 #endif
 
-#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__x86_64__) && defined(NDEBUG))
-export namespace llvm {
-using ::llvm::DisableABIBreakingChecks;
-using ::llvm::VerifyDisableABIBreakingChecks;
-}
-#endif
-
-#if (defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
+#if (defined(__linux__) && defined(__aarch64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__aarch64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)) || (defined(_WIN32) && defined(__aarch64__) && defined(NDEBUG))
 export namespace simdjson {
 namespace builder = ::simdjson::arm64::builder;
 namespace builtin = ::simdjson::arm64;
@@ -10364,13 +10369,13 @@ using ::simdjson::internal::escape_neon::write_string_escaped;
 }
 #endif
 
-#if (defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG))
+#if (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && !defined(NDEBUG)) || (defined(__linux__) && defined(__x86_64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG))
 export namespace llvm {
 using ::llvm::float128;
 }
 #endif
 
-#if (defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG))
+#if (defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && !defined(NDEBUG)) || (defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG))
 export namespace llvm {
 using ::llvm::DebugStr;
 using ::llvm::EnableABIBreakingChecks;

@@ -896,6 +896,10 @@ void WorkerPool::sample() {
             if(!read) {
                 continue;
             }
+            // LIMITATION: where Linux counts no anonymous pages apart (before
+            // 4.5, WSL 1, gVisor), a worker's memory is its resident size, the
+            // files it maps included; WSL 1 and gVisor count no swap, so
+            // `swapping` never shows there.
             w.memory = read->memory;
             swapped += read->swapped > w.swapped ? read->swapped - w.swapped : 0;
             w.swapped = read->swapped;
@@ -910,6 +914,7 @@ void WorkerPool::sample() {
     }
     auto memory = memory_state(usage);
     sample.headroom = memory.headroom;
+    sample.source = memory.source;
     sample.reserve = memory.reserve;
     sample.swapping = swapped > swap_threshold;
     LOG_DEBUG("Memory: {} MiB headroom, {} MiB reserve, {} stateless processes",

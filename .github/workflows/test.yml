@@ -40,6 +40,26 @@ jobs:
       target: aarch64-unknown-linux-gnu
       asset_name: clice.aarch64-unknown-linux-gnu.tar.gz
 
+  # Static programs: the suites run on Ubuntu, and the compat scenarios of
+  # Alpine's GCC in an Alpine container.
+  linux-x64-musl:
+    uses: ./.github/workflows/test-platform.yml
+    with:
+      build_os: ubuntu-24.04
+      os: ubuntu-24.04
+      target: x86_64-unknown-linux-musl
+      asset_name: clice.x86_64-unknown-linux-musl.tar.gz
+      alpine: true
+
+  linux-arm64-musl:
+    uses: ./.github/workflows/test-platform.yml
+    with:
+      build_os: ubuntu-24.04
+      os: ubuntu-24.04-arm
+      target: aarch64-unknown-linux-musl
+      asset_name: clice.aarch64-unknown-linux-musl.tar.gz
+      alpine: true
+
   macos-arm64:
     uses: ./.github/workflows/test-platform.yml
     with:

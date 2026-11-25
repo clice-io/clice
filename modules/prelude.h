@@ -1,11 +1,15 @@
 #pragma once
 
-#if defined(__linux__) && defined(__x86_64__) && defined(NDEBUG)
+#if defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)
 #include "linux-x64/prelude.h"
-#elif defined(__linux__) && defined(__x86_64__) && !defined(NDEBUG)
+#elif defined(__linux__) && defined(__x86_64__) && __has_include(<gnu/libc-version.h>) && !defined(NDEBUG)
 #include "linux-x64-debug/prelude.h"
-#elif defined(__linux__) && defined(__aarch64__) && defined(NDEBUG)
+#elif defined(__linux__) && defined(__aarch64__) && __has_include(<gnu/libc-version.h>) && defined(NDEBUG)
 #include "linux-arm64/prelude.h"
+#elif defined(__linux__) && defined(__x86_64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)
+#include "linux-x64-musl/prelude.h"
+#elif defined(__linux__) && defined(__aarch64__) && !__has_include(<gnu/libc-version.h>) && defined(NDEBUG)
+#include "linux-arm64-musl/prelude.h"
 #elif defined(__APPLE__) && defined(__aarch64__) && defined(NDEBUG)
 #include "macos-arm64/prelude.h"
 #elif defined(__APPLE__) && defined(__aarch64__) && !defined(NDEBUG)
