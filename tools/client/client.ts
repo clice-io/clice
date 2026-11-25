@@ -754,10 +754,11 @@ export class CliceClient {
     /// [uri, content], the URI as sent.
     ///
     /// `text` overrides the on-disk content (an editor buffer may differ
-    /// from disk).
+    /// from disk), which is sent as editors send it: without a byte order
+    /// mark.
     open(filepath: string, version = 0, options: { text?: string } = {}): [string, string] {
         const target = this.resolvePath(filepath);
-        const content = options.text ?? fs.readFileSync(target, "utf8");
+        const content = options.text ?? fs.readFileSync(target, "utf8").replace(/^\uFEFF/, "");
         const sentUri = URI.file(target).toString();
         void this.sendNotification(proto.DidOpenTextDocumentNotification.type, {
             textDocument: {

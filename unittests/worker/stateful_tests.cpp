@@ -27,7 +27,7 @@ ZEST_CASE(CompileRequest) {
         worker::CompileParams params;
         params.path = src;
         params.version = 1;
-        params.text = "int main() { return 0; }\n";
+        params.content = "int main() { return 0; }\n";
         params.directory = "/tmp";
         params.arguments = {"clang++", "-resource-dir", std::string(resource_dir()), src};
 
@@ -60,7 +60,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = "int v0;\n";
+        cp.content = "int v0;\n";
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
@@ -91,7 +91,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
         // never-released lock (the guard releases it when the cancelled
         // handler's frame unwinds).
         cp.version = 2;
-        cp.text = "int done;\n";
+        cp.content = "int done;\n";
         ipc::request_options retry_opts;
         // Hang detection: a strand still held fails the retry here,
         // attributably, rather than the whole run at its timeout.
@@ -126,7 +126,7 @@ ZEST_CASE(IPCCancelInterruptsCompile) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = "int v0;\nint v1;\n";
+        cp.content = "int v0;\nint v1;\n";
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
@@ -198,7 +198,7 @@ ZEST_CASE(UnstartedCompileWakesQueries) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = "int x;\n";
+        cp.content = "int x;\n";
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
@@ -259,7 +259,7 @@ ZEST_CASE(CancelledQueryFreesStrand) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = "int value() { return 42; }\n";
+        cp.content = "int value() { return 42; }\n";
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
@@ -312,7 +312,7 @@ ZEST_CASE(CompileThenHover) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = text;
+        cp.content = text;
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
 
@@ -351,7 +351,7 @@ ZEST_CASE(InvalidUTF8Replaced) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = text;
+        cp.content = text;
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         ZASSERT(co_await w.peer->send_request(cp));
@@ -397,7 +397,7 @@ ZEST_CASE(EvictsOnlyWhenTold) {
             worker::CompileParams cp;
             cp.path = paths[i];
             cp.version = 1;
-            cp.text = std::format("int var_{} = {};\n", i, i);
+            cp.content = std::format("int var_{} = {};\n", i, i);
             cp.directory = "/tmp";
             cp.arguments = make_args(paths[i]);
             auto result = co_await w.peer->send_request(cp);

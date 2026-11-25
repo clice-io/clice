@@ -351,23 +351,23 @@ int x;
 ZEST_CASE(MarkedFileText) {
     // Clang reads a header as the compiler does, its byte order mark kept;
     // the unit reports and takes offsets in the text the mark leaves out.
-    add_file("a.h", "\xEF\xBB\xBFint a;\n");
+    llvm::StringRef bytes = "\xEF\xBB\xBFint a;\n";
+    add_file("a.h", bytes);
     add_focus("main.cpp", "#include \"a.h\"\n");
     ZASSERT(compile());
     auto header = file("a.h");
     ZEXPECT(unit->file_content(header) == "int a;\n");
-    ZEXPECT(unit->loaded_file_content(header) == "int a;\n");
+    ZEXPECT(unit->loaded_file_content(header) == bytes);
     auto location = declared("a")->getLocation();
     ZEXPECT(unit->written_at(location) == FileOffset{header, 4});
     ZEXPECT(unit->create_location(header, 4) == location);
     // A place in the mark itself is the start of the text.
     ZEXPECT(unit->written_at(location.getLocWithOffset(-7)) == FileOffset{header, 0});
-    // The compile read the text and the mark.
+    // The compile read the bytes, the mark included.
     auto deps = unit->deps();
     auto dep = ranges::find(deps, TestVFS::path("a.h"), &ReportedInput::path);
     ZASSERT(dep != deps.end());
-    ZEXPECT(dep->hash == llvm::xxh3_64bits("int a;\n"));
-    ZEXPECT(dep->marked);
+    ZEXPECT(dep->hash == vfs::version_of(bytes));
 }
 
 ZEST_CASE(PrecompiledHeaderWhole) {

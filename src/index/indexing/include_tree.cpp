@@ -4,6 +4,7 @@ import :compile.compilation;
 import :index.indexing.include_tree;
 import :syntax.position;
 import :support.logging;
+import :vfs.file_system;
 
 namespace clice::index {
 
@@ -159,7 +160,7 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
         tree.links.push_back(std::move(link));
     }
 
-    // Hash the consumed text per path from the compiler's own buffers.
+    // Hash the consumed bytes per path from the compiler's own buffers.
     // Freshness checks compare the disk against these, so they must
     // describe what the index was built from — a fid whose buffer never
     // loaded here (preamble header behind a PCH) contributes no hash and
@@ -170,7 +171,7 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
             return;
         }
         if(auto content = unit.loaded_file_content(fid)) {
-            tree.content_hashes[path_id] = llvm::xxh3_64bits(*content);
+            tree.content_hashes[path_id] = vfs::version_of(*content);
         }
     };
     for(auto& [fid, node]: tree.file_nodes) {

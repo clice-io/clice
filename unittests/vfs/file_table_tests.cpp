@@ -44,10 +44,10 @@ ZEST_CASE(HardlinksReadApart) {
     ZASSERT(pool.disk.read(a_id));
 
     auto stamp = stamp_of(b);
-    ZASSERT(pool.disk.cached(a_id, stamp));
-    ZASSERT(!pool.disk.cached(b_id, stamp).has_value());
+    ZASSERT(pool.disk.cached_hash(a_id, stamp));
+    ZASSERT(!pool.disk.cached_hash(b_id, stamp).has_value());
     ZASSERT(pool.disk.read(b_id));
-    ZASSERT(pool.disk.cached(b_id, stamp));
+    ZASSERT(pool.disk.cached_hash(b_id, stamp));
 }
 
 ZEST_CASE(RenameSaveReads) {
@@ -71,12 +71,12 @@ ZEST_CASE(RenameSaveReads) {
     auto stamp = stamp_of(f);
     ZASSERT(stamp.size == first->stamp.size);
     ZASSERT(stamp.mtime_ns == first->stamp.mtime_ns);
-    ZASSERT(!pool.disk.cached(fid, stamp).has_value());
+    ZASSERT(!pool.disk.cached_hash(fid, stamp).has_value());
 
     auto reread = pool.disk.read(fid);
     ZASSERT(reread);
     ZASSERT(reread->hash != first->hash);
-    ZASSERT(pool.disk.cached(fid, reread->stamp));
+    ZASSERT(pool.disk.cached_hash(fid, reread->stamp));
 }
 
 ZEST_CASE(FastPathChecksIdentity) {
@@ -93,7 +93,7 @@ ZEST_CASE(FastPathChecksIdentity) {
     auto read = pool.disk.read(fid);
     ZASSERT(read);
     auto vid = pool.intern_version(fid, read->hash);
-    ZASSERT(pool.disk.cached(fid, read->stamp));
+    ZASSERT(pool.disk.cached_hash(fid, read->stamp));
 
     tmp.touch("f.h.tmp", "int v2();\n");
     ZASSERT(!fs::rename(tmp.path("f.h.tmp"), f));
@@ -118,7 +118,7 @@ ZEST_CASE(PairNeedsSameFile) {
     auto other = read->stamp;
     other.id.device += 1;
     other.id.file += 1;
-    ZASSERT(!pool.disk.cached(fid, other).has_value());
+    ZASSERT(!pool.disk.cached_hash(fid, other).has_value());
 }
 
 #ifndef _WIN32
@@ -219,18 +219,19 @@ ZEST_CASE(FreshReadNotConfirmed) {
     auto vid = pool.intern_version(fid, read->hash);
 
     ZASSERT(pool.check_version(vid) == vfs::DiskState::CheckResult::Fresh);
-    ZASSERT(!pool.disk.cached(fid, read->stamp).has_value());
+    ZASSERT(!pool.disk.cached_hash(fid, read->stamp).has_value());
 }
 
-ZEST_CASE(ReadDropsBom) {
+ZEST_CASE(ReadVersionsBytes) {
     // A file saved with a UTF-8 byte order mark reads as the text an editor
-    // sends: both sides of every buffer-versus-disk comparison agree.
+    // sends, and its version is of the bytes: a mark gained or lost is a
+    // change.
     TempDir tmp;
     tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
     auto observed = vfs::read_observed(tmp.path("bom.h"));
     ZASSERT(observed);
     ZASSERT(observed->text == "int x;\n");
-    ZASSERT(observed->obs.hash == llvm::xxh3_64bits("int x;\n"));
+    ZASSERT(observed->obs.hash == vfs::version_of("\xEF\xBB\xBFint x;\n"));
 }
 
 ZEST_CASE(CompileFSKeepsBom) {
@@ -292,10 +293,11 @@ ZEST_CASE(WriteKeepsBom) {
     auto path = tmp.path("bom.h");
     ZASSERT(vfs::write_text(path, "int y;\n", true).has_value());
     ZASSERT(read_file(path).value_or("") == "\xEF\xBB\xBFint y;\n");
-    ZASSERT(vfs::starts_with_bom(path));
+    ZASSERT(vfs::starts_with_bom(path) == true);
     ZASSERT(vfs::write_text(path, "int z;\n", false).has_value());
     ZASSERT(read_file(path).value_or("") == "int z;\n");
-    ZASSERT(!vfs::starts_with_bom(path));
+    ZASSERT(vfs::starts_with_bom(path) == false);
+    ZASSERT(!vfs::starts_with_bom(tmp.path("missing.h")).has_value());
 }
 
 ZEST_CASE(ListingKnowsDirectories) {

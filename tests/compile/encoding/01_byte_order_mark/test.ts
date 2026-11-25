@@ -1,12 +1,13 @@
 import { expect } from "vitest";
 import { answers, test } from "@clice/tools/testing";
 
-// a.h, answer.h, c.cpp, column.h, main.cpp and shapes.h start with a UTF-8
-// byte order mark, as files saved "with BOM" do; data.bin starts with the
-// same bytes, and mark.bin is nothing else.
+// a.h, answer.h, c.cpp, column.h, main.cpp, own_column.cpp and shapes.h
+// start with a UTF-8 byte order mark, as files saved "with BOM" do; data.bin
+// starts with the same bytes, and mark.bin is nothing else.
 
-answers("first line", async (a) => {
+answers("first line", { indexing: true }, async (a) => {
     await a.show("user3", a.hover(a.at("c.cpp", "int |user3")));
+    await a.show("tokens", a.semanticTokens("c.cpp"));
 });
 
 answers(
@@ -38,7 +39,8 @@ test("the compile reads the bytes", async (t) => {
     // The mark is text's, not data's: #embed reads it with the rest, whether
     // __has_embed looked the file up or #include read it first, and a file
     // embedded first still includes as its text. The compiler counts it in
-    // a column.
+    // a column, of an open document's own first line too, though the editor
+    // sends the text without it.
     const s = await t.start();
     for (const file of [
         "embed.cpp",
@@ -47,7 +49,18 @@ test("the compile reads the bytes", async (t) => {
         "embedded_first.cpp",
         "mark_only.cpp",
         "column.cpp",
+        "own_column.cpp",
     ]) {
         expect(await s.errors(file)).toEqual([]);
     }
+});
+
+test("a save adding the mark", async (t) => {
+    // The editor saves the text with the mark the user chose: the document
+    // compiles with it from then on, as the compiler would.
+    const s = await t.start();
+    expect(await s.errors("saved_column.cpp")).toEqual([]);
+    t.disk.write("saved_column.cpp", "\uFEFF" + t.disk.read("saved_column.cpp"));
+    s.save("saved_column.cpp", { write: false });
+    await t.show("marked", s.errors("saved_column.cpp"));
 });

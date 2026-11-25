@@ -27,9 +27,11 @@ struct MacroExpansion {
 /// behind, is never recorded.
 class TokenMap {
 public:
-    /// Starts collecting from `pp` before it enters the focus file. The map
-    /// stays where it is built: the preprocessor holds on to it.
-    explicit TokenMap(clang::Preprocessor& pp);
+    /// Starts collecting from `pp` before it enters the focus file, whose
+    /// text starts at `focus_text` (CompilationUnit::create_location of its
+    /// start). The map stays where it is built: the preprocessor holds on to
+    /// it.
+    TokenMap(clang::Preprocessor& pp, clang::SourceLocation focus_text);
 
     TokenMap(const TokenMap&) = delete;
     TokenMap& operator=(const TokenMap&) = delete;
@@ -153,7 +155,11 @@ private:
     clang::Preprocessor& pp;
     const clang::SourceManager& SM;
     clang::FileID focus_fid;
+
+    /// Where the focus file's text starts, which the spelled tokens'
+    /// offsets count from.
     clang::SourceLocation focus_begin;
+
     clang::SourceLocation focus_end;
 
     llvm::ArrayRef<Token> spelled_tokens;

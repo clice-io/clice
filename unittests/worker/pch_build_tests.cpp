@@ -92,7 +92,7 @@ ZEST_CASE(BuildPCHThenCompile) {
         worker::CompileParams params;
         params.path = main_path;
         params.version = 1;
-        params.text = main_text;
+        params.content = main_text;
         params.directory = dir;
         params.arguments = {"clang++",
                             "-resource-dir",
@@ -162,7 +162,7 @@ ZEST_CASE(FatalErrorSparesPCH) {
         worker::CompileParams params;
         params.path = main_path;
         params.version = 1;
-        params.text = main_text;
+        params.content = main_text;
         params.directory = dir;
         params.arguments = arguments;
         params.pch = {pch_path, bound};

@@ -52,7 +52,7 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
     // A file just created is a change the file table saw only now: it
     // cascades before the document resolves its command, which its host's
     // rescan gives the edge to it.
-    files.disk.current(path_id);
+    auto observed = files.disk.current(path_id);
     apply_disk_changes();
 
     auto [it, inserted] = documents.try_emplace(path_id);
@@ -62,6 +62,9 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
         end_session(document);
     }
     document.session = std::make_shared<Session>(path_id, std::move(text), version);
+    if(observed) {
+        document.session->follow_mark(observed->hash);
+    }
     if(projects.empty()) {
         return;
     }
@@ -195,9 +198,15 @@ void MasterServer::close_document(Fid path_id, llvm::StringRef name) {
 }
 
 void MasterServer::save_document(Fid path_id) {
+    auto* document = find_document(path_id);
+    // The user may have saved the file with another mark.
+    if(auto observed = files.disk.current(path_id);
+       document && observed && document->session->follow_mark(observed->hash) && document->owner) {
+        document->owner->edited(*document->session);
+    }
     // The user's retry: whatever crashed on the saved document runs again
     // on its next request.
-    if(auto* document = find_document(path_id); document && document->owner) {
+    if(document && document->owner) {
         document->owner->retry_after_save(*document->session);
     }
     llvm::SmallVector<Fid> closures{path_id};

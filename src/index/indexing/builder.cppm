@@ -369,7 +369,7 @@ private:
     /// Per pattern function, its parameters and locals by location and kind.
     llvm::DenseMap<
         const clang::FunctionDecl*,
-        llvm::DenseMap<std::pair<clang::SourceLocation::UIntTy, unsigned>, const clang::NamedDecl*>>
+        llvm::DenseMap<std::pair<clang::SourceLocation, unsigned>, const clang::NamedDecl*>>
         pattern_locals;
 
     std::vector<BodyName> body_names;

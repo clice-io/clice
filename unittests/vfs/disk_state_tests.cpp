@@ -86,10 +86,8 @@ ZEST_CASE(MarkAddedIsChange) {
     Fixture f;
     auto fid = f.file("src/a.h", "int a;\n");
     auto hash = f.hash_of(fid);
-    ZASSERT(!f.disk.marked(fid));
     f.rewrite("src/a.h", "\xEF\xBB\xBFint a;\n");
-    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
-    ZASSERT(f.disk.marked(fid));
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Stale);
     ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 }
 
@@ -184,10 +182,10 @@ ZEST_CASE(MissingDropsPair) {
     auto fid = f.file("src/a.h", "int a;\n");
     f.hash_of(fid);
     auto stamp = vfs::Stamp::of(*fs::status(f.tmp.path("src/a.h")));
-    ZASSERT(f.disk.cached(fid, stamp));
+    ZASSERT(f.disk.cached_hash(fid, stamp));
     fs::remove_all(f.tmp.path("src/a.h"));
     f.disk.look(llvm::ArrayRef<Fid>{fid});
-    ZASSERT(!f.disk.cached(fid, stamp).has_value());
+    ZASSERT(!f.disk.cached_hash(fid, stamp).has_value());
 }
 
 ZEST_CASE(OtherLookReplacesTurn) {
@@ -358,21 +356,12 @@ ZEST_CASE(ConsumedIsFirstLook) {
     // the disk moving on from it is a change.
     Fixture f;
     auto fid = f.file("src/a.h", "int b;\n");
-    f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"), std::nullopt);
+    f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"));
     f.hash_of(fid);
     ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 
-    f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"), std::nullopt);
+    f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"));
     ZASSERT(f.disk.seen_hash(fid) == llvm::xxh3_64bits("int b;\n"));
-}
-
-ZEST_CASE(ConsumedMarkIsFirstLook) {
-    // The build read no byte order mark; the disk's bytes gained one since.
-    Fixture f;
-    auto fid = f.file("src/a.h", "\xEF\xBB\xBFint a;\n");
-    f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"), false);
-    f.hash_of(fid);
-    ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 }
 
 ZEST_CASE(FlagHearsChange) {

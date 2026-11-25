@@ -116,7 +116,7 @@ struct ServedProjectFixture : zest::LoopFixture {
         resolution.directory = directory;
         resolution.arguments = arguments;
         auto built = co_await project.build_pch(session->path_id,
-                                                session->text(),
+                                                *session->source,
                                                 std::nullopt,
                                                 resolution,
                                                 {},

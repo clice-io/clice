@@ -32,6 +32,7 @@ import {
 import {
     readOnce,
     SourceText,
+    withoutBom,
     type Location,
     type Named,
     type Position,
@@ -70,7 +71,8 @@ export class AnswerContext {
 
     file(path: string): SourceText {
         const outside = outsidePath(path, this.roots);
-        const text = outside === undefined ? this.read(path) : fs.readFileSync(outside, "utf8");
+        const text =
+            outside === undefined ? this.read(path) : withoutBom(fs.readFileSync(outside, "utf8"));
         const cached = this.cache.get(path);
         if (cached?.text === text) {
             return cached;

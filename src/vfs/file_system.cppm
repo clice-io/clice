@@ -53,25 +53,23 @@ llvm::vfs::Status to_llvm(const fs::Status& status, llvm::StringRef name);
 
 }  // namespace vfs
 
-/// One observation of a file's on-disk bytes: the xxh3 of the text a single
-/// read returned (see without_bom), and the stamp describing the bytes. Captured under
-/// the pairing discipline (see vfs::read_observed) so the two halves are
-/// same-source: `paired` says the pre/post fstats of the read agreed,
-/// `reliable` additionally says the mtime lay outside the filesystem
-/// mtime-granularity guard window — only then may the stamp serve as a
-/// fast-path baseline for skipping future reads. An unpaired or
+/// One observation of a file's on-disk bytes: the version of the bytes a
+/// single read returned (vfs::version_of), and the stamp describing them.
+/// Captured under the pairing discipline (see vfs::read_observed) so the
+/// two halves are same-source: `paired` says the pre/post fstats of the
+/// read agreed, `reliable` additionally says the mtime lay outside the
+/// filesystem mtime-granularity guard window — only then may the stamp
+/// serve as a fast-path baseline for skipping future reads. An unpaired or
 /// unreliable observation still carries a true hash of the bytes read.
 struct DiskObservation {
     vfs::Stamp stamp;
     std::uint64_t hash = 0;
-    /// Whether the bytes start with a byte order mark, which the text the
-    /// hash describes leaves out.
-    bool marked = false;
     bool paired = false;
     bool reliable = false;
 };
 
-/// A completed observed read: the observation plus the text it hashed.
+/// A completed observed read: the observation plus the text of the bytes it
+/// hashed (see vfs::without_bom).
 struct ObservedFile {
     DiskObservation obs;
     std::string text;
@@ -95,6 +93,13 @@ inline llvm::StringRef without_bom(llvm::StringRef bytes) {
 /// text (see without_bom).
 inline std::uint32_t bom_length(llvm::StringRef bytes) {
     return bytes.starts_with(byte_order_mark) ? byte_order_mark.size() : 0;
+}
+
+/// The version of a file holding `bytes`, which every staleness check
+/// compares: their xxh3, a byte order mark included, since what clang
+/// builds from them depends on it.
+inline std::uint64_t version_of(llvm::StringRef bytes) {
+    return llvm::xxh3_64bits(bytes);
 }
 
 /// A file operation that failed, on the path it was given: formatted, the
@@ -134,23 +139,23 @@ std::expected<void, FileError> create_directories(llvm::StringRef path);
 std::expected<void, FileError> remove(llvm::StringRef path);
 
 /// Whether the file at `path` starts with a UTF-8 byte order mark, which
-/// its text leaves out (see without_bom).
-bool starts_with_bom(llvm::StringRef path);
+/// its text leaves out (see without_bom); none when it cannot be read.
+std::optional<bool> starts_with_bom(llvm::StringRef path);
 
 /// Writes `text` as the whole of the file at `path`, after a UTF-8 byte
 /// order mark when `bom`: a file read as text, rewritten, keeps the mark
 /// it had.
 std::expected<void, FileError> write_text(llvm::StringRef path, llvm::StringRef text, bool bom);
 
-/// A file's text read and hashed under the pairing discipline: open a
-/// handle, fstat it, read through it, fstat again. Equal fstats prove
-/// the stat describes the bytes (an in-place write racing the read moves
-/// the mtime between the two fstats; a rename-over does not affect the
-/// open handle at all). A post-fstat mtime inside the guard window
-/// (coarse-granularity filesystems) demotes the pair to unreliable: a
-/// racing write can arrive within one mtime tick, so such a stat must not
-/// suppress future reads. Safe to call from any thread. `padding` bytes of
-/// room stay past the text, which a parser reading in wide blocks needs.
+/// A file read under the pairing discipline, its bytes hashed and its text
+/// kept: open a handle, fstat it, read through it, fstat again. Equal
+/// fstats prove the stat describes the bytes (an in-place write racing the
+/// read moves the mtime between the two fstats; a rename-over does not
+/// affect the open handle at all). A post-fstat mtime inside the guard
+/// window (coarse-granularity filesystems) demotes the pair to unreliable:
+/// a racing write can arrive within one mtime tick, so such a stat must
+/// not suppress future reads. Safe to call from any thread. `padding` bytes
+/// of room stay past the text, which a parser reading in wide blocks needs.
 std::expected<ObservedFile, FileError> read_observed(llvm::StringRef path, std::size_t padding = 0);
 
 /// The file statuses of one operation (a dependency check, a compile). On

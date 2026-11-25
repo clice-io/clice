@@ -299,7 +299,7 @@ auto CompilationUnit::file_text(clang::FileID fid) -> SourceText& {
                 content = params.input.buffers.find(focus)->second;
             }
         }
-        text = std::make_unique<SourceText>(vfs::without_bom(content), lang_options(), keywords());
+        text = std::make_unique<SourceText>(content, lang_options(), keywords());
     }
     return *text;
 }
@@ -313,10 +313,7 @@ auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
 }
 
 auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef> {
-    if(auto buffer = SM().getBufferDataIfLoaded(fid)) {
-        return vfs::without_bom(*buffer);
-    }
-    return std::nullopt;
+    return SM().getBufferDataIfLoaded(fid);
 }
 
 auto CompilationUnit::lexical(clang::FileID fid) -> const LexicalInfo& {
@@ -558,6 +555,10 @@ auto CompilationUnit::presumed_location(clang::SourceLocation location) -> clang
     return SM().getPresumedLoc(location, false);
 }
 
+auto CompilationUnit::decompose(clang::FileID fid, std::uint32_t offset) -> FileOffset {
+    return decompose(SM().getComposedLoc(fid, offset));
+}
+
 auto CompilationUnit::create_location(clang::FileID fid, std::uint32_t offset)
     -> clang::SourceLocation {
     if(params.kind == CompilationKind::Completion && fid == SM().getMainFileID() &&
@@ -569,22 +570,27 @@ auto CompilationUnit::create_location(clang::FileID fid, std::uint32_t offset)
 
 auto CompilationUnit::bom_length(clang::FileID fid) -> std::uint32_t {
     auto [it, inserted] = bom_lengths.try_emplace(fid, 0);
-    if(inserted) {
-        if(auto buffer = SM().getBufferDataIfLoaded(fid)) {
-            it->second = vfs::bom_length(*buffer);
-        } else if(SM().getFileEntryRefForID(fid)) {
-            // A PCH or a module holds the file, which this compile never
-            // read: its build read the bytes the disk holds (Input::marked),
-            // and loading them here would make them read
-            // (loaded_file_content).
-            it->second = vfs::starts_with_bom(file_path(fid)) ? vfs::byte_order_mark.size() : 0;
+    if(!inserted) {
+        return it->second;
+    }
+    auto buffer = SM().getBufferDataIfLoaded(fid);
+    if(!buffer && fid != SM().getMainFileID() && SM().getFileEntryRefForID(fid)) {
+        // A PCH or a module holds the file, which this compile never read:
+        // its build read the bytes the disk holds, and loading them here
+        // would make them read (loaded_file_content), unless the disk does
+        // not answer.
+        if(auto marked = vfs::starts_with_bom(file_path(fid))) {
+            it->second = *marked ? vfs::byte_order_mark.size() : 0;
+            return it->second;
         }
     }
+    if(!buffer) {
+        buffer = SM().getBufferDataOrNone(fid);
+    }
+    if(buffer) {
+        it->second = vfs::bom_length(*buffer);
+    }
     return it->second;
-}
-
-bool CompilationUnit::marked(clang::FileID fid) {
-    return bom_length(fid) != 0;
 }
 
 auto FocusFile::file() -> clang::FileID {
@@ -758,13 +764,9 @@ auto CompilationUnit::keywords() -> const clang::IdentifierTable& {
 }
 
 std::vector<ReportedInput> CompilationUnit::deps() {
-    llvm::StringMap<ReportedInput> deps;
-    auto consumed = [](ReportedInput& dep, llvm::StringRef bytes) {
-        dep.hash = llvm::xxh3_64bits(vfs::without_bom(bytes));
-        dep.marked = vfs::bom_length(bytes) != 0;
-    };
+    llvm::StringMap<std::uint64_t> deps;
 
-    // Hash the text of the buffer the compiler read for this fid.
+    // Hash the buffer the compiler read for this fid — the consumed bytes.
     // The same path can appear under several fids (repeated includes); any
     // of their buffers holds the same content, so the first one wins.
     // LIMITATION: clang gives the hardlinked spellings of one file one
@@ -778,10 +780,10 @@ std::vector<ReportedInput> CompilationUnit::deps() {
         if(path.empty()) {
             return;
         }
-        auto& dep = deps[path];
-        if(dep.hash == 0) {
+        auto it = deps.try_emplace(path, 0).first;
+        if(it->second == 0) {
             if(auto buffer = SM().getBufferDataOrNone(fid)) {
-                consumed(dep, *buffer);
+                it->second = vfs::version_of(*buffer);
             }
         }
     };
@@ -791,7 +793,7 @@ std::vector<ReportedInput> CompilationUnit::deps() {
     /// into the SourceManager's content cache, so this looks up the very
     /// buffer the build consumed; only an existence-only check whose
     /// content was never read loads it here instead. An embedded file's
-    /// buffer holds its bytes, hashed as text like every dependency. An
+    /// buffer holds its bytes, hashed like every dependency's. An
     /// unreadable file hashes as 0 and the snapshot capture falls back to
     /// a started_at-guarded disk hash.
     auto add_file = [&](clang::OptionalFileEntryRef file) {
@@ -802,10 +804,10 @@ std::vector<ReportedInput> CompilationUnit::deps() {
         if(path.empty()) {
             return;
         }
-        auto& dep = deps[path];
-        if(dep.hash == 0) {
+        auto it = deps.try_emplace(path, 0).first;
+        if(it->second == 0) {
             if(auto buffer = SM().getMemoryBufferForFileOrNone(*file)) {
-                consumed(dep, buffer->getBuffer());
+                it->second = vfs::version_of(buffer->getBuffer());
             }
         }
     };
@@ -840,8 +842,7 @@ std::vector<ReportedInput> CompilationUnit::deps() {
     result.reserve(deps.size());
 
     for(auto& dep: deps) {
-        dep.second.path = dep.getKey().str();
-        result.push_back(std::move(dep.second));
+        result.emplace_back(dep.getKey().str(), dep.getValue());
     }
     for(auto& path: absent()) {
         result.push_back({.path = std::move(path), .absent = true});

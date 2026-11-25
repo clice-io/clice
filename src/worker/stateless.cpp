@@ -172,9 +172,8 @@ static std::vector<ReportedInput> precompiled_deps(CompilationUnit& unit, bool s
     deps = unit.deps();
     if(source) {
         auto focus = unit.focus_file();
-        deps.push_back({.path = std::string(unit.file_path(focus.file())),
-                        .hash = llvm::xxh3_64bits(focus.content()),
-                        .marked = unit.marked(focus.file())});
+        deps.emplace_back(std::string(unit.file_path(focus.file())),
+                          unit.file_text(focus.file()).version());
     }
     return deps;
 }
@@ -357,8 +356,8 @@ static worker::PrecompiledBuildResult
 /// The batch tidy pass's findings, each where it is: unlike the LSP path,
 /// which folds header diagnostics onto their include line, the CLI reports
 /// them in their own files. Lines and columns count from 1, columns in
-/// bytes, as compilers count them; a finding no file holds (the command
-/// line's, the configuration's) has neither.
+/// bytes of the text (vfs::without_bom), as the editor shows it; a finding
+/// no file holds (the command line's, the configuration's) has neither.
 static void collect_tidy_diagnostics(CompilationUnit& unit,
                                      std::vector<worker::TidyDiagnostic>& out) {
     // By the name clang-tidy reports a file by: the one its lookup reached
@@ -513,7 +512,7 @@ static worker::CompileUnitResult
     }
     if(params.skipped_diagnostics) {
         result.skipped_diagnostics = feature::skipped_diagnostics(*unit);
-        result.text_hash = llvm::xxh3_64bits(unit->focus_file().content());
+        result.version = unit->file_text(unit->focus_file().file()).version();
     }
 
     // AST teardown for a large TU is material work that belongs to this
@@ -550,7 +549,7 @@ static CompilationParams cursor_compile(const Params& params,
         .stop = stop,
     };
     hold_recent(use_precompiled(cp.input, params.pch, params.pcms));
-    cp.input.add_focus(params.file, params.text);
+    cp.input.add_focus(params.file, params.content);
     cp.input.add_synthesized(params.synthesized);
     return cp;
 }

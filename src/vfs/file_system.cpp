@@ -396,14 +396,17 @@ std::expected<void, FileError> remove(llvm::StringRef path) {
     return {};
 }
 
-bool starts_with_bom(llvm::StringRef path) {
+std::optional<bool> starts_with_bom(llvm::StringRef path) {
     auto file = fs::File::open(path);
     if(!file) {
-        return false;
+        return std::nullopt;
     }
     char head[3];
     auto read = file->read(head);
-    return read && llvm::StringRef(head, *read) == byte_order_mark;
+    if(!read) {
+        return std::nullopt;
+    }
+    return llvm::StringRef(head, *read) == byte_order_mark;
 }
 
 std::expected<void, FileError> write_text(llvm::StringRef path, llvm::StringRef text, bool bom) {
@@ -446,9 +449,8 @@ std::expected<ObservedFile, FileError> read_observed(llvm::StringRef path, std::
     if(auto error = file->read_to_end(result.text)) {
         return failed(FileError::Operation::Read, path, error);
     }
-    result.obs.marked = bom_length(result.text) != 0;
+    result.obs.hash = version_of(result.text);
     result.text.erase(0, result.text.size() - without_bom(result.text).size());
-    result.obs.hash = llvm::xxh3_64bits(result.text);
 
     auto after = file->status();
     if(!after) {

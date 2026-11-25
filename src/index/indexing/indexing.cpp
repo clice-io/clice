@@ -735,7 +735,7 @@ std::vector<std::byte> Builder::build() {
         if(file_index.empty()) {
             continue;
         }
-        auto bytes = write_shard(file_index, resolve, unit.file_content(path_fids[path_id]));
+        auto bytes = write_shard(file_index, resolve, unit.file_text(path_fids[path_id]).bytes());
         auto hash = llvm::xxh3_64bits(as_chars(bytes));
         if(ranges::binary_search(known_variants, known_at(tree.paths[path_id], hash))) {
             known_paths.set(path_id);
@@ -752,10 +752,10 @@ std::vector<std::byte> Builder::build() {
         auto& file = resolved_by_path[path_id];
         InstantiationSection section{.path_id = path_id};
         if(!file.walked.empty()) {
-            auto content = unit.file_content(path_fids[path_id]);
+            auto& content = unit.file_text(path_fids[path_id]);
             section.blob = write_instantiations(file.walked,
-                                                llvm::xxh3_64bits(content),
-                                                static_cast<std::uint32_t>(content.size()));
+                                                content.version(),
+                                                static_cast<std::uint32_t>(content.text().size()));
         }
         ranges::sort(file.skipped);
         file.skipped.erase(ranges::unique(file.skipped).begin(), file.skipped.end());

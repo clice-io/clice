@@ -89,11 +89,6 @@ public:
     /// Whether the last look through this fid found the file missing.
     bool seen_missing(Fid fid) const;
 
-    /// Whether the file's bytes start with a byte order mark, which the
-    /// hash of its text leaves out: as the last read through this fid
-    /// found, read now when none did.
-    bool marked(Fid fid);
-
     /// The changed files, in first-change order, emptying the queue.
     llvm::SmallVector<Fid> take_changes();
 
@@ -137,11 +132,11 @@ public:
                                  const fs::Status& status,
                                  std::int64_t baseline_before_ns);
 
-    /// What the last reliable read through this fid guarantees at exactly
-    /// this stamp, recorded as a look; nullopt when someone must read.
-    /// Equality, never a watermark: the observation is "of the bytes that
-    /// had this stamp", nothing else.
-    std::optional<DiskObservation> cached(Fid fid, const Stamp& stamp);
+    /// The hash the last reliable read through this fid guarantees at
+    /// exactly this stamp, recorded as a look; nullopt when someone must
+    /// read. Equality, never a watermark: the hash is "the hash of the
+    /// bytes that had this stamp", nothing else.
+    std::optional<std::uint64_t> cached_hash(Fid fid, const Stamp& stamp);
 
     /// How a check of a file's content came out. Policy-free facts; what
     /// Missing or Unreadable *means* differs per consumer and stays with
@@ -187,12 +182,10 @@ public:
     /// install or upgrade makes everything in the environment due.
     void add_package(llvm::StringRef dir);
 
-    /// A build read this file's bytes, hashing to `hash`, `marked` saying
-    /// whether they started with a byte order mark (none when the build did
-    /// not say): for a file nobody looked at yet, that read is the first
-    /// look, so that a change after it is a change, a mark gained or lost
-    /// included.
-    void consumed(Fid fid, std::uint64_t hash, std::optional<bool> marked);
+    /// A build read this file's bytes, hashing to `hash`: for a file nobody
+    /// looked at yet, that read is the first look, so that a change after
+    /// it is a change.
+    void consumed(Fid fid, std::uint64_t hash);
 
     /// Make every file under the directory `dir` (an identity) due now.
     void expire_under(llvm::StringRef dir);
@@ -240,15 +233,11 @@ private:
     struct Pair {
         Stamp stamp;
         std::uint64_t hash = 0;
-        bool marked = false;
     };
 
     struct File {
         /// The content hash, or nullopt when the file was missing.
         std::optional<std::uint64_t> seen;
-        /// The mark of the bytes last read (DiskObservation::marked);
-        /// nullopt before a read and while the file is missing.
-        std::optional<bool> marked;
         std::optional<Pair> pair;
         /// The root whose policy the file follows; no_root for none.
         std::uint32_t root = no_root;
@@ -286,11 +275,10 @@ private:
 
     /// Record a look's finding: a first look is no change — nothing was
     /// derived from an unseen state; any other finding than the last one
-    /// is, and so is a byte order mark the bytes read (`marked`, none when
-    /// none were) gained or lost. The file is due again after its interval:
-    /// the shortest after a first look, a change, or an mtime not yet
-    /// `stable` (see vfs::stable_mtime), else twice the last one.
-    void saw(Fid fid, std::optional<std::uint64_t> hash, bool stable, std::optional<bool> marked);
+    /// is. The file is due again after its interval: the shortest after a
+    /// first look, a change, or an mtime not yet `stable` (see
+    /// vfs::stable_mtime), else twice the last one.
+    void saw(Fid fid, std::optional<std::uint64_t> hash, bool stable);
 
     /// The turn's look at a file, taken once per turn — unless the last
     /// look, at a package file not yet due, found what is `expected`.

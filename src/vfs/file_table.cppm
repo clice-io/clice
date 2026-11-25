@@ -9,22 +9,17 @@ import :vfs.path;
 
 namespace clice {
 
-/// One compile input paired with the hash of the text the compiler actually
-/// consumed for it (see vfs::without_bom) — taken from the compiler's own
-/// in-memory buffers at build time, never from a later disk read. A later
-/// disk read could describe content the build never saw (the file may
-/// change while the build runs), which would poison every staleness check
-/// built on it.
+/// One compile input paired with the hash of the bytes the compiler actually
+/// consumed for it — taken from the compiler's own in-memory buffers at build
+/// time, never from a later disk read. A later disk read could describe
+/// content the build never saw (the file may change while the build runs),
+/// which would poison every staleness check built on it.
 ///
 /// hash == 0 means the consumed bytes were not available for hashing; the
 /// staleness check treats such an entry conservatively (rebuild once).
 struct ReportedInput {
     std::string path;
     std::uint64_t hash = 0;
-
-    /// Whether the consumed bytes started with a byte order mark (see
-    /// Input::marked).
-    bool marked = false;
 
     /// A place a failed lookup looked: the build saw no file there.
     bool absent = false;
@@ -43,11 +38,6 @@ struct ReportedInput {
 struct Input {
     Fid file;
     VersionID version;
-    /// Whether the bytes a compile read started with a byte order mark: the
-    /// text the version names leaves it out, while clang counts it in a
-    /// PCH's or a module's offsets, and a PCH records the size with it.
-    /// None for a product made from the text alone.
-    std::optional<bool> marked;
     bool absent = false;
 
     friend bool operator==(const Input&, const Input&) = default;

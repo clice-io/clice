@@ -1209,7 +1209,8 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     Session::Dispatch dispatch(session, kind);
 
     params.file = path;
-    params.text = session.text().str();
+    auto source = session.source;
+    params.content = source->bytes().str();
     params.offset = offset;
     // Taken before the command resolves: after an invalidation meanwhile
     // the command may be stale, and adopt_pch refuses the PCH built under
@@ -1239,9 +1240,9 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // needs it. An import that did not build is the parse's to report; none
     // only when the graph shut down.
     Timer timer;
-    auto imports = co_await project.build_imports(path_id, params.text, resolution, {});
+    auto imports = co_await project.build_imports(path_id, source->text(), resolution, {});
     auto built = imports ? co_await project.build_pch(path_id,
-                                                      params.text,
+                                                      *source,
                                                       params.offset,
                                                       resolution,
                                                       imports->imports,
@@ -1260,7 +1261,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // A completion reply stays useful after edits at or past the cursor:
     // its ranges still hold, and the client filters it by what was typed
     // meanwhile.
-    auto carried = params.text.substr(0, params.offset);
+    auto carried = source->text().substr(0, params.offset);
     auto snapshot = [&] {
         return std::is_same_v<Params, worker::CompletionParams> &&
                session.text().starts_with(carried);

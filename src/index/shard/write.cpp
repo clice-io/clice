@@ -10,6 +10,7 @@ import :index.symbol;
 import :semantic.symbol;
 import :support.text;
 import :syntax.token;
+import :vfs.file_system;
 
 namespace clice::index {
 
@@ -272,9 +273,10 @@ ContentInfo content_info_of(const Root& root) {
     };
 }
 
-ContentInfo content_info_of(llvm::StringRef content) {
+ContentInfo content_info_of(llvm::StringRef bytes) {
+    auto content = vfs::without_bom(bytes);
     ContentInfo info;
-    info.hash = llvm::xxh3_64bits(content);
+    info.hash = vfs::version_of(bytes);
     info.size = static_cast<std::uint32_t>(content.size());
 
     auto starts = lsp::line_starts({content.data(), content.size()});

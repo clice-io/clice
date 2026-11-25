@@ -10,9 +10,12 @@ import :compile.tokens;
 import :support.logging;
 import :support.process;
 import :syntax.header_context;
+import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.position;
 import :syntax.preamble;
+import :syntax.token;
+import :vfs.file_system;
 
 namespace clice {
 
@@ -110,7 +113,10 @@ std::unique_ptr<clang::CompilerInvocation>
     }
     pp_opts.ImplicitPCHInclude = pch;
     if(bound != 0) {
-        pp_opts.PrecompiledPreambleBytes = {bound, false};
+        pp_opts.PrecompiledPreambleBytes = {
+            bound + vfs::bom_length(input.buffers.lookup(input.focus)),
+            false,
+        };
     }
     // A preamble with errors still gets its PCH, and every parse loading
     // it accepts it: without one, every edit parses the whole preamble
@@ -202,9 +208,7 @@ std::unique_ptr<clang::CompilerInvocation>
             // same-bytes rewrite (`git stash pop`, a branch switch) moves
             // only the mtime and must not make clang reject a PCH the master
             // still considers fresh. The size check stays, as it guards the
-            // reader against offsets past the end of a shrunk file. A byte
-            // order mark added or dropped changes the size and not the
-            // text: the master's check sees it too (Input::marked).
+            // reader against offsets past the end of a shrunk file.
             front_opts.IncludeTimestamps = false;
             lang_opts.CompilingPCH = true;
             // The function templates the preamble uses are instantiated once,
@@ -596,7 +600,7 @@ public:
         if(writes_output(unit.params.kind)) {
             auto& sources = context.getSourceManager();
             auto predefines = unit.instance->getPreprocessor().getPredefinesFileID();
-            auto start = sources.getLocForStartOfFile(predefines);
+            auto start = unit.create_location(predefines, 0);
             sources.createExpansionLoc(start, start, start, 1);
         }
         clang::MultiplexConsumer::HandleTranslationUnit(context);
@@ -618,28 +622,25 @@ private:
         if(!brace || !brace->is(clang::tok::l_brace)) {
             return true;
         }
-        auto [file, begin] = sources.getDecomposedLoc(brace->getLocation());
+        auto [file, brace_at] = unit.written_at(brace->getLocation());
         if(file != unit.focus_file().file()) {
             return true;
         }
-        auto buffer = sources.getBufferData(file);
-        clang::Lexer lexer(sources.getLocForStartOfFile(file),
-                           unit.lang_options(),
-                           buffer.begin(),
-                           buffer.begin() + begin + 1,
-                           buffer.end());
-        clang::Token token;
+        auto begin = brace_at + 1;
+        auto body = unit.file_content(file).substr(begin);
+        Lexer lexer(body, unit.lang_options());
+        Token token;
         std::uint32_t depth = 1;
-        while(depth != 0 && !lexer.LexFromRawLexer(token)) {
-            if(token.is(clang::tok::l_brace)) {
+        while(depth != 0 && !(token = lexer.advance()).is_eof()) {
+            if(token.kind == clang::tok::l_brace) {
                 depth += 1;
-            } else if(token.is(clang::tok::r_brace)) {
+            } else if(token.kind == clang::tok::r_brace) {
                 depth -= 1;
-            } else if(token.is(clang::tok::raw_identifier) && names(token.getRawIdentifier())) {
+            } else if(token.is_identifier() && names(token.text(body))) {
                 return true;
             }
         }
-        return begin <= point && point <= sources.getFileOffset(token.getLocation());
+        return brace_at <= point && point <= begin + token.range.begin;
     }
 
     /// Notes a call past the point instantiating the template looked for
@@ -654,10 +655,10 @@ private:
         }
         auto& sources = unit.context().getSourceManager();
         auto focus = unit.focus_file().file();
-        auto declared = sources.getDecomposedExpansionLoc(pattern->getLocation());
-        auto called = sources.getDecomposedExpansionLoc(function->getPointOfInstantiation());
-        if(declared == std::pair(focus, *instantiating->templated) && called.first == focus &&
-           called.second > instantiating->point) {
+        auto declared = unit.written_at(sources.getExpansionLoc(pattern->getLocation()));
+        auto called = unit.written_at(sources.getExpansionLoc(function->getPointOfInstantiation()));
+        if(declared == FileOffset{focus, *instantiating->templated} && called.file == focus &&
+           called.offset > instantiating->point) {
             found_calls.insert(function);
         }
     }
@@ -929,11 +930,12 @@ CompilationStatus CompilationUnit::run() {
         point = std::min(point, static_cast<std::uint32_t>(focus.content().size()));
         auto position = focus.positions().position(point, PositionEncoding::UTF8);
         assert(position && "clamped completion offset must be mappable");
-        /// Clang completion locations are 1-based.
+        /// Clang completion locations are 1-based, and count a byte order
+        /// mark in the first line's columns.
         auto& at = instance->getFrontendOpts().CodeCompletionAt;
         at.FileName = SM().getFileEntryRefForID(focus.file())->getName().str();
         at.Line = position->line + 1;
-        at.Column = position->character + 1;
+        at.Column = position->character + 1 + (position->line == 0 ? bom_length(focus.file()) : 0);
         instance->setCodeCompletionConsumer(params.completion.consumer(*this).release());
     }
 
@@ -967,9 +969,11 @@ CompilationStatus CompilationUnit::run() {
     /// The checks' PPCallbacks go first: the preamble replay reaches the
     /// callbacks registered before it (see tidy::configure).
     if(params.tidy) {
-        checker = tidy::configure(*instance,
+        checker = tidy::configure(*this,
+                                  *instance,
                                   *params.tidy,
                                   params.kind != CompilationKind::Content,
+                                  params.input.pch.second,
                                   params.preamble_inactive_regions);
     }
 
@@ -990,7 +994,8 @@ CompilationStatus CompilationUnit::run() {
     }
 
     if(params.kind == CompilationKind::Content) {
-        collected_tokens.emplace(instance->getPreprocessor());
+        collected_tokens.emplace(instance->getPreprocessor(),
+                                 create_location(SM().getMainFileID(), 0));
     }
 
     // Upstream FrontendAction::Execute() always returns success: errors go

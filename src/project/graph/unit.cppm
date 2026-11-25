@@ -138,8 +138,8 @@ struct UnitResult {
     /// (UnitRequest::skipped_diagnostics).
     std::vector<feature::FileDiagnostic> skipped_diagnostics;
 
-    /// The hash of the text skipped_diagnostics describe.
-    std::uint64_t text_hash = 0;
+    /// The version of the bytes skipped_diagnostics describe.
+    std::uint64_t version = 0;
 
     struct Perf {
         std::size_t bytes = 0;

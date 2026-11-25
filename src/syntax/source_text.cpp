@@ -4,6 +4,7 @@ import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.position;
 import :syntax.source_text;
+import :vfs.file_system;
 
 namespace clice {
 
@@ -17,11 +18,11 @@ void SourceText::set_dialect(const clang::LangOptions& dialect) {
     comment_scan.reset();
 }
 
-auto SourceText::hash() -> std::uint64_t {
-    if(!text_hash) {
-        text_hash = llvm::xxh3_64bits(content);
+auto SourceText::version() -> std::uint64_t {
+    if(!bytes_version) {
+        bytes_version = vfs::version_of(raw);
     }
-    return *text_hash;
+    return *bytes_version;
 }
 
 auto SourceText::positions() -> PositionMap {

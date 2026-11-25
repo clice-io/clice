@@ -104,7 +104,7 @@ struct ScanResult {
     std::uint64_t directives_hash = 0;
 
     /// What the preprocessor of a precise scan read: each file it entered,
-    /// with the hash of the text read, and each place a lookup that found
+    /// with the hash of the bytes read, and each place a lookup that found
     /// nothing looked (input_path, lookup_places).
     std::vector<ReportedInput> deps;
 };
@@ -161,29 +161,24 @@ struct QuickScanCache {
 /// (scan_precise, scan_module_decl), shared by all of them: a header's text
 /// is minimized once while it stays the same, where each scan would do it
 /// again. An entry is the directives of the very bytes a scan's lexer
-/// reads, matched by the hash of their text and their mark (Entry::marked),
-/// one per file by the path the file table names it. Scans run on the thread pool at once, so it
-/// locks, and a scan keeps the entries it was handed until it ends. Kept in memory only.
+/// reads, matched by their hash, one per file by the path the file table
+/// names it. Scans run on the thread pool at once, so it locks, and a scan
+/// keeps the entries it was handed until it ends. Kept in memory only.
 class DirectiveCache {
 public:
     struct Entry {
         std::uint64_t hash = 0;
-
-        /// Whether the bytes start with a byte order mark, which the
-        /// directives' offsets count and the hash of the text leaves out.
-        bool marked = false;
 
         llvm::SmallVector<clang::dependency_directives_scan::Token> tokens;
 
         llvm::SmallVector<clang::dependency_directives_scan::Directive> directives;
     };
 
-    /// The directives of `bytes`, the contents of the file at `path`,
-    /// whose text (see vfs::without_bom) hashes to `hash`; null when they
-    /// do not minimize.
+    /// The directives of `text`, the contents of the file at `path`, whose
+    /// hash is `hash`; null when it does not minimize.
     std::shared_ptr<const Entry> directives(llvm::StringRef path,
                                             std::uint64_t hash,
-                                            llvm::StringRef bytes);
+                                            llvm::StringRef text);
 
 private:
     std::mutex mutex;

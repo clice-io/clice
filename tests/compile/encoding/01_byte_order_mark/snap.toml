@@ -92,3 +92,14 @@ semantic_tokens = [
 contexts = [
     { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },
 ]
+
+["a save adding the mark".marked]
+errors = [
+    {
+        at = "static_assert(⟦__builtin_COLUMN() == 15⟧);",
+        severity = "error",
+        message = "static assertion failed due to requirement '__builtin_COLUMN() == 15'",
+        source = "clang",
+        code = "err_static_assert_requirement_failed",
+    },
+]

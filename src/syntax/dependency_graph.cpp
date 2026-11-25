@@ -767,16 +767,17 @@ struct FullScan {
         if(!status) {
             return std::nullopt;
         }
-        auto observed = files.disk.cached(fid, vfs::Stamp::of(*status));
-        if(!observed) {
+        auto stamp = vfs::Stamp::of(*status);
+        auto hash = files.disk.cached_hash(fid, stamp);
+        if(!hash) {
             return std::nullopt;
         }
-        auto it = graph.quick_scans.results.find({fid, observed->hash});
+        auto it = graph.quick_scans.results.find({fid, *hash});
         if(it == graph.quick_scans.results.end()) {
             return std::nullopt;
         }
         return ScannedText{
-            .obs = *observed,
+            .obs = {.stamp = stamp, .hash = *hash, .paired = true, .reliable = true},
             .result = it->second,
         };
     }

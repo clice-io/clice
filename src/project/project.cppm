@@ -32,6 +32,7 @@ import :support.prelude;
 import :support.signal;
 import :syntax.dependency_graph;
 import :syntax.scan;
+import :syntax.source_text;
 import :vfs.cache_store;
 import :vfs.file_table;
 import :vfs.path;
@@ -798,7 +799,7 @@ struct Project {
     TreeRequest tree_request(Fid unit, const Candidate& candidate);
 
     /// Remember the tree a preprocess run under `request` took: the files it
-    /// read (`paths` with the hashes of the text read, the unit's own last),
+    /// read (`paths` with the hashes of the bytes read, the unit's own last),
     /// its include nodes over them, and every file it read or looked for
     /// (`deps`), the run started at `started_at`.
     void commit_tree(const TreeRequest& request,
@@ -934,9 +935,9 @@ struct Project {
         return !rules.parses_every_body() && !imports.modular();
     }
 
-    /// The PCH of the preamble of `text`, the buffer of `file` compiled under
-    /// `arguments` from `directory` as `resolution` resolved them, with
-    /// `imports` its imports: keyed by the preamble text and the
+    /// The PCH of the preamble of `source`, the buffer of `file` compiled
+    /// under `arguments` from `directory` as `resolution` resolved them,
+    /// with `imports` its imports: keyed by the preamble's bytes and the
     /// frontend-relevant flags, so files with the same preamble share it.
     /// `base` is the key of the precompiled header the build declares for
     /// the command, built already; empty for none, and `forced` when the
@@ -945,20 +946,20 @@ struct Project {
     /// completion's parse stops: the preamble ends before the line holding
     /// it, so the lines typed there keep the PCH of the lines above them.
     PreamblePCH preamble_pch(Fid file,
-                             llvm::StringRef text,
+                             SourceText& source,
                              std::optional<std::uint32_t> point,
                              const Resolution& resolution,
                              const Imports& imports,
                              llvm::StringRef base,
                              bool forced);
 
-    /// Build the PCHs a parse of `text`, the buffer of `file` under
+    /// Build the PCHs a parse of `source`, the buffer of `file` under
     /// `resolution` with `imports` its imports, loads: the precompiled header
     /// the build declares for the command, then the preamble's over it (see
     /// preamble_pch) — none under readonly = "on", the profile's stated
     /// trade. None when the attempt was overtaken or the graph shut down.
     async::task<std::optional<BuiltPCH>> build_pch(Fid file,
-                                                   llvm::StringRef text,
+                                                   SourceText& source,
                                                    std::optional<std::uint32_t> point,
                                                    const Resolution& resolution,
                                                    const Imports& imports,

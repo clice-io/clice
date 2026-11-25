@@ -57,6 +57,14 @@ public:
     /// Replace the text, and with it everything derived from it.
     void set_text(std::string text);
 
+    /// Take the byte order mark of the file on disk, whose bytes have the
+    /// version `disk`, when its text is the buffer's: the editor sends and
+    /// edits the text alone, and saves the file with the mark it had, which
+    /// every compile of the buffer reads too. A change of the bytes is an
+    /// edit's: it bumps the generation and changes the document's inputs.
+    /// Returns whether the bytes changed.
+    bool follow_mark(std::uint64_t disk);
+
     /// Apply a didChange: fold the content changes into the buffer (ranges
     /// in the client's `encoding`), then take `version` and bump the
     /// generation. A range that does not fit the buffer is clamped to it, as
@@ -153,8 +161,9 @@ public:
     /// LSP document version, incremented by the client on each edit.
     int version = 0;
 
-    /// Current buffer content (may differ from disk until saved) and what
-    /// is derived from it, read in the dialect the server lexes it in.
+    /// Current buffer content (may differ from disk until saved), the byte
+    /// order mark of its file before the editor's text (follow_mark), and
+    /// what is derived from it, read in the dialect the server lexes it in.
     /// Behind a pointer: a SourceText stays where it was made, its text
     /// pointing into itself, and a compile's output keeps the text it
     /// compiled.

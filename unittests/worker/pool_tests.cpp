@@ -1500,7 +1500,7 @@ ZEST_CASE(StatefulTimedFromStart) {
         worker::CompileParams params;
         params.path = f.unit;
         params.version = 1;
-        params.text = "int x = 1;\n";
+        params.content = "int x = 1;\n";
         params.directory = "/tmp";
         params.arguments = make_args(f.unit);
         auto gate = f.gate(params);

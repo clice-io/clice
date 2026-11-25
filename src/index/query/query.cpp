@@ -8,12 +8,12 @@ namespace clice::index {
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
                                          const Shard& shard,
                                          std::string& kept) {
-    auto text = vfs::read_text(path);
-    if(!text || llvm::xxh3_64bits(*text) != shard.content_hash()) {
+    auto bytes = vfs::read_bytes(path);
+    if(!bytes || vfs::version_of(*bytes) != shard.content_hash()) {
         return std::nullopt;
     }
-    kept = std::move(*text);
-    return llvm::StringRef(kept);
+    kept = std::move(*bytes);
+    return vfs::without_bom(kept);
 }
 
 std::optional<Site> extent_of(const IndexSource& source, const Relation& relation) {

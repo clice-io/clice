@@ -281,10 +281,10 @@ public:
         std::size_t failed = 0;
     };
 
-    /// A run's skipped-body diagnostics of a file, of the text hashing to
-    /// `text_hash`.
+    /// A run's skipped-body diagnostics of a file, of the bytes of the
+    /// version `version`.
     struct SkippedDiagnostics {
-        std::uint64_t text_hash = 0;
+        std::uint64_t version = 0;
 
         std::vector<feature::FileDiagnostic> diagnostics;
     };

@@ -14,6 +14,7 @@ import :settings.settings;
 import :support.logging;
 import :support.text;
 import :syntax.preamble;
+import :syntax.source_text;
 import :vfs.cache_store;
 import :vfs.file_table;
 import :vfs.path;
@@ -367,13 +368,14 @@ const PCHEntry* Project::built_pch(llvm::StringRef key) const {
 }
 
 PreamblePCH Project::preamble_pch(Fid path_id,
-                                  llvm::StringRef text,
+                                  SourceText& source,
                                   std::optional<std::uint32_t> point,
                                   const Resolution& resolution,
                                   const Imports& imports,
                                   llvm::StringRef base,
                                   bool forced) {
     auto path = file_table.resolve(path_id);
+    auto text = source.text();
     auto* synthesized = resolution.synthesized.get();
     // The part of the prefix inside braces comes after the preamble, which
     // the header's own directives would otherwise precede. A preamble still
@@ -444,10 +446,12 @@ PreamblePCH Project::preamble_pch(Fid path_id,
         return {.partial = partial};
     }
 
-    // Key the PCH by preamble text plus the frontend-relevant compile flags,
-    // so files with the same preamble text but different flags (-D, -I, -std)
-    // produce separate PCHs.  The source file path stays out of the key so
-    // files with identical preambles share one PCH — but its DIRECTORY (and
+    // Key the PCH by the preamble's bytes — its text, and the byte order
+    // mark before it, which moves every offset the PCH records — plus the
+    // frontend-relevant compile flags, so files with the same preamble text
+    // but different flags (-D, -I, -std) produce separate PCHs.  The source
+    // file path stays out of the key so files with identical preambles share
+    // one PCH — but its DIRECTORY (and
     // the working directory) must stay in: quote includes and relative paths
     // resolve against them, so equal preamble text in different directories
     // can mean different content.  A preamble defining or testing a macro,
@@ -461,7 +465,7 @@ PreamblePCH Project::preamble_pch(Fid path_id,
     // records still confirmed the old content. A PCH built over the
     // build's precompiled header names the very build it chains onto:
     // rebuilt, that one has another name.
-    auto preamble_text = text.substr(0, bound);
+    auto preamble = source.bytes().drop_back(text.size() - bound);
     llvm::StringRef base_blob;
     if(auto it = pchs.find(base); it != pchs.end()) {
         base_blob = it->second.blob;
@@ -478,7 +482,7 @@ PreamblePCH Project::preamble_pch(Fid path_id,
                               resolution.directory,
                               path::parent(path),
                               own_path,
-                              preamble_text,
+                              preamble,
                               canonicalize(resolution.arguments),
                               pcm_keys,
                               base_blob});
@@ -493,7 +497,7 @@ PreamblePCH Project::preamble_pch(Fid path_id,
                         .arguments = resolution.arguments,
                         .hidden = resolution.hidden,
                         .synthesized = synthesized ? synthesized->files : SynthesizedFiles{},
-                        .content = std::string(text),
+                        .content = source.bytes().str(),
                         .preamble_bound = bound,
                         .skip_bodies = skip_bodies,
                         .modular = modular,
@@ -523,7 +527,7 @@ Work Project::pch_work(PCHRequest request) {
 }
 
 async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
-                                                        llvm::StringRef text,
+                                                        SourceText& source,
                                                         std::optional<std::uint32_t> point,
                                                         const Resolution& resolution,
                                                         const Imports& imports,
@@ -572,7 +576,7 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
     }
 
     auto plan = preamble_pch(file,
-                             text,
+                             source,
                              point,
                              resolution,
                              imports,

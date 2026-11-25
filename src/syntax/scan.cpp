@@ -183,14 +183,12 @@ public:
         if(!buffer) {
             return std::nullopt;
         }
-        auto bytes = buffer->getBuffer();
+        auto text = buffer->getBuffer();
         auto [known, fresh] = files.try_emplace(&file.getFileEntry());
         if(fresh) {
-            known->second = {.path = input_path(instance->getFileManager(), file),
-                             .hash = llvm::xxh3_64bits(vfs::without_bom(bytes)),
-                             .marked = vfs::bom_length(bytes) != 0};
+            known->second = {input_path(instance->getFileManager(), file), vfs::version_of(text)};
         }
-        auto entry = cache->directives(known->second.path, known->second.hash, bytes);
+        auto entry = cache->directives(known->second.path, known->second.hash, text);
         if(!entry) {
             return std::nullopt;
         }
@@ -207,13 +205,11 @@ public:
     clang::OptionalFileEntryRef scanned;
 
     /// The files read for their directives, by the path the file table
-    /// names them and the hash of their text (ScanResult::deps).
+    /// names them and the hash of their bytes (ScanResult::deps).
     struct Read {
         std::string path;
 
         std::uint64_t hash = 0;
-
-        bool marked = false;
     };
 
     llvm::DenseMap<const clang::FileEntry*, Read> files;
@@ -288,6 +284,8 @@ public:
         for(auto loc = sources.getExpansionLoc(location); loc.isValid();
             loc = sources.getIncludeLoc(sources.getFileID(loc))) {
             if(sources.getFileID(loc) == sources.getMainFileID()) {
+                // Clang's offsets: the scan's own preprocessor, whose offsets
+                // count the mark the scanned file's text leaves out.
                 offset = sources.getFileOffset(loc) -
                          vfs::bom_length(sources.getBufferData(sources.getMainFileID()));
                 break;
@@ -297,7 +295,7 @@ public:
     }
 
     /// Fill ScanResult::deps once the scan ended: the files entered, by the
-    /// text read, and the places looked at that still hold nothing. A file
+    /// bytes read, and the places looked at that still hold nothing. A file
     /// `getter` read for its directives is known already.
     void finish(const DirectivesGetter& getter) {
         auto& files = sources.getFileManager();
@@ -310,9 +308,7 @@ public:
             if(auto known = getter.files.find(&entry->getFileEntry());
                known != getter.files.end()) {
                 if(seen.insert(known->second.path).second) {
-                    result.deps.push_back({.path = known->second.path,
-                                           .hash = known->second.hash,
-                                           .marked = known->second.marked});
+                    result.deps.push_back({.path = known->second.path, .hash = known->second.hash});
                 }
                 continue;
             }
@@ -322,9 +318,7 @@ public:
             }
             auto buffer = sources.getBufferDataOrNone(fid);
             result.deps.push_back(
-                {.path = std::move(path),
-                 .hash = buffer ? llvm::xxh3_64bits(vfs::without_bom(*buffer)) : 0,
-                 .marked = buffer && vfs::bom_length(*buffer) != 0});
+                {.path = std::move(path), .hash = buffer ? vfs::version_of(*buffer) : 0});
         }
         // A file a check found was looked at, not read: it counts by what
         // the disk holds as the scan started.
@@ -440,19 +434,16 @@ void scan_with_preprocessor(
 
 std::shared_ptr<const DirectiveCache::Entry> DirectiveCache::directives(llvm::StringRef path,
                                                                         std::uint64_t hash,
-                                                                        llvm::StringRef bytes) {
-    auto marked = vfs::bom_length(bytes) != 0;
+                                                                        llvm::StringRef text) {
     {
         std::lock_guard lock(mutex);
-        if(auto it = entries.find(path);
-           it != entries.end() && it->second->hash == hash && it->second->marked == marked) {
+        if(auto it = entries.find(path); it != entries.end() && it->second->hash == hash) {
             return it->second;
         }
     }
     auto entry = std::make_shared<Entry>();
     entry->hash = hash;
-    entry->marked = marked;
-    if(clang::scanSourceForDependencyDirectives(bytes, entry->tokens, entry->directives)) {
+    if(clang::scanSourceForDependencyDirectives(text, entry->tokens, entry->directives)) {
         return nullptr;
     }
     std::lock_guard lock(mutex);

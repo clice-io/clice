@@ -20,15 +20,15 @@ std::int64_t generous_started_at() {
 /// The consumed hash a worker would report for the file's current bytes
 /// (0 = unreadable, which no test here expects).
 std::uint64_t consumed_hash(llvm::StringRef path) {
-    auto text = vfs::read_text(path);
-    return text ? llvm::xxh3_64bits(*text) : 0;
+    auto bytes = vfs::read_bytes(path);
+    return bytes ? vfs::version_of(*bytes) : 0;
 }
 
 /// Whether the file table answers the file's current stat without a read.
 bool confirmed(FileTable& pool, llvm::StringRef path) {
     auto status = fs::status(path);
     return status &&
-           pool.disk.cached(pool.intern(Spelling::absolute(path)), vfs::Stamp::of(*status));
+           pool.disk.cached_hash(pool.intern(Spelling::absolute(path)), vfs::Stamp::of(*status));
 }
 
 ZEST_SUITE(Inputs) {
@@ -113,22 +113,6 @@ ZEST_CASE(MarkAddedDetected) {
     ZASSERT(inputs_hold(pool, snap));
     tmp.touch("dep.h", "\xEF\xBB\xBFint value();\n");
     ZASSERT(!inputs_hold(pool, snap));
-}
-
-ZEST_CASE(MarkedBytesHold) {
-    TempDir tmp;
-    tmp.touch("dep.h", "\xEF\xBB\xBFint value();\n");
-    auto dep = tmp.path("dep.h");
-    age_file(dep);
-
-    FileTable pool;
-    auto snap =
-        intern_inputs(pool,
-                      {
-                          ReportedInput{.path = dep, .hash = consumed_hash(dep), .marked = true}
-    },
-                      generous_started_at());
-    ZASSERT(inputs_hold(pool, snap));
 }
 
 ZEST_CASE(EveryChangeFound) {

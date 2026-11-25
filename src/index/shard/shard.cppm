@@ -3,6 +3,7 @@ module clice:index.shard;
 import :index.symbol;
 import :support.prelude;
 import :syntax.position;
+import :syntax.source_text;
 
 namespace clice::index {
 
@@ -68,21 +69,20 @@ public:
         return buffer ? buffer->getBuffer() : llvm::StringRef();
     }
 
-    /// xxh3 of the content bytes the shard was built from (the content
-    /// generation), not of the blob.
+    /// The version of the bytes the shard was built from
+    /// (vfs::version_of; the content generation), not of the blob.
     std::uint64_t content_hash() const;
 
-    /// Size of the content the shard was built from; the upper bound of
-    /// every stored range.
+    /// Size of the text the shard was built from (vfs::without_bom); the
+    /// upper bound of every stored range.
     std::uint32_t content_size() const;
 
-    /// Whether `text` is the exact content the shard was built from —
-    /// the freshness comparison for disk state. Compares by size and
-    /// hash: the shard does not keep the content.
-    bool matches_content(llvm::StringRef text) const;
+    /// Whether `text` holds the exact bytes the shard was built from.
+    /// Compares by size and version: the shard does not keep the content.
+    bool matches_content(SourceText& text) const;
 
-    /// The same comparison for a caller that already holds the disk
-    /// content's size and hash (a FileTable observation) — no read.
+    /// The same comparison for a caller that already holds the size of the
+    /// text and the version of its bytes.
     bool matches_content(std::uint64_t size, std::uint64_t hash) const;
 
     /// All variant identities stored in the blob, in mask-bit order. A
@@ -182,9 +182,9 @@ private:
 /// is the variant's identity. `symbols` resolves referenced symbols so
 /// non-External names end up in the blob's local-name table (External names
 /// live in the ProjectIndex); returned name refs must stay valid for the
-/// duration of the call. `content` is the text the indexing compile
-/// consumed; the blob keeps its hash, size and line table, and the text of
-/// its non-ASCII lines only.
+/// duration of the call. `content` holds the bytes the indexing compile
+/// consumed; the blob keeps their version, and the size and line table of
+/// their text, with the text of its non-ASCII lines only.
 std::vector<std::byte>
     write_shard(const FileIndex& file_index,
                 llvm::function_ref<std::optional<SymbolView>(SymbolHash)> symbols,

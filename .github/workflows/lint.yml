@@ -70,6 +70,9 @@ jobs:
       - name: Check C++ timers carry their reason
         run: pixi run -e node node tools/precheck/timers.ts
 
+      - name: Check C++ takes clang's offsets through the unit
+        run: pixi run -e node node tools/precheck/offsets.ts
+
   docs:
     runs-on: ubuntu-latest
     timeout-minutes: 15

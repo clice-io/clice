@@ -443,7 +443,7 @@ void ServedProject::decide_compiling(Fid path_id) {
         // A buffer that already diverges from the indexed content (a
         // restored unsaved file) can never be served read-only: it compiles
         // now instead of answering empty until the first edit.
-        if(!shard->matches_content(session.text().size(), session.source->hash())) {
+        if(!shard->matches_content(*session.source)) {
             start_compiling(path_id);
         }
         return;

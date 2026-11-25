@@ -25,7 +25,7 @@ ZEST_CASE(CompileParamsRoundTrip) {
     worker::CompileParams params;
     params.path = "/tmp/test.cpp";
     params.version = 1;
-    params.text = "int main() { return 0; }";
+    params.content = "int main() { return 0; }";
     params.directory = "/tmp";
     params.arguments = {"clang++", "-c", "test.cpp"};
     params.pch = {"", 0};
@@ -41,7 +41,7 @@ ZEST_CASE(CompileParamsRoundTrip) {
 
     ZEXPECT(result.path == params.path);
     ZEXPECT(result.version == params.version);
-    ZEXPECT(result.text == params.text);
+    ZEXPECT(result.content == params.content);
     ZEXPECT(result.directory == params.directory);
     ZEXPECT(result.arguments.size() == params.arguments.size());
 }
@@ -369,7 +369,7 @@ template <class, class...> struct V {
     w.run([&]() -> async::task<> {
         worker::CompletionParams completion;
         completion.file = src;
-        completion.text = text;
+        completion.content = text;
         completion.directory = "/tmp";
         completion.arguments = make_args(src);
         completion.offset = offset;
@@ -378,7 +378,7 @@ template <class, class...> struct V {
 
         worker::SignatureHelpParams help;
         help.file = src;
-        help.text = text;
+        help.content = text;
         help.directory = "/tmp";
         help.arguments = make_args(src);
         help.offset = offset;
