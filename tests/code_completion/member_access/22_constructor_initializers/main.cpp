@@ -86,6 +86,8 @@ struct Outer {
 
 struct Wrapped : Outer<int>::Inner<double> {
     Wrapped() : Inn§(qualified_template_arguments)<double>(1) {}
+
+    Wrapped(int) : Out§(qualifier_template_arguments)<int>::Inner<double>(1) {}
 };
 
 /// What a field grows from.

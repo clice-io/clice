@@ -116,6 +116,11 @@ items = [
     { label = "Outer<int>::Inner<double>(double value)", kind = "Class", insert = "Outer<int>::Inner" },
 ]
 
+[default.qualifier_template_arguments.completion]
+items = [
+    { label = "Outer<int>::Inner<double>(double value)", kind = "Class", insert = "Outer" },
+]
+
 [default.base_named_as_member.completion]
 items = [
     {
@@ -321,6 +326,11 @@ items = [
 [unbundled.qualified_template_arguments.completion]
 items = [
     { label = "Outer<int>::Inner<double>(double value)", kind = "Class", insert = "Outer<int>::Inner" },
+]
+
+[unbundled.qualifier_template_arguments.completion]
+items = [
+    { label = "Outer<int>::Inner<double>(double value)", kind = "Class", insert = "Outer" },
 ]
 
 [unbundled.base_named_as_member.completion]

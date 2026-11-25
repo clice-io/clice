@@ -525,9 +525,18 @@ bool braced_initializer(llvm::StringRef text, const clang::LangOptions& options)
     return next == clang::tok::comma || next == clang::tok::l_brace || next == clang::tok::ellipsis;
 }
 
-/// `name` without the template arguments it ends in: `Outer<int>::Inner`
-/// of `Outer<int>::Inner<double>`.
-llvm::StringRef without_template_arguments(llvm::StringRef name) {
+/// What of `name`, a base's or a member's, the name typed stands for when
+/// `rest`, the text after it, writes the rest of a name: the head of `name`
+/// whose tail `rest` starts with, `ns` of `ns::Seed` before `::Seed(1)`;
+/// otherwise `name` without the template arguments it ends in, which `rest`
+/// spells another way.
+llvm::StringRef written_head(llvm::StringRef name, llvm::StringRef rest) {
+    for(std::size_t i = 1; i < name.size(); i += 1) {
+        auto tail = name.drop_front(i);
+        if((tail.starts_with("<") || tail.starts_with("::")) && rest.starts_with(tail)) {
+            return name.take_front(i);
+        }
+    }
     if(!name.ends_with(">")) {
         return name;
     }
@@ -1145,11 +1154,10 @@ void Reply::add_initializer(const clang::CodeCompletionResult& candidate, std::u
     if(completing.options.bundle_overloads) {
         item.bundle = item.label;
     }
-    // A base's qualifier or template arguments may be written already.
-    if(follows == Follows::Colon) {
-        item.insert = llvm::StringRef(item.label).split("::").first.str();
-    } else if(follows == Follows::Angle) {
-        item.insert = without_template_arguments(item.label).str();
+    // The name typed begins a base's name written already.
+    if(follows == Follows::Colon || follows == Follows::Angle) {
+        item.insert =
+            written_head(item.label, completing.text.drop_front(prefix.whole.end).ltrim()).str();
     } else if(follows != Follows::BracedInitializer) {
         insert_call(item, *pattern, /*called_here=*/true);
     }
