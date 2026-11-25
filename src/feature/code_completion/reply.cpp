@@ -544,8 +544,11 @@ llvm::StringRef written_head(llvm::StringRef name, llvm::StringRef rest) {
     for(auto i = name.size(); i != 0; i -= 1) {
         if(name[i - 1] == '>') {
             depth += 1;
-        } else if(name[i - 1] == '<' && --depth == 0) {
-            return name.take_front(i - 1);
+        } else if(name[i - 1] == '<') {
+            depth -= 1;
+            if(depth == 0) {
+                return name.take_front(i - 1);
+            }
         }
     }
     return name;
