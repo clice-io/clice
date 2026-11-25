@@ -16,6 +16,78 @@ workspace_symbols = [
     { name = "user3()", kind = "Function", at = "c.cpp │ int ⟦user3⟧() {" },
 ]
 
+[navigation.ANSWER]
+definition = ["answer.h │ #define ⟦ANSWER⟧ 42"]
+
+["marked header".extent.hover]
+markdown = '''
+**struct** `Extent`
+
+A size on the plane.
+
+```cpp
+struct Extent {
+  int width;
+  int height;
+}
+```
+**Size:** 8 bytes
+**Alignment:** 4 bytes
+'''
+range = "struct ⟦Extent⟧ {"
+
+["marked header".area.hover]
+markdown = '''
+**function** `area`
+
+```cpp
+inline int area(Extent extent)
+```
+'''
+range = "return get_x({1, 2}) + shared_fn() + ⟦area⟧({3, 4});"
+
+["marked header".outline]
+document_symbols = [
+    {
+        name = "Extent",
+        kind = "Struct",
+        at = "struct ⟦Extent⟧ {",
+        children = [
+            { name = "width", kind = "Field", at = "int ⟦width⟧;" },
+            { name = "height", kind = "Field", at = "int ⟦height⟧;" },
+        ],
+    },
+    { name = "area", kind = "Function", at = "inline int ⟦area⟧(Extent extent) {" },
+]
+
+["marked header".folding]
+folding_ranges = [
+    { kind = "struct", at = "struct Extent ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "inline int area(Extent extent) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+]
+
+["marked header".tokens]
+semantic_tokens = [
+    { at = "⟦/// A size on the plane.⟧", type = "comment", modifiers = ["documentation"] },
+    { at = "⟦struct⟧ Extent {", type = "keyword" },
+    { at = "struct ⟦Extent⟧ {", type = "struct", modifiers = ["definition", "global"] },
+    { at = "⟦int⟧ width;", type = "primitive" },
+    { at = "int ⟦width⟧;", type = "field", modifiers = ["definition", "member"] },
+    { at = "⟦int⟧ height;", type = "primitive" },
+    { at = "int ⟦height⟧;", type = "field", modifiers = ["definition", "member"] },
+    { at = "⟦inline⟧ int area(Extent extent) {", type = "keyword" },
+    { at = "inline ⟦int⟧ area(Extent extent) {", type = "primitive" },
+    { at = "inline int ⟦area⟧(Extent extent) {", type = "function", modifiers = ["definition", "global"] },
+    { at = "inline int area(⟦Extent⟧ extent) {", type = "struct", modifiers = ["global"] },
+    { at = "inline int area(Extent ⟦extent⟧) {", type = "parameter", modifiers = ["definition", "local"] },
+    { at = "⟦return⟧ extent.width * extent.height;", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦extent⟧.width * extent.height;", type = "parameter", modifiers = ["local"] },
+    { at = "return extent.⟦width⟧ * extent.height;", type = "field", modifiers = ["member"] },
+    { at = "return extent.width ⟦*⟧ extent.height;", type = "operator" },
+    { at = "return extent.width * ⟦extent⟧.height;", type = "parameter", modifiers = ["local"] },
+    { at = "return extent.width * extent.⟦height⟧;", type = "field", modifiers = ["member"] },
+]
+
 ["marked host keeps the context"."utils.h"]
 contexts = [
     { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },

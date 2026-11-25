@@ -7,6 +7,7 @@ import * as path from "node:path";
 import yaml from "js-yaml";
 import { parseAnnotations, type AnnotatedSource } from "./annotation.ts";
 import type { MarkerAnchor } from "./anchors.ts";
+import { withoutBom } from "../render/position.ts";
 import {
     CASES_DIR,
     MARKED,
@@ -119,7 +120,9 @@ function markersOf(id: string, marked: ReadonlyMap<string, AnnotatedSource>): Ma
     const owners = new Map<string, string>();
     let nameless = 0;
     for (const [file, source] of [...marked].sort(([a], [b]) => (a < b ? -1 : 1))) {
-        const text = source.content;
+        // Both clients read a file's text without its byte order mark.
+        const text = withoutBom(source.content);
+        const mark = source.content.length - text.length;
         const found: { name: string; begin: number; end: number; range: boolean }[] = [
             ...[...source.offsets].map(([name, at]) => ({
                 name,
@@ -151,8 +154,8 @@ function markersOf(id: string, marked: ReadonlyMap<string, AnnotatedSource>): Ma
             out.push({
                 path: file,
                 name,
-                begin: utf16(text, marker.begin),
-                end: utf16(text, marker.end),
+                begin: utf16(source.content, marker.begin) - mark,
+                end: utf16(source.content, marker.end) - mark,
                 range: marker.range,
                 text,
             });

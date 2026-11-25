@@ -13,7 +13,6 @@ import :syntax.header_context;
 import :syntax.lexical_scan;
 import :syntax.position;
 import :syntax.preamble;
-import :vfs.file_system;
 
 namespace clice {
 
@@ -203,7 +202,10 @@ std::unique_ptr<clang::CompilerInvocation>
             // same-bytes rewrite (`git stash pop`, a branch switch) moves
             // only the mtime and must not make clang reject a PCH the master
             // still considers fresh. The size check stays, as it guards the
-            // reader against offsets past the end of a shrunk file.
+            // reader against offsets past the end of a shrunk file. A byte
+            // order mark added or dropped changes the size and not the text
+            // the master compares: the consumer finds the PCH unreadable,
+            // and it is built again (pch_suspect).
             front_opts.IncludeTimestamps = false;
             lang_opts.CompilingPCH = true;
             // The function templates the preamble uses are instantiated once,
@@ -866,49 +868,6 @@ struct SystemHeaderPragma : clang::PragmaHandler {
     SilencedHeaders& silenced;
 };
 
-/// `#embed` reads a file through the one content clang keeps for it, which
-/// the file system serves as text, without its byte order mark, when an
-/// earlier lookup found the file without opening it. After `__has_embed`, a
-/// file with the mark that nothing has read or included, here or in the
-/// PCH, gets its bytes as that content, which a later `#include` of it
-/// reads too.
-class EmbeddedBytes : public clang::PPCallbacks {
-public:
-    explicit EmbeddedBytes(clang::Preprocessor& pp) : pp(pp) {}
-
-    void HasEmbed(clang::SourceLocation,
-                  llvm::StringRef,
-                  bool,
-                  clang::OptionalFileEntryRef file) override {
-        // Reading a pipe or a device would wait on it, or take a worker's
-        // standard input.
-        if(!file || file->isNamedPipe() || file->isDeviceFile()) {
-            return;
-        }
-        auto path = file->getFileEntry().tryGetRealPathName();
-        if(!vfs::starts_with_bom(path) || pp.alreadyIncluded(*file)) {
-            return;
-        }
-        auto& sources = pp.getSourceManager();
-        if(ranges::any_of(sources.fileinfo_begin(), sources.fileinfo_end(), [&](const auto& entry) {
-               return entry.first == *file;
-           })) {
-            return;
-        }
-        if(auto bytes = sources.getFileManager().getVirtualFileSystem().getBufferForFile(
-               path,
-               /*FileSize=*/-1,
-               /*RequiresNullTerminator=*/true,
-               /*IsVolatile=*/false,
-               /*IsText=*/false)) {
-            sources.overrideFileContents(*file, std::move(*bytes));
-        }
-    }
-
-private:
-    clang::Preprocessor& pp;
-};
-
 }  // namespace
 
 static void handle_system_header_pragmas(clang::Preprocessor& pp) {
@@ -1017,8 +976,6 @@ CompilationStatus CompilationUnit::run() {
 
     /// Add PPCallbacks to collect preprocessing information.
     instance->getPreprocessor().addPPCallbacks(directive_recorder());
-    instance->getPreprocessor().addPPCallbacks(
-        std::make_unique<EmbeddedBytes>(instance->getPreprocessor()));
     handle_system_header_pragmas(instance->getPreprocessor());
 
     // Past the end of the focus file clang instantiates the templates the

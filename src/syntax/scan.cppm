@@ -82,9 +82,9 @@ struct ScanResult {
     /// Dependent module names.
     std::vector<std::string> modules;
 
-    /// Where each of `modules` is imported, as an offset in the scanned file:
-    /// an import in an included file sits at its #include's file name, one
-    /// in a file the command line includes at 0.
+    /// Where each of `modules` is imported, as an offset in the scanned
+    /// file's text: an import in an included file sits at its #include's
+    /// file name, one in a file the command line includes at 0.
     std::vector<std::uint32_t> import_offsets;
 
     /// The lexer scan saw an import declaration. Detection only — the
@@ -169,16 +169,21 @@ public:
     struct Entry {
         std::uint64_t hash = 0;
 
+        /// Whether the bytes start with a byte order mark, which the
+        /// directives' offsets count and the hash of the text leaves out.
+        bool marked = false;
+
         llvm::SmallVector<clang::dependency_directives_scan::Token> tokens;
 
         llvm::SmallVector<clang::dependency_directives_scan::Directive> directives;
     };
 
-    /// The directives of `text`, the contents of the file at `path`, whose
-    /// hash is `hash`; null when it does not minimize.
+    /// The directives of `bytes`, the contents of the file at `path`,
+    /// whose text (see vfs::without_bom) hashes to `hash`; null when they
+    /// do not minimize.
     std::shared_ptr<const Entry> directives(llvm::StringRef path,
                                             std::uint64_t hash,
-                                            llvm::StringRef text);
+                                            llvm::StringRef bytes);
 
 private:
     std::mutex mutex;

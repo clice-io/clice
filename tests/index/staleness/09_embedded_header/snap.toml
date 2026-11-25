@@ -1,6 +1,18 @@
-[test."$ clice index"]
+["indexed once"."$ clice index"]
 stdout = '''
-Indexed 1 translation unit in #s: 2 file shards (# KB), 2 symbols.
+Indexed 2 translation units in #s: 3 file shards (# KB), 3 symbols.
 Session log: ${WS}/.clice/logs/${SESSION}
 '''
 exit = 0
+
+["indexed once"."$ clice index #2"]
+stdout = '''
+Indexed 0 translation units in #s: 3 file shards (# KB), 3 symbols.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["header served".answer]
+workspace_symbols = [
+    { name = "answer()", kind = "Function", at = "answer.h │ inline int ⟦answer⟧() { return 42; }" },
+]

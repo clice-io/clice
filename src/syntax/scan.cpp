@@ -183,12 +183,13 @@ public:
         if(!buffer) {
             return std::nullopt;
         }
-        auto text = buffer->getBuffer();
+        auto bytes = buffer->getBuffer();
         auto [known, fresh] = files.try_emplace(&file.getFileEntry());
         if(fresh) {
-            known->second = {input_path(instance->getFileManager(), file), llvm::xxh3_64bits(text)};
+            known->second = {input_path(instance->getFileManager(), file),
+                             llvm::xxh3_64bits(vfs::without_bom(bytes))};
         }
-        auto entry = cache->directives(known->second.path, known->second.hash, text);
+        auto entry = cache->directives(known->second.path, known->second.hash, bytes);
         if(!entry) {
             return std::nullopt;
         }
@@ -205,7 +206,7 @@ public:
     clang::OptionalFileEntryRef scanned;
 
     /// The files read for their directives, by the path the file table
-    /// names them and the hash of their bytes (ScanResult::deps).
+    /// names them and the hash of their text (ScanResult::deps).
     struct Read {
         std::string path;
 
@@ -284,7 +285,8 @@ public:
         for(auto loc = sources.getExpansionLoc(location); loc.isValid();
             loc = sources.getIncludeLoc(sources.getFileID(loc))) {
             if(sources.getFileID(loc) == sources.getMainFileID()) {
-                offset = sources.getFileOffset(loc);
+                offset = sources.getFileOffset(loc) -
+                         vfs::bom_length(sources.getBufferData(sources.getMainFileID()));
                 break;
             }
         }
@@ -315,7 +317,8 @@ public:
             }
             auto buffer = sources.getBufferDataOrNone(fid);
             result.deps.push_back(
-                {.path = std::move(path), .hash = buffer ? llvm::xxh3_64bits(*buffer) : 0});
+                {.path = std::move(path),
+                 .hash = buffer ? llvm::xxh3_64bits(vfs::without_bom(*buffer)) : 0});
         }
         // A file a check found was looked at, not read: it counts by what
         // the disk holds as the scan started.
@@ -431,16 +434,19 @@ void scan_with_preprocessor(
 
 std::shared_ptr<const DirectiveCache::Entry> DirectiveCache::directives(llvm::StringRef path,
                                                                         std::uint64_t hash,
-                                                                        llvm::StringRef text) {
+                                                                        llvm::StringRef bytes) {
+    auto marked = vfs::bom_length(bytes) != 0;
     {
         std::lock_guard lock(mutex);
-        if(auto it = entries.find(path); it != entries.end() && it->second->hash == hash) {
+        if(auto it = entries.find(path);
+           it != entries.end() && it->second->hash == hash && it->second->marked == marked) {
             return it->second;
         }
     }
     auto entry = std::make_shared<Entry>();
     entry->hash = hash;
-    if(clang::scanSourceForDependencyDirectives(text, entry->tokens, entry->directives)) {
+    entry->marked = marked;
+    if(clang::scanSourceForDependencyDirectives(bytes, entry->tokens, entry->directives)) {
         return nullptr;
     }
     std::lock_guard lock(mutex);

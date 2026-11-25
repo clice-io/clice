@@ -347,6 +347,22 @@ int x;
     ZEXPECT(unit->loaded_file_content(file("b.h")) == "int b;\n");
 }
 
+ZEST_CASE(MarkedFileText) {
+    // Clang reads a header as the compiler does, its byte order mark kept;
+    // the unit reports and takes offsets in the text the mark leaves out.
+    add_file("a.h", "\xEF\xBB\xBFint a;\n");
+    add_focus("main.cpp", "#include \"a.h\"\n");
+    ZASSERT(compile());
+    auto header = file("a.h");
+    ZEXPECT(unit->file_content(header) == "int a;\n");
+    ZEXPECT(unit->loaded_file_content(header) == "int a;\n");
+    auto location = declared("a")->getLocation();
+    ZEXPECT(unit->written_at(location) == FileOffset{header, 4});
+    ZEXPECT(unit->create_location(header, 4) == location);
+    // A place in the mark itself is the start of the text.
+    ZEXPECT(unit->written_at(location.getLocWithOffset(-7)) == FileOffset{header, 0});
+}
+
 ZEST_CASE(PrecompiledHeaderWhole) {
     add_files("whole.h", R"cpp(
 #[early.h]

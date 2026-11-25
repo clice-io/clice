@@ -225,7 +225,8 @@ public:
         if(!status || !buffer) {
             return status ? buffer.getError() : status.getError();
         }
-        files.push_back({.path = path.str(), .hash = llvm::xxh3_64bits((*buffer)->getBuffer())});
+        files.push_back({.path = path.str(),
+                         .hash = llvm::xxh3_64bits(vfs::without_bom((*buffer)->getBuffer()))});
         return std::make_unique<ReadFile>(*status, std::move(*buffer));
     }
 
@@ -854,9 +855,21 @@ namespace clice {
 auto CompilationUnit::take_tidy_findings() -> std::vector<clang::tidy::ClangTidyError> {
     assert(checker && checker->batch && "take_tidy_findings: no batch clang-tidy run");
     auto findings = checker->findings.take();
+    auto in_text = [&](clang::tooling::DiagnosticMessage& message) {
+        if(message.FilePath.empty()) {
+            return;
+        }
+        if(auto fid = file_id(message.FilePath); fid.isValid()) {
+            message.FileOffset = decompose(SM().getComposedLoc(fid, message.FileOffset)).offset;
+        }
+    };
     for(auto& finding: findings) {
         if(auto it = reworded.find(finding.Message.Message); it != reworded.end()) {
             finding.Message.Message = it->second;
+        }
+        in_text(finding.Message);
+        for(auto& note: finding.Notes) {
+            in_text(note);
         }
     }
     return findings;

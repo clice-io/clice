@@ -1,7 +1,10 @@
 [units]
 "main.cpp" = []
 "c.cpp" = []
+"column.cpp" = []
 # #embed comes with C++26.
 "embed.cpp" = ["-std=c++26"]
 "checked.cpp" = ["-std=c++26"]
 "entered.cpp" = ["-std=c++26"]
+"embedded_first.cpp" = ["-std=c++26"]
+"mark_only.cpp" = ["-std=c++26"]

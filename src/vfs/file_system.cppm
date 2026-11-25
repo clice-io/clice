@@ -80,11 +80,18 @@ constexpr llvm::StringLiteral byte_order_mark = "\xEF\xBB\xBF";
 
 /// A source file's text as every part of clice sees it: its bytes without
 /// a leading UTF-8 byte order mark — the text an editor shows and sends.
-/// Clang skips the mark as well, but would count it in every offset.
+/// Clang reads the bytes, counting the mark in its offsets (see
+/// CompilationUnit::decompose).
 inline llvm::StringRef without_bom(llvm::StringRef bytes) {
     llvm::StringRef text = bytes;
     text.consume_front(byte_order_mark);
     return text;
+}
+
+/// How far an offset into `bytes` runs ahead of the same place in their
+/// text (see without_bom).
+inline std::uint32_t bom_length(llvm::StringRef bytes) {
+    return bytes.starts_with(byte_order_mark) ? byte_order_mark.size() : 0;
 }
 
 /// A file operation that failed, on the path it was given: formatted, the
@@ -196,20 +203,14 @@ struct HiddenFiles {
     bool hides(llvm::StringRef path) const;
 };
 
-/// The file system one compile sees: the disk — sources as their text (see
-/// without_bom), `#embed` data, PCH and PCM files as bytes — less the files
-/// its command hides. Clang sets its working
+/// The file system one compile sees: the disk's bytes, as the compiler reads
+/// them, less the files its command hides. Clang sets its working
 /// directory, so every compile gets its own; an overlay wraps a fresh one.
 class View : public llvm::vfs::ProxyFileSystem {
 public:
     explicit View(HiddenFiles hidden = {}) :
         ProxyFileSystem(llvm::vfs::createPhysicalFileSystem()), hidden(std::move(hidden)) {}
 
-    /// The size of the text: clang checks what it reads against it, and a
-    /// PCH records it for every input. Status carries no use, and clang
-    /// keeps one content for a file: `#embed` reads the text of a file the
-    /// same compile included, which lacks its mark. One `__has_embed` only
-    /// looked up gets its bytes from the compile (see CompilationUnit::run).
     llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override;
 
     /// Named by the path the OS opened (its RealName), which names include
@@ -221,7 +222,7 @@ public:
         openFileForReadBinary(const llvm::Twine& path) override;
 
 private:
-    llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> open(const llvm::Twine& path, bool text);
+    llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> open(const llvm::Twine& path, bool source);
 
 private:
     StatusBatch statuses;

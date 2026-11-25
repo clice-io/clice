@@ -43,6 +43,9 @@ auto CompilationUnit::file_id(clang::SourceLocation location) -> clang::FileID {
 
 auto CompilationUnit::decompose(clang::SourceLocation location) -> FileOffset {
     auto [fid, offset] = SM().getDecomposedLoc(location);
+    // A place in the mark itself is the text's start: a fix-it inserting at
+    // the start of a file names the start of its buffer.
+    offset -= std::min(offset, bom_length(fid));
     // What the PCH read of the focus file — the preamble's macros, a global
     // module fragment's declarations — lies in its copy of the file, at the
     // offsets the buffer has.
@@ -296,7 +299,7 @@ auto CompilationUnit::file_text(clang::FileID fid) -> SourceText& {
                 content = params.input.buffers.find(focus)->second;
             }
         }
-        text = std::make_unique<SourceText>(content, lang_options(), keywords());
+        text = std::make_unique<SourceText>(vfs::without_bom(content), lang_options(), keywords());
     }
     return *text;
 }
@@ -310,7 +313,10 @@ auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
 }
 
 auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef> {
-    return SM().getBufferDataIfLoaded(fid);
+    if(auto buffer = SM().getBufferDataIfLoaded(fid)) {
+        return vfs::without_bom(*buffer);
+    }
+    return std::nullopt;
 }
 
 auto CompilationUnit::lexical(clang::FileID fid) -> const LexicalInfo& {
@@ -558,7 +564,17 @@ auto CompilationUnit::create_location(clang::FileID fid, std::uint32_t offset)
        offset > params.completion.offset) {
         offset += 1;
     }
-    return SM().getComposedLoc(fid, offset);
+    return SM().getComposedLoc(fid, offset + bom_length(fid));
+}
+
+auto CompilationUnit::bom_length(clang::FileID fid) -> std::uint32_t {
+    auto [it, inserted] = bom_lengths.try_emplace(fid, 0);
+    if(inserted) {
+        if(auto buffer = SM().getBufferDataOrNone(fid)) {
+            it->second = vfs::bom_length(*buffer);
+        }
+    }
+    return it->second;
 }
 
 auto FocusFile::file() -> clang::FileID {
@@ -751,7 +767,7 @@ std::vector<ReportedInput> CompilationUnit::deps() {
         auto it = deps.try_emplace(path, 0).first;
         if(it->second == 0) {
             if(auto buffer = SM().getBufferDataOrNone(fid)) {
-                it->second = llvm::xxh3_64bits(*buffer);
+                it->second = llvm::xxh3_64bits(vfs::without_bom(*buffer));
             }
         }
     };

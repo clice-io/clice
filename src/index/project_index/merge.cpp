@@ -14,17 +14,6 @@ import :vfs.file_table;
 
 namespace clice::index {
 
-/// Whether `hash` names the bytes of the file at `path` with its byte order
-/// mark, which its text leaves out: a parse that took the file as embedded
-/// data before it included it reads those.
-static bool holds_bytes(llvm::StringRef path, std::uint64_t hash) {
-    if(!vfs::starts_with_bom(path)) {
-        return false;
-    }
-    auto bytes = vfs::read_bytes(path);
-    return bytes && llvm::xxh3_64bits(*bytes) == hash;
-}
-
 std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_index,
                                                            llvm::ArrayRef<Input> imports,
                                                            std::uint64_t command,
@@ -297,8 +286,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
             files.disk.consumed(file_ids_map[i], hash);
             if(view.content_hash(i) != 0 && !moved_on.valid() &&
                files.disk.seen_hash(file_ids_map[i]) != hash &&
-               files.disk.check(file_ids_map[i], hash) != vfs::DiskState::CheckResult::Fresh &&
-               !holds_bytes(path, hash)) {
+               files.disk.check(file_ids_map[i], hash) != vfs::DiskState::CheckResult::Fresh) {
                 moved_on = file_ids_map[i];
             }
         } else if(auto status = fs::status(path)) {

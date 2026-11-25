@@ -233,23 +233,23 @@ ZEST_CASE(ReadDropsBom) {
     ZASSERT(observed->obs.hash == llvm::xxh3_64bits("int x;\n"));
 }
 
-ZEST_CASE(CompileFSDropsBom) {
-    // The compile's file system serves the same text, its stat agreeing on
-    // the size as clang checks.
+ZEST_CASE(CompileFSKeepsBom) {
+    // The compile's file system serves a source as the compiler reads it,
+    // the mark kept, its stat agreeing on the size as clang checks.
     TempDir tmp;
     tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
     auto path = tmp.path("bom.h");
     vfs::View view;
     auto status = view.status(path);
     ZASSERT(bool(status));
-    ZASSERT(status->getSize() == 7u);
+    ZASSERT(status->getSize() == 10u);
     auto file = view.openFileForRead(path);
     ZASSERT(bool(file));
     auto buffer = (*file)->getBuffer(path, -1, true, false);
     ZASSERT(bool(buffer));
-    ZASSERT((*buffer)->getBuffer() == "int x;\n");
+    ZASSERT((*buffer)->getBuffer() == "\xEF\xBB\xBFint x;\n");
     ZASSERT(*(*buffer)->getBufferEnd() == '\0');
-    ZASSERT((*file)->status()->getSize() == 7u);
+    ZASSERT((*file)->status()->getSize() == 10u);
 }
 
 ZEST_CASE(BinaryReadKeepsBom) {

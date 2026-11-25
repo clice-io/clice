@@ -499,16 +499,17 @@ public:
     /// See CompilationInput::project_root.
     auto project_root() -> llvm::StringRef;
 
-    /// The text of `fid`: the focus file's as the editor has it, any
-    /// other's as clang read it. In the focus file every offset the unit
-    /// reports or takes is one in this text, though clang's buffer of it
-    /// holds a NUL at a completion's point and goes on with the include of
-    /// a header context's suffix.
+    /// The text of `fid` (see vfs::without_bom): the focus file's as the
+    /// editor has it, any other's as clang read it. Every offset the unit
+    /// reports or takes is one in this text, though clang's buffer of a
+    /// file keeps its byte order mark, and of the focus file holds a NUL at
+    /// a completion's point and goes on with the include of a header
+    /// context's suffix.
     auto file_content(clang::FileID fid) -> llvm::StringRef;
 
-    /// The buffer this compilation read for `fid`, or nullopt when it was
-    /// never loaded here (e.g. a preamble header served from a PCH). Unlike
-    /// file_content, never falls back to a fake buffer.
+    /// The text of the buffer this compilation read for `fid`, or nullopt
+    /// when it was never loaded here (e.g. a preamble header served from a
+    /// PCH). Unlike file_content, never falls back to a fake buffer.
     auto loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef>;
 
     /// The lines and columns of file_content(fid).
@@ -643,7 +644,8 @@ public:
 
     /// The findings of a batch clang-tidy run, the compiler's diagnostics
     /// among them, as clang-tidy reports them but in the words diagnostics()
-    /// gives them; taken once.
+    /// gives them, each message's FileOffset one in its file's text
+    /// (file_content); taken once.
     auto take_tidy_findings() -> std::vector<clang::tidy::ClangTidyError>;
 
     /// The top-level declarations the focus file writes or that enclose it
@@ -734,6 +736,10 @@ private:
     }
 
     auto file_text(clang::FileID fid) -> SourceText&;
+
+    /// The length of the byte order mark clang's buffer of `fid` starts
+    /// with, which its text leaves out (file_content).
+    auto bom_length(clang::FileID fid) -> std::uint32_t;
 
     /// Where the file location `location` lies (see file_content), the
     /// PCH's copy of the focus file being the focus file.
@@ -842,6 +848,9 @@ private:
 
     /// Memo of CompilationUnit::in_preamble.
     llvm::DenseMap<clang::FileID, bool> preamble_files;
+
+    /// Memo of CompilationUnit::bom_length.
+    llvm::DenseMap<clang::FileID, std::uint32_t> bom_lengths;
 
     /// Memo of CompilationUnit::body_rule.
     llvm::DenseMap<clang::FileID, BodyRule> body_rules;
