@@ -224,7 +224,7 @@ void Project::commit_tree(const TreeRequest& request,
     for(std::size_t i = 0; i < paths.size(); i += 1) {
         auto fid = files.intern(Spelling::absolute(paths[i]));
         if(hashes[i] != 0) {
-            files.disk.consumed(fid, hashes[i]);
+            files.disk.consumed(fid, hashes[i], std::nullopt);
         }
         versions.push_back(files.intern_version(fid, hashes[i]));
     }

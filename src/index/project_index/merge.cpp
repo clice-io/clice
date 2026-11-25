@@ -283,7 +283,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
         // The worker had no buffer to hash a file behind a PCM, and no
         // shard or build recorded one.
         if(hash != 0) {
-            files.disk.consumed(file_ids_map[i], hash);
+            files.disk.consumed(file_ids_map[i], hash, std::nullopt);
             if(view.content_hash(i) != 0 && !moved_on.valid() &&
                files.disk.seen_hash(file_ids_map[i]) != hash &&
                files.disk.check(file_ids_map[i], hash) != vfs::DiskState::CheckResult::Fresh) {

@@ -187,10 +187,12 @@ public:
     /// install or upgrade makes everything in the environment due.
     void add_package(llvm::StringRef dir);
 
-    /// A build read this file's bytes, hashing to `hash`: for a file nobody
-    /// looked at yet, that read is the first look, so that a change after
-    /// it is a change.
-    void consumed(Fid fid, std::uint64_t hash);
+    /// A build read this file's bytes, hashing to `hash`, `marked` saying
+    /// whether they started with a byte order mark (none when the build did
+    /// not say): for a file nobody looked at yet, that read is the first
+    /// look, so that a change after it is a change, a mark gained or lost
+    /// included.
+    void consumed(Fid fid, std::uint64_t hash, std::optional<bool> marked);
 
     /// Make every file under the directory `dir` (an identity) due now.
     void expire_under(llvm::StringRef dir);

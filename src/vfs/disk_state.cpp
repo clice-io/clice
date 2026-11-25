@@ -149,9 +149,12 @@ void DiskState::add_root(llvm::StringRef dir, Policy rule) {
     }
 }
 
-void DiskState::consumed(Fid fid, std::uint64_t hash) {
-    if(!files.contains(fid)) {
-        saw(fid, hash, false, std::nullopt);
+void DiskState::consumed(Fid fid, std::uint64_t hash, std::optional<bool> marked) {
+    auto it = files.find(fid);
+    if(it == files.end()) {
+        saw(fid, hash, false, marked);
+    } else if(!it->second.marked && it->second.seen == hash) {
+        it->second.marked = marked;
     }
 }
 

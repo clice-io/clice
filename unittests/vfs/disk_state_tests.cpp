@@ -358,12 +358,21 @@ ZEST_CASE(ConsumedIsFirstLook) {
     // the disk moving on from it is a change.
     Fixture f;
     auto fid = f.file("src/a.h", "int b;\n");
-    f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"));
+    f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"), std::nullopt);
     f.hash_of(fid);
     ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 
-    f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"));
+    f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"), std::nullopt);
     ZASSERT(f.disk.seen_hash(fid) == llvm::xxh3_64bits("int b;\n"));
+}
+
+ZEST_CASE(ConsumedMarkIsFirstLook) {
+    // The build read no byte order mark; the disk's bytes gained one since.
+    Fixture f;
+    auto fid = f.file("src/a.h", "\xEF\xBB\xBFint a;\n");
+    f.disk.consumed(fid, llvm::xxh3_64bits("int a;\n"), false);
+    f.hash_of(fid);
+    ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 }
 
 ZEST_CASE(FlagHearsChange) {

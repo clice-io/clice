@@ -223,7 +223,7 @@ Inputs intern_inputs(FileTable& files,
             }
             dep.marked = files.disk.marked(dep.file);
         } else {
-            files.disk.consumed(dep.file, hash);
+            files.disk.consumed(dep.file, hash, file.marked);
             dep.marked = file.marked;
         }
 
