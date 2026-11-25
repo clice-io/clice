@@ -53,7 +53,7 @@ box run $id 'pixi run -e test-run test RelWithDebInfo' > /tmp/<topic>-test.log 2
 box run $id 'src=$(realpath .) && docker run --rm --init -e CI \
   -v "$src:$src" -v "$HOME/.cache:$HOME/.cache" -v "$HOME/.pixi:$HOME/.pixi" -w "$src" \
   ghcr.io/clice-io/compat-linux:$(sha256sum tests/compat/Dockerfile | cut -d" " -f1) \
-  bash -c "export PATH=\$HOME/.pixi/bin:\$PATH && pixi install -e node -e cuda -e toolchains && pixi run -e node compat-test"' \
+  bash -c "export PATH=$HOME/.pixi/bin:\$PATH && pixi install -e node -e cuda -e toolchains && pixi run -e node compat-test"' \
   > /tmp/<topic>-compat.log 2>&1
 ```
 
