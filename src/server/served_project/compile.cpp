@@ -38,15 +38,18 @@ static std::vector<feature::FileDiagnostic>
     return diagnostics;
 }
 
-/// Whether the diagnostic says the compile did not find a file, or took
-/// another in its place: a file appearing later may be the one it meant.
+/// Whether the diagnostic says the compile did not find a file, took
+/// another in its place, or could not open one it found: a file appearing
+/// later may be the one it meant, and another program that held a file
+/// without letting others read it (Windows) may have let it go.
 static bool misses_file(const feature::FileDiagnostic& diagnostic) {
     namespace diag = clang::diag;
     return ranges::contains(
-        std::array<std::uint32_t, 5>{diag::err_pp_file_not_found,
+        std::array<std::uint32_t, 6>{diag::err_pp_file_not_found,
                                      diag::err_pp_file_not_found_angled_include_not_fatal,
                                      diag::err_pp_file_not_found_typo_not_fatal,
                                      diag::err_pp_error_opening_file,
+                                     diag::err_cannot_open_file,
                                      diag::err_module_not_found},
         diagnostic.id);
 }
@@ -175,9 +178,10 @@ void ServedProject::retry_after_save(Session& session) {
         retry |= project.forget_module_failure(modules[i]);
         add_imports(modules[i]);
     }
-    // A PCH that did not find a file its preamble names stands while
-    // nothing its lookups looked at changes, yet some look at no place a file
-    // appears in: a save looks again. What the key's PCH found decides, as
+    // A PCH that did not find a file its preamble names, or could not open
+    // it, stands while nothing its lookups looked at changes, yet some look
+    // at no place a file appears in, and a file another program lets go of
+    // changes nothing: a save looks again. What the key's PCH found decides, as
     // another document's save may have rebuilt it since; one evicted leaves
     // what the document compiled with.
     if(auto compiled = latest(path_id); compiled && compiled->pch_key) {

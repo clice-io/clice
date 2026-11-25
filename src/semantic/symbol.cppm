@@ -101,11 +101,11 @@ struct RelationKind {
         /// names: navigation from the keyword reaches it, but the keyword
         /// is no reference to it.
         Deduced,
-        /// At a keyword that leads to a declaration it does not spell —
-        /// `override` and `final` to the methods they override, `new` to
-        /// the constructor it runs, which its parentheses reference — the
-        /// declaration: navigation from the keyword reaches it, but the
-        /// keyword is no reference to it.
+        /// At a token that leads to a declaration it does not spell —
+        /// `override` and `final` to the methods they override, `new` and
+        /// the parenthesis of `Widget(1)` to the constructor the class's
+        /// name calls — the declaration: navigation from the token reaches
+        /// it, but the token is no reference to it.
         Implied,
         /// At an explicit instantiation's name (`template struct Box<int>;`),
         /// the specialization it instantiates, with the directive's extent:

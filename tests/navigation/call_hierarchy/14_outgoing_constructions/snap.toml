@@ -9,7 +9,7 @@ outgoing_calls = [
         kind = "Method",
         at = "⟦Widget⟧(int w, int h);",
         detail = "Widget::Widget(int w, int h)",
-        sites = ["Widget a⟦(⟧1, 2);", "Widget b⟦{⟧3, 4};"],
+        sites = ["Widget a⟦(⟧1, 2);", "Widget b⟦{⟧3, 4};", "Widget c = ⟦Widget⟧(5, 6);"],
     },
     {
         name = "operator+",

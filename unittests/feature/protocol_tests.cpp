@@ -13,17 +13,38 @@ namespace {
 ZEST_SUITE(ToUri) {
 
 #ifdef _WIN32
-ZEST_CASE(WindowsDrivePath) {  // A drive letter must not be mistaken for a URI scheme, and it is
-    // emitted lowercase — the form LSP clients key documents by. The
-    // rewrite only applies on Windows; these inputs are ordinary (odd)
-    // filenames elsewhere.
+ZEST_CASE(WindowsDrivePath) {
+    // A drive letter must not be mistaken for a URI scheme, and it keeps
+    // its case: a client keys documents by the paths it writes. These
+    // inputs are ordinary (odd) filenames elsewhere.
     ZASSERT(feature::to_uri("F:/C++/cmake/clice/main.cpp") ==
+            "file:///F:/C++/cmake/clice/main.cpp");
+    ZASSERT(feature::to_uri("f:/C++/cmake/clice/main.cpp") ==
             "file:///f:/C++/cmake/clice/main.cpp");
 }
 
 ZEST_CASE(WindowsBackslashPath) {
     ZASSERT(feature::to_uri(R"(F:\C++\cmake\clice\main.cpp)") ==
-            "file:///f:/C++/cmake/clice/main.cpp");
+            "file:///F:/C++/cmake/clice/main.cpp");
+}
+
+ZEST_CASE(WindowsClientPathKept) {
+    // A URI the client sends goes back unchanged through the path it
+    // writes; the file's spelling lowers the drive.
+    llvm::StringRef uri = "file:///C:/Users/a/main.cpp";
+    auto written = feature::written_path(uri);
+    ZASSERT(written == "C:/Users/a/main.cpp");
+    ZASSERT(feature::to_uri(*written) == uri);
+    ZASSERT(feature::to_path(uri)->str() == "c:/Users/a/main.cpp");
+}
+#else
+ZEST_CASE(WrittenPathSpelled) {
+    // A URI with slashes to spare names its document by the path's
+    // spelling: `///tmp/a.cpp` is no path a URI can name again.
+    llvm::StringRef uri = "file://///tmp/a.cpp";
+    auto written = feature::written_path(uri);
+    ZASSERT(written == feature::to_path(uri)->str());
+    ZASSERT(feature::to_uri(*written) == feature::to_uri(feature::to_path(uri)->str()));
 }
 #endif
 

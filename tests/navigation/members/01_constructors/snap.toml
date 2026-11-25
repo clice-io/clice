@@ -8,7 +8,7 @@ definition = ["struct ⟦Session⟧ {"]
 definition = ["⟦Session⟧(int id);"]
 
 [answers.ctor_use]
-definition = ["struct ⟦Session⟧ {"]
+definition = ["Session::⟦Session⟧(int id) : id(id) {}"]
 
 [answers.ctor_invoke]
 definition = ["Session::⟦Session⟧(int id) : id(id) {}"]

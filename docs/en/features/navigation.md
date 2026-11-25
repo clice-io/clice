@@ -997,7 +997,8 @@ tests/navigation/implicit_targets/08_implicit_conversions
 A cast navigates to the constructor or conversion operator it runs
 
 Go-to-definition on a `static_cast`, on the parenthesis of a C-style cast
-or on the type of a functional cast reaches the constructor it selects or
+or of a functional cast written with a class's name, or on the builtin type
+of a functional cast (`double(m)`), reaches the constructor it selects or
 the user-defined conversion operator it calls.
 
 ```case
@@ -1033,6 +1034,160 @@ Go-to-definition on `co_await` reaches the awaiter's `await_ready`,
 
 ```case
 tests/navigation/implicit_targets/11_coroutine_keywords
+```
+
+<!-- END CAPABILITY -->
+
+<!-- END GENERATED ITEMS -->
+
+## Constructions by Name
+
+A class's name that calls a constructor stands for that constructor in
+every feature but the type ones and rename, which answer the type the name
+writes.
+
+<!-- BEGIN GENERATED ITEMS: navigation/constructor_calls -->
+
+<!-- BEGIN CAPABILITY: supported clice#1152 -->
+
+**Initializer lists**
+
+A delegating or base initializer's name leads to the constructor it calls
+
+Go-to-definition, declaration, hover, highlights and references on the
+class name of `Widget() : Widget(1, 2)` or `: Base(size)` answer the constructor
+the initializer calls; go-to-type-definition answers the class. Its
+parenthesis still leads to the constructor, without counting as a second
+reference.
+
+```case
+tests/navigation/constructor_calls/01_initializers
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Temporaries**
+
+The class name of a temporary leads to the constructor it calls
+
+`Widget(1)`, `Widget(2, 3)`, `Widget{4}` and `Widget()` call a constructor
+by the class's name: go-to-definition, declaration, hover, highlights and
+references there answer that constructor, and go-to-type-definition the
+class, a qualified name and a template's specialization alike.
+
+```case
+tests/navigation/constructor_calls/02_temporaries
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**`new` expressions**
+
+The class name a `new` allocates leads to the constructor it runs
+
+In `new Widget(1)`, `new Widget{2}` and `new Widget`, the class's name
+answers the constructor that builds the object, and go-to-type-definition
+the class. An array's element type names the class alone.
+
+```case
+tests/navigation/constructor_calls/03_new_expressions
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Aliases and deduction**
+
+A construction through an alias or a deduced template leads to its constructor
+
+`Alias(1)` calls the constructor of the class the alias names, and `Box(2)`
+the constructor of the specialization its arguments deduce: both lead
+there, go-to-type-definition to the type. `Box c(3)` declares a variable
+whose declarator is the call: `Box` names the class, and the parenthesis
+leads to the constructor.
+
+```case
+tests/navigation/constructor_calls/04_aliases_and_deduction
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Inherited constructors**
+
+A class's name calling a constructor it inherits leads to the base's
+
+`Derived(1)`, where `Derived` inherits its constructors with
+`using Base::Base`, runs the constructor `Base` declares: the name leads
+there, and go-to-type-definition to `Derived`, the class it constructs.
+
+```case
+tests/navigation/constructor_calls/05_inherited_constructors
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Conversion casts**
+
+A functional cast through a conversion function names the type
+
+`Target(source)`, when `Source` converts to `Target` with
+`operator Target()`, writes the type `Target`, which is the name of the
+conversion function too: the name leads to the class, and the
+parenthesis, as a C-style cast's does, to the conversion function.
+
+```case
+tests/navigation/constructor_calls/06_conversion_casts
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Constructions in templates**
+
+A construction a template leaves open leads to the constructors it may call
+
+Inside a template, a construction its arguments or its type leave open —
+`Box(T{}, T{})`, `Box<T>(value, value)`, `Box(value, value)` and, through an
+alias template, `Crate(value, value)`, `Widget(size)`, `Widget{size, size}`,
+`new Widget(size)`, `new Box<T>` — calls one of the class's constructors
+taking that many arguments: a constructor template among them, any number
+for a parameter pack or an expanded pack, a braced list of any length for
+an `initializer_list` constructor, and one the class inherits, never a copy
+or move constructor. Their names lead to each of them, and to what an
+instantiation calls, a specialization's own constructor too. `T(size)`
+names the template parameter, whatever an instantiation constructs, and
+an aggregate's braces, `Pair<T>{}` under C++17, initialize its members: its
+name stays the class's, while `Pair<T>()` calls its defaulted constructor.
+
+```case
+tests/navigation/constructor_calls/07_templates
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Names of types alone**
+
+A class's name that calls no written constructor answers the class
+
+An aggregate's `Point{1, 2}` and `Plain()`, whose constructor nothing
+declares, lead to the class, as do the names that only spell a type: a
+parameter's, a declared variable's `Widget d(1)`, whose call is the
+declarator, a cast's target type and a template argument.
+
+```case
+tests/navigation/constructor_calls/08_types_alone
 ```
 
 <!-- END CAPABILITY -->
@@ -1113,32 +1268,13 @@ tests/navigation/implicit_construction/04_aggregates
 
 **Member initializer list**
 
-Member-initializer parentheses navigate to the selected base or member constructor
+Member-initializer parentheses navigate to the member's constructor
 
-The base and member constructors run by an initializer list are reached
-from the opening parenthesis of each initializer. The initializer name
-itself resolves to the base type or the member, so navigation to the
-constructor goes through the parenthesis.
+The constructor a member initializer runs is reached from the opening
+parenthesis of the initializer; the initializer's name names the member.
 
 ```case
 tests/navigation/implicit_construction/05_member_initializers
-```
-
-<!-- END CAPABILITY -->
-
-<!-- BEGIN CAPABILITY: supported -->
-
-**Delegating constructors**
-
-Delegating-constructor parentheses navigate to the target constructor
-
-A delegating constructor's target is reached from the opening parenthesis
-of the delegated call. The constructor name itself resolves to the class
-type, so navigation to the target constructor goes through the
-parenthesis.
-
-```case
-tests/navigation/implicit_construction/06_delegating_constructors
 ```
 
 <!-- END CAPABILITY -->
@@ -1528,6 +1664,22 @@ A class template that derives from its own parameter is a subtype of each class 
 
 ```case
 tests/navigation/type_hierarchy/09_dependent_bases
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**Constructor names**
+
+A constructor's name opens the hierarchy of the class it constructs
+
+A type hierarchy asked on a constructor's declaration, or on a class's name
+calling one (`Widget(1)`), opens on that class, a class inheriting the
+constructor included.
+
+```case
+tests/navigation/type_hierarchy/12_constructor_names
 ```
 
 <!-- END CAPABILITY -->

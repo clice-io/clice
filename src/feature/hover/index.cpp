@@ -32,6 +32,20 @@ static std::optional<llvm::StringRef> before_body(const std::string& text) {
     return written.take_front(body->begin).rtrim();
 }
 
+/// A constructor's head without the member initializers, which open with
+/// the first `:` outside brackets: `Widget(int size)` of
+/// `Widget(int size) : Base(size)`.
+static std::string without_initializers(const std::string& head) {
+    BracketPairs brackets;
+    for(const auto& token: lexical_scan(head, dialect_of()).tokens) {
+        brackets.visit(token, false);
+        if(token.kind == clang::tok::colon && !brackets.inside()) {
+            return llvm::StringRef(head).take_front(token.range.begin).rtrim().str();
+        }
+    }
+    return head;
+}
+
 /// An Objective-C container's text from its keyword on, past the
 /// attributes written before it: `@interface Shape : Object ... @end`.
 static llvm::StringRef objc_container(const std::string& text) {
@@ -107,7 +121,9 @@ auto hover_info(const index::SymbolInfo& info,
         case SymbolKind::Method:
         case SymbolKind::Operator: {
             if(auto head = before_body(hover.definition)) {
-                hover.definition = head->str();
+                hover.definition = index::name_form(info.flags) == index::NameForm::Constructor
+                                       ? without_initializers(head->str())
+                                       : head->str();
             }
             break;
         }

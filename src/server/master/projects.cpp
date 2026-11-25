@@ -242,16 +242,18 @@ std::size_t MasterServer::apply_disk_changes() {
     return changed.size();
 }
 
-void MasterServer::change_folders(std::vector<Spelling> removed, std::vector<Spelling> added) {
+void MasterServer::change_folders(std::vector<std::string> removed,
+                                  std::vector<std::string> added) {
     for(auto& root: removed) {
         files.unspell_root(root);
     }
     for(auto& root: added) {
         files.spell_root(root);
     }
-    auto identities = [](llvm::ArrayRef<Spelling> roots) {
-        return ranges::to<llvm::SmallVector<CanonicalPath>>(
-            views::transform(roots, [](auto& root) { return CanonicalPath(root); }));
+    auto identities = [](llvm::ArrayRef<std::string> roots) {
+        return ranges::to<llvm::SmallVector<CanonicalPath>>(views::transform(roots, [](auto& root) {
+            return CanonicalPath(Spelling::absolute(root));
+        }));
     };
     auto gone = identities(removed);
     auto fresh = identities(added);

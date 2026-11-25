@@ -46,8 +46,8 @@ Use the `compdb` module of clice's Bazel registry. Add the registry and the modu
 
 ```
 # .bazelrc
-common --registry=https://bazel.clice.io/
 common --registry=https://bcr.bazel.build/
+common --registry=https://bazel.clice.io/
 ```
 
 ```python

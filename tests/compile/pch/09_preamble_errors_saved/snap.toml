@@ -26,3 +26,21 @@ errors = [
         code = "err_undeclared_var_use",
     },
 ]
+
+["header held by another program".held]
+errors = [
+    {
+        at = '#include ⟦"held.h"⟧',
+        severity = "error",
+        message = "cannot open file '${WS}/held.h': the file is in use by another program",
+        source = "clang",
+        code = "err_cannot_open_file",
+    },
+    {
+        at = "return ⟦held⟧();",
+        severity = "error",
+        message = "use of undeclared identifier 'held'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]

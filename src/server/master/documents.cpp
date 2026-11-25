@@ -19,27 +19,24 @@ std::shared_ptr<Session> MasterServer::find_session(Fid path_id) {
     return document ? document->session : nullptr;
 }
 
-MasterServer::SecondName* MasterServer::find_second_name(Fid path_id, llvm::StringRef spelling) {
+MasterServer::SecondName* MasterServer::find_second_name(Fid path_id, llvm::StringRef name) {
     auto* document = find_document(path_id);
     if(!document) {
         return nullptr;
     }
-    auto it = ranges::find(document->second_names, spelling, &SecondName::spelling);
+    auto it = ranges::find(document->second_names, name, &SecondName::name);
     return it != document->second_names.end() ? &*it : nullptr;
 }
 
-void MasterServer::open_document(Fid path_id,
-                                 llvm::StringRef spelling,
-                                 std::string text,
-                                 int version) {
+void MasterServer::open_document(Fid path_id, llvm::StringRef name, std::string text, int version) {
     // One file, one buffer: a second document naming it through another
     // path (a symlink) would fold its own edits into the first one's. The
     // document opened first keeps it; this one waits with its own text.
-    if(auto shown = files.shown_as(path_id); shown && *shown != spelling) {
-        LOG_WARN("didOpen: {} is already open as {}; serving that one", spelling, *shown);
+    if(auto shown = files.shown_as(path_id); shown && *shown != name) {
+        LOG_WARN("didOpen: {} is already open as {}; serving that one", name, *shown);
         auto& document = documents.find(path_id)->second;
         auto& second = document.second_names.emplace_back(SecondName{
-            .spelling = spelling.str(),
+            .name = name.str(),
             .buffer = Session(path_id, std::move(text), version),
         });
         if(client) {
@@ -47,7 +44,7 @@ void MasterServer::open_document(Fid path_id,
         }
         return;
     }
-    files.show_as(path_id, spelling);
+    files.show_as(path_id, name);
     open_first_name(path_id, std::move(text), version);
 }
 
@@ -109,11 +106,11 @@ void MasterServer::end_session(Document& document) {
 }
 
 void MasterServer::change_document(Fid path_id,
-                                   llvm::StringRef spelling,
+                                   llvm::StringRef name,
                                    llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,
                                    int version) {
     auto* document = find_document(path_id);
-    if(auto* second = find_second_name(path_id, spelling)) {
+    if(auto* second = find_second_name(path_id, name)) {
         second->buffer.edit(changes, version, position_encoding);
         if(client) {
             client->publish_second_name(*document, *second);
@@ -123,17 +120,17 @@ void MasterServer::change_document(Fid path_id,
     if(!document) {
         // Dropping is the only safe move: without the didOpen baseline
         // there is no buffer to fold the edits into.
-        LOG_WARN("didChange for {}, which is not open; dropped", spelling);
+        LOG_WARN("didChange for {}, which is not open; dropped", name);
         return;
     }
-    if(files.shown_as(path_id) != spelling) {
-        LOG_WARN("didChange for {}, never opened under that name; dropped", spelling);
+    if(files.shown_as(path_id) != name) {
+        LOG_WARN("didChange for {}, never opened under that name; dropped", name);
         return;
     }
     auto& session = *document->session;
     if(version <= session.version) {
         LOG_WARN("didChange version did not increase for {}: {} -> {}",
-                 spelling,
+                 name,
                  session.version,
                  version);
     }
@@ -148,27 +145,23 @@ void MasterServer::change_document(Fid path_id,
     if(document->owner) {
         document->owner->edited(session);
     }
-    LOG_DEBUG("didChange: path={} version={} gen={}",
-              spelling,
-              session.version,
-              session.generation);
+    LOG_DEBUG("didChange: path={} version={} gen={}", name, session.version, session.generation);
 }
 
-void MasterServer::close_document(Fid path_id, llvm::StringRef spelling) {
+void MasterServer::close_document(Fid path_id, llvm::StringRef name) {
     auto it = documents.find(path_id);
     if(it == documents.end()) {
         return;
     }
     auto& seconds = it->second.second_names;
-    if(auto second = ranges::find(seconds, spelling, &SecondName::spelling);
-       second != seconds.end()) {
+    if(auto second = ranges::find(seconds, name, &SecondName::name); second != seconds.end()) {
         seconds.erase(second);
         if(client) {
-            client->retract_second_name(spelling);
+            client->retract_second_name(name);
         }
         return;
     }
-    if(files.shown_as(path_id) != spelling) {
+    if(files.shown_as(path_id) != name) {
         return;
     }
     end_session(it->second);
@@ -190,9 +183,9 @@ void MasterServer::close_document(Fid path_id, llvm::StringRef spelling) {
     auto next = std::move(document.second_names.front());
     document.second_names.erase(document.second_names.begin());
     if(client) {
-        client->retract_second_name(next.spelling);
+        client->retract_second_name(next.name);
     }
-    files.show_as(path_id, next.spelling);
+    files.show_as(path_id, next.name);
     open_first_name(path_id, next.buffer.text().str(), next.buffer.version);
     documents[path_id].second_names = std::move(document.second_names);
     // A pulling client still holds its divergence warning.

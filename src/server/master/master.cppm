@@ -177,8 +177,9 @@ public:
     /// will serve. The projects follow the folders (see project_roots);
     /// open documents of a project that stops serving move to the project
     /// pick_owner picks for them now. A folder both removed and added (a
-    /// rename) keeps serving.
-    void change_folders(std::vector<Spelling> removed, std::vector<Spelling> added);
+    /// rename) keeps serving. A folder is the path its URI writes
+    /// (feature::written_path), under which its files show.
+    void change_folders(std::vector<std::string> removed, std::vector<std::string> added);
 
     /// The project serving a file: the owner of its open document, else
     /// the one pick_owner picks now, else the first.
@@ -207,9 +208,10 @@ public:
     /// name owns the file's buffer, this one keeps its own text and takes
     /// over when the owner closes. While both texts are equal it shares the
     /// first name's answers; diverged, it gets none, and the user is told
-    /// to close one.
+    /// to close one. A document's name is the path its URI writes
+    /// (feature::written_path).
     struct SecondName {
-        std::string spelling;
+        std::string name;
 
         Session buffer;
 
@@ -240,10 +242,10 @@ public:
     /// The open document's session, or null.
     std::shared_ptr<Session> find_session(Fid path_id);
 
-    /// The second name `spelling` of the open file `path_id`, or null.
-    SecondName* find_second_name(Fid path_id, llvm::StringRef spelling);
+    /// The second name `name` of the open file `path_id`, or null.
+    SecondName* find_second_name(Fid path_id, llvm::StringRef name);
 
-    /// didOpen of the file `path_id` spelled `spelling`: a second name of a
+    /// didOpen of the file `path_id` named `name`: a second name of a
     /// file open already waits with its own buffer; else the document goes
     /// to the project pick_owner picks, once every project holding it
     /// discovered the databases above it. A file no project can compile
@@ -252,13 +254,13 @@ public:
     /// root sits deeper than the folders that do — as if it were open. An
     /// open applies the disk changes the file table saw first: the file may
     /// be new, and its host's edge to it with it.
-    void open_document(Fid path_id, llvm::StringRef spelling, std::string text, int version);
+    void open_document(Fid path_id, llvm::StringRef name, std::string text, int version);
 
     /// didChange: the buffer takes the edit, and its owner cancels the
     /// compile in flight. A second name's buffer takes it too, agreeing with
     /// the first name's or not.
     void change_document(Fid path_id,
-                         llvm::StringRef spelling,
+                         llvm::StringRef name,
                          llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,
                          int version);
 
@@ -266,7 +268,7 @@ public:
     /// down, and a document still open under a second name takes the file
     /// over; then a look at the file's disk content, which the editor no
     /// longer shows in place of the file.
-    void close_document(Fid path_id, llvm::StringRef spelling);
+    void close_document(Fid path_id, llvm::StringRef name);
 
     /// didSave: whatever crashed on the document runs again on its next
     /// request; a look at the file's disk content, which every project

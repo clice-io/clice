@@ -1,4 +1,5 @@
-// An injected class name keeps its class token when used as a constructor.
+// An injected class name calling a constructor takes the constructor's token,
+// as the class's name does outside the class.
 struct Widget {
     Widget(int size);
 

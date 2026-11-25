@@ -1,5 +1,0 @@
-[answers.delegate]
-definition = ["struct ⟦Widget⟧ {"]
-
-[answers.delegate_paren]
-definition = ["⟦Widget⟧(int w, int h);"]

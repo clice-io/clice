@@ -1,0 +1,227 @@
+[cards.cast]
+highlights = [
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "auto a = ⟦Widget⟧(1);", kind = "text" },
+    { at = "auto c = ⟦Widget⟧{4};", kind = "text" },
+]
+
+[cards.cast.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "auto a = ⟦Widget⟧(1);"
+
+[cards.cast.semantic_token]
+text = "Widget"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.temporary]
+highlights = [
+    { at = "⟦Widget⟧(int width, int height);", kind = "text" },
+    { at = "auto b = ⟦Widget⟧(2, 3);", kind = "text" },
+]
+
+[cards.temporary.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int width, int height)
+```
+'''
+range = "auto b = ⟦Widget⟧(2, 3);"
+
+[cards.temporary.semantic_token]
+text = "Widget"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.braced]
+highlights = [
+    { at = "⟦Widget⟧(int size);", kind = "text" },
+    { at = "auto a = ⟦Widget⟧(1);", kind = "text" },
+    { at = "auto c = ⟦Widget⟧{4};", kind = "text" },
+]
+
+[cards.braced.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "auto c = ⟦Widget⟧{4};"
+
+[cards.braced.semantic_token]
+text = "Widget"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.empty]
+highlights = [
+    { at = "⟦Widget⟧();", kind = "text" },
+    { at = "auto d = ⟦Widget⟧();", kind = "text" },
+]
+
+[cards.empty.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget()
+```
+'''
+range = "auto d = ⟦Widget⟧();"
+
+[cards.empty.semantic_token]
+text = "Widget"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.qualified]
+highlights = [
+    { at = "⟦Circle⟧(int radius);", kind = "text" },
+    { at = "auto e = shapes::⟦Circle⟧(5);", kind = "text" },
+]
+
+[cards.qualified.hover]
+markdown = '''
+**method** `Circle` · struct `shapes::Circle`
+
+```cpp
+Circle(int radius)
+```
+'''
+range = "auto e = shapes::⟦Circle⟧(5);"
+
+[cards.qualified.semantic_token]
+text = "Circle"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[cards.specialization]
+highlights = [
+    { at = "⟦Box⟧(T value);", kind = "text" },
+    { at = "auto f = ⟦Box⟧<int>(6);", kind = "text" },
+]
+
+[cards.specialization.hover]
+markdown = '''
+**method** `Box` · struct `Box<…>`
+
+```cpp
+Box(T value)
+```
+**Template arguments:**
+```cpp
+T = int
+```
+'''
+range = "auto f = ⟦Box⟧<int>(6);"
+
+[cards.specialization.semantic_token]
+text = "Box"
+type = "method"
+modifiers = ["member", "constructor"]
+
+[navigation.cast]
+definition = ["⟦Widget⟧(int size);"]
+declaration = ["⟦Widget⟧(int size);"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = ["⟦Widget⟧(int size);", "auto a = ⟦Widget⟧(1);", "auto c = ⟦Widget⟧{4};"]
+
+[navigation.temporary]
+definition = ["⟦Widget⟧(int width, int height);"]
+declaration = ["⟦Widget⟧(int width, int height);"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = ["⟦Widget⟧(int width, int height);", "auto b = ⟦Widget⟧(2, 3);"]
+
+[navigation.braced]
+definition = ["⟦Widget⟧(int size);"]
+declaration = ["⟦Widget⟧(int size);"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = ["⟦Widget⟧(int size);", "auto a = ⟦Widget⟧(1);", "auto c = ⟦Widget⟧{4};"]
+
+[navigation.empty]
+definition = ["⟦Widget⟧();"]
+declaration = ["⟦Widget⟧();"]
+type_definition = ["struct ⟦Widget⟧ {"]
+references = ["⟦Widget⟧();", "auto d = ⟦Widget⟧();"]
+
+[navigation.qualified]
+definition = ["⟦Circle⟧(int radius);"]
+declaration = ["⟦Circle⟧(int radius);"]
+type_definition = ["struct ⟦Circle⟧ {"]
+references = ["⟦Circle⟧(int radius);", "auto e = shapes::⟦Circle⟧(5);"]
+
+[navigation.specialization]
+definition = ["⟦Box⟧(T value);"]
+declaration = ["⟦Box⟧(T value);"]
+type_definition = ["struct ⟦Box⟧ {"]
+references = ["⟦Box⟧(T value);", "auto f = ⟦Box⟧<int>(6);"]
+
+["index cards".cast.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "auto a = ⟦Widget⟧(1);"
+
+["index cards".temporary.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int width, int height)
+```
+'''
+range = "auto b = ⟦Widget⟧(2, 3);"
+
+["index cards".braced.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget(int size)
+```
+'''
+range = "auto c = ⟦Widget⟧{4};"
+
+["index cards".empty.hover]
+markdown = '''
+**method** `Widget` · struct `Widget`
+
+```cpp
+Widget()
+```
+'''
+range = "auto d = ⟦Widget⟧();"
+
+["index cards".qualified.hover]
+markdown = '''
+**method** `Circle` · struct `shapes::Circle`
+
+```cpp
+Circle(int radius)
+```
+'''
+range = "auto e = shapes::⟦Circle⟧(5);"
+
+["index cards".specialization.hover]
+markdown = '''
+**method** `Box` · struct `Box`
+
+```cpp
+Box(T value)
+```
+'''
+range = "auto f = ⟦Box⟧<int>(6);"

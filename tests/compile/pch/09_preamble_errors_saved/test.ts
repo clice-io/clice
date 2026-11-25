@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import * as path from "node:path";
 import { expect } from "vitest";
 import { test, type Serve } from "@clice/tools/testing";
 
@@ -6,6 +8,40 @@ const GENERATED = "#pragma once\ninline int generated() {\n    return 1;\n}\n";
 async function pchBuilds(s: Serve, file: string): Promise<number | undefined> {
     await s.sync();
     return (await s.counts()).files[file]?.pch;
+}
+
+/// Holds `file` open as a virus scanner or an encryption filter can, letting
+/// no other program read it, until the function it returns lets it go.
+async function hold(file: string): Promise<() => Promise<void>> {
+    const holder = spawn(
+        "powershell",
+        [
+            "-NoProfile",
+            "-Command",
+            "$ErrorActionPreference = 'Stop'; " +
+                `$held = [IO.File]::Open('${file.replaceAll("'", "''")}', 'Open', 'ReadWrite', 'None'); ` +
+                "'held'; " +
+                "[void][Console]::In.ReadLine(); $held.Close()",
+        ],
+        { stdio: ["pipe", "pipe", "inherit"] },
+    );
+    const exited = new Promise<void>((resolve) => {
+        holder.once("exit", () => {
+            resolve();
+        });
+    });
+    await new Promise<void>((resolve, reject) => {
+        holder.stdout.once("data", () => {
+            resolve();
+        });
+        void exited.then(() => {
+            reject(new Error(`could not hold ${file}`));
+        });
+    });
+    return async () => {
+        holder.stdin.end("\n");
+        await exited;
+    };
 }
 
 // An error inside a header the preamble includes stands until the header
@@ -62,3 +98,29 @@ test("saves while its build runs", async (t) => {
     await s.errors("framework.cpp");
     expect(await pchBuilds(s, "framework.cpp")).toBe(2);
 });
+
+// A header another program held while the PCH built is one the build could
+// not open, and the error says why: nothing the build looked at changes
+// when the program lets it go, so a save looks again.
+test(
+    "header held by another program",
+    {
+        except: {
+            linux: "Linux lets every program read a file another holds",
+            darwin: "macOS lets every program read a file another holds",
+        },
+    },
+    async (t) => {
+        const release = await hold(path.join(t.root, "held.h"));
+        let s: Serve;
+        try {
+            s = await t.start({ lastRule: { background_index: false } });
+            await t.show("held", s.errors("held.cpp"));
+        } finally {
+            await release();
+        }
+        s.save("held.cpp");
+        expect(await s.errors("held.cpp")).toEqual([]);
+        expect(await pchBuilds(s, "held.cpp")).toBe(2);
+    },
+);
