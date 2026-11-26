@@ -49,14 +49,14 @@ bool Listing::contains_file(llvm::StringRef name) const {
 std::shared_ptr<const Listing> list(llvm::StringRef dir) {
     auto listing = std::make_shared<Listing>();
     listing->dir = dir.str();
-    auto before = fs::status(dir);
     auto entries = fs::Directory::open(dir);
     if(!entries) {
         LOG_DEBUG("readdir failed for '{}': {}", dir, entries.error().message());
         return listing;
     }
+    auto before = entries->status();
     // Folding where the volume would match case anyway only costs a stat.
-    listing->case_sensitive = fs::case_sensitive(dir).value_or(false);
+    listing->case_sensitive = entries->case_sensitive().value_or(false);
     for(auto& entry: *entries) {
         if(!entry) {
             LOG_DEBUG("readdir failed for '{}': {}", dir, entry.error().message());
@@ -72,11 +72,8 @@ std::shared_ptr<const Listing> list(llvm::StringRef dir) {
         }
     }
 
-    if(!before) {
-        return listing;
-    }
-    auto after = fs::status(dir);
-    if(after && before->mtime == after->mtime) {
+    auto after = entries->status();
+    if(before && after && before->mtime == after->mtime) {
         auto mtime_ns = Stamp::of(*after).mtime_ns;
         if(stable_mtime(mtime_ns)) {
             listing->mtime_ns = mtime_ns;
