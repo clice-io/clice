@@ -162,8 +162,9 @@ std::expected<ObservedFile, FileError> read_observed(llvm::StringRef path, std::
 /// Windows a directory asked about often enough within the operation is
 /// listed once, and its entries answer the rest: one listing costs about
 /// what a few statuses by name do. A name the listing lacks, a link, a
-/// remote or oversized directory and a directory seen to hold hard links
-/// take fs::status. Elsewhere every status is fs::status.
+/// remote or oversized directory, a directory seen to hold hard links and
+/// one whose listing disagrees with a status by name of the first file it
+/// answers take fs::status. Elsewhere every status is fs::status.
 class StatusBatch {
 public:
     std::expected<fs::Status, std::error_code> status(llvm::StringRef path);
@@ -174,7 +175,11 @@ private:
     struct Directory {
         unsigned asked = 0;
         bool listed = false;
-        /// Empty when the directory could not be listed.
+        /// Whether an answer of the listing was checked against a status by
+        /// name.
+        bool checked = false;
+        /// Empty when the directory could not be listed, or its listing
+        /// disagreed with a status by name.
         llvm::StringMap<fs::Status> entries;
     };
 

@@ -512,7 +512,19 @@ std::expected<fs::Status, std::error_code> StatusBatch::status(llvm::StringRef p
         directory.entries = list_statuses(dir);
     }
     if(auto it = directory.entries.find(path::filename(path)); it != directory.entries.end()) {
-        return it->second;
+        if(directory.checked || it->second.type != fs::FileType::Regular) {
+            return it->second;
+        }
+        // A file system filter can list a file otherwise than a status of it
+        // gives (transparent encryption: the size stored with its header).
+        // Answered from such a listing, every check of a file would miss the
+        // status its last read recorded, and read it again.
+        directory.checked = true;
+        auto status = fs::status(path);
+        if(!status || Stamp::of(*status) != Stamp::of(it->second)) {
+            directory.entries.clear();
+        }
+        return status;
     }
 #endif
     return fs::status(path);

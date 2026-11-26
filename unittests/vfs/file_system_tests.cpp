@@ -206,6 +206,30 @@ ZEST_CASE(BatchSeesLinkedEdits) {
     ZASSERT(batch.status(tmp.path("dir/link.h"))->size == 13u);
 }
 
+ZEST_CASE(BatchDropsDisagreeingListing) {
+    // A listing whose first answer disagrees with a status by name answers
+    // nothing. NTFS lists h7, the first file asked once the directory is
+    // listed, and h15 with the size they had before a write through a second
+    // link, removed since.
+    TempDir tmp;
+    for(int i = 0; i < 20; i += 1) {
+        tmp.touch(std::format("dir/h{}.h", i), "x");
+    }
+    tmp.touch("other/keep");
+    for(auto name: {"h7.h", "h15.h"}) {
+        auto link = tmp.path(std::format("other/{}", name));
+        ZASSERT(!fs::create_hard_link(tmp.path(std::format("dir/{}", name)), link));
+        tmp.touch(std::format("other/{}", name), "a longer text");
+        ZASSERT(fs::remove(link));
+    }
+
+    vfs::StatusBatch batch;
+    for(int i = 0; i < 20; i += 1) {
+        auto path = tmp.path(std::format("dir/h{}.h", i));
+        ZASSERT(batch.status(path)->size == fs::status(path)->size);
+    }
+}
+
 ZEST_CASE(StampSeesKeptTimes) {
     // A rewrite that keeps the size and puts the mtime back still moves
     // the change time.
