@@ -9,7 +9,7 @@ std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
                                          const Shard& shard,
                                          std::string& kept) {
     auto bytes = vfs::read_bytes(path);
-    if(!bytes || vfs::version_of(*bytes) != shard.content_hash()) {
+    if(!bytes || vfs::content_hash(*bytes) != shard.content_hash()) {
         return std::nullopt;
     }
     kept = std::move(*bytes);

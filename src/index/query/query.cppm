@@ -59,7 +59,7 @@ struct IndexSource {
 struct OpenBuffer {
     Fid file;
 
-    /// The buffer's text, the version of its bytes and its positions.
+    /// The buffer's text, the hash of its bytes and its positions.
     llvm::StringRef text;
 
     std::uint64_t hash = 0;
@@ -177,7 +177,7 @@ void add_resolved(const InstantiationShard& shard,
                   std::optional<Named>& named);
 
 /// The text of a shard's file on disk, served only while its bytes still
-/// have the version the shard was built from — a moved-on file degrades to
+/// hash as those the shard was built from — a moved-on file degrades to
 /// no text rather than slicing mismatched text.
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
                                          const Shard& shard,

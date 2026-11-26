@@ -42,14 +42,14 @@ struct ShardBlobOf {
     /// the writer and gated by Shard::from_bytes.
     std::uint32_t format_version = 0;
 
-    /// The version of the bytes the indexing compile consumed
-    /// (vfs::version_of) — the content generation this shard was built
+    /// The hash of the bytes the indexing compile consumed
+    /// (vfs::content_hash) — the content generation this shard was built
     /// from. Variants of different generations never share a blob.
     std::uint64_t content_hash = 0;
 
     /// Size of the consumed text (vfs::without_bom); bounds every stored
     /// range.
-    std::uint32_t content_size = 0;
+    std::uint32_t text_size = 0;
 
     /// The lines holding non-ASCII bytes, ascending, and their text without
     /// the line end, back to back: all UTF-16 and UTF-32 position mapping
@@ -171,7 +171,7 @@ struct InstantiationShardBlobOf {
     /// The content generation of the file the records lie in
     /// (ShardBlob::content_hash), and its size, which bounds every range.
     std::uint64_t content_hash = 0;
-    std::uint32_t content_size = 0;
+    std::uint32_t text_size = 0;
 
     /// The symbols the records and the keys name, sorted by hash; an index
     /// into this table is a symbol id.

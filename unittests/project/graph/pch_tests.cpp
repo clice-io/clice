@@ -43,7 +43,7 @@ PCHRequest request(llvm::StringRef text) {
                      .file = src,
                      .directory = tmp.path("."),
                      .arguments = make_args(src),
-                     .content = std::string(text),
+                     .bytes = std::string(text),
                      .preamble_bound = static_cast<std::uint32_t>(text.size()),
                      },
     };

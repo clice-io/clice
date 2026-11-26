@@ -124,8 +124,8 @@ struct CompilationInput {
     /// The bytes of the files served from memory, by path.
     llvm::StringMap<std::string> buffers;
 
-    /// The path the focus file's bytes are served by, as the editor has
-    /// them (add_focus); empty when the compile reads the file on disk or
+    /// The path the focus file's bytes are served by, as the open document
+    /// holds them (add_focus); empty when the compile reads the file on disk or
     /// only a preamble's part of it.
     std::string focus;
 
@@ -150,7 +150,8 @@ struct CompilationInput {
     /// The PCMs to load, by module name.
     llvm::StringMap<std::string> pcms;
 
-    /// Serve the focus file's bytes from memory, as the editor has them.
+    /// Serve the focus file's bytes from memory, as the open document holds
+    /// them.
     void add_focus(llvm::StringRef path, llvm::StringRef bytes) {
         focus = path.str();
         add_remapped_file(path, bytes);
@@ -501,7 +502,7 @@ public:
     auto project_root() -> llvm::StringRef;
 
     /// The text of `fid` (see vfs::without_bom): the focus file's as the
-    /// editor has it, any other's as clang read it. Every offset the unit
+    /// editor has it, any other's from the bytes clang read. Every offset the unit
     /// reports or takes is one in this text, though clang's buffer of a
     /// file keeps its byte order mark, and of the focus file holds a NUL at
     /// a completion's point and goes on with the include of a header
@@ -512,10 +513,10 @@ public:
     /// them.
     auto file_text(clang::FileID fid) -> SourceText&;
 
-    /// The buffer this compilation read for `fid`, or nullopt when it was
-    /// never loaded here (e.g. a preamble header served from a PCH). Unlike
-    /// file_content, never falls back to a fake buffer.
-    auto loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef>;
+    /// The bytes this compilation read for `fid`, byte order mark included,
+    /// or nullopt when it was never loaded here (e.g. a preamble header
+    /// served from a PCH): never a fake buffer.
+    auto loaded_file_bytes(clang::FileID fid) -> std::optional<llvm::StringRef>;
 
     /// The lines and columns of file_content(fid).
     auto positions(clang::FileID fid) -> PositionMap;
@@ -693,7 +694,7 @@ public:
     clang::TranslationUnitDecl* tu();
 
     /// The files this compilation read (include and __has_include targets),
-    /// each with the hash of the text the compiler actually consumed, and
+    /// each with the hash of the bytes the compiler actually consumed, and
     /// the places its failed lookups looked (see absent), hash 0.
     std::vector<ReportedInput> deps();
 

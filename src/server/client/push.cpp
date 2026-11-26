@@ -206,7 +206,7 @@ void LSPClient::publish_second_name(MasterServer::Document& document,
     } else if(compiled) {
         params.diagnostics = to_client(owner->shown_diagnostics(first, *compiled->output),
                                        second.name,
-                                       compiled->output->text->positions());
+                                       compiled->output->source->positions());
     } else if(!flipped) {
         // Shared once the owner's compile caught up with the text; until
         // then only a divergence warning is taken down.
@@ -305,7 +305,7 @@ void LSPClient::push_output(ServedProject& project, const Session& session, bool
         params.version = output.version;
         params.diagnostics = to_client(project.shown_diagnostics(session, output),
                                        server.files.display(session.path_id),
-                                       output.text->positions());
+                                       output.source->positions());
         // A compile of the same text from the same inputs, as after an
         // eviction, shows what the client holds.
         auto published = std::tuple(output.version,

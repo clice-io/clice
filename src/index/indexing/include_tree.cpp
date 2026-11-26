@@ -86,8 +86,8 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
             // A target never entered in this parse (behind a preamble PCH)
             // has no buffer to hash, and a version without a hash is never
             // fresh: leave the directive out rather than pin the unit stale.
-            if(!include.skipped || !include.fid.isValid() ||
-               !unit.loaded_file_content(include.fid) || unit.from_context(fid)) {
+            if(!include.skipped || !include.fid.isValid() || !unit.loaded_file_bytes(include.fid) ||
+               unit.from_context(fid)) {
                 continue;
             }
             auto parent = add_include_chain(unit, fid, tree, path_table);
@@ -170,8 +170,8 @@ IncludeTree IncludeTree::from(CompilationUnit& unit, llvm::ArrayRef<clang::FileI
         if(tree.content_hashes[path_id] != 0) {
             return;
         }
-        if(auto content = unit.loaded_file_content(fid)) {
-            tree.content_hashes[path_id] = vfs::version_of(*content);
+        if(auto bytes = unit.loaded_file_bytes(fid)) {
+            tree.content_hashes[path_id] = vfs::content_hash(*bytes);
         }
     };
     for(auto& [fid, node]: tree.file_nodes) {

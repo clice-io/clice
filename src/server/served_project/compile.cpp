@@ -152,10 +152,9 @@ void ServedProject::retry_after_save(Session& session) {
     if(selection.self_containment) {
         auto compiled = latest_at(session);
         bool errs = !compiled || feature::count_errors(compiled->output->diagnostics.own) > 0;
-        if(project.header_saved(
-               *selection.self_containment,
-               project.file_table.intern_version(path_id, session.source->version()),
-               errs)) {
+        if(project.header_saved(*selection.self_containment,
+                                project.file_table.intern_version(path_id, session.source->hash()),
+                                errs)) {
             project.graph.invalidate(ast_node(path_id));
         }
     }
@@ -499,9 +498,10 @@ struct ServedProject::CompileAttempt {
 
     std::vector<std::uint64_t> known_instantiations;
 
-    /// What the current send compiles, and the buffer whose bytes it holds.
+    /// What the current send compiles.
     worker::CompileParams params;
 
+    /// The buffer whose bytes `params` holds.
     std::shared_ptr<SourceText> source;
 
     Resolution resolution;
@@ -620,7 +620,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
         };
         if(self_containment) {
             auto inputs = read();
-            auto text = project.file_table.intern_version(path_id, session->source->version());
+            auto text = project.file_table.intern_version(path_id, session->source->hash());
             // LIMITATION: a process killed between the two compiles can have
             // saved this steering `false`; the header then compiles in its
             // host's context until what the check read changes.
@@ -666,7 +666,7 @@ async::task<std::optional<Result>>
     params.path = file_path;
     params.version = session->version;
     source = session->source;
-    params.content = source->bytes().str();
+    params.bytes = source->bytes().str();
     params.project_root = project.root.str();
     if(tidy_dispatch) {
         params.tidy = tidy_config->params;
@@ -926,7 +926,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
             compiled.generation.reset();
             compiled.output = CompileOutput{
                 .version = setup_fail ? std::optional(session->version) : std::nullopt,
-                .text = source,
+                .source = source,
                 .diagnostics = facts(),
                 .failed = setup_fail,
             };
@@ -1037,7 +1037,7 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
                                           : std::vector<feature::FileDiagnostic>();
     next->output = CompileOutput{
         .version = session->version,
-        .text = source,
+        .source = source,
         .diagnostics = facts(),
     };
     next->output->diagnostics.own = std::move(diagnostics);

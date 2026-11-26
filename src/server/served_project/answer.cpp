@@ -181,7 +181,7 @@ std::vector<index::OpenBuffer> ServedProject::open_buffers() const {
         open.push_back({
             .file = path_id,
             .text = session.text(),
-            .hash = session.source->version(),
+            .hash = session.source->hash(),
             .positions = session.positions(),
             .index = compiled ? compiled->index : nullptr,
             .current = current(path_id),

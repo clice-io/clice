@@ -173,7 +173,7 @@ static std::vector<ReportedInput> precompiled_deps(CompilationUnit& unit, bool s
     if(source) {
         auto focus = unit.focus_file();
         deps.emplace_back(std::string(unit.file_path(focus.file())),
-                          unit.file_text(focus.file()).version());
+                          unit.file_text(focus.file()).hash());
     }
     return deps;
 }
@@ -198,7 +198,7 @@ static worker::PrecompiledBuildResult
         .stop = stop,
     };
     if(!params.whole_file) {
-        cp.input.add_remapped_file(params.file, params.content, params.preamble_bound);
+        cp.input.add_remapped_file(params.file, params.bytes, params.preamble_bound);
     }
     cp.input.add_synthesized(params.synthesized);
     hold_recent(use_precompiled(cp.input, {params.pch, 0}, params.pcms));
@@ -512,7 +512,7 @@ static worker::CompileUnitResult
     }
     if(params.skipped_diagnostics) {
         result.skipped_diagnostics = feature::skipped_diagnostics(*unit);
-        result.version = unit->file_text(unit->focus_file().file()).version();
+        result.hash = unit->file_text(unit->focus_file().file()).hash();
     }
 
     // AST teardown for a large TU is material work that belongs to this
@@ -549,7 +549,7 @@ static CompilationParams cursor_compile(const Params& params,
         .stop = stop,
     };
     hold_recent(use_precompiled(cp.input, params.pch, params.pcms));
-    cp.input.add_focus(params.file, params.content);
+    cp.input.add_focus(params.file, params.bytes);
     cp.input.add_synthesized(params.synthesized);
     return cp;
 }

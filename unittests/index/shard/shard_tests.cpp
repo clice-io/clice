@@ -83,7 +83,7 @@ ZEST_CASE(RoundtripLookups) {
     auto content = sources.all_files.find("main.cpp")->second.content;
     auto shard = make_shard(focus_blob());
     ZASSERT(shard.loaded());
-    ZASSERT(shard.content_size() == static_cast<std::uint32_t>(content.size()));
+    ZASSERT(shard.text_size() == static_cast<std::uint32_t>(content.size()));
     ZASSERT(!shard.line_starts().empty());
 
     auto expected = range("ref");
@@ -157,7 +157,7 @@ ZEST_CASE(ContentNotStored) {
     auto shard = make_shard(write_fresh(file_index, content));
 
     ZASSERT(shard.positions().text().empty());
-    ZASSERT(shard.content_size() == static_cast<std::uint32_t>(content.size()));
+    ZASSERT(shard.text_size() == static_cast<std::uint32_t>(content.size()));
     ZASSERT(shard.content_hash() == llvm::xxh3_64bits(content));
     ZASSERT(hash_at(shard, 4) == 111u);
 
@@ -850,7 +850,7 @@ ZEST_CASE(UnloadedShardNoops) {
 /// blob the way the writer would.
 void fill_content(index::ShardBlob& blob, llvm::StringRef text) {
     blob.content_hash = llvm::xxh3_64bits(text);
-    blob.content_size = static_cast<std::uint32_t>(text.size());
+    blob.text_size = static_cast<std::uint32_t>(text.size());
     blob.line_lengths.clear();
     blob.long_lines.clear();
     blob.long_line_lengths.clear();
@@ -860,7 +860,7 @@ void fill_content(index::ShardBlob& blob, llvm::StringRef text) {
     auto starts = lsp::line_starts(std::string_view(text.data(), text.size()));
     for(std::size_t i = 0; i < starts.size(); i += 1) {
         auto last = i + 1 == starts.size();
-        auto next = last ? blob.content_size : starts[i + 1];
+        auto next = last ? blob.text_size : starts[i + 1];
         auto length = next - starts[i];
         auto line = text.slice(starts[i], last ? next : next - 1);
         if(ranges::any_of(line, [](char c) { return static_cast<unsigned char>(c) >= 0x80; })) {

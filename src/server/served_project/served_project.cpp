@@ -372,8 +372,7 @@ std::shared_ptr<const DocumentCompile> ServedProject::latest_at(const Session& s
         return nullptr;
     }
     auto& output = *compiled->output;
-    return output.version == session.version && output.text &&
-                   output.text->version() == session.source->version()
+    return output.version == session.version && output.source->hash() == session.source->hash()
                ? compiled
                : nullptr;
 }

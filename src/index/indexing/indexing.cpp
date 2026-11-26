@@ -752,10 +752,10 @@ std::vector<std::byte> Builder::build() {
         auto& file = resolved_by_path[path_id];
         InstantiationSection section{.path_id = path_id};
         if(!file.walked.empty()) {
-            auto& content = unit.file_text(path_fids[path_id]);
+            auto& source = unit.file_text(path_fids[path_id]);
             section.blob = write_instantiations(file.walked,
-                                                content.version(),
-                                                static_cast<std::uint32_t>(content.text().size()));
+                                                source.hash(),
+                                                static_cast<std::uint32_t>(source.text().size()));
         }
         ranges::sort(file.skipped);
         file.skipped.erase(ranges::unique(file.skipped).begin(), file.skipped.end());

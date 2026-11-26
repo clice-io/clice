@@ -231,7 +231,7 @@ ZEST_CASE(FocusTextAsEdited) {
     auto focus = unit->focus_file();
     ZEXPECT(unit->file_content(focus.file()) == text);
     ZEXPECT(focus.content() == text);
-    ZEXPECT(unit->loaded_file_content(focus.file())->size() > text.size());
+    ZEXPECT(unit->loaded_file_bytes(focus.file())->size() > text.size());
     ZEXPECT(unit->positions(focus.file()).size() == text.size());
     ZEXPECT(focus.positions().size() == text.size());
 
@@ -344,11 +344,11 @@ int x;
 )cpp");
     ZASSERT(compile_with_pch());
     // The PCH served a.h: this compile never read it.
-    ZEXPECT(!unit->loaded_file_content(file("a.h")));
-    ZEXPECT(unit->loaded_file_content(file("b.h")) == "int b;\n");
+    ZEXPECT(!unit->loaded_file_bytes(file("a.h")));
+    ZEXPECT(unit->loaded_file_bytes(file("b.h")) == "int b;\n");
 }
 
-ZEST_CASE(MarkedFileText) {
+ZEST_CASE(OffsetsSkipBom) {
     // Clang reads a header as the compiler does, its byte order mark kept;
     // the unit reports and takes offsets in the text the mark leaves out.
     llvm::StringRef bytes = "\xEF\xBB\xBFint a;\n";
@@ -357,17 +357,17 @@ ZEST_CASE(MarkedFileText) {
     ZASSERT(compile());
     auto header = file("a.h");
     ZEXPECT(unit->file_content(header) == "int a;\n");
-    ZEXPECT(unit->loaded_file_content(header) == bytes);
+    ZEXPECT(unit->loaded_file_bytes(header) == bytes);
     auto location = declared("a")->getLocation();
     ZEXPECT(unit->written_at(location) == FileOffset{header, 4});
     ZEXPECT(unit->create_location(header, 4) == location);
     // A place in the mark itself is the start of the text.
     ZEXPECT(unit->written_at(location.getLocWithOffset(-7)) == FileOffset{header, 0});
-    // The compile read the bytes, the mark included.
+    // The compile read the bytes.
     auto deps = unit->deps();
     auto dep = ranges::find(deps, TestVFS::path("a.h"), &ReportedInput::path);
     ZASSERT(dep != deps.end());
-    ZEXPECT(dep->hash == vfs::version_of(bytes));
+    ZEXPECT(dep->hash == vfs::content_hash(bytes));
 }
 
 ZEST_CASE(PrecompiledHeaderWhole) {

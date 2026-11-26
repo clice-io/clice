@@ -21,7 +21,7 @@ std::int64_t generous_started_at() {
 /// (0 = unreadable, which no test here expects).
 std::uint64_t consumed_hash(llvm::StringRef path) {
     auto bytes = vfs::read_bytes(path);
-    return bytes ? vfs::version_of(*bytes) : 0;
+    return bytes ? vfs::content_hash(*bytes) : 0;
 }
 
 /// Whether the file table answers the file's current stat without a read.

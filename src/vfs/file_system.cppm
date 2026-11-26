@@ -53,8 +53,8 @@ llvm::vfs::Status to_llvm(const fs::Status& status, llvm::StringRef name);
 
 }  // namespace vfs
 
-/// One observation of a file's on-disk bytes: the version of the bytes a
-/// single read returned (vfs::version_of), and the stamp describing them.
+/// One observation of a file's on-disk bytes: the hash of the bytes a
+/// single read returned (vfs::content_hash), and the stamp describing them.
 /// Captured under the pairing discipline (see vfs::read_observed) so the
 /// two halves are same-source: `paired` says the pre/post fstats of the
 /// read agreed, `reliable` additionally says the mtime lay outside the
@@ -95,10 +95,10 @@ inline std::uint32_t bom_length(llvm::StringRef bytes) {
     return bytes.starts_with(byte_order_mark) ? byte_order_mark.size() : 0;
 }
 
-/// The version of a file holding `bytes`, which every staleness check
-/// compares: their xxh3, a byte order mark included, since what clang
-/// builds from them depends on it.
-inline std::uint64_t version_of(llvm::StringRef bytes) {
+/// The hash of a file's `bytes`, which every staleness check compares and
+/// the file table's versions name: their xxh3, a byte order mark included,
+/// since what clang builds from them depends on it.
+inline std::uint64_t content_hash(llvm::StringRef bytes) {
     return llvm::xxh3_64bits(bytes);
 }
 

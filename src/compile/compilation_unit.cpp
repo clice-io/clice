@@ -312,7 +312,7 @@ auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
     return file_text(fid).positions();
 }
 
-auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef> {
+auto CompilationUnit::loaded_file_bytes(clang::FileID fid) -> std::optional<llvm::StringRef> {
     return SM().getBufferDataIfLoaded(fid);
 }
 
@@ -577,10 +577,10 @@ auto CompilationUnit::bom_length(clang::FileID fid) -> std::uint32_t {
     if(!buffer && fid != SM().getMainFileID() && SM().getFileEntryRefForID(fid)) {
         // A PCH or a module holds the file, which this compile never read:
         // its build read the bytes the disk holds, and loading them here
-        // would make them read (loaded_file_content), unless the disk does
+        // would make them read (loaded_file_bytes), unless the disk does
         // not answer.
-        if(auto marked = vfs::starts_with_bom(file_path(fid))) {
-            it->second = *marked ? vfs::byte_order_mark.size() : 0;
+        if(auto has_bom = vfs::starts_with_bom(file_path(fid))) {
+            it->second = *has_bom ? vfs::byte_order_mark.size() : 0;
             return it->second;
         }
     }
@@ -783,7 +783,7 @@ std::vector<ReportedInput> CompilationUnit::deps() {
         auto it = deps.try_emplace(path, 0).first;
         if(it->second == 0) {
             if(auto buffer = SM().getBufferDataOrNone(fid)) {
-                it->second = vfs::version_of(*buffer);
+                it->second = vfs::content_hash(*buffer);
             }
         }
     };
@@ -792,9 +792,8 @@ std::vector<ReportedInput> CompilationUnit::deps() {
     /// single annotation token). Processing the directive loaded the file
     /// into the SourceManager's content cache, so this looks up the very
     /// buffer the build consumed; only an existence-only check whose
-    /// content was never read loads it here instead. An embedded file's
-    /// buffer holds its bytes, hashed like every dependency's. An
-    /// unreadable file hashes as 0 and the snapshot capture falls back to
+    /// content was never read loads it here instead. An unreadable file
+    /// hashes as 0 and the snapshot capture falls back to
     /// a started_at-guarded disk hash.
     auto add_file = [&](clang::OptionalFileEntryRef file) {
         if(!file) {
@@ -807,7 +806,7 @@ std::vector<ReportedInput> CompilationUnit::deps() {
         auto it = deps.try_emplace(path, 0).first;
         if(it->second == 0) {
             if(auto buffer = SM().getMemoryBufferForFileOrNone(*file)) {
-                it->second = vfs::version_of(buffer->getBuffer());
+                it->second = vfs::content_hash(buffer->getBuffer());
             }
         }
     };

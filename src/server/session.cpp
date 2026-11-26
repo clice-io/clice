@@ -32,14 +32,14 @@ void Session::set_text(std::string text) {
     source = std::make_shared<SourceText>(std::move(text));
 }
 
-bool Session::follow_mark(std::uint64_t disk) {
-    if(source->version() == disk) {
+bool Session::follow_bom(std::uint64_t disk_hash) {
+    if(source->hash() == disk_hash) {
         return false;
     }
-    bool marked = source->bytes().size() != source->text().size();
-    std::string flipped = marked ? "" : vfs::byte_order_mark.str();
+    bool has_bom = source->bytes().size() != source->text().size();
+    std::string flipped = has_bom ? "" : vfs::byte_order_mark.str();
     flipped += text();
-    if(vfs::version_of(flipped) != disk) {
+    if(vfs::content_hash(flipped) != disk_hash) {
         return false;
     }
     source = std::make_shared<SourceText>(std::move(flipped));

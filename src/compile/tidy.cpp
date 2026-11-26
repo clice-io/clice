@@ -188,7 +188,7 @@ private:
 };
 
 /// The view of the disk a .clang-tidy resolution reads, recording each
-/// configuration file it looks for: by the version of the bytes it read,
+/// configuration file it looks for: by the hash of the bytes it read,
 /// or as absent.
 class ConfigReads : public llvm::vfs::ProxyFileSystem {
 public:
@@ -223,7 +223,7 @@ public:
         if(!status || !buffer) {
             return status ? buffer.getError() : status.getError();
         }
-        files.push_back({.path = path.str(), .hash = vfs::version_of((*buffer)->getBuffer())});
+        files.push_back({.path = path.str(), .hash = vfs::content_hash((*buffer)->getBuffer())});
         return std::make_unique<ReadFile>(*status, std::move(*buffer));
     }
 

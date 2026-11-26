@@ -119,7 +119,7 @@ CheckResult line_table_ok(const Root& root) {
     if(utf8_cursor != utf8_lines.size()) {
         return std::unexpected("non-ASCII lines are not ascending lines of the table");
     }
-    if(line_sum != root.content_size) {
+    if(line_sum != root.text_size) {
         return std::unexpected("line lengths do not add up to the content size");
     }
     return {};
@@ -148,13 +148,13 @@ CheckResult symbol_table_ok(const Root& root) {
 }
 
 CheckResult range_encodings_ok(const Root& root) {
-    auto& content_size = root.content_size;
-    if(auto ok = range_encoding_ok(root.occurrences, content_size, RangeEncoding::Delta); !ok) {
+    auto& text_size = root.text_size;
+    if(auto ok = range_encoding_ok(root.occurrences, text_size, RangeEncoding::Delta); !ok) {
         return ok;
     }
     return range_encoding_ok(root.relation_explicit_ranges,
-                             content_size,
-                             unsorted_encoding(content_size));
+                             text_size,
+                             unsorted_encoding(text_size));
 }
 
 // occurrences_at binary-searches the decoded end column and stops its
@@ -191,7 +191,7 @@ CheckResult occurrences_ok(const Root& root) {
 CheckResult relations_ok(const Root& root) {
     auto table = RelationTable::of(root);
     auto occurrences = OccurrenceTable::of(root);
-    auto& content_size = root.content_size;
+    auto& text_size = root.text_size;
     auto& symbol_hashes = root.symbol_hashes;
     auto& extent_heads = root.relation_extent_heads;
     auto& extent_lengths = root.relation_extent_lengths;
@@ -303,7 +303,7 @@ CheckResult relations_ok(const Root& root) {
                        : extent_heads[k] > relation.range.begin) {
                 return std::unexpected("relation extent is not the canonical one");
             }
-            if(extent.end < extent.begin || extent.end > content_size) {
+            if(extent.end < extent.begin || extent.end > text_size) {
                 return std::unexpected("definition range past the content");
             }
         }
@@ -515,19 +515,19 @@ std::uint64_t Shard::content_hash() const {
     return view_of(buffer->getBuffer()).content_hash;
 }
 
-std::uint32_t Shard::content_size() const {
+std::uint32_t Shard::text_size() const {
     if(!buffer) {
         return 0;
     }
-    return view_of(buffer->getBuffer()).content_size;
+    return view_of(buffer->getBuffer()).text_size;
 }
 
-bool Shard::matches_content(SourceText& text) const {
-    return matches_content(text.text().size(), text.version());
+bool Shard::matches_content(SourceText& source) const {
+    return matches_content(source.text().size(), source.hash());
 }
 
 bool Shard::matches_content(std::uint64_t size, std::uint64_t hash) const {
-    return loaded() && size == content_size() && hash == content_hash();
+    return loaded() && size == text_size() && hash == content_hash();
 }
 
 std::vector<VariantHash> Shard::variants() const {
@@ -869,7 +869,7 @@ PositionMap Shard::positions() const {
         return {0, {}, {}};
     }
     auto& root = view_of(buffer->getBuffer());
-    return {content_size(),
+    return {text_size(),
             line_starts(),
             root.crlf_lines,
             root.utf8_lines,

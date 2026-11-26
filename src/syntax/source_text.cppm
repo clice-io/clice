@@ -10,7 +10,7 @@ import :vfs.file_system;
 namespace clice {
 
 /// A file's bytes and what its readers derive from them, each made on
-/// first use and kept: their version, and of their text — the bytes
+/// first use and kept: their hash, and of their text — the bytes
 /// without a byte order mark (vfs::without_bom), which every reader in
 /// clice reads — its line tables, its comments, its lexical scan. Borrows
 /// the bytes, which a NUL must follow as the lexer reads one, or owns them;
@@ -55,9 +55,9 @@ public:
         return *options;
     }
 
-    /// The bytes' version (vfs::version_of): what "a buffer holds these
+    /// The bytes' hash (vfs::content_hash): what "a buffer holds these
     /// bytes" is compared by against disk observations and index shards.
-    auto version() -> std::uint64_t;
+    auto hash() -> std::uint64_t;
 
     auto positions() -> PositionMap;
 
@@ -85,7 +85,7 @@ private:
 
     const clang::IdentifierTable* table = nullptr;
 
-    std::optional<std::uint64_t> bytes_version;
+    std::optional<std::uint64_t> bytes_hash;
 
     struct LineTables {
         std::vector<std::uint32_t> starts;

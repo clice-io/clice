@@ -449,7 +449,7 @@ std::expected<ObservedFile, FileError> read_observed(llvm::StringRef path, std::
     if(auto error = file->read_to_end(result.text)) {
         return failed(FileError::Operation::Read, path, error);
     }
-    result.obs.hash = version_of(result.text);
+    result.obs.hash = content_hash(result.text);
     result.text.erase(0, result.text.size() - without_bom(result.text).size());
 
     auto after = file->status();

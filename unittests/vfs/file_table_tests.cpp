@@ -222,16 +222,16 @@ ZEST_CASE(FreshReadNotConfirmed) {
     ZASSERT(!pool.disk.cached_hash(fid, read->stamp).has_value());
 }
 
-ZEST_CASE(ReadVersionsBytes) {
+ZEST_CASE(ReadHashesBytes) {
     // A file saved with a UTF-8 byte order mark reads as the text an editor
-    // sends, and its version is of the bytes: a mark gained or lost is a
+    // sends, and its hash is of the bytes: a mark gained or lost is a
     // change.
     TempDir tmp;
     tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
     auto observed = vfs::read_observed(tmp.path("bom.h"));
     ZASSERT(observed);
     ZASSERT(observed->text == "int x;\n");
-    ZASSERT(observed->obs.hash == vfs::version_of("\xEF\xBB\xBFint x;\n"));
+    ZASSERT(observed->obs.hash == vfs::content_hash("\xEF\xBB\xBFint x;\n"));
 }
 
 ZEST_CASE(CompileFSKeepsBom) {
@@ -254,7 +254,7 @@ ZEST_CASE(CompileFSKeepsBom) {
 }
 
 ZEST_CASE(BinaryReadKeepsBom) {
-    // `#embed` data, PCH and PCM files are bytes, served as they are.
+    // A binary read (`#embed` data, PCH and PCM files) serves the bytes too.
     TempDir tmp;
     tmp.touch("data.bin",
               "\xEF\xBB\xBF"

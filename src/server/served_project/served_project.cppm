@@ -63,8 +63,8 @@ struct CompileOutput {
     /// (a failed compile publishes empty diagnostics without a version).
     std::optional<int> version;
 
-    /// The text compiled, which the diagnostics are at bytes of.
-    std::shared_ptr<SourceText> text;
+    /// The buffer compiled: its bytes, and the text the diagnostics are at.
+    std::shared_ptr<SourceText> source;
 
     /// What the compile raised and what clice knows of how it compiled.
     feature::CompileDiagnostics diagnostics;
@@ -409,8 +409,8 @@ public:
     std::shared_ptr<const DocumentCompile> latest(Fid path_id) const;
 
     /// The document's latest compile while its output describes the
-    /// session's buffer — its version, and the bytes it holds: a save can
-    /// take the mark of the file on disk alone (Session::follow_mark) —, or
+    /// session's buffer — its LSP version, and the bytes it holds: a save can
+    /// take the mark of the file on disk alone (Session::follow_bom) —, or
     /// null.
     std::shared_ptr<const DocumentCompile> latest_at(const Session& session) const;
 
@@ -1212,7 +1212,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
 
     params.file = path;
     auto source = session.source;
-    params.content = source->bytes().str();
+    params.bytes = source->bytes().str();
     params.offset = offset;
     // Taken before the command resolves: after an invalidation meanwhile
     // the command may be stale, and adopt_pch refuses the PCH built under

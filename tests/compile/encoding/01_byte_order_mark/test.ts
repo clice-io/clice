@@ -20,7 +20,7 @@ answers(
     },
 );
 
-answers("marked header", { indexing: true }, async (a) => {
+answers("header with a byte order mark", { indexing: true }, async (a) => {
     await a.show("extent", a.hover(a.marker("extent")));
     await a.show("area", a.hover(a.at("main.cpp", "|area(")));
     await a.show("outline", a.documentSymbols("shapes.h"));
@@ -28,7 +28,7 @@ answers("marked header", { indexing: true }, async (a) => {
     await a.show("tokens", a.semanticTokens("shapes.h"));
 });
 
-test("marked host keeps the context", async (t) => {
+test("host with a byte order mark keeps the context", async (t) => {
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);
     expect(await s.errors("utils.h")).toEqual([]);
@@ -36,10 +36,10 @@ test("marked host keeps the context", async (t) => {
 });
 
 test("the compile reads the bytes", async (t) => {
-    // The mark is text's, not data's: #embed reads it with the rest, whether
-    // __has_embed looked the file up or #include read it first, and a file
-    // embedded first still includes as its text. The compiler counts it in
-    // a column, of an open document's own first line too, though the editor
+    // #embed reads the mark with the rest of the bytes, whether __has_embed
+    // looked the file up or #include read it first, and a file embedded
+    // first still includes as source. The compiler counts the mark in a
+    // column, of an open document's own first line too, though the editor
     // sends the text without it.
     const s = await t.start();
     for (const file of [
@@ -62,7 +62,7 @@ test("a save adding the mark", async (t) => {
     expect(await s.errors("saved_column.cpp")).toEqual([]);
     t.disk.write("saved_column.cpp", "\uFEFF" + t.disk.read("saved_column.cpp"));
     s.save("saved_column.cpp", { write: false });
-    await t.show("marked", s.errors("saved_column.cpp"));
+    await t.show("after the save", s.errors("saved_column.cpp"));
 });
 
 test("a save adding the mark to a header", async (t) => {

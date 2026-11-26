@@ -122,7 +122,7 @@ function markersOf(id: string, marked: ReadonlyMap<string, AnnotatedSource>): Ma
     for (const [file, source] of [...marked].sort(([a], [b]) => (a < b ? -1 : 1))) {
         // Both clients read a file's text without its byte order mark.
         const text = withoutBom(source.content);
-        const bom = source.content.length - text.length;
+        const bomLength = source.content.length - text.length;
         const found: { name: string; begin: number; end: number; range: boolean }[] = [
             ...[...source.offsets].map(([name, at]) => ({
                 name,
@@ -154,8 +154,8 @@ function markersOf(id: string, marked: ReadonlyMap<string, AnnotatedSource>): Ma
             out.push({
                 path: file,
                 name,
-                begin: utf16(source.content, marker.begin) - bom,
-                end: utf16(source.content, marker.end) - bom,
+                begin: utf16(source.content, marker.begin) - bomLength,
+                end: utf16(source.content, marker.end) - bomLength,
                 range: marker.range,
                 text,
             });

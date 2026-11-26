@@ -946,7 +946,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
         if(alone->completed()) {
             auto& files = project.file_table;
             auto errors = feature::count_errors(*alone);
-            auto text = files.intern_version(path_id, vfs::version_of(file.bytes));
+            auto text = files.intern_version(path_id, vfs::content_hash(file.bytes));
             auto inputs = intern_inputs(files, alone->deps(), alone->started_at().count());
             project.commit_self_containment(*key, errors == 0, text, inputs);
             resolution = resolve();

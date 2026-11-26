@@ -29,7 +29,7 @@ workspace_symbols = [
 [navigation.ANSWER]
 definition = ["answer.h │ #define ⟦ANSWER⟧ 42"]
 
-["marked header".extent.hover]
+["header with a byte order mark".extent.hover]
 markdown = '''
 **struct** `Extent`
 
@@ -46,7 +46,7 @@ struct Extent {
 '''
 range = "struct ⟦Extent⟧ {"
 
-["marked header".area.hover]
+["header with a byte order mark".area.hover]
 markdown = '''
 **function** `area`
 
@@ -56,7 +56,7 @@ inline int area(Extent extent)
 '''
 range = "return get_x({1, 2}) + shared_fn() + ⟦area⟧({3, 4});"
 
-["marked header".outline]
+["header with a byte order mark".outline]
 document_symbols = [
     {
         name = "Extent",
@@ -70,13 +70,13 @@ document_symbols = [
     { name = "area", kind = "Function", at = "inline int ⟦area⟧(Extent extent) {" },
 ]
 
-["marked header".folding]
+["header with a byte order mark".folding]
 folding_ranges = [
     { kind = "struct", at = "struct Extent ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
     { kind = "functionBody", at = "inline int area(Extent extent) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
 ]
 
-["marked header".tokens]
+["header with a byte order mark".tokens]
 semantic_tokens = [
     { at = "⟦/// A size on the plane.⟧", type = "comment", modifiers = ["documentation"] },
     { at = "⟦struct⟧ Extent {", type = "keyword" },
@@ -98,12 +98,12 @@ semantic_tokens = [
     { at = "return extent.width * extent.⟦height⟧;", type = "field", modifiers = ["member"] },
 ]
 
-["marked host keeps the context"."utils.h"]
+["host with a byte order mark keeps the context"."utils.h"]
 contexts = [
     { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },
 ]
 
-["a save adding the mark".marked]
+["a save adding the mark"."after the save"]
 errors = [
     {
         at = "static_assert(⟦__builtin_COLUMN() == 15⟧);",

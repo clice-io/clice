@@ -231,7 +231,7 @@ async::task<UnitResult>
         result.tidy_diagnostics = std::move(value.tidy_diagnostics);
         result.errors = std::move(value.errors);
         result.skipped_diagnostics = std::move(value.skipped_diagnostics);
-        result.version = value.version;
+        result.hash = value.hash;
         result.perf = {.bytes = index_bytes->size(), .index_ms = run_ms, .merge_ms = 0};
         if(request.index) {
             // A newer content-level invalidation during this build (or a

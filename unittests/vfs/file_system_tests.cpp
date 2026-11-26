@@ -19,7 +19,8 @@ ZEST_SUITE(FileSystem) {
 
 ZEST_CASE(OpenedFilesKeepIdentity) {
     // Clang merges files by ID: a status by path and the status of the same
-    // file opened, as source or as bytes, must agree on it, and on its size.
+    // file opened for reading or for binary reading must agree on it, and on
+    // its size.
     TempDir tmp;
     tmp.touch("a.h",
               "\xEF\xBB\xBF"

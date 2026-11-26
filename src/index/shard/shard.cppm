@@ -69,20 +69,20 @@ public:
         return buffer ? buffer->getBuffer() : llvm::StringRef();
     }
 
-    /// The version of the bytes the shard was built from
-    /// (vfs::version_of; the content generation), not of the blob.
+    /// The hash of the bytes the shard was built from
+    /// (vfs::content_hash; the content generation), not of the blob.
     std::uint64_t content_hash() const;
 
     /// Size of the text the shard was built from (vfs::without_bom); the
     /// upper bound of every stored range.
-    std::uint32_t content_size() const;
+    std::uint32_t text_size() const;
 
-    /// Whether `text` holds the exact bytes the shard was built from.
-    /// Compares by size and version: the shard does not keep the content.
-    bool matches_content(SourceText& text) const;
+    /// Whether `source` holds the exact bytes the shard was built from.
+    /// Compares by size and hash: the shard does not keep the content.
+    bool matches_content(SourceText& source) const;
 
     /// The same comparison for a caller that already holds the size of the
-    /// text and the version of its bytes.
+    /// text and the hash of its bytes.
     bool matches_content(std::uint64_t size, std::uint64_t hash) const;
 
     /// All variant identities stored in the blob, in mask-bit order. A
@@ -182,13 +182,13 @@ private:
 /// is the variant's identity. `symbols` resolves referenced symbols so
 /// non-External names end up in the blob's local-name table (External names
 /// live in the ProjectIndex); returned name refs must stay valid for the
-/// duration of the call. `content` holds the bytes the indexing compile
-/// consumed; the blob keeps their version, and the size and line table of
-/// their text, with the text of its non-ASCII lines only.
+/// duration of the call. `bytes` are those the indexing compile consumed;
+/// the blob keeps their hash, and the size and line table of their text,
+/// with the text of its non-ASCII lines only.
 std::vector<std::byte>
     write_shard(const FileIndex& file_index,
                 llvm::function_ref<std::optional<SymbolView>(SymbolHash)> symbols,
-                llvm::StringRef content);
+                llvm::StringRef bytes);
 
 /// Merge blobs of one file and one content generation: the variants of
 /// `old` whose identity is in `keep` (in stored order), then each blob of

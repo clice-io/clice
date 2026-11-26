@@ -153,7 +153,7 @@ struct CompileParams {
     std::string path;
     int version;
     /// The document's bytes (Session::source).
-    std::string content;
+    std::string bytes;
     std::string directory;
     /// See CompilationInput::project_root.
     std::string project_root;
@@ -248,7 +248,7 @@ struct BuildPCHParams {
 
     /// The bytes of the document whose preamble is built, remapped over the
     /// file up to `preamble_bound`, a place in their text.
-    std::string content;
+    std::string bytes;
     uint32_t preamble_bound = UINT32_MAX;
 
     /// Build the PCH of the whole file as it is on disk: a precompiled
@@ -358,7 +358,7 @@ struct CompletionParams {
 
     /// The document's bytes (Session::source), and the place of the cursor
     /// in their text.
-    std::string content;
+    std::string bytes;
     uint32_t offset = 0;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
@@ -399,7 +399,7 @@ struct SignatureHelpParams {
 
     /// The document's bytes (Session::source), and the place of the cursor
     /// in their text.
-    std::string content;
+    std::string bytes;
     uint32_t offset = 0;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
@@ -528,8 +528,8 @@ struct CompileUnitResult {
     /// `skipped_diagnostics`).
     std::vector<feature::FileDiagnostic> skipped_diagnostics;
 
-    /// The version of the bytes skipped_diagnostics describe.
-    std::uint64_t version = 0;
+    /// The hash of the bytes skipped_diagnostics describe.
+    std::uint64_t hash = 0;
 };
 
 /// Preprocess a unit for its include tree: where its compile enters each

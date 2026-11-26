@@ -63,7 +63,7 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
     }
     document.session = std::make_shared<Session>(path_id, std::move(text), version);
     if(observed) {
-        document.session->follow_mark(observed->hash);
+        document.session->follow_bom(observed->hash);
     }
     if(projects.empty()) {
         return;
@@ -201,7 +201,7 @@ void MasterServer::save_document(Fid path_id) {
     auto* document = find_document(path_id);
     // The user may have saved the file with another mark.
     if(auto observed = files.disk.current(path_id);
-       document && observed && document->session->follow_mark(observed->hash) && document->owner) {
+       document && observed && document->session->follow_bom(observed->hash) && document->owner) {
         document->owner->edited(*document->session);
     }
     // The user's retry: whatever crashed on the saved document runs again

@@ -2776,7 +2776,7 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     // the content itself is not stored.
     for(std::uint32_t i = 0; i < state->section_count(); i += 1) {
         auto& shard = state->shard_of(state->section_path(i));
-        ZEXPECT(shard.content_size() > 0);
+        ZEXPECT(shard.text_size() > 0);
         ZEXPECT(!shard.line_starts().empty());
         ZEXPECT(shard.positions().text().empty());
     }

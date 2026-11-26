@@ -183,12 +183,13 @@ public:
         if(!buffer) {
             return std::nullopt;
         }
-        auto text = buffer->getBuffer();
+        auto bytes = buffer->getBuffer();
         auto [known, fresh] = files.try_emplace(&file.getFileEntry());
         if(fresh) {
-            known->second = {input_path(instance->getFileManager(), file), vfs::version_of(text)};
+            known->second = {input_path(instance->getFileManager(), file),
+                             vfs::content_hash(bytes)};
         }
-        auto entry = cache->directives(known->second.path, known->second.hash, text);
+        auto entry = cache->directives(known->second.path, known->second.hash, bytes);
         if(!entry) {
             return std::nullopt;
         }
@@ -318,7 +319,7 @@ public:
             }
             auto buffer = sources.getBufferDataOrNone(fid);
             result.deps.push_back(
-                {.path = std::move(path), .hash = buffer ? vfs::version_of(*buffer) : 0});
+                {.path = std::move(path), .hash = buffer ? vfs::content_hash(*buffer) : 0});
         }
         // A file a check found was looked at, not read: it counts by what
         // the disk holds as the scan started.

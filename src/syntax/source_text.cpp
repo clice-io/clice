@@ -18,11 +18,11 @@ void SourceText::set_dialect(const clang::LangOptions& dialect) {
     comment_scan.reset();
 }
 
-auto SourceText::version() -> std::uint64_t {
-    if(!bytes_version) {
-        bytes_version = vfs::version_of(raw);
+auto SourceText::hash() -> std::uint64_t {
+    if(!bytes_hash) {
+        bytes_hash = vfs::content_hash(raw);
     }
-    return *bytes_version;
+    return *bytes_hash;
 }
 
 auto SourceText::positions() -> PositionMap {

@@ -4,12 +4,12 @@ import { test } from "@clice/tools/testing";
 
 // A .clang-format with a misspelled key, which clang-format refuses: the
 // editor's formatting fails with the reason, and so does the command. The
-// one in marked/ is saved with a byte order mark, and the reason names the
+// one in byte_order_mark/ is saved with the mark, and the reason names the
 // place on its first line where the editor shows it.
 
 test("editor", async (t) => {
     const s = await t.start();
-    for (const file of ["main.cpp", "marked/main.cpp"]) {
+    for (const file of ["main.cpp", "byte_order_mark/main.cpp"]) {
         s.open(file);
         const error = await s.formatting(file).then(
             () => null,

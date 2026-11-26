@@ -76,14 +76,14 @@ ZEST_CASE(WholeDocumentReplace) {
     ZASSERT(session.text() == "brand\nnew\n");
 }
 
-ZEST_CASE(MarkFollowsDisk) {
+ZEST_CASE(BomFollowsDisk) {
     // The editor sends the text alone; the buffer's bytes take the mark of
     // the file on disk holding that text, keep it through edits, and drop it
     // with the file's.
     llvm::StringRef mark = "\xEF\xBB\xBF";
     auto generation = doc.generation;
-    ZASSERT(!doc.follow_mark(vfs::version_of("int b;\n")));
-    ZASSERT(doc.follow_mark(vfs::version_of((mark + "int a;\n").str())));
+    ZASSERT(!doc.follow_bom(vfs::content_hash("int b;\n")));
+    ZASSERT(doc.follow_bom(vfs::content_hash((mark + "int a;\n").str())));
     ZASSERT(doc.text() == "int a;\n");
     ZASSERT(doc.source->bytes() == (mark + "int a;\n").str());
     ZASSERT(doc.generation == generation + 1);
@@ -91,7 +91,7 @@ ZEST_CASE(MarkFollowsDisk) {
     doc.edit({partial_change(0, 4, 0, 5, "b")}, 2, PositionEncoding::UTF16);
     ZASSERT(doc.source->bytes() == (mark + "int b;\n").str());
 
-    ZASSERT(doc.follow_mark(vfs::version_of("int b;\n")));
+    ZASSERT(doc.follow_bom(vfs::content_hash("int b;\n")));
     ZASSERT(doc.source->bytes() == "int b;\n");
 }
 
