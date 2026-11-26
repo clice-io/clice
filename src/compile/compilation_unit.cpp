@@ -573,10 +573,6 @@ auto CompilationUnit::bom_length(clang::FileID fid) -> std::uint32_t {
     if(!inserted) {
         return it->second;
     }
-    if(synthesized(fid)) {
-        // A header context's fragments are cut from their hosts' text.
-        return 0;
-    }
     auto buffer = SM().getBufferDataIfLoaded(fid);
     if(!buffer && fid != SM().getMainFileID() && SM().getFileEntryRefForID(fid)) {
         // A PCH or a module holds the file, which this compile never read:
