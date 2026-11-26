@@ -751,6 +751,11 @@ echo ' {} -E -quiet query.cpp -fmodules -dM' >&2
     /// The value of another option is that option's.
     argv = f.resolve(add("b.cpp", {driver.c_str(), "-Xpreprocessor", "-Werror", "-c"}));
     ZEXPECT(contains(argv, "-Werror"));
+
+    /// Andes GCC's size levels, which clang refuses.
+    argv = f.resolve(add("c.cpp", {driver.c_str(), "-Os2", "-c"}));
+    ZEXPECT(contains(argv, "-Os"));
+    ZEXPECT(!contains(argv, "-Os2"));
 }
 
 ZEST_CASE(CommandISAForClang) {
