@@ -62,9 +62,10 @@ describe("unlabelledOffsets", () => {
         ).toEqual(["src/feature/a.cpp:3: auto start = SM.getLocForStartOfFile(fid);"]);
     });
 
-    test("the unit and its token map convert, and need none", () => {
+    test("the unit, its compile and its token map convert, and need none", () => {
         const line = "auto [fid, offset] = SM().getDecomposedLoc(location);";
         expect(unlabelledOffsets("src/compile/compilation_unit.cpp", line)).toEqual([]);
+        expect(unlabelledOffsets("src/compile/compilation.cpp", line)).toEqual([]);
         expect(unlabelledOffsets("src/compile/tokens.cpp", line)).toEqual([]);
     });
 

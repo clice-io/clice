@@ -16,7 +16,7 @@ struct ErrorLocation {
 
 /// The effective clang-tidy configuration for a file, and the places the
 /// resolution looked for a .clang-tidy: those it read, by the hash of
-/// their text, and those it found none at — a change at any of them can
+/// their bytes, and those it found none at — a change at any of them can
 /// change the configuration.
 struct TidyResolution {
     TidyParams params;

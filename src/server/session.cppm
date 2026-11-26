@@ -60,9 +60,8 @@ public:
     /// Take the byte order mark of the file on disk, whose bytes hash to
     /// `disk_hash`, when its text is the buffer's: the editor sends and
     /// edits the text alone, and saves the file with the mark it had, which
-    /// every compile of the buffer reads too. A change of the bytes is an
-    /// edit's: it bumps the generation and changes the document's inputs.
-    /// Returns whether the bytes changed.
+    /// every compile of the buffer reads too. A change of the bytes bumps
+    /// the generation. Returns whether the bytes changed.
     bool follow_bom(std::uint64_t disk_hash);
 
     /// Apply a didChange: fold the content changes into the buffer (ranges

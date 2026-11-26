@@ -569,6 +569,9 @@ auto CompilationUnit::create_location(clang::FileID fid, std::uint32_t offset)
 }
 
 auto CompilationUnit::bom_length(clang::FileID fid) -> std::uint32_t {
+    if(fid.isInvalid()) {
+        return 0;
+    }
     auto [it, inserted] = bom_lengths.try_emplace(fid, 0);
     if(!inserted) {
         return it->second;

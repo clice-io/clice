@@ -735,7 +735,7 @@ std::vector<std::byte> Builder::build() {
         if(file_index.empty()) {
             continue;
         }
-        auto bytes = write_shard(file_index, resolve, unit.file_text(path_fids[path_id]).bytes());
+        auto bytes = write_shard(file_index, resolve, unit.file_text(path_fids[path_id]));
         auto hash = llvm::xxh3_64bits(as_chars(bytes));
         if(ranges::binary_search(known_variants, known_at(tree.paths[path_id], hash))) {
             known_paths.set(path_id);

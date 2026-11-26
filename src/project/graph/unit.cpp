@@ -82,7 +82,7 @@ async::task<UnitResult>
     // parse will see. A failed PCM build is not terminal — the parse
     // consumes whatever arrived and the worker reports its own failure if
     // they are not enough.
-    auto scanned = co_await project.scan_imports(path_id, resolved, std::nullopt);
+    auto scanned = co_await project.scan_imports(path_id, resolved, nullptr);
     // The scan's imports are the unit's edges even when its compile or a
     // build fails, so fixing or providing an import re-dirties it — the
     // include reverse map carries no import edges, and the index records

@@ -3,8 +3,8 @@
 /// not, and the unit converts between them (decompose, create_location).
 /// A call that decomposes a location, composes one from an offset, takes a
 /// file's start or a location's raw encoding, or reads clang's lines and
-/// columns is allowed in the unit and the token map it builds, and
-/// elsewhere where the comment block right above the statement it is in
+/// columns is allowed in the unit, its compile and the token map it builds,
+/// and elsewhere where the comment block right above the statement it is in
 /// starts a line with `// Clang's offsets: <why>`: offsets that meet only
 /// clang's own buffers, or a preprocessor of its own that converts them.
 ///
@@ -19,9 +19,10 @@ import { REPO_ROOT } from "../repo.ts";
 
 const SOURCES = new Set([".cpp", ".cppm", ".h", ".cc"]);
 
-/// The unit, which converts, and the token map, which counts from where it
-/// says the focus file's text starts.
+/// The unit, which converts, its compile, and the token map, which counts
+/// from where the unit says the focus file's text starts.
 const OWNERS = new Set([
+    "src/compile/compilation.cpp",
     "src/compile/compilation_unit.cpp",
     "src/compile/tokens.cpp",
     "src/compile/tokens.cppm",

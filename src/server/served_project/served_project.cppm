@@ -1242,7 +1242,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // needs it. An import that did not build is the parse's to report; none
     // only when the graph shut down.
     Timer timer;
-    auto imports = co_await project.build_imports(path_id, source->text(), resolution, {});
+    auto imports = co_await project.build_imports(path_id, *source, resolution, {});
     auto built = imports ? co_await project.build_pch(path_id,
                                                       *source,
                                                       params.offset,

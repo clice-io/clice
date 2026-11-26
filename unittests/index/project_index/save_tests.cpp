@@ -9,6 +9,7 @@ import :project.background;
 import :project.command;
 import :project.project;
 import :support.text;
+import :syntax.source_text;
 import :unittests.utils.forwarding_database;
 import :unittests.utils.index_internals;
 import :unittests.utils.indexer_fixture;
@@ -296,7 +297,8 @@ ZEST_CASE(RetiredDuringMigration) {
         .kind = RelationKind::Definition,
         .range = {4, 5}
     });
-    auto bytes = index::write_shard(file_index, {}, "int x = 1;\n");
+    SourceText source(std::string("int x = 1;\n"));
+    auto bytes = index::write_shard(file_index, {}, source);
     auto plant = [&](llvm::StringRef name) {
         auto file = project.file_table.intern(Spelling::absolute(name));
         IndexInternals::plant_shard(

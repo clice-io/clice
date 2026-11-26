@@ -224,7 +224,7 @@ inline bool is_function(SymbolKind kind) {
 ///      against its own stored content snapshot — unless the file's own
 ///      content moved on from it, in which case the cursor is
 ///      unresolvable (clause 2).
-///   2. Every index source carries the hash of the text it indexed, and
+///   2. Every index source carries the hash of the bytes it indexed, and
 ///      serves only while that is the file's current content: disk indexes
 ///      (shards, PCH overlay entries) while the disk still holds it (the
 ///      freshness gate), an open buffer's index while the buffer does.

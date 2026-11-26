@@ -182,13 +182,13 @@ private:
 /// is the variant's identity. `symbols` resolves referenced symbols so
 /// non-External names end up in the blob's local-name table (External names
 /// live in the ProjectIndex); returned name refs must stay valid for the
-/// duration of the call. `bytes` are those the indexing compile consumed;
-/// the blob keeps their hash, and the size and line table of their text,
-/// with the text of its non-ASCII lines only.
+/// duration of the call. `source` holds the bytes the indexing compile
+/// consumed; the blob keeps their hash, and the size and line table of
+/// their text, with the text of its non-ASCII lines only.
 std::vector<std::byte>
     write_shard(const FileIndex& file_index,
                 llvm::function_ref<std::optional<SymbolView>(SymbolHash)> symbols,
-                llvm::StringRef bytes);
+                SourceText& source);
 
 /// Merge blobs of one file and one content generation: the variants of
 /// `old` whose identity is in `keep` (in stored order), then each blob of

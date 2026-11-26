@@ -363,6 +363,8 @@ ZEST_CASE(OffsetsSkipBom) {
     ZEXPECT(unit->create_location(header, 4) == location);
     // A place in the mark itself is the start of the text.
     ZEXPECT(unit->written_at(location.getLocWithOffset(-7)) == FileOffset{header, 0});
+    // A location of no file, an implicit declaration's, is in no text.
+    ZEXPECT(unit->written_at(clang::SourceLocation()) == FileOffset{});
     // The compile read the bytes.
     auto deps = unit->deps();
     auto dep = ranges::find(deps, TestVFS::path("a.h"), &ReportedInput::path);

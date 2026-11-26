@@ -600,7 +600,7 @@ public:
         if(writes_output(unit.params.kind)) {
             auto& sources = context.getSourceManager();
             auto predefines = unit.instance->getPreprocessor().getPredefinesFileID();
-            auto start = unit.create_location(predefines, 0);
+            auto start = sources.getLocForStartOfFile(predefines);
             sources.createExpansionLoc(start, start, start, 1);
         }
         clang::MultiplexConsumer::HandleTranslationUnit(context);
@@ -653,10 +653,9 @@ private:
         if(!instantiating || !instantiating->templated || found_enough() || !pattern) {
             return;
         }
-        auto& sources = unit.context().getSourceManager();
         auto focus = unit.focus_file().file();
-        auto declared = unit.written_at(sources.getExpansionLoc(pattern->getLocation()));
-        auto called = unit.written_at(sources.getExpansionLoc(function->getPointOfInstantiation()));
+        auto declared = unit.produced_at(pattern->getLocation());
+        auto called = unit.produced_at(function->getPointOfInstantiation());
         if(declared == FileOffset{focus, *instantiating->templated} && called.file == focus &&
            called.offset > instantiating->point) {
             found_calls.insert(function);

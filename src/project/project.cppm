@@ -1065,7 +1065,7 @@ struct Project {
                                      llvm::ArrayRef<NodeId> modules,
                                      llvm::function_ref<void(NodeId)> failed = {});
 
-    /// Scan the imports of a parse of `text`, the buffer of `file` under
+    /// Scan the imports of a parse of `source`, the buffer of `file` under
     /// `resolution` (scan_imports), declare them as the edges of the file's
     /// node, and build their modules. The import list is scanner truth, not
     /// build output: declared before the wait, a parse that fails stays
@@ -1076,7 +1076,7 @@ struct Project {
     /// own diagnostics. None when the attempt was overtaken or the graph shut
     /// down.
     async::task<std::optional<BuiltImports>> build_imports(Fid file,
-                                                           llvm::StringRef text,
+                                                           SourceText& source,
                                                            const Resolution& resolution,
                                                            BuildOptions options);
 
@@ -1104,10 +1104,10 @@ struct Project {
     /// `resolution` renders, the ones its compile runs: a context choice or a
     /// header's host cannot diverge between the scan and the parse.
     /// Consumers declare the full edge set and wait on the resolved subset. The
-    /// header context the arguments name is served to the scan from memory. An
-    /// engaged `content` scans it in place of the file's on-disk text — even
-    /// when empty (an open buffer's imports count before they are saved, and
-    /// an emptied buffer has none).
+    /// header context the arguments name is served to the scan from memory. A
+    /// `source` is scanned in place of the file on disk — even when empty (an
+    /// open buffer's imports count before they are saved, and an emptied
+    /// buffer has none).
     ///
     /// The scan is a preprocessor run over the whole unit: it runs on the
     /// thread pool, the event loop only resolves the names it found. A unit
@@ -1119,7 +1119,7 @@ struct Project {
     /// stream stays the same too.
     async::task<Imports> scan_imports(Fid path_id,
                                       const Resolution& resolution,
-                                      std::optional<llvm::StringRef> content);
+                                      SourceText* source);
 
     /// The PCMs a compile importing `modules` reads, under their modules'
     /// names: theirs and, below each that built, those of the modules it

@@ -11,6 +11,7 @@ import :project.project;
 import :server.served_project;
 import :server.session;
 import :support.text;
+import :syntax.source_text;
 import :unittests.server.served_project_fixture;
 import :unittests.utils.index_internals;
 import :unittests.utils.temp_dir;
@@ -421,7 +422,8 @@ ZEST_CASE(PreviewFromDisk) {
         .target = 0
     });
 
-    auto bytes = index::write_shard(file_index, {}, text);
+    SourceText source{std::string(text)};
+    auto bytes = index::write_shard(file_index, {}, source);
     IndexInternals::plant_shard(
         project.index,
         path_id,
@@ -464,7 +466,8 @@ ZEST_CASE(PreviewDropsLineEnd) {
         .range = {28, 33},
         .target = 0
     });
-    auto bytes = index::write_shard(file_index, {}, text);
+    SourceText source{std::string(text)};
+    auto bytes = index::write_shard(file_index, {}, source);
     IndexInternals::plant_shard(
         project.index,
         path_id,
@@ -554,7 +557,8 @@ int main() { §(ref)⟦foo⟧(); return 0; }
     relation.set_extent({0, 3});
     fake.relations[foo].push_back(relation);
     auto header_id = project.file_table.intern(Spelling::absolute(header_path("foo.h")));
-    auto bytes = index::write_shard(fake, {}, "xxx\n");
+    SourceText source(std::string("xxx\n"));
+    auto bytes = index::write_shard(fake, {}, source);
     IndexInternals::plant_shard(
         project.index,
         header_id,

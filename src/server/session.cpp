@@ -44,7 +44,6 @@ bool Session::follow_bom(std::uint64_t disk_hash) {
     }
     source = std::make_shared<SourceText>(std::move(flipped));
     generation += 1;
-    changed(Clock::now());
     return true;
 }
 

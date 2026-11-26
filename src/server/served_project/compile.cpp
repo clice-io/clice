@@ -620,7 +620,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
         };
         if(self_containment) {
             auto inputs = read();
-            auto text = project.file_table.intern_version(path_id, session->source->hash());
+            auto text = project.file_table.intern_version(path_id, source->hash());
             // LIMITATION: a process killed between the two compiles can have
             // saved this steering `false`; the header then compiles in its
             // host's context until what the check read changes.
@@ -702,7 +702,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::modules() {
     bool retry = session->crash_record(kind) && !session->crash_stops(kind, Session::Clock::now());
     Session::Dispatch pcm_dispatch(*session, kind);
     auto waited = co_await project.build_imports(path_id,
-                                                 source->text(),
+                                                 *source,
                                                  resolution,
                                                  {.attempt = &attempt, .retry_crashed = retry});
     if(!waited) {
