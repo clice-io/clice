@@ -1687,13 +1687,18 @@ struct DeclarationPrinter {
         using Placed = llvm::SmallVector<std::pair<clang::SourceLocation, std::string>>;
         Placed before;
         Placed after;
+        llvm::SmallVector<std::pair<const clang::Attr*, clang::SourceLocation>> shown;
+        /// The macro uses naming no attribute, by where they begin: a macro
+        /// writing a specifier names none of the use's attributes, even one
+        /// nested in the use, as `__forceinline__` is in `#define DEVICE
+        /// __forceinline__ __device__`.
+        llvm::SmallVector<clang::SourceLocation> unnamed;
         for(const auto* attr: decl.attrs()) {
             if(attr->isImplicit() || attr->isInherited() ||
                attr->getSyntax() == clang::AttributeCommonInfo::AS_Pragma ||
                (llvm::isa<clang::FinalAttr>(attr) && llvm::isa<clang::TagDecl>(decl))) {
                 continue;
             }
-            std::string text;
             auto location = attr->getRange().getBegin();
             if(location.isInvalid()) {
                 location = name;
@@ -1701,13 +1706,20 @@ struct DeclarationPrinter {
             if(decls::applied_by_pragma(context, location)) {
                 continue;
             }
+            if(location.isMacroID() && !attributes_only(location)) {
+                unnamed.push_back(sources.getExpansionRange(location).getBegin());
+            }
+            shown.emplace_back(attr, location);
+        }
+        for(auto [attr, location]: shown) {
+            std::string text;
             if(location.isMacroID()) {
                 auto expansion = sources.getExpansionRange(location);
                 // A macro that writes the declaration itself names no
                 // attribute.
                 bool whole = !sources.isBeforeInTranslationUnit(name, expansion.getBegin()) &&
                              !sources.isBeforeInTranslationUnit(expansion.getEnd(), name);
-                bool named = !whole && attributes_only(location);
+                bool named = !whole && !ranges::contains(unnamed, expansion.getBegin());
                 location = expansion.getBegin();
                 if(named) {
                     auto use = ranges::find_if(uses, [&](const auto& entry) {
