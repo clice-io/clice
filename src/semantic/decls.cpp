@@ -242,6 +242,7 @@ bool applied_by_pragma(const clang::ASTContext& context, clang::SourceLocation l
             return true;
         }
     }
+    // Clang's offsets: the line is read in clang's buffer of it.
     auto [file, offset] = sources.getDecomposedLoc(sources.getExpansionLoc(location));
     auto content = sources.getBufferData(file);
     Lexer lexer(content.substr(logical_line_begin(content, offset)), context.getLangOpts());
@@ -739,6 +740,7 @@ auto objc_class_name(const clang::ObjCInterfaceDecl* objc_class, clang::SourceLo
     auto& context = objc_class->getASTContext();
     const auto& sources = context.getSourceManager();
     auto spelling = sources.getSpellingLoc(location);
+    // Clang's offsets: the name is read in clang's buffer of it.
     auto [file, offset] = sources.getDecomposedLoc(spelling);
     auto text = sources.getBufferData(file).drop_front(offset);
     auto name = objc_class->getName();

@@ -203,6 +203,11 @@ struct Reference {
     /// in `[shape setX:1 y:2]`): it spells the name, but the use is the
     /// first piece's.
     bool later_piece = false;
+
+    /// The class a construction is written with, where the name calls the
+    /// constructor another reference there names (`Widget` of `Widget(1)`):
+    /// the name still refers to the class, but stands for the constructor.
+    bool outranked = false;
 };
 
 /// A name occurrence a node gives rise to: the decl the written name refers
@@ -220,6 +225,9 @@ struct NameOccurrence {
 
     /// As Reference::later_piece.
     bool later_piece = false;
+
+    /// As Reference::outranked.
+    bool outranked = false;
 
     /// Whether the decl owns every token of the name, a name nested in it
     /// (`Foo` of `~Foo`) included. A conversion function owns its
@@ -431,10 +439,27 @@ private:
 
 /// resolve_references with tree context: a dependent name that is the
 /// callee of a call (found through the node's parent chain) has its
-/// candidate set filtered by the call's arity.
+/// candidate set filtered by the call's arity; the class a construction is
+/// written with is outranked by the constructor its name calls
+/// (Reference::outranked), and the parenthesis or brace of such a
+/// construction leads to the constructor without referring to it
+/// (RelationKind::Implied).
 llvm::SmallVector<Reference, 2> resolve_references(const Semantics& semantics,
                                                    std::uint32_t index,
                                                    types::TemplateResolver* resolver = nullptr);
+
+/// The constructors the type node `index` writes calls by its name, when
+/// it is the type a construction is written with — `Widget` of `Widget(1)`,
+/// `new Widget(1)` and `: Widget(1)`, inside a template the constructors
+/// the construction may call — each referenced at the name, which the
+/// construction's parenthesis leads to; none for any other node.
+llvm::SmallVector<Reference, 2> named_calls(const Semantics& semantics, std::uint32_t index);
+
+/// Where the construction node `index` holds is written when the name of the
+/// type it constructs calls its constructor — `Widget` of `Widget(1)`,
+/// `new Widget(1)` and `: Widget(1)` — rather than at its parenthesis or
+/// brace; invalid when no name calls it.
+clang::SourceLocation calling_name(const Semantics& semantics, std::uint32_t index);
 
 /// The Objective-C method the `@selector` of node `index` names: the one of
 /// its selector the class answers whose method it is written in

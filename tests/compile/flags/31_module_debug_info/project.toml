@@ -1,0 +1,4 @@
+# Xcode's module debugging: debug information referring to the modules a
+# unit imports, which the driver writes in an object file container.
+[units]
+"main.cpp" = ["-g", "-gmodules"]

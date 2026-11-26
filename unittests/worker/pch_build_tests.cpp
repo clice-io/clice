@@ -51,7 +51,7 @@ ZEST_CASE(BuildPCHThenCompile) {
                             "-I",
                             dir,
                             main_path};
-        params.content = main_text;
+        params.bytes = main_text;
         params.preamble_bound = preamble_bound(main_text);
         params.output_path = tmp.path("preamble.pch");
         params.indexing.output_path = tmp.path("preamble.pch.idx");
@@ -92,7 +92,7 @@ ZEST_CASE(BuildPCHThenCompile) {
         worker::CompileParams params;
         params.path = main_path;
         params.version = 1;
-        params.text = main_text;
+        params.bytes = main_text;
         params.directory = dir;
         params.arguments = {"clang++",
                             "-resource-dir",
@@ -140,7 +140,7 @@ ZEST_CASE(FatalErrorSparesPCH) {
         params.file = main_path;
         params.directory = dir;
         params.arguments = arguments;
-        params.content = main_text;
+        params.bytes = main_text;
         params.preamble_bound = bound;
         params.output_path = tmp.path("preamble.pch");
         params.indexing.output_path = tmp.path("preamble.pch.idx");
@@ -162,7 +162,7 @@ ZEST_CASE(FatalErrorSparesPCH) {
         worker::CompileParams params;
         params.path = main_path;
         params.version = 1;
-        params.text = main_text;
+        params.bytes = main_text;
         params.directory = dir;
         params.arguments = arguments;
         params.pch = {pch_path, bound};
@@ -267,7 +267,7 @@ ZEST_CASE(BlobWriteFailure) {
                             "-I",
                             dir,
                             main_path};
-        params.content = main_text;
+        params.bytes = main_text;
         params.preamble_bound = preamble_bound(main_text);
         params.output_path = tmp.path("preamble.pch");
         // Unwritable blob path: the whole build must fail (the PCH is only

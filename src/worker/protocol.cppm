@@ -152,7 +152,8 @@ struct IndexRequest {
 struct CompileParams {
     std::string path;
     int version;
-    std::string text;
+    /// The document's bytes (Session::source).
+    std::string bytes;
     std::string directory;
     /// See CompilationInput::project_root.
     std::string project_root;
@@ -246,12 +247,13 @@ struct BuildPCHParams {
     /// a header context's synthesized fragments.
     SynthesizedFiles synthesized;
 
-    /// The preamble content, remapped over the file.
-    std::string content;
+    /// The bytes of the document whose preamble is built, remapped over the
+    /// file up to `preamble_bound`, a place in their text.
+    std::string bytes;
     uint32_t preamble_bound = UINT32_MAX;
 
     /// Build the PCH of the whole file as it is on disk: a precompiled
-    /// header the build declares (Project::pch_writer). content and
+    /// header the build declares (Project::pch_writer). bytes and
     /// preamble_bound are unused.
     bool whole_file = false;
 
@@ -355,7 +357,9 @@ struct CompletionParams {
     /// a header context's synthesized fragments.
     SynthesizedFiles synthesized;
 
-    std::string text;
+    /// The document's bytes (Session::source), and the place of the cursor
+    /// in their text.
+    std::string bytes;
     uint32_t offset = 0;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
@@ -394,7 +398,9 @@ struct SignatureHelpParams {
     /// a header context's synthesized fragments.
     SynthesizedFiles synthesized;
 
-    std::string text;
+    /// The document's bytes (Session::source), and the place of the cursor
+    /// in their text.
+    std::string bytes;
     uint32_t offset = 0;
     std::pair<std::string, uint32_t> pch;
     std::unordered_map<std::string, std::string> pcms;
@@ -523,8 +529,8 @@ struct CompileUnitResult {
     /// `skipped_diagnostics`).
     std::vector<feature::FileDiagnostic> skipped_diagnostics;
 
-    /// The hash of the text skipped_diagnostics describe.
-    std::uint64_t text_hash = 0;
+    /// The hash of the bytes skipped_diagnostics describe.
+    std::uint64_t hash = 0;
 };
 
 /// Preprocess a unit for its include tree: where its compile enters each

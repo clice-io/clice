@@ -55,7 +55,8 @@ function zigTarget(target: string): Scenario {
     };
 }
 
-/// The NDK the runner images ship.
+/// The compat image's NDK (tests/compat/Dockerfile), which names it as the
+/// runner images name theirs.
 const NDK = process.env["ANDROID_NDK_LATEST_HOME"] ?? process.env["ANDROID_NDK_HOME"] ?? "";
 
 export const SCENARIOS: Scenario[] = [
@@ -193,7 +194,7 @@ export const SCENARIOS: Scenario[] = [
     {
         // A build for WCH's RISC-V chips as MounRiver writes one, less WCH's
         // own `_xw` extension: clang knows -msmall-data-limit= as -G, which
-        // RISC-V GCC rejects.
+        // RISC-V GCC rejects, so its query must not get it as -G.
         name: "make bear riscv embedded",
         platforms: ["linux"],
         requires: ["bear", "make", "/usr/bin/riscv64-unknown-elf-gcc"],

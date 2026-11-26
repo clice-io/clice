@@ -16,7 +16,7 @@ struct ErrorLocation {
 
 /// The effective clang-tidy configuration for a file, and the places the
 /// resolution looked for a .clang-tidy: those it read, by the hash of
-/// their text, and those it found none at — a change at any of them can
+/// their bytes, and those it found none at — a change at any of them can
 /// change the configuration.
 struct TidyResolution {
     TidyParams params;
@@ -109,12 +109,15 @@ public:
 /// checks classified fast only unless TidyParams::slow_checks, minus those
 /// unusable on code mid-edit, over the focus file's top-level
 /// declarations, suppression comments read there only.
-/// `preamble_inactive` holds the inactive regions of the consumed PCH's
-/// preamble share (flat begin/end offset pairs), whose `#include`s the
-/// preamble replay skips.
-std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
+/// `preamble_bound` is how much of the focus file's text the consumed
+/// PCH's preamble holds, 0 for none, and `preamble_inactive` its inactive
+/// regions (flat begin/end offset pairs), whose `#include`s the preamble
+/// replay skips.
+std::unique_ptr<ClangTidyChecker> configure(CompilationUnit& unit,
+                                            clang::CompilerInstance& instance,
                                             const TidyParams& params,
                                             bool batch,
+                                            std::uint32_t preamble_bound,
                                             llvm::ArrayRef<std::uint32_t> preamble_inactive);
 
 }  // namespace clice::tidy

@@ -296,7 +296,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
     bp.arguments = resolution->arguments;
     bp.hidden = resolution->hidden;
     bp.indexing.function_bodies = project.rules.function_body_rules();
-    auto imports = co_await project.scan_imports(path_id, *resolution, std::nullopt);
+    auto imports = co_await project.scan_imports(path_id, *resolution, nullptr);
     project.graph.set_edges(attempt.node(), imports.declared);
 
     // A unit of a target with precompiled headers builds over clice's own
@@ -528,20 +528,22 @@ bool Imports::modular() const {
 
 async::task<Imports> Project::scan_imports(Fid path_id,
                                            const Resolution& resolution,
-                                           std::optional<llvm::StringRef> content) {
+                                           SourceText* source) {
     bool may_import = dep_graph.reaches_import(path_id) ||
                       (resolution.host.valid() && dep_graph.reaches_import(resolution.host));
     std::uint64_t directives = 0;
     std::uint32_t bound = 0;
-    if(content) {
+    std::optional<llvm::StringRef> content;
+    if(source) {
+        content = source->bytes();
         // Directives the scan never saw may include anything, so past the
         // graph only a project without module syntax is sure.
-        auto lexical = scan_quick(*content);
+        auto lexical = scan_quick(source->text());
         may_import |=
             lexical.has_module_syntax() || (dep_graph.has_import_candidates() &&
                                             !dep_graph.scanned(path_id, lexical.directives_hash));
         directives = lexical.directives_hash;
-        bound = preamble_bound(*content);
+        bound = preamble_bound(source->text());
     }
     if(!may_import) {
         co_return Imports{};
@@ -742,7 +744,7 @@ const FailureRecord* Project::module_build_crash(NodeId module) {
 }
 
 async::task<std::optional<BuiltImports>> Project::build_imports(Fid file,
-                                                                llvm::StringRef text,
+                                                                SourceText& source,
                                                                 const Resolution& resolution,
                                                                 BuildOptions options) {
     // Resolved fresh on every call, from the text the parse will consume
@@ -753,7 +755,7 @@ async::task<std::optional<BuiltImports>> Project::build_imports(Fid file,
     // unit being somebody else's saved file. The scan runs even for an empty
     // buffer: the command's injected -include prefix can still import.
     BuiltImports built{
-        .imports = co_await scan_imports(file, resolution, std::optional<llvm::StringRef>(text)),
+        .imports = co_await scan_imports(file, resolution, &source),
     };
     graph.set_edges(ast_node(file), built.imports.declared);
     // Still an edge when refused: the declaration above keeps it, so a later

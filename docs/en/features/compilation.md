@@ -55,6 +55,20 @@ tests/compile/flags/19_deferred_template_bodies
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**Layering check**
+
+An include the build's layering check rejects shows no error
+
+Bazel's `layering_check`, and any build that has Clang check the uses its module maps declare (`-fmodules-decluse`), rejects an include of a header that no dependency of the target provides. clice compiles a file as if no module map named it: such an include compiles clean in the editor, and only the build reports it.
+
+```case
+tests/compile/flags/30_layering_check
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## Other Languages
@@ -89,7 +103,7 @@ A file works the same whatever its byte order mark or line endings.
 
 Files saved as UTF-8 with a byte order mark work like any other
 
-Positions on the first line skip the mark, as the editor shows it, and data a file embeds keeps its bytes.
+Positions skip the mark, as the editor shows the file, and clice reads the file as the compiler does: data it embeds keeps its bytes.
 
 ```case
 tests/compile/encoding/01_byte_order_mark

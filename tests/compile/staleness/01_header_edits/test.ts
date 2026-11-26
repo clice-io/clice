@@ -85,6 +85,20 @@ test("same bytes are no change", async (t) => {
     expect(await builds(s, "main.cpp")).toEqual({ compile: 1, pch: 1 });
 });
 
+test("a mark added to a precompiled header", async (t) => {
+    // The text stays as it was, but the PCH holds the header's bytes: the
+    // next compile builds it again, once.
+    const s = await t.start({ lastRule: { background_index: false } });
+    expect(await s.errors("main.cpp")).toEqual([]);
+    t.disk.write("pre.h", "\uFEFF" + t.disk.read("pre.h"));
+    s.edit("main.cpp", { replace: "return pre();", with: "return pre() + 0;" });
+    expect(await s.errors("main.cpp")).toEqual([]);
+    expect((await builds(s, "main.cpp")).pch).toBe(2);
+    s.edit("main.cpp", { replace: "return pre() + 0;", with: "return pre() + 1;" });
+    expect(await s.errors("main.cpp")).toEqual([]);
+    expect((await builds(s, "main.cpp")).pch).toBe(2);
+});
+
 test("backdated edit", async (t) => {
     // rsync -t and git-restore-mtime give new bytes an older time.
     const s = await t.start();

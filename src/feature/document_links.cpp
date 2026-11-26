@@ -102,7 +102,7 @@ auto document_links(SourceText& source, const index::IndexQuery& query, Fid file
     // The included files are the stored text's: they describe the buffer
     // only while it is that text.
     auto* shard = query.project().shard(file);
-    if(!shard || !shard->matches_content(source.text())) {
+    if(!shard || !shard->matches_content(source)) {
         return {};
     }
     return document_links(source, query.project().resolved_links(file));

@@ -366,10 +366,15 @@ std::shared_ptr<const DocumentCompile> ServedProject::latest(Fid path_id) const 
     return document ? document->latest : nullptr;
 }
 
-std::shared_ptr<const DocumentCompile> ServedProject::latest_at(Fid path_id, int version) const {
-    auto compiled = latest(path_id);
-    return compiled && compiled->output && compiled->output->version == version ? compiled
-                                                                                : nullptr;
+std::shared_ptr<const DocumentCompile> ServedProject::latest_at(const Session& session) const {
+    auto compiled = latest(session.path_id);
+    if(!compiled || !compiled->output) {
+        return nullptr;
+    }
+    auto& output = *compiled->output;
+    return output.version == session.version && output.source->hash() == session.source->hash()
+               ? compiled
+               : nullptr;
 }
 
 bool ServedProject::current(Fid path_id) const {
@@ -443,7 +448,7 @@ void ServedProject::decide_compiling(Fid path_id) {
         // A buffer that already diverges from the indexed content (a
         // restored unsaved file) can never be served read-only: it compiles
         // now instead of answering empty until the first edit.
-        if(!shard->matches_content(session.text().size(), session.source->hash())) {
+        if(!shard->matches_content(*session.source)) {
             start_compiling(path_id);
         }
         return;

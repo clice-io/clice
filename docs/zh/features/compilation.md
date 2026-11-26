@@ -55,6 +55,20 @@ tests/compile/flags/19_deferred_template_bodies
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: unsupported -->
+
+**分层检查（layering check）**
+
+构建的分层检查所拒绝的包含指令不显示错误
+
+Bazel 的 `layering_check`，以及所有让 Clang 检查模块映射（module map）所声明的使用关系（`-fmodules-decluse`）的构建，都会拒绝包含目标的依赖均未提供的头文件。clice 编译文件时视同没有任何模块映射列出它：这类包含指令在编辑器中编译不会报错，只有构建时才会报告。
+
+```case
+tests/compile/flags/30_layering_check
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
 ## 其他语言
@@ -89,7 +103,7 @@ tests/compile/languages/01_assembler
 
 保存为带字节顺序标记的 UTF-8 文件可与其他文件一样正常使用
 
-首行的位置计算会跳过该标记，与编辑器显示一致；文件内嵌入的数据则保留原始字节。
+位置计算会跳过该标记，与编辑器显示文件的方式一致；clice 则按编译器的方式读取文件：文件嵌入的数据保留原始字节。
 
 ```case
 tests/compile/encoding/01_byte_order_mark

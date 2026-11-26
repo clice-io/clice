@@ -490,15 +490,15 @@ std::expected<Rewriting, std::string> rewrite(const Facts& facts,
     for(auto file: files) {
         auto& info = facts.files[file];
         auto path = path::join(root, info.path);
-        auto content = vfs::read_text(path);
-        if(!content) {
-            return std::unexpected(std::format("{}", content.error()));
+        auto bytes = vfs::read_bytes(path);
+        if(!bytes) {
+            return std::unexpected(std::format("{}", bytes.error()));
         }
-        if(vfs::starts_with_bom(path)) {
+        if(vfs::bom_length(*bytes) != 0) {
             with_bom.insert(file);
         }
         auto& draft = drafts[file];
-        Text text(contents[file] = std::move(*content));
+        Text text(contents[file] = vfs::without_bom(*bytes).str());
         auto module_unit = rewriter.rewritten(file);
 
         // Declarations of other modules' entities: in a module unit they

@@ -1,0 +1,45 @@
+name: compat-image
+
+# The image the Linux compat job runs in (tests/compat/Dockerfile), pushed
+# to ghcr.io/clice-io/compat-linux under the Dockerfile's SHA-256, the tag
+# compat-test.yml asks for: built where a push changes the Dockerfile, or by
+# hand, and never again under a tag already pushed.
+on:
+  push:
+    paths:
+      - tests/compat/Dockerfile
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  image:
+    if: github.repository == 'clice-io/clice'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and push
+        run: |
+          image=ghcr.io/clice-io/compat-linux:$(sha256sum tests/compat/Dockerfile | cut -d' ' -f1)
+          if docker manifest inspect "$image" > /dev/null 2>&1; then
+            echo "$image is pushed already"
+            exit 0
+          fi
+          docker build -t "$image" - < tests/compat/Dockerfile
+          docker push "$image"

@@ -13,7 +13,7 @@ enum class InstantiationKind : std::uint8_t {
     /// The `auto` or `decltype` keyword stands for the target: an
     /// occurrence of it with a Deduced relation.
     Deduced,
-    /// The keyword leads to the target (`new` to the constructor it runs):
+    /// The token leads to the target (`new` to the constructor it runs):
     /// an occurrence of it with an Implied relation.
     Implied,
     /// `from` calls the target here: the Callee and Caller relations.
@@ -216,8 +216,9 @@ private:
     std::uint32_t longest = 0;
 };
 
-/// Encode one run's instantiations of one file as a worker blob: `content_hash`
-/// and `content_size` describe the text the run compiled.
+/// Encode one run's instantiations of one file as a worker blob:
+/// `content_hash` is the hash of the bytes the run compiled, and
+/// `content_size` the size of their text.
 std::vector<std::byte> write_instantiations(const FileInstantiations& instantiations,
                                             std::uint64_t content_hash,
                                             std::uint32_t content_size);

@@ -27,7 +27,7 @@ ZEST_CASE(CompileRequest) {
         worker::CompileParams params;
         params.path = src;
         params.version = 1;
-        params.text = "int main() { return 0; }\n";
+        params.bytes = "int main() { return 0; }\n";
         params.directory = "/tmp";
         params.arguments = {"clang++", "-resource-dir", std::string(resource_dir()), src};
 
@@ -60,7 +60,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = "int v0;\n";
+        cp.bytes = "int v0;\n";
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
@@ -91,7 +91,7 @@ ZEST_CASE(CancelledCompileFreesStrand) {
         // never-released lock (the guard releases it when the cancelled
         // handler's frame unwinds).
         cp.version = 2;
-        cp.text = "int done;\n";
+        cp.bytes = "int done;\n";
         ipc::request_options retry_opts;
         // Hang detection: a strand still held fails the retry here,
         // attributably, rather than the whole run at its timeout.
@@ -109,9 +109,15 @@ ZEST_CASE(CancelledCompileFreesStrand) {
 ZEST_CASE(IPCCancelInterruptsCompile) {
     TempDir tmp;
     tmp.touch("interrupt.cpp", "");
+    tmp.touch("turn.cpp", "");
     auto src = tmp.path("interrupt.cpp");
+    auto turn = tmp.path("turn.cpp");
 
     WorkerHandle w;
+    // The query below runs beside the parked compile.
+    w.env = {
+        {.name = "UV_THREADPOOL_SIZE", .value = "2"}
+    };
     ZASSERT(w.spawn(true));
 
     bool test_done = false;
@@ -120,11 +126,18 @@ ZEST_CASE(IPCCancelInterruptsCompile) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = "int v0;\nint v1;\n";
+        cp.bytes = "int v0;\nint v1;\n";
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
         cp.pcms = {};
+
+        // A document of its own, whose query below is answered once the
+        // worker's loop has come round.
+        auto turn_compile = cp;
+        turn_compile.path = turn;
+        turn_compile.arguments = make_args(turn);
+        ZASSERT(co_await w.peer->send_request(turn_compile));
 
         // The cancel reaches the request while its work is parked and flips
         // the stop flag the parse polls; the request still waits for the
@@ -148,6 +161,12 @@ ZEST_CASE(IPCCancelInterruptsCompile) {
         group.spawn(sender());
         co_await w.parked(gate);
         source.cancel();
+        // The cancel reaches the work once the worker's loop comes round
+        // after reading it: a release read with it would let the parse run
+        // to its end first.
+        worker::DocumentSymbolParams turn_query;
+        turn_query.path = turn;
+        ZASSERT(co_await w.peer->send_request(turn_query));
         w.release(gate);
         co_await group.join();
         ZASSERT(cancelled);
@@ -179,7 +198,7 @@ ZEST_CASE(UnstartedCompileWakesQueries) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = "int x;\n";
+        cp.bytes = "int x;\n";
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
@@ -240,7 +259,7 @@ ZEST_CASE(CancelledQueryFreesStrand) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = "int value() { return 42; }\n";
+        cp.bytes = "int value() { return 42; }\n";
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         cp.pch = {"", 0};
@@ -293,7 +312,7 @@ ZEST_CASE(CompileThenHover) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = text;
+        cp.bytes = text;
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
 
@@ -332,7 +351,7 @@ ZEST_CASE(InvalidUTF8Replaced) {
         worker::CompileParams cp;
         cp.path = src;
         cp.version = 1;
-        cp.text = text;
+        cp.bytes = text;
         cp.directory = "/tmp";
         cp.arguments = make_args(src);
         ZASSERT(co_await w.peer->send_request(cp));
@@ -378,7 +397,7 @@ ZEST_CASE(EvictsOnlyWhenTold) {
             worker::CompileParams cp;
             cp.path = paths[i];
             cp.version = 1;
-            cp.text = std::format("int var_{} = {};\n", i, i);
+            cp.bytes = std::format("int var_{} = {};\n", i, i);
             cp.directory = "/tmp";
             cp.arguments = make_args(paths[i]);
             auto result = co_await w.peer->send_request(cp);

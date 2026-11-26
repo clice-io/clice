@@ -53,13 +53,13 @@ llvm::vfs::Status to_llvm(const fs::Status& status, llvm::StringRef name);
 
 }  // namespace vfs
 
-/// One observation of a file's on-disk bytes: the xxh3 of the text a single
-/// read returned (see without_bom), and the stamp describing the bytes. Captured under
-/// the pairing discipline (see vfs::read_observed) so the two halves are
-/// same-source: `paired` says the pre/post fstats of the read agreed,
-/// `reliable` additionally says the mtime lay outside the filesystem
-/// mtime-granularity guard window — only then may the stamp serve as a
-/// fast-path baseline for skipping future reads. An unpaired or
+/// One observation of a file's on-disk bytes: the hash of the bytes a
+/// single read returned (vfs::content_hash), and the stamp describing them.
+/// Captured under the pairing discipline (see vfs::read_observed) so the
+/// two halves are same-source: `paired` says the pre/post fstats of the
+/// read agreed, `reliable` additionally says the mtime lay outside the
+/// filesystem mtime-granularity guard window — only then may the stamp
+/// serve as a fast-path baseline for skipping future reads. An unpaired or
 /// unreliable observation still carries a true hash of the bytes read.
 struct DiskObservation {
     vfs::Stamp stamp;
@@ -68,7 +68,8 @@ struct DiskObservation {
     bool reliable = false;
 };
 
-/// A completed observed read: the observation plus the text it hashed.
+/// A completed observed read: the observation plus the text of the bytes it
+/// hashed (see vfs::without_bom).
 struct ObservedFile {
     DiskObservation obs;
     std::string text;
@@ -80,11 +81,25 @@ constexpr llvm::StringLiteral byte_order_mark = "\xEF\xBB\xBF";
 
 /// A source file's text as every part of clice sees it: its bytes without
 /// a leading UTF-8 byte order mark — the text an editor shows and sends.
-/// Clang skips the mark as well, but would count it in every offset.
+/// Clang reads the bytes, counting the mark in its offsets (see
+/// CompilationUnit::decompose).
 inline llvm::StringRef without_bom(llvm::StringRef bytes) {
     llvm::StringRef text = bytes;
     text.consume_front(byte_order_mark);
     return text;
+}
+
+/// How far an offset into `bytes` runs ahead of the same place in their
+/// text (see without_bom).
+inline std::uint32_t bom_length(llvm::StringRef bytes) {
+    return bytes.starts_with(byte_order_mark) ? byte_order_mark.size() : 0;
+}
+
+/// The hash of a file's `bytes`, which every staleness check compares and
+/// the file table's versions name: their xxh3, a byte order mark included,
+/// since what clang builds from them depends on it.
+inline std::uint64_t content_hash(llvm::StringRef bytes) {
+    return llvm::xxh3_64bits(bytes);
 }
 
 /// A file operation that failed, on the path it was given: formatted, the
@@ -124,23 +139,23 @@ std::expected<void, FileError> create_directories(llvm::StringRef path);
 std::expected<void, FileError> remove(llvm::StringRef path);
 
 /// Whether the file at `path` starts with a UTF-8 byte order mark, which
-/// its text leaves out (see without_bom).
-bool starts_with_bom(llvm::StringRef path);
+/// its text leaves out (see without_bom); none when it cannot be read.
+std::optional<bool> starts_with_bom(llvm::StringRef path);
 
 /// Writes `text` as the whole of the file at `path`, after a UTF-8 byte
 /// order mark when `bom`: a file read as text, rewritten, keeps the mark
 /// it had.
 std::expected<void, FileError> write_text(llvm::StringRef path, llvm::StringRef text, bool bom);
 
-/// A file's text read and hashed under the pairing discipline: open a
-/// handle, fstat it, read through it, fstat again. Equal fstats prove
-/// the stat describes the bytes (an in-place write racing the read moves
-/// the mtime between the two fstats; a rename-over does not affect the
-/// open handle at all). A post-fstat mtime inside the guard window
-/// (coarse-granularity filesystems) demotes the pair to unreliable: a
-/// racing write can arrive within one mtime tick, so such a stat must not
-/// suppress future reads. Safe to call from any thread. `padding` bytes of
-/// room stay past the text, which a parser reading in wide blocks needs.
+/// A file read under the pairing discipline, its bytes hashed and its text
+/// kept: open a handle, fstat it, read through it, fstat again. Equal
+/// fstats prove the stat describes the bytes (an in-place write racing the
+/// read moves the mtime between the two fstats; a rename-over does not
+/// affect the open handle at all). A post-fstat mtime inside the guard
+/// window (coarse-granularity filesystems) demotes the pair to unreliable:
+/// a racing write can arrive within one mtime tick, so such a stat must
+/// not suppress future reads. Safe to call from any thread. `padding` bytes
+/// of room stay past the text, which a parser reading in wide blocks needs.
 std::expected<ObservedFile, FileError> read_observed(llvm::StringRef path, std::size_t padding = 0);
 
 /// The file statuses of one operation (a dependency check, a compile). On
@@ -201,20 +216,14 @@ struct HiddenFiles {
     bool hides(llvm::StringRef path) const;
 };
 
-/// The file system one compile sees: the disk — sources as their text (see
-/// without_bom), `#embed` data, PCH and PCM files as bytes — less the files
-/// its command hides. Clang sets its working
+/// The file system one compile sees: the disk's bytes, as the compiler reads
+/// them, less the files its command hides. Clang sets its working
 /// directory, so every compile gets its own; an overlay wraps a fresh one.
 class View : public llvm::vfs::ProxyFileSystem {
 public:
     explicit View(HiddenFiles hidden = {}) :
         ProxyFileSystem(llvm::vfs::createPhysicalFileSystem()), hidden(std::move(hidden)) {}
 
-    /// The size of the text: clang checks what it reads against it, and a
-    /// PCH records it for every input. Status carries no use, and clang
-    /// keeps one content for a file: `#embed` reads the text of a file the
-    /// same compile included, which lacks its mark. One `__has_embed` only
-    /// looked up gets its bytes from the compile (see CompilationUnit::run).
     llvm::ErrorOr<llvm::vfs::Status> status(const llvm::Twine& path) override;
 
     /// Named by the path the OS opened (its RealName), which names include
@@ -226,7 +235,7 @@ public:
         openFileForReadBinary(const llvm::Twine& path) override;
 
 private:
-    llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> open(const llvm::Twine& path, bool text);
+    llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> open(const llvm::Twine& path, bool source);
 
 private:
     StatusBatch statuses;

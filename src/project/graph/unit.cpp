@@ -82,7 +82,7 @@ async::task<UnitResult>
     // parse will see. A failed PCM build is not terminal — the parse
     // consumes whatever arrived and the worker reports its own failure if
     // they are not enough.
-    auto scanned = co_await project.scan_imports(path_id, resolved, std::nullopt);
+    auto scanned = co_await project.scan_imports(path_id, resolved, nullptr);
     // The scan's imports are the unit's edges even when its compile or a
     // build fails, so fixing or providing an import re-dirties it — the
     // include reverse map carries no import edges, and the index records
@@ -231,7 +231,7 @@ async::task<UnitResult>
         result.tidy_diagnostics = std::move(value.tidy_diagnostics);
         result.errors = std::move(value.errors);
         result.skipped_diagnostics = std::move(value.skipped_diagnostics);
-        result.text_hash = value.text_hash;
+        result.hash = value.hash;
         result.perf = {.bytes = index_bytes->size(), .index_ms = run_ms, .merge_ms = 0};
         if(request.index) {
             // A newer content-level invalidation during this build (or a

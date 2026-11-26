@@ -121,12 +121,12 @@ struct CompilationInput {
 
     llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> vfs = new vfs::View();
 
-    /// The text of the files served from memory, by path.
+    /// The bytes of the files served from memory, by path.
     llvm::StringMap<std::string> buffers;
 
-    /// The path the focus file's text is served by, as the editor has it
-    /// (add_focus); empty when the compile reads the file on disk or only
-    /// a preamble's part of it.
+    /// The path the focus file's bytes are served by, as the open document
+    /// holds them (add_focus); empty when the compile reads the file on disk or
+    /// only a preamble's part of it.
     std::string focus;
 
     /// The suffix of a header context (add_synthesized). Clang's buffer of
@@ -142,18 +142,19 @@ struct CompilationInput {
     /// compile but a preamble's (SynthesizedFile::Entry::Forced).
     std::vector<std::string> forced_includes;
 
-    /// The PCH to load, and how many bytes of the focus file it stands for:
-    /// a preamble's, or with no bytes a precompiled header the build
+    /// The PCH to load, and how much of the focus file's text it stands
+    /// for: a preamble's, or with none a precompiled header the build
     /// declares, which a preamble's PCH built over it chains onto.
     std::pair<std::string, std::uint32_t> pch;
 
     /// The PCMs to load, by module name.
     llvm::StringMap<std::string> pcms;
 
-    /// Serve the focus file's text from memory, as the editor has it.
-    void add_focus(llvm::StringRef path, llvm::StringRef text) {
+    /// Serve the focus file's bytes from memory, as the open document holds
+    /// them.
+    void add_focus(llvm::StringRef path, llvm::StringRef bytes) {
         focus = path.str();
-        add_remapped_file(path, text);
+        add_remapped_file(path, bytes);
     }
 
     /// Serve a header context's synthesized files from memory.
@@ -172,14 +173,15 @@ struct CompilationInput {
         suffix = suffix_path(files).str();
     }
 
-    void add_remapped_file(llvm::StringRef path,
-                           llvm::StringRef content,
-                           std::uint32_t bound = -1) {
+    /// Serve `bytes` as the file at `path`, or the part of them before the
+    /// place `bound` names in their text.
+    void add_remapped_file(llvm::StringRef path, llvm::StringRef bytes, std::uint32_t bound = -1) {
         if(bound != -1) {
-            assert(bound <= content.size());
-            content = content.substr(0, bound);
+            bound += vfs::bom_length(bytes);
+            assert(bound <= bytes.size());
+            bytes = bytes.substr(0, bound);
         }
-        buffers.try_emplace(path, content.str());
+        buffers.try_emplace(path, bytes.str());
     }
 };
 
@@ -499,17 +501,22 @@ public:
     /// See CompilationInput::project_root.
     auto project_root() -> llvm::StringRef;
 
-    /// The text of `fid`: the focus file's as the editor has it, any
-    /// other's as clang read it. In the focus file every offset the unit
-    /// reports or takes is one in this text, though clang's buffer of it
-    /// holds a NUL at a completion's point and goes on with the include of
-    /// a header context's suffix.
+    /// The text of `fid` (see vfs::without_bom): the focus file's as the
+    /// editor has it, any other's from the bytes clang read. Every offset the unit
+    /// reports or takes is one in this text, though clang's buffer of a
+    /// file keeps its byte order mark, and of the focus file holds a NUL at
+    /// a completion's point and goes on with the include of a header
+    /// context's suffix.
     auto file_content(clang::FileID fid) -> llvm::StringRef;
 
-    /// The buffer this compilation read for `fid`, or nullopt when it was
-    /// never loaded here (e.g. a preamble header served from a PCH). Unlike
-    /// file_content, never falls back to a fake buffer.
-    auto loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef>;
+    /// The bytes of file_content(fid), its text, and what is derived from
+    /// them.
+    auto file_text(clang::FileID fid) -> SourceText&;
+
+    /// The bytes this compilation read for `fid`, byte order mark included,
+    /// or nullopt when it was never loaded here (e.g. a preamble header
+    /// served from a PCH): never a fake buffer.
+    auto loaded_file_bytes(clang::FileID fid) -> std::optional<llvm::StringRef>;
 
     /// The lines and columns of file_content(fid).
     auto positions(clang::FileID fid) -> PositionMap;
@@ -643,7 +650,8 @@ public:
 
     /// The findings of a batch clang-tidy run, the compiler's diagnostics
     /// among them, as clang-tidy reports them but in the words diagnostics()
-    /// gives them; taken once.
+    /// gives them, each message's FileOffset one in its file's text
+    /// (file_content); taken once.
     auto take_tidy_findings() -> std::vector<clang::tidy::ClangTidyError>;
 
     /// The top-level declarations the focus file writes or that enclose it
@@ -733,11 +741,17 @@ private:
         return instance->getSourceManager();
     }
 
-    auto file_text(clang::FileID fid) -> SourceText&;
+    /// The length of the byte order mark clang's buffer of `fid` starts
+    /// with, which its text leaves out (file_content).
+    auto bom_length(clang::FileID fid) -> std::uint32_t;
 
     /// Where the file location `location` lies (see file_content), the
     /// PCH's copy of the focus file being the focus file.
     auto decompose(clang::SourceLocation location) -> FileOffset;
+
+    /// decompose() of the place clang names by its offset `offset` in the
+    /// buffer of `fid`, as clang-tidy reports one.
+    auto decompose(clang::FileID fid, std::uint32_t offset) -> FileOffset;
 
     /// The parser splits a `>>` closing two template argument lists in two:
     /// the first `>` becomes a macro location over its half of the token.
@@ -842,6 +856,9 @@ private:
 
     /// Memo of CompilationUnit::in_preamble.
     llvm::DenseMap<clang::FileID, bool> preamble_files;
+
+    /// Memo of CompilationUnit::bom_length.
+    llvm::DenseMap<clang::FileID, std::uint32_t> bom_lengths;
 
     /// Memo of CompilationUnit::body_rule.
     llvm::DenseMap<clang::FileID, BodyRule> body_rules;

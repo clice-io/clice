@@ -131,6 +131,9 @@ cmd = "node tools/precheck/layers.ts"
 [feature.build.tasks.check-timers]
 cmd = "node tools/precheck/timers.ts"
 
+[feature.build.tasks.check-offsets]
+cmd = "node tools/precheck/offsets.ts"
+
 # Workspace-level (default feature) so every environment can run them —
 # the lint job uses the bare `node` env, local runs use `default`.
 # docs/en and docs/zh are both hand-edited; docs/meta/translations holds
@@ -215,9 +218,10 @@ CLICE_EXECUTABLE=$PIXI_PROJECT_ROOT/build/{{ type }}/bin/bin/clice.exe npm run z
 depends-on = ["install-tests"]
 
 # Real build systems and toolchains over tests/compat/project; the tools each
-# scenario names come from the system (CI installs them, see compat-test.yml),
-# nvcc from the `cuda` environment (on Windows the `toolchains` one), conda's
-# compilers, Intel's and xclang from the `toolchains` one. Workspace-level so CI can run it from the bare
+# scenario names come from the system (on Linux the compat image of
+# tests/compat/Dockerfile, on Windows compat-test.yml's steps), nvcc from the
+# `cuda` environment (on Windows the `toolchains` one), conda's compilers,
+# Intel's and xclang from the `toolchains` one. Workspace-level so CI can run it from the bare
 # `node` env.
 [tasks.compat-test]
 args = [{ arg = "type", default = "RelWithDebInfo" }]

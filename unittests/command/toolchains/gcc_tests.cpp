@@ -684,7 +684,7 @@ ZEST_CASE(GCCTargetNames) {
 
 ZEST_CASE(GCCSeesWrittenAliases) {
     /// clang reads these as aliases of options GCC names otherwise or not
-    /// at all (`-G 8`, `-flto=full`, `-ftrigraphs`), which GCC rejects.
+    /// at all (`-flto=full`, `-ftrigraphs`), which GCC rejects.
     auto args = tmp.path("args");
     auto driver =
         fake_driver("riscv32-unknown-elf-gcc",
@@ -694,7 +694,7 @@ echo ' {} -E -quiet query.c -dM' >&2
 )",
                                 args,
                                 host_path("/opt/riscv/libexec/gcc/riscv32-unknown-elf/15/cc1")));
-    std::vector<const char*> written = {"-msmall-data-limit=8", "-flto=auto", "-trigraphs"};
+    std::vector<const char*> written = {"-flto=auto", "-trigraphs"};
     auto command = written;
     command.insert(command.begin(), driver.c_str());
     command.push_back("-c");
@@ -708,22 +708,25 @@ echo ' {} -E -quiet query.c -dM' >&2
     for(llvm::StringRef arg: written) {
         ZEXPECT(contains(lines, arg));
     }
-    ZEXPECT(!contains(lines, "-G"));
+    ZEXPECT(!contains(lines, "-ftrigraphs"));
 
     /// A rule's edit keeps what the command wrote.
     std::vector<CommandEdit> edits = {
-        {.kind = CommandEdit::Kind::Append, .flags = {"-fno-common"}}
+        {.kind = CommandEdit::Kind::Append, .flags = {"-funsigned-char"}}
     };
     auto edited = ref;
     edited.command = apply_edits(f.commands, f.file_table, ref.command, {.edits = edits});
     f.resolve(edited);
     passed = vfs::read_text(args);
     ZASSERT(passed);
-    ZEXPECT(llvm::StringRef(*passed).contains("-msmall-data-limit=8\n"));
+    lines.clear();
+    llvm::StringRef(*passed).split(lines, '\n', -1, false);
+    ZEXPECT(contains(lines, "-trigraphs"));
+    ZEXPECT(!contains(lines, "-ftrigraphs"));
 
     /// Two names of one option are two queries: GCC may take one alone.
-    auto clang_name = add("b.c", {driver.c_str(), "-G", "8", "-c"});
-    auto gcc_name = add("c.c", {driver.c_str(), "-msmall-data-limit=8", "-c"});
+    auto clang_name = add("b.c", {driver.c_str(), "-ftrigraphs", "-c"});
+    auto gcc_name = add("c.c", {driver.c_str(), "-trigraphs", "-c"});
     ZEXPECT(f.key(clang_name) != f.key(gcc_name));
 }
 

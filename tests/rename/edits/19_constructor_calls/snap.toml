@@ -1,0 +1,150 @@
+[answers.base.rename]
+compiles = true
+
+[answers.base.rename.edits]
+"main.cpp" = '''
+-struct Base {
+-    Base(int value);
++struct Root {
++    Root(int value);
+ };
+
+-struct Derived : Base {
+-    using Base::Base;
++struct Derived : Root {
++    using Root::Root;
+ };
+
+-using Alias = Base;
++using Alias = Root;
+
+ namespace v2 {
+-using Base = ::Base;
++using Base = ::Root;
+ }
+
+…
+
+ struct Traits {
+-    using Base = ::Base;
++    using Base = ::Root;
+ };
+
+…
+
+ void build() {
+-    auto a = Base(1);
++    auto a = Root(1);
+     auto b = Alias(2);
+     auto c = Derived(3);
+-    auto* d = new Base(4);
++    auto* d = new Root(4);
+     construct(5);
+     construct_member<Traits>();
+'''
+
+[answers.call.rename]
+compiles = true
+
+[answers.call.rename.edits]
+"main.cpp" = '''
+-struct Base {
+-    Base(int value);
++struct Root {
++    Root(int value);
+ };
+
+-struct Derived : Base {
+-    using Base::Base;
++struct Derived : Root {
++    using Root::Root;
+ };
+
+-using Alias = Base;
++using Alias = Root;
+
+ namespace v2 {
+-using Base = ::Base;
++using Base = ::Root;
+ }
+
+…
+
+ struct Traits {
+-    using Base = ::Base;
++    using Base = ::Root;
+ };
+
+…
+
+ void build() {
+-    auto a = Base(1);
++    auto a = Root(1);
+     auto b = Alias(2);
+     auto c = Derived(3);
+-    auto* d = new Base(4);
++    auto* d = new Root(4);
+     construct(5);
+     construct_member<Traits>();
+'''
+
+[answers.alias_call.rename]
+compiles = true
+
+[answers.alias_call.rename.edits]
+"main.cpp" = '''
+ };
+
+-using Alias = Base;
++using Handle = Base;
+
+ namespace v2 {
+…
+ void build() {
+     auto a = Base(1);
+-    auto b = Alias(2);
++    auto b = Handle(2);
+     auto c = Derived(3);
+     auto* d = new Base(4);
+'''
+
+[answers.derived_call.rename]
+compiles = true
+
+[answers.derived_call.rename.edits]
+"main.cpp" = '''
+ };
+
+-struct Derived : Base {
++struct Child : Base {
+     using Base::Base;
+ };
+…
+     auto a = Base(1);
+     auto b = Alias(2);
+-    auto c = Derived(3);
++    auto c = Child(3);
+     auto* d = new Base(4);
+     construct(5);
+'''
+
+[answers.alias_template.rename]
+compiles = true
+
+[answers.alias_template.rename.edits]
+"main.cpp" = '''
+
+ namespace v2 {
+-using Base = ::Base;
++using Legacy = ::Base;
+ }
+
+ template <typename T>
+ void construct(T value) {
+-    auto e = v2::Base(value);
++    auto e = v2::Legacy(value);
+ }
+'''
+
+[answers.dependent.rename]
+error = "what the name here refers to differs from one instantiation or macro expansion to the next; rename from a declaration"

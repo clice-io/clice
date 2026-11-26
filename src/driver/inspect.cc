@@ -755,8 +755,15 @@ constexpr std::array features = {
 /// The inspected file, with the markers --markers places in it.
 struct SourceFile {
     std::string path;
-    std::string content;
+
+    /// The file's bytes, as an open document of it holds them.
+    std::string bytes;
+
     FileMarkers markers;
+
+    llvm::StringRef text() const {
+        return vfs::without_bom(bytes);
+    }
 };
 
 /// The C-family source at `path`, with the markers the file `markers`
@@ -774,11 +781,11 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
     if(is_other_language_path(file.path)) {
         return std::unexpected(std::format("{}: not a C-family source file", name));
     }
-    auto content = vfs::read_text(file.path);
-    if(!content) {
-        return std::unexpected(std::format("{}", content.error()));
+    auto bytes = vfs::read_bytes(file.path);
+    if(!bytes) {
+        return std::unexpected(std::format("{}", bytes.error()));
     }
-    file.content = std::move(*content);
+    file.bytes = std::move(*bytes);
     if(!markers) {
         return file;
     }
@@ -803,7 +810,7 @@ auto read_source(const Spelling& path, const std::optional<std::string>& markers
         }
     }
     auto inside = [&](std::uint32_t offset) {
-        return offset <= file.content.size();
+        return offset <= file.text().size();
     };
     if(!ranges::all_of(points | views::values, inside) ||
        !ranges::all_of(ranges | views::values, [&](const LocalSourceRange& range) {
@@ -921,7 +928,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
     auto check = [&] {
         auto checked = input;
         checked.vfs = llvm::makeIntrusiveRefCnt<vfs::View>(resolution.hidden);
-        checked.add_focus(file.path, file.content);
+        checked.add_focus(file.path, file.bytes);
         if(resolution.synthesized) {
             checked.add_synthesized(resolution.synthesized->files);
         }
@@ -939,7 +946,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
         if(alone->completed()) {
             auto& files = project.file_table;
             auto errors = feature::count_errors(*alone);
-            auto text = files.intern_version(path_id, llvm::xxh3_64bits(file.content));
+            auto text = files.intern_version(path_id, vfs::content_hash(file.bytes));
             auto inputs = intern_inputs(files, alone->deps(), alone->started_at().count());
             project.commit_self_containment(*key, errors == 0, text, inputs);
             resolution = resolve();
@@ -977,7 +984,7 @@ std::expected<CompilationInput, std::string> project_input(const SourceFile& fil
                                      times));
     }
     input.vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(resolution.hidden));
-    input.add_focus(file.path, file.content);
+    input.add_focus(file.path, file.bytes);
     if(resolution.synthesized) {
         input.add_synthesized(resolution.synthesized->files);
     }
@@ -1063,7 +1070,7 @@ void run_feature(FileEntry& entry,
         }
     }
     if(spec.shape == Shape::File || (spec.shape == Shape::Ranges && places.empty())) {
-        entry.result = run(LocalSourceRange(0, static_cast<std::uint32_t>(file.content.size())));
+        entry.result = run(LocalSourceRange(0, static_cast<std::uint32_t>(file.text().size())));
         if(!entry.result) {
             entry.error = "serialize_error";
         }

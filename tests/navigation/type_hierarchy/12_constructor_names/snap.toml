@@ -1,0 +1,30 @@
+[answers.declared]
+type_hierarchy = [
+    { name = "Widget", kind = "Struct", at = "struct ⟦Widget⟧ : Base {" },
+]
+supertypes = [
+    { name = "Base", kind = "Struct", at = "struct ⟦Base⟧ {};" },
+]
+subtypes = [
+    { name = "Derived", kind = "Struct", at = "struct ⟦Derived⟧ : Widget {" },
+]
+
+[answers.called]
+type_hierarchy = [
+    { name = "Widget", kind = "Struct", at = "struct ⟦Widget⟧ : Base {" },
+]
+supertypes = [
+    { name = "Base", kind = "Struct", at = "struct ⟦Base⟧ {};" },
+]
+subtypes = [
+    { name = "Derived", kind = "Struct", at = "struct ⟦Derived⟧ : Widget {" },
+]
+
+[answers.inherited]
+type_hierarchy = [
+    { name = "Derived", kind = "Struct", at = "struct ⟦Derived⟧ : Widget {" },
+]
+supertypes = [
+    { name = "Widget", kind = "Struct", at = "struct ⟦Widget⟧ : Base {" },
+]
+subtypes = []

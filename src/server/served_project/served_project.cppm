@@ -63,8 +63,8 @@ struct CompileOutput {
     /// (a failed compile publishes empty diagnostics without a version).
     std::optional<int> version;
 
-    /// The text compiled, which the diagnostics are at bytes of.
-    std::shared_ptr<SourceText> text;
+    /// The buffer compiled: its bytes, and the text the diagnostics are at.
+    std::shared_ptr<SourceText> source;
 
     /// What the compile raised and what clice knows of how it compiled.
     feature::CompileDiagnostics diagnostics;
@@ -408,9 +408,11 @@ public:
     /// The document's latest compile, or null before its first compile.
     std::shared_ptr<const DocumentCompile> latest(Fid path_id) const;
 
-    /// The document's latest compile while its output describes buffer
-    /// `version`, or null.
-    std::shared_ptr<const DocumentCompile> latest_at(Fid path_id, int version) const;
+    /// The document's latest compile while its output describes the
+    /// session's buffer — its LSP version, and the bytes it holds: a save can
+    /// take the mark of the file on disk alone (Session::follow_bom) —, or
+    /// null.
+    std::shared_ptr<const DocumentCompile> latest_at(const Session& session) const;
 
     /// The latest compile describes the buffer and what it read: no
     /// invalidation reached the document's node since it ran. Whether a
@@ -1209,7 +1211,8 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     Session::Dispatch dispatch(session, kind);
 
     params.file = path;
-    params.text = session.text().str();
+    auto source = session.source;
+    params.bytes = source->bytes().str();
     params.offset = offset;
     // Taken before the command resolves: after an invalidation meanwhile
     // the command may be stale, and adopt_pch refuses the PCH built under
@@ -1239,9 +1242,9 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // needs it. An import that did not build is the parse's to report; none
     // only when the graph shut down.
     Timer timer;
-    auto imports = co_await project.build_imports(path_id, params.text, resolution, {});
+    auto imports = co_await project.build_imports(path_id, *source, resolution, {});
     auto built = imports ? co_await project.build_pch(path_id,
-                                                      params.text,
+                                                      *source,
                                                       params.offset,
                                                       resolution,
                                                       imports->imports,
@@ -1260,7 +1263,7 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     // A completion reply stays useful after edits at or past the cursor:
     // its ranges still hold, and the client filters it by what was typed
     // meanwhile.
-    auto carried = params.text.substr(0, params.offset);
+    auto carried = source->text().substr(0, params.offset);
     auto snapshot = [&] {
         return std::is_same_v<Params, worker::CompletionParams> &&
                session.text().starts_with(carried);

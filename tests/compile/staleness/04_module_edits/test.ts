@@ -35,3 +35,17 @@ test("unsaved interface header edit", async (t) => {
     await t.show("asked", s.errors("mid.cppm"));
     expect(await s.poll("workspace")).toBe(0);
 });
+
+test("a mark added to an interface", async (t) => {
+    // The text stays as it was, but Leaf's PCM counts the interface's bytes
+    // in its places: it is built again, and a note into the interface lands
+    // where the editor shows it.
+    const s = await t.start();
+    expect(await s.errors("mid.cppm")).toEqual([]);
+    t.disk.write("leaf.cppm", "\uFEFF" + t.disk.read("leaf.cppm"));
+    expect(await s.errors("mid.cppm")).toEqual([]);
+    await s.sync();
+    expect((await s.counts()).files["leaf.cppm"]?.pcm).toBe(2);
+    s.edit("mid.cppm", { replace: "leaf() + helper()", with: "leaf(1) + helper()" });
+    await t.show("mid.cppm", s.diagnostics("mid.cppm"), { parts: ["related"] });
+});

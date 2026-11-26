@@ -70,7 +70,7 @@ async::task<> BackgroundIndex::run(ReindexQueue::TakenReindex taken,
                 // inputs that changed.
                 if(auto pending = reindexes.peek(path_id);
                    wants_skipped && pending && pending->seq == taken.seq) {
-                    skipped[path_id] = {.text_hash = result->text_hash,
+                    skipped[path_id] = {.hash = result->hash,
                                         .diagnostics = std::move(result->skipped_diagnostics)};
                 }
                 indexed_units += 1;

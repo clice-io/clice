@@ -116,9 +116,8 @@ struct TokenMap::Hooks : clang::PPCallbacks {
     }
 };
 
-TokenMap::TokenMap(clang::Preprocessor& pp) : pp(pp), SM(pp.getSourceManager()) {
-    focus_fid = SM.getMainFileID();
-    focus_begin = SM.getLocForStartOfFile(focus_fid);
+TokenMap::TokenMap(clang::Preprocessor& pp, clang::SourceLocation focus_begin) :
+    pp(pp), SM(pp.getSourceManager()), focus_fid(SM.getMainFileID()), focus_begin(focus_begin) {
     focus_end = SM.getLocForEndOfFile(focus_fid);
     pp.setTokenWatcher([this](const clang::Token& token) { record(token); });
     pp.addPPCallbacks(std::make_unique<Hooks>(*this));

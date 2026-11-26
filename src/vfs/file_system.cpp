@@ -8,17 +8,12 @@ namespace clice::vfs {
 
 namespace {
 
-/// Serves a buffer the process keeps to one compile, or the part of it a
-/// text takes past a byte order mark.
+/// Serves a buffer the process keeps to one compile.
 class SharedBuffer : public llvm::MemoryBuffer {
 public:
     SharedBuffer(std::shared_ptr<const llvm::MemoryBuffer> owner, bool requires_terminator) :
-        SharedBuffer(owner, owner->getBuffer(), requires_terminator) {}
-
-    SharedBuffer(std::shared_ptr<const llvm::MemoryBuffer> owner,
-                 llvm::StringRef part,
-                 bool requires_terminator) : owner(std::move(owner)) {
-        init(part.begin(), part.end(), requires_terminator);
+        owner(std::move(owner)) {
+        init(this->owner->getBufferStart(), this->owner->getBufferEnd(), requires_terminator);
     }
 
     llvm::StringRef getBufferIdentifier() const override {
@@ -32,86 +27,6 @@ public:
 private:
     std::shared_ptr<const llvm::MemoryBuffer> owner;
 };
-
-/// The text of an open file (see without_bom), in the buffer its bytes
-/// were read into.
-llvm::ErrorOr<std::shared_ptr<const llvm::MemoryBuffer>> load_text(const fs::File& file,
-                                                                   const llvm::Twine& name) {
-    auto read = llvm::MemoryBuffer::getOpenFile(file.native_handle(),
-                                                name,
-                                                /*FileSize=*/-1,
-                                                /*RequiresNullTerminator=*/true,
-                                                /*IsVolatile=*/true);
-    if(!read) {
-        return read.getError();
-    }
-    std::shared_ptr<const llvm::MemoryBuffer> bytes = std::move(*read);
-    auto text = without_bom(bytes->getBuffer());
-    if(text.size() == bytes->getBufferSize()) {
-        return bytes;
-    }
-    return std::make_shared<SharedBuffer>(std::move(bytes), text, true);
-}
-
-/// Whether what `file` reads from its start begins with the mark; none when
-/// it cannot be read.
-std::optional<bool> starts_with_bom(fs::File& file) {
-    char head[3];
-    auto read = file.read(head);
-    if(!read) {
-        return std::nullopt;
-    }
-    return llvm::StringRef(head, *read) == byte_order_mark;
-}
-
-/// The size of the text of the file a stamp describes (see without_bom),
-/// learned once per stamp through a handle open to read it, as every compile
-/// opening the file sees it. The stamp's own size can be another: it leaves
-/// the mark in, and a file system filter (transparent encryption) can give a
-/// status or a directory listing another size than the text reading gives.
-/// A file that cannot be read now gives the stamp's size and is asked again
-/// next time: another program holding it for a moment (a virus scanner) would
-/// otherwise leave the size off for the life of the process.
-std::uint64_t text_size(const Stamp& stamp, llvm::StringRef path) {
-    using Key = std::tuple<std::uint64_t,
-                           std::uint64_t,
-                           std::uint64_t,
-                           std::uint64_t,
-                           std::int64_t,
-                           std::int64_t>;
-    static std::mutex mutex;
-    static llvm::DenseMap<Key, std::uint64_t> results;
-    Key key{stamp.id.device,
-            stamp.id.file,
-            stamp.id.file_high,
-            stamp.size,
-            stamp.mtime_ns,
-            stamp.ctime_ns};
-    {
-        std::lock_guard lock(mutex);
-        if(auto it = results.find(key); it != results.end()) {
-            return it->second;
-        }
-    }
-    auto file = fs::File::open(path);
-    if(!file) {
-        return stamp.size;
-    }
-    auto status = file->status();
-    auto bom = starts_with_bom(*file);
-    if(!status || !bom) {
-        return stamp.size;
-    }
-    // A file rewritten between the status and the read can start with a mark
-    // its status was too short to hold.
-    auto size = status->size;
-    if(*bom && size >= byte_order_mark.size()) {
-        size -= byte_order_mark.size();
-    }
-    std::lock_guard lock(mutex);
-    results.try_emplace(key, size);
-    return size;
-}
 
 #ifdef _WIN32
 
@@ -149,19 +64,19 @@ llvm::StringMap<fs::Status> list_statuses(llvm::StringRef dir) {
 
 #endif
 
-/// Source texts kept across the compiles of a process, by the path they
+/// Source files kept across the compiles of a process, by the path they
 /// were opened under: every compile reads each header it includes, and
-/// most are the bytes the compile before read. A text is served again
-/// while a status of its file matches the one it was read under — size,
-/// mtime and ID, the evidence the master's own change checks rest on — and
-/// only a text read in one piece whose mtime lay outside the guard window
-/// is kept at all.
-class TextCache {
+/// most are the bytes the compile before read. A file is served again
+/// while a status of it matches the one it was read under — size, mtime
+/// and ID, the evidence the master's own change checks rest on — and only
+/// a file read in one piece whose mtime lay outside the guard window is
+/// kept at all.
+class SourceCache {
 public:
     struct Entry {
         fs::Status status;
         std::string real_name;
-        std::shared_ptr<const llvm::MemoryBuffer> text;
+        std::shared_ptr<const llvm::MemoryBuffer> content;
         std::uint64_t used = 0;
     };
 
@@ -177,7 +92,7 @@ public:
     }
 
     void insert(llvm::StringRef path, Entry entry) {
-        if(entry.text->getBufferSize() > budget) {
+        if(entry.content->getBufferSize() > budget) {
             return;
         }
         std::lock_guard lock(mutex);
@@ -205,7 +120,7 @@ private:
     /// headers is not free.
     static std::size_t cost(const llvm::StringMapEntry<Entry>& entry) {
         return entry.getKeyLength() + entry.second.real_name.size() +
-               entry.second.text->getBufferSize() + 256;
+               entry.second.content->getBufferSize() + 256;
     }
 
     std::mutex mutex;
@@ -214,8 +129,8 @@ private:
     std::uint64_t clock = 0;
 };
 
-TextCache& texts() {
-    static TextCache cache;
+SourceCache& sources() {
+    static SourceCache cache;
     return cache;
 }
 
@@ -302,20 +217,19 @@ Mappings& mapped() {
     return mappings;
 }
 
-/// A source file served from the process's texts.
-class CachedText : public llvm::vfs::File {
+/// A source file served from the process's cache.
+class CachedSource : public llvm::vfs::File {
 public:
-    CachedText(std::string name, TextCache::Entry entry) :
+    CachedSource(std::string name, SourceCache::Entry entry) :
         name(std::move(name)), entry(std::move(entry)) {}
 
     llvm::ErrorOr<llvm::vfs::Status> status() override {
-        return llvm::vfs::Status::copyWithNewSize(to_llvm(entry.status, name),
-                                                  entry.text->getBufferSize());
+        return to_llvm(entry.status, name);
     }
 
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
         getBuffer(const llvm::Twine&, int64_t, bool, bool) override {
-        return std::make_unique<SharedBuffer>(entry.text, true);
+        return std::make_unique<SharedBuffer>(entry.content, true);
     }
 
     llvm::ErrorOr<std::string> getName() override {
@@ -328,20 +242,21 @@ public:
 
 private:
     std::string name;
-    TextCache::Entry entry;
+    SourceCache::Entry entry;
 };
 
 /// A file a compile opened, answering its status through the handle it
-/// was opened by. A source file is served as its text, read once, the size
-/// its status reports agreeing with the text; a binary file as its bytes,
-/// read the way clang asks.
+/// was opened by. A source file is read once, whole, its status reporting
+/// the size read: a save rewriting it in place changes the size between a
+/// status and a read, which clang's check of what it read would take for
+/// an error. A binary file is read the way clang asks.
 class DiskFile : public llvm::vfs::File {
 public:
-    /// `key` is the absolute path the process keeps the file's text or
+    /// `key` is the absolute path the process keeps the file's content or
     /// mapping under.
-    DiskFile(fs::File file, std::string name, std::string real_name, std::string key, bool text) :
+    DiskFile(fs::File file, std::string name, std::string real_name, std::string key, bool source) :
         file(std::move(file)), name(std::move(name)), real_name(std::move(real_name)),
-        key(std::move(key)), is_text(text) {}
+        key(std::move(key)), source(source) {}
 
     llvm::ErrorOr<llvm::vfs::Status> status() override {
         auto status = file.status();
@@ -349,20 +264,20 @@ public:
             return status.error();
         }
         auto result = to_llvm(*status, name);
-        if(!is_text || status->type != fs::FileType::Regular) {
+        if(!source || status->type != fs::FileType::Regular) {
             return result;
         }
         if(auto error = load()) {
             return error;
         }
-        return llvm::vfs::Status::copyWithNewSize(result, text->getBufferSize());
+        return llvm::vfs::Status::copyWithNewSize(result, content->getBufferSize());
     }
 
     llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>> getBuffer(const llvm::Twine& buffer_name,
                                                                  int64_t size,
                                                                  bool requires_terminator,
                                                                  bool is_volatile) override {
-        if(!is_text) {
+        if(!source) {
             if(!requires_terminator && !is_volatile) {
                 if(auto status = file.status()) {
                     if(auto kept = mapped().find(key, *status)) {
@@ -379,7 +294,7 @@ public:
         if(auto error = load()) {
             return error;
         }
-        return std::make_unique<SharedBuffer>(text, true);
+        return std::make_unique<SharedBuffer>(content, true);
     }
 
     llvm::ErrorOr<std::string> getName() override {
@@ -392,19 +307,23 @@ public:
 
 private:
     std::error_code load() {
-        if(text) {
+        if(content) {
             return {};
         }
         auto before = file.status();
-        auto loaded = load_text(file, name);
+        auto loaded = llvm::MemoryBuffer::getOpenFile(file.native_handle(),
+                                                      name,
+                                                      /*FileSize=*/-1,
+                                                      /*RequiresNullTerminator=*/true,
+                                                      /*IsVolatile=*/true);
         if(!loaded) {
             return loaded.getError();
         }
-        text = std::move(*loaded);
+        content = std::move(*loaded);
         auto after = file.status();
         if(before && after && after->type == fs::FileType::Regular &&
            Stamp::of(*before) == Stamp::of(*after) && stable_mtime(Stamp::of(*after).mtime_ns)) {
-            texts().insert(key, {.status = *after, .real_name = real_name, .text = text});
+            sources().insert(key, {.status = *after, .real_name = real_name, .content = content});
         }
         return {};
     }
@@ -413,8 +332,8 @@ private:
     std::string name;
     std::string real_name;
     std::string key;
-    bool is_text;
-    std::shared_ptr<const llvm::MemoryBuffer> text;
+    bool source;
+    std::shared_ptr<const llvm::MemoryBuffer> content;
 };
 
 std::unexpected<FileError> failed(FileError::Operation operation,
@@ -477,9 +396,17 @@ std::expected<void, FileError> remove(llvm::StringRef path) {
     return {};
 }
 
-bool starts_with_bom(llvm::StringRef path) {
+std::optional<bool> starts_with_bom(llvm::StringRef path) {
     auto file = fs::File::open(path);
-    return file && starts_with_bom(*file).value_or(false);
+    if(!file) {
+        return std::nullopt;
+    }
+    char head[3];
+    auto read = file->read(head);
+    if(!read) {
+        return std::nullopt;
+    }
+    return llvm::StringRef(head, *read) == byte_order_mark;
 }
 
 std::expected<void, FileError> write_text(llvm::StringRef path, llvm::StringRef text, bool bom) {
@@ -522,8 +449,8 @@ std::expected<ObservedFile, FileError> read_observed(llvm::StringRef path, std::
     if(auto error = file->read_to_end(result.text)) {
         return failed(FileError::Operation::Read, path, error);
     }
+    result.obs.hash = content_hash(result.text);
     result.text.erase(0, result.text.size() - without_bom(result.text).size());
-    result.obs.hash = llvm::xxh3_64bits(result.text);
 
     auto after = file->status();
     if(!after) {
@@ -633,11 +560,7 @@ llvm::ErrorOr<llvm::vfs::Status> View::status(const llvm::Twine& path) {
     if(!status) {
         return status.error();
     }
-    auto result = to_llvm(*status, path.str());
-    if(status->type != fs::FileType::Regular) {
-        return result;
-    }
-    return llvm::vfs::Status::copyWithNewSize(result, text_size(Stamp::of(*status), absolute));
+    return to_llvm(*status, path.str());
 }
 
 llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::openFileForRead(const llvm::Twine& path) {
@@ -649,7 +572,7 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>>
     return open(path, false);
 }
 
-llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& path, bool text) {
+llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& path, bool source) {
     llvm::SmallString<256> absolute;
     path.toVector(absolute);
     if(auto error = getUnderlyingFS().makeAbsolute(absolute)) {
@@ -658,13 +581,13 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& pa
     if(hidden.hides(absolute)) {
         return std::make_error_code(std::errc::no_such_file_or_directory);
     }
-    if(text) {
+    if(source) {
         auto status = statuses.status(absolute);
         if(!status) {
             return status.error();
         }
-        if(auto kept = texts().find(absolute, *status)) {
-            return std::make_unique<CachedText>(path.str(), std::move(*kept));
+        if(auto kept = sources().find(absolute, *status)) {
+            return std::make_unique<CachedSource>(path.str(), std::move(*kept));
         }
     }
     auto file = fs::File::open(absolute.str());
@@ -679,7 +602,7 @@ llvm::ErrorOr<std::unique_ptr<llvm::vfs::File>> View::open(const llvm::Twine& pa
                                       path.str(),
                                       std::move(real_name),
                                       absolute.str().str(),
-                                      text);
+                                      source);
 }
 
 std::shared_ptr<const llvm::MemoryBuffer> keep_mapped(llvm::StringRef path) {

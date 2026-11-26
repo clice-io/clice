@@ -1,0 +1,11 @@
+[answers.first_line.completion]
+items = [
+    { label = "other", kind = "Field", detail = "int" },
+    { label = "value", kind = "Field", detail = "int" },
+]
+
+[answers.after_preamble.completion]
+items = [
+    { label = "other", kind = "Field", detail = "int" },
+    { label = "value", kind = "Field", detail = "int" },
+]

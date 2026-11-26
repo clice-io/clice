@@ -7,7 +7,7 @@ error: The command stays a driver command: the compiler missing-icpx is not on c
 exit = 1
 
 ["intel drivers"."$ clice command convert -- missing-icx-cl /nologo /TP /DWIN32 /EHsc /Od -MDd -fsycl /c main.cpp"]
-stdout = "missing-icx-cl --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /nologo /TP -D WIN32 /EHsc /Od /MDd -fsycl ${WS}/main.cpp"
+stdout = "missing-icx-cl --driver-mode=cl -fno-delayed-template-parsing -resource-dir ${RESOURCE} /TP -D WIN32 /EHsc /Od /MDd -fsycl ${WS}/main.cpp"
 stderr = '''
 warning: Cannot ask the compiler for its default settings: the compiler missing-icx-cl is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine; clang's own driver reads its commands
 error: The command stays a driver command: the compiler missing-icx-cl is not on clice's PATH; install it, or regenerate compile_commands.json if it was written on another machine

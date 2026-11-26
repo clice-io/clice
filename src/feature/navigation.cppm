@@ -78,14 +78,23 @@ std::vector<protocol::DocumentHighlight> to_protocol(llvm::ArrayRef<PlacedHighli
 
 /// Go-to-type-definition of a cursor's symbol: the declarations its
 /// type names — at a name of a member of a template's specialization,
-/// the type the specialization gives it (TypeDefinition relations
-/// spanning the cursor in the index serving its file); at a type, the
-/// type itself; elsewhere the type it is declared with (the relations
-/// without a range). An alias leads on to the type it names. The
-/// cursor's own site drops out unless it is the only one.
+/// the type the specialization gives it, at an alias's name or a class's
+/// calling a constructor the class inherits, that type (TypeDefinition
+/// relations spanning the cursor in the index serving its file); at a
+/// type, the type itself; elsewhere the type it is declared with (the
+/// relations without a range), a constructor's its class. An alias leads
+/// on to the type it names. The cursor's own site drops out unless it is
+/// the only one.
 std::vector<index::Site> type_definition(const index::IndexQuery& index,
                                          const index::IndexQuery::Cursor& cursor,
                                          index::SymbolHash symbol);
+
+/// The symbols the name under a cursor writes: a constructor's name,
+/// declaring or calling it, writes the type it constructs — its class, or
+/// the alias or the class inheriting it a call is written with; for each
+/// constructor a template may call there alike.
+llvm::SmallVector<index::IndexQuery::Target, 1>
+    written_symbols(const index::IndexQuery& index, const index::IndexQuery::Cursor& cursor);
 
 /// What implements the symbol, each at its canonical site: the types
 /// deriving from a class-like symbol, the overrides of a function, at

@@ -337,7 +337,7 @@ clang::SourceRange Builder::add_name(const NameOccurrence& occurrence) {
     // reference lists and jump targets keep the invocation relation —
     // but the invocation token itself stays the macro's, not
     // theirs.
-    if(spelled) {
+    if(spelled && !occurrence.outranked) {
         add_occurrence(occurrence.decl,
                        occurrence.owns_whole_name() ? name : clang::SourceRange(location));
     }
@@ -392,9 +392,9 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
     enclosing_memo.resize(std::min<std::size_t>(enclosing_memo.size(), i));
     top_level_memo.resize(std::min<std::size_t>(top_level_memo.size(), i));
     // What an instantiation resolves are the calls and member accesses
-    // its body's expressions make and the types its placeholders
-    // deduce; it declares nothing its template does not, and the types
-    // it substitutes are no references.
+    // its body's expressions and constructor initializers make and the
+    // types its placeholders deduce; it declares nothing its template does
+    // not, and the types it substitutes are no references.
     const auto* stmt = semantics.node(i).node.get<clang::Stmt>();
     expression_begin = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
     see_from(semantics, i);
@@ -405,7 +405,7 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
     if(!place_resolver && stmt && llvm::isa<clang::OverloadExpr>(stmt)) {
         return;
     }
-    if(instantiation_entries && !stmt) {
+    if(instantiation_entries && !stmt && !semantics.node(i).node.get<clang::CXXCtorInitializer>()) {
         project_placeholder(semantics, i);
         if(const auto* value = semantics.node(i).node.get<clang::ValueDecl>()) {
             add_deduced_type(value);
@@ -425,6 +425,9 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
                 add_self_relation(occurrence.decl, RelationKind::Write, name);
             }
             add_specialized_type(occurrence.decl, name);
+            if(occurrence.outranked) {
+                add_constructed_type(semantics, i, occurrence, name);
+            }
         }
         if(occurrence.kind.is_one_of(RelationKind::Reference,
                                      RelationKind::Candidate,
@@ -732,7 +735,7 @@ std::vector<std::byte> Builder::build() {
         if(file_index.empty()) {
             continue;
         }
-        auto bytes = write_shard(file_index, resolve, unit.file_content(path_fids[path_id]));
+        auto bytes = write_shard(file_index, resolve, unit.file_text(path_fids[path_id]));
         auto hash = llvm::xxh3_64bits(as_chars(bytes));
         if(ranges::binary_search(known_variants, known_at(tree.paths[path_id], hash))) {
             known_paths.set(path_id);
@@ -749,10 +752,10 @@ std::vector<std::byte> Builder::build() {
         auto& file = resolved_by_path[path_id];
         InstantiationSection section{.path_id = path_id};
         if(!file.walked.empty()) {
-            auto content = unit.file_content(path_fids[path_id]);
+            auto& source = unit.file_text(path_fids[path_id]);
             section.blob = write_instantiations(file.walked,
-                                                llvm::xxh3_64bits(content),
-                                                static_cast<std::uint32_t>(content.size()));
+                                                source.hash(),
+                                                static_cast<std::uint32_t>(source.text().size()));
         }
         ranges::sort(file.skipped);
         file.skipped.erase(ranges::unique(file.skipped).begin(), file.skipped.end());

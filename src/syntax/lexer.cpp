@@ -134,8 +134,8 @@ void Lexer::lex(Token& token) {
     token.is_at_start_of_line = raw_token.isAtStartOfLine();
     token.is_pp_keyword = parse_pp_keyword;
 
-    // The fake location maps the buffer start, so raw locations decode
-    // straight to offsets into `content`.
+    // Clang's offsets: the fake location maps the buffer start, so raw
+    // locations decode straight to offsets into `content`.
     auto offset = raw_token.getLocation().getRawEncoding() - fake_loc.getRawEncoding();
     token.range = LocalSourceRange{offset, offset + raw_token.getLength()};
 

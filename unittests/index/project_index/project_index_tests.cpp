@@ -6,6 +6,7 @@ import :index.project_index;
 import :index.shard;
 import :index.indexing.tu_index;
 import :support.text;
+import :syntax.source_text;
 import :unittests.utils.index_internals;
 import :unittests.utils.temp_dir;
 import :unittests.utils.tester;
@@ -600,7 +601,8 @@ ZEST_CASE(LazyShardsStayPut) {
         .kind = RelationKind::Definition,
         .range = {4, 5}
     });
-    auto shard = index::write_shard(file_index, {}, content);
+    SourceText source(content.str());
+    auto shard = index::write_shard(file_index, {}, source);
     clice::FileTable files;
     index::ProjectIndex project{files};
     std::vector<index::BlobDatabase::Blob> puts;

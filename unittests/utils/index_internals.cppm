@@ -8,6 +8,7 @@ import :index.shard;
 import :index.symbol;
 import :support.prelude;
 import :support.text;
+import :syntax.source_text;
 import :vfs.ids;
 
 namespace clice::testing {
@@ -15,10 +16,11 @@ namespace clice::testing {
 /// A loaded shard whose entries were built from `content`, for the
 /// disk-vs-shard freshness comparisons.
 inline index::Shard shard_of(llvm::StringRef content) {
+    SourceText source(content.str());
     auto bytes = index::write_shard(
         {},
         [](index::SymbolHash) -> std::optional<index::SymbolView> { return std::nullopt; },
-        content);
+        source);
     return index::Shard::from_buffer(llvm::MemoryBuffer::getMemBufferCopy(as_chars(bytes)));
 }
 

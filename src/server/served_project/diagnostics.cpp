@@ -48,7 +48,7 @@ void ServedProject::record_crash(const std::shared_ptr<Session>& session,
        (kind == feature::RequestKind::Compile || kind == feature::RequestKind::PCH)) {
         update_latest(path_id, [&](DocumentCompile& compiled) {
             compiled.output = CompileOutput{
-                .text = session->source,
+                .source = session->source,
                 .diagnostics = {.source = previous->output->diagnostics.source},
             };
         });
@@ -62,7 +62,7 @@ void ServedProject::republish(const std::shared_ptr<Session>& session) {
     }
     if(auto previous = latest(session->path_id); !previous || !previous->output.has_value()) {
         update_latest(session->path_id, [&](DocumentCompile& compiled) {
-            compiled.output = CompileOutput{.text = session->source};
+            compiled.output = CompileOutput{.source = session->source};
         });
     }
     push_output(*session, true);
@@ -104,7 +104,7 @@ std::vector<feature::FileDiagnostic>
     }
     // A compile that failed or is stopped left an output of an older
     // buffer, whose ranges a versionless report would place on this one.
-    if(auto compiled = latest_at(session.path_id, session.version)) {
+    if(auto compiled = latest_at(session)) {
         return shown_diagnostics(session, *compiled->output);
     }
     return shown_diagnostics(session, {});
@@ -120,7 +120,7 @@ std::vector<feature::FileDiagnostic>
     ServedProject::shown_skipped_diagnostics(const Session& session,
                                              const CompileOutput& output) const {
     auto* skipped = project.background_index.skipped_diagnostics(session.path_id);
-    if(!skipped || skipped->text_hash != session.source->hash() ||
+    if(!skipped || skipped->hash != session.source->hash() ||
        output.diagnostics.source != CommandSource::Database || active_choice(session.path_id)) {
         return {};
     }
@@ -138,7 +138,7 @@ void ServedProject::book_skipped_diagnostics(Fid path_id, bool first) {
     // the background to show them, its index fresh or not.
     auto& background = project.background_index;
     if(auto* skipped = background.skipped_diagnostics(path_id);
-       skipped && skipped->text_hash == session.source->hash()) {
+       skipped && skipped->hash == session.source->hash()) {
         return;
     }
     if(first) {
@@ -157,7 +157,7 @@ void ServedProject::show_skipped_diagnostics(Fid path_id) {
         return;
     }
     auto& session = *server.find_session(path_id);
-    auto compiled = latest_at(path_id, session.version);
+    auto compiled = latest_at(session);
     if(!compiled) {
         return;
     }

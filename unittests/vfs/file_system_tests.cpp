@@ -19,7 +19,8 @@ ZEST_SUITE(FileSystem) {
 
 ZEST_CASE(OpenedFilesKeepIdentity) {
     // Clang merges files by ID: a status by path and the status of the same
-    // file opened, as text or as bytes, must agree on it.
+    // file opened for reading or for binary reading must agree on it, and on
+    // its size.
     TempDir tmp;
     tmp.touch("a.h",
               "\xEF\xBB\xBF"
@@ -32,21 +33,21 @@ ZEST_CASE(OpenedFilesKeepIdentity) {
 
     vfs::View view;
     auto stated = view.status(path);
-    auto text = view.openFileForRead(path);
+    auto source = view.openFileForRead(path);
     auto bytes = view.openFileForReadBinary(path);
-    ZASSERT((stated && text && bytes));
-    auto text_status = (*text)->status();
+    ZASSERT((stated && source && bytes));
+    auto source_status = (*source)->status();
     auto bytes_status = (*bytes)->status();
-    ZASSERT((text_status && bytes_status));
+    ZASSERT((source_status && bytes_status));
 
     auto id = vfs::to_llvm(*status, path).getUniqueID();
     ZASSERT(stated->getUniqueID() == id);
-    ZASSERT(text_status->getUniqueID() == id);
+    ZASSERT(source_status->getUniqueID() == id);
     ZASSERT(bytes_status->getUniqueID() == id);
-    ZASSERT(stated->getSize() == 7u);
-    ZASSERT(text_status->getSize() == 7u);
+    ZASSERT(stated->getSize() == 10u);
+    ZASSERT(source_status->getSize() == 10u);
     ZASSERT(bytes_status->getSize() == 10u);
-    ZASSERT(text_status->getLastModificationTime() ==
+    ZASSERT(source_status->getLastModificationTime() ==
             vfs::to_llvm(*status, path).getLastModificationTime());
 }
 
@@ -67,8 +68,8 @@ ZEST_CASE(LinksShareIdentity) {
 #endif
 }
 
-ZEST_CASE(KeptTextFollowsEdits) {
-    // A text read once is served to later compiles only while its file
+ZEST_CASE(KeptSourceFollowsEdits) {
+    // A source read once is served to later compiles only while its file
     // still stats the same; an edit is read afresh.
     TempDir tmp;
     tmp.touch("a.h", "int x;\n");

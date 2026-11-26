@@ -42,12 +42,13 @@ struct ShardBlobOf {
     /// the writer and gated by Shard::from_bytes.
     std::uint32_t format_version = 0;
 
-    /// xxh3 of the content bytes the indexing compile consumed — the
-    /// content generation this shard was built from. Variants of
-    /// different generations never share a blob.
+    /// The hash of the bytes the indexing compile consumed
+    /// (vfs::content_hash) — the content generation this shard was built
+    /// from. Variants of different generations never share a blob.
     std::uint64_t content_hash = 0;
 
-    /// Size of the consumed content; bounds every stored range.
+    /// Size of the consumed text (vfs::without_bom); bounds every stored
+    /// range.
     std::uint32_t content_size = 0;
 
     /// The lines holding non-ASCII bytes, ascending, and their text without

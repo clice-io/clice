@@ -8,6 +8,7 @@ import :index.shard.tables;
 import :semantic.token_class;
 import :support.logging;
 import :syntax.position;
+import :syntax.source_text;
 
 namespace clice::index {
 
@@ -521,8 +522,8 @@ std::uint32_t Shard::content_size() const {
     return view_of(buffer->getBuffer()).content_size;
 }
 
-bool Shard::matches_content(llvm::StringRef text) const {
-    return matches_content(text.size(), llvm::xxh3_64bits(text));
+bool Shard::matches_content(SourceText& source) const {
+    return matches_content(source.text().size(), source.hash());
 }
 
 bool Shard::matches_content(std::uint64_t size, std::uint64_t hash) const {

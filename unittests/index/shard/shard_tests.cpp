@@ -8,6 +8,7 @@ import :index.shard;
 import :index.shard.layout;
 import :support.text;
 import :syntax.position;
+import :syntax.source_text;
 import :unittests.utils;
 import :unittests.utils.tester;
 
@@ -28,7 +29,8 @@ void build_index(llvm::StringRef code,
 }
 
 std::vector<std::byte> write_fresh(const index::FileIndex& file_index, llvm::StringRef content) {
-    return index::write_shard(file_index, {}, content);
+    SourceText source(content.str());
+    return index::write_shard(file_index, {}, source);
 }
 
 /// The focus file's worker-encoded blob, straight from the TU index.
@@ -763,6 +765,7 @@ ZEST_CASE(MergedLocalFlagsUnion) {
             };
             relation.set_extent({0, 20});
             file_index.relations[7] = {relation};
+            SourceText source(content.str());
             auto bytes = index::write_shard(
                 file_index,
                 [&](index::SymbolHash) -> std::optional<index::SymbolView> {
@@ -772,7 +775,7 @@ ZEST_CASE(MergedLocalFlagsUnion) {
                                              .flags = flags,
                                              .token_class = {.kind = token_kind}};
                 },
-                content);
+                source);
             return make_shard(bytes);
         };
     auto defining =

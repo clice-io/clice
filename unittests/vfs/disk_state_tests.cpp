@@ -81,6 +81,16 @@ ZEST_CASE(PackageTrustedUntilDue) {
     ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 }
 
+ZEST_CASE(MarkAddedIsChange) {
+    // The text stays as it was: what clang builds from the bytes does not.
+    Fixture f;
+    auto fid = f.file("src/a.h", "int a;\n");
+    auto hash = f.hash_of(fid);
+    f.rewrite("src/a.h", "\xEF\xBB\xBFint a;\n");
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Stale);
+    ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
+}
+
 ZEST_CASE(ChecksCounted) {
     Fixture f;
     auto installed = f.file("pkg/a.h", "int a;\n");

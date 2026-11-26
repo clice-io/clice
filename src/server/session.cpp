@@ -3,6 +3,7 @@ module clice;
 import :server.session;
 import :support.logging;
 import :support.process;
+import :vfs.file_system;
 
 namespace clice {
 
@@ -25,7 +26,25 @@ Session::Session(Fid path_id, std::string text, int version) : path_id(path_id),
 }
 
 void Session::set_text(std::string text) {
+    if(source && source->bytes().size() != source->text().size()) {
+        text.insert(0, vfs::byte_order_mark);
+    }
     source = std::make_shared<SourceText>(std::move(text));
+}
+
+bool Session::follow_bom(std::uint64_t disk_hash) {
+    if(source->hash() == disk_hash) {
+        return false;
+    }
+    bool has_bom = source->bytes().size() != source->text().size();
+    std::string flipped = has_bom ? "" : vfs::byte_order_mark.str();
+    flipped += text();
+    if(vfs::content_hash(flipped) != disk_hash) {
+        return false;
+    }
+    source = std::make_shared<SourceText>(std::move(flipped));
+    generation += 1;
+    return true;
 }
 
 bool Session::edit(llvm::ArrayRef<protocol::TextDocumentContentChangeEvent> changes,

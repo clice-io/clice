@@ -243,7 +243,7 @@ void drop_sycl_integration_files(std::vector<std::string>& tokens) {
 std::size_t forwarded_start(llvm::ArrayRef<std::string> tokens, const Command& command) {
     llvm::SmallVector<llvm::StringRef> values;
     for(auto& arg: command.args) {
-        if(is_xclang_option(arg.opt_id)) {
+        if(arg.opt_id == clang_options::OPT_Xclang) {
             values.push_back(arg.values[0]);
         }
     }

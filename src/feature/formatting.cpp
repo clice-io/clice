@@ -50,11 +50,18 @@ auto file_style(llvm::StringRef file) -> std::expected<FileStyle, std::string> {
                                          search.get(),
                                          /*AllowUnknownOptions=*/false,
                                          [](const llvm::SMDiagnostic& diagnostic, void*) {
+                                             // The parser reads the bytes; the
+                                             // editor shows the text.
+                                             auto column = diagnostic.getColumnNo();
+                                             if(diagnostic.getLineNo() == 1) {
+                                                 column -=
+                                                     vfs::bom_length(diagnostic.getLineContents());
+                                             }
                                              problems += std::format("{}{}:{}:{}: {}",
                                                                      problems.empty() ? "" : "\n",
                                                                      diagnostic.getFilename(),
                                                                      diagnostic.getLineNo(),
-                                                                     diagnostic.getColumnNo() + 1,
+                                                                     column + 1,
                                                                      diagnostic.getMessage());
                                          });
     if(!style) {

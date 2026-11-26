@@ -12,7 +12,7 @@ import type { Case } from "../cases/case.ts";
 import { statusOf, writeSnapshot, type Snapshot } from "../cases/output.ts";
 import { REPO_ROOT } from "../../repo.ts";
 import { MARKED, copyName } from "../cases/project.ts";
-import type { Range } from "../render/position.ts";
+import { withoutBom, type Range } from "../render/position.ts";
 import { Place, isList, isTable, type Value } from "../render/value.ts";
 
 export interface CardFile {
@@ -56,7 +56,8 @@ function filesOf(c: Case): CardFile[] {
     return c.inputs.map((rel) => {
         const name = copyName(rel);
         const raw = fs.readFileSync(path.join(c.dir, rel), "utf8");
-        const text = MARKED.test(name) ? parseAnnotations(raw).content : raw;
+        // The text the markers count in, as the editor shows it.
+        const text = withoutBom(MARKED.test(name) ? parseAnnotations(raw).content : raw);
         const markers = c.markers
             .filter((marker) => marker.path === rel)
             .map(({ name: label, begin, end, range }) => ({ name: label, begin, end, range }));
