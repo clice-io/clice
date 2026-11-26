@@ -259,6 +259,50 @@ ZEST_CASE(FromContext) {
     ZEXPECT(!plain.unit->from_context(plain.unit->file_id(TestVFS::path("a.h"))));
 }
 
+ZEST_CASE(PrecompiledFragmentText) {
+    // A preamble's PCH holds the prefix a header context cut from its
+    // host's text, which leaves out the mark the host on disk starts with.
+    TempDir tmp;
+    tmp.touch("host.cpp", "\xEF\xBB\xBFint from_host;\n#include \"body.h\"\n");
+    constexpr llvm::StringRef cut = "int from_host;\n";
+    llvm::StringRef text = "#include \"dep.h\"\nint a = from_host;\n";
+    add_file("dep.h", "int dep;\n");
+    add_focus("body.h", text);
+    prepare();
+    auto overlay = llvm::makeIntrusiveRefCnt<llvm::vfs::OverlayFileSystem>(
+        llvm::makeIntrusiveRefCnt<vfs::View>());
+    overlay->pushOverlay(vfs);
+    params.input.vfs = overlay;
+    auto prefix = TestVFS::path(".clice-prefix.h");
+    params.input.add_synthesized({
+        {.path = prefix,
+         .content = std::format("{}{}", marker, cut),
+         .origin = {.source = tmp.path("host.cpp"),
+                    .runs = {{.offset = static_cast<std::uint32_t>(marker.size()),
+                              .length = static_cast<std::uint32_t>(cut.size())}}},
+         .entry = SynthesizedFile::Entry::Prefix},
+    });
+    params.input.arguments.insert(params.input.arguments.end() - 1, {"-include", prefix});
+
+    auto bound = preamble_bound(text);
+    auto pch_path = precompiled_path("pch");
+    CompilationParams preamble{
+        .kind = CompilationKind::Preamble,
+        .input = params.input,
+        .output_file = pch_path,
+    };
+    preamble.input.add_remapped_file(TestVFS::path("body.h"), text, bound);
+    ZASSERT(clice::compile(std::move(preamble))->has_output());
+    params.input.pch = {pch_path, bound};
+    params.input.add_focus(TestVFS::path("body.h"), text);
+    ZASSERT(try_compile());
+
+    auto fragment = file(".clice-prefix.h");
+    ZASSERT(!unit->loaded_file_bytes(fragment));
+    auto at = static_cast<std::uint32_t>(marker.size() + cut.find("from_host"));
+    ZEXPECT(unit->written_at(declared("from_host")->getLocation()) == FileOffset{fragment, at});
+}
+
 ZEST_CASE(FragmentPath) {
     ZASSERT(compile_in_context("int a;\n"));
     auto open = file(".clice-open.h");
