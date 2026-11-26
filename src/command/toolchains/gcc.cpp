@@ -301,13 +301,19 @@ GCCStyleOutput parse_gcc_style_output(llvm::StringRef out, llvm::StringRef err) 
             }
         } else if(auto job = gcc_job_line(line); job && output.clang_job.empty()) {
             output.gcc_job = job->first.str();
-            // The options kept are joined forms: splitting at spaces cuts
-            // none of them.
+            // The options kept hold no spaces, but the -D and -U of the
+            // driver's own command line come split from their values.
             llvm::SmallVector<llvm::StringRef> tokens;
             llvm::SplitString(job->second, tokens);
+            llvm::StringRef split_option;
             for(auto token: tokens) {
-                if(token.starts_with("-D") || token.starts_with("-U") || token.starts_with("-m") ||
-                   token.starts_with("-f")) {
+                if(!split_option.empty()) {
+                    output.gcc_options.push_back((split_option + token).str());
+                    split_option = {};
+                } else if(token == "-D" || token == "-U") {
+                    split_option = token;
+                } else if(token.starts_with("-D") || token.starts_with("-U") ||
+                          token.starts_with("-m") || token.starts_with("-f")) {
                     output.gcc_options.push_back(token.str());
                 }
             }
