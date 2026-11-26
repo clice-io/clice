@@ -157,7 +157,7 @@ std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, Comp
                                     ? llvm::StringRef(parsed->values[0])
                                     : "";
         bool size_level =
-            level.consume_front("s") && !level.empty() && llvm::all_of(level, llvm::isDigit);
+            level.consume_front("s") && !level.empty() && ranges::all_of(level, llvm::isDigit);
         if(!modules && !runtime_checks && !cl_switch && !size_level && warning != "error" &&
            !warning.starts_with("error=")) {
             continue;

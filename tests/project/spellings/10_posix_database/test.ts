@@ -119,6 +119,53 @@ test("a relative directory", { except: EXCEPT }, async (t) => {
     await t.show("main.cpp", s.errors("main.cpp"));
 });
 
+// A database written elsewhere names such a compiler too: unmapped, its
+// entries read as written, and their relative paths hold.
+test("a relative directory without a runtime", { except: EXCEPT }, async (t) => {
+    const entry = {
+        directory: ".",
+        file: "main.cpp",
+        arguments: [
+            "/usr/bin/clang++",
+            "-Iinc dir",
+            "-include",
+            "inc dir/forced.h",
+            "-c",
+            "main.cpp",
+        ],
+    };
+    t.disk.write("compile_commands.json", JSON.stringify([entry], null, 2));
+    const s = await t.start({ env: { [PATH]: withoutRuntimes().join(path.delimiter) } });
+    await t.show("main.cpp", s.errors("main.cpp"));
+    await t.show("guidance", await s.guidance());
+});
+
+// The command line reads such a database as the server does: `command`
+// splits its command as sh does, and `command convert` writes the paths the
+// runtime maps. The compiler is no program, so the conversion fails after
+// printing the database.
+test(
+    "a relative directory on the command line",
+    { except: EXCEPT, errors: ["stay driver commands"] },
+    async (t) => {
+        t.disk.write("cc.exe", "");
+        const entry = {
+            directory: ".",
+            file: posix(path.join(t.root, "main.cpp")),
+            command: [
+                `'${posix(path.join(t.root, "cc"))}'`,
+                `'-I${posix(path.join(t.root, "inc dir"))}'`,
+                "-c",
+                `'${posix(path.join(t.root, "main.cpp"))}'`,
+            ].join(" "),
+        };
+        t.disk.write("compile_commands.json", JSON.stringify([entry], null, 2));
+        const env = { [PATH]: [GIT_RUNTIME, ...withoutRuntimes()].join(path.delimiter) };
+        await t.cli("command main.cpp", { env });
+        await t.cli("command convert compile_commands.json", { env });
+    },
+);
+
 // A runtime ahead on PATH that cannot list its mounts is passed over for the
 // next one.
 test("a broken runtime ahead", { except: EXCEPT }, async (t) => {
