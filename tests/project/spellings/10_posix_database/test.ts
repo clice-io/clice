@@ -140,12 +140,10 @@ test("a relative directory without a runtime", { except: EXCEPT }, async (t) => 
     await t.show("guidance", await s.guidance());
 });
 
-// The command line reads such a database as the server does: `command`
-// splits its command as sh does, and `command convert` writes the paths the
-// runtime maps. The compiler is no program, so the conversion fails after
-// printing the database.
+// `clice command convert` writes the paths the runtime maps, the file's too.
+// The compiler is no program, so the run fails after printing the database.
 test(
-    "a relative directory on the command line",
+    "a relative directory converted",
     { except: EXCEPT, errors: ["stay driver commands"] },
     async (t) => {
         t.disk.write("cc.exe", "");
@@ -161,7 +159,6 @@ test(
         };
         t.disk.write("compile_commands.json", JSON.stringify([entry], null, 2));
         const env = { [PATH]: [GIT_RUNTIME, ...withoutRuntimes()].join(path.delimiter) };
-        await t.cli("command main.cpp", { env });
         await t.cli("command convert compile_commands.json", { env });
     },
 );

@@ -7,6 +7,39 @@ errors = []
 ["a relative directory"."main.cpp"]
 errors = []
 
+["a relative directory without a runtime"."main.cpp"]
+errors = []
+
+["a relative directory without a runtime".guidance]
+value = [
+    "Compilation database ${WS}/compile_commands.json names its compiler POSIX-style (/usr/bin/clang++), and it cannot be mapped: PATH holds no Cygwin or MSYS2 runtime. If Cygwin or MSYS2 wrote the database, put the bin directory of the one that did on clice's PATH (in VS Code, clice.serverEnv); its entries read as written until then.",
+]
+
+["a relative directory converted"."$ clice command convert compile_commands.json"]
+stdout = '''
+[
+  {
+    "directory": "${WS}",
+    "file": "${WS}/main.cpp",
+    "arguments": [
+      "${WS}/cc",
+      "--no-default-config",
+      "-fno-delayed-template-parsing",
+      "-resource-dir",
+      "${RESOURCE}",
+      "-I",
+      "${WS}/inc dir",
+      "${WS}/main.cpp"
+    ]
+  }
+]
+'''
+stderr = '''
+warning: Cannot ask the compiler for its default settings: Failed to run cc.exe: exec format error; clang's own driver reads its commands
+error: 1 of the entries stay driver commands: the warnings above say why
+'''
+exit = 1
+
 ["a broken runtime ahead"."main.cpp"]
 errors = []
 
