@@ -199,7 +199,7 @@ ZEST_CASE(RefusedPCHReported) {
         params.file = main_path;
         params.directory = dir;
         params.arguments = arguments;
-        params.content = main_text;
+        params.bytes = main_text;
         params.preamble_bound = bound;
         params.output_path = tmp.path("preamble.pch");
         params.indexing.output_path = tmp.path("preamble.pch.idx");
@@ -223,7 +223,7 @@ ZEST_CASE(RefusedPCHReported) {
         worker::CompileParams params;
         params.path = main_path;
         params.version = 1;
-        params.text = main_text;
+        params.bytes = main_text;
         params.directory = dir;
         params.arguments = arguments;
         params.pch = {pch_path, bound};
