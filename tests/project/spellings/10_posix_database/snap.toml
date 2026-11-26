@@ -4,6 +4,9 @@ errors = []
 ["a command quoted for sh"."main.cpp"]
 errors = []
 
+["a relative directory"."main.cpp"]
+errors = []
+
 ["a broken runtime ahead"."main.cpp"]
 errors = []
 
