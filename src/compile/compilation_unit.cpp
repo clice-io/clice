@@ -43,6 +43,9 @@ auto CompilationUnit::file_id(clang::SourceLocation location) -> clang::FileID {
 
 auto CompilationUnit::decompose(clang::SourceLocation location) -> FileOffset {
     auto [fid, offset] = SM().getDecomposedLoc(location);
+    // A place in the mark itself is the text's start: a fix-it inserting at
+    // the start of a file names the start of its buffer.
+    offset -= std::min(offset, bom_length(fid));
     // What the PCH read of the focus file — the preamble's macros, a global
     // module fragment's declarations — lies in its copy of the file, at the
     // offsets the buffer has.
@@ -309,7 +312,7 @@ auto CompilationUnit::positions(clang::FileID fid) -> PositionMap {
     return file_text(fid).positions();
 }
 
-auto CompilationUnit::loaded_file_content(clang::FileID fid) -> std::optional<llvm::StringRef> {
+auto CompilationUnit::loaded_file_bytes(clang::FileID fid) -> std::optional<llvm::StringRef> {
     return SM().getBufferDataIfLoaded(fid);
 }
 
@@ -552,13 +555,45 @@ auto CompilationUnit::presumed_location(clang::SourceLocation location) -> clang
     return SM().getPresumedLoc(location, false);
 }
 
+auto CompilationUnit::decompose(clang::FileID fid, std::uint32_t offset) -> FileOffset {
+    return decompose(SM().getComposedLoc(fid, offset));
+}
+
 auto CompilationUnit::create_location(clang::FileID fid, std::uint32_t offset)
     -> clang::SourceLocation {
     if(params.kind == CompilationKind::Completion && fid == SM().getMainFileID() &&
        offset > params.completion.offset) {
         offset += 1;
     }
-    return SM().getComposedLoc(fid, offset);
+    return SM().getComposedLoc(fid, offset + bom_length(fid));
+}
+
+auto CompilationUnit::bom_length(clang::FileID fid) -> std::uint32_t {
+    if(fid.isInvalid()) {
+        return 0;
+    }
+    auto [it, inserted] = bom_lengths.try_emplace(fid, 0);
+    if(!inserted) {
+        return it->second;
+    }
+    auto buffer = SM().getBufferDataIfLoaded(fid);
+    if(!buffer && fid != SM().getMainFileID() && SM().getFileEntryRefForID(fid)) {
+        // A PCH or a module holds the file, which this compile never read:
+        // its build read the bytes the disk holds, and loading them here
+        // would make them read (loaded_file_bytes), unless the disk does
+        // not answer.
+        if(auto has_bom = vfs::starts_with_bom(file_path(fid))) {
+            it->second = *has_bom ? vfs::byte_order_mark.size() : 0;
+            return it->second;
+        }
+    }
+    if(!buffer) {
+        buffer = SM().getBufferDataOrNone(fid);
+    }
+    if(buffer) {
+        it->second = vfs::bom_length(*buffer);
+    }
+    return it->second;
 }
 
 auto FocusFile::file() -> clang::FileID {
@@ -751,7 +786,7 @@ std::vector<ReportedInput> CompilationUnit::deps() {
         auto it = deps.try_emplace(path, 0).first;
         if(it->second == 0) {
             if(auto buffer = SM().getBufferDataOrNone(fid)) {
-                it->second = llvm::xxh3_64bits(*buffer);
+                it->second = vfs::content_hash(*buffer);
             }
         }
     };
@@ -760,9 +795,8 @@ std::vector<ReportedInput> CompilationUnit::deps() {
     /// single annotation token). Processing the directive loaded the file
     /// into the SourceManager's content cache, so this looks up the very
     /// buffer the build consumed; only an existence-only check whose
-    /// content was never read loads it here instead. An embedded file's
-    /// buffer holds its bytes, hashed as text like every dependency. An
-    /// unreadable file hashes as 0 and the snapshot capture falls back to
+    /// content was never read loads it here instead. An unreadable file
+    /// hashes as 0 and the snapshot capture falls back to
     /// a started_at-guarded disk hash.
     auto add_file = [&](clang::OptionalFileEntryRef file) {
         if(!file) {
@@ -775,7 +809,7 @@ std::vector<ReportedInput> CompilationUnit::deps() {
         auto it = deps.try_emplace(path, 0).first;
         if(it->second == 0) {
             if(auto buffer = SM().getMemoryBufferForFileOrNone(*file)) {
-                it->second = llvm::xxh3_64bits(vfs::without_bom(buffer->getBuffer()));
+                it->second = vfs::content_hash(buffer->getBuffer());
             }
         }
     };

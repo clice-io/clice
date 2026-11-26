@@ -255,7 +255,7 @@ RequestResult<worker::CompileParams>
                 .stop = stop,
             };
             auto pch_mapping = use_precompiled(cp.input, params.pch, params.pcms);
-            cp.input.add_focus(params.path, params.text);
+            cp.input.add_focus(params.path, params.bytes);
             cp.input.add_synthesized(params.synthesized);
 
             auto unit = compile(std::move(cp));

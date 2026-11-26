@@ -21,8 +21,7 @@ const clang::NamedDecl* Builder::in_pattern(const clang::NamedDecl* decl) {
         return decl;
     }
     auto key = [](const clang::NamedDecl* named) {
-        return std::pair(named->getLocation().getRawEncoding(),
-                         static_cast<unsigned>(named->getKind()));
+        return std::pair(named->getLocation(), static_cast<unsigned>(named->getKind()));
     };
     auto [it, fresh] = pattern_locals.try_emplace(pattern);
     if(fresh) {

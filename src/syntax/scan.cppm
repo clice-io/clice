@@ -82,9 +82,9 @@ struct ScanResult {
     /// Dependent module names.
     std::vector<std::string> modules;
 
-    /// Where each of `modules` is imported, as an offset in the scanned file:
-    /// an import in an included file sits at its #include's file name, one
-    /// in a file the command line includes at 0.
+    /// Where each of `modules` is imported, as an offset in the scanned
+    /// file's text: an import in an included file sits at its #include's
+    /// file name, one in a file the command line includes at 0.
     std::vector<std::uint32_t> import_offsets;
 
     /// The lexer scan saw an import declaration. Detection only — the

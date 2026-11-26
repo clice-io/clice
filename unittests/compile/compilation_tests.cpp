@@ -297,7 +297,7 @@ ZEST_CASE(SuffixFollowsText) {
     ZEXPECT(unit->diagnostics().empty());
     auto file = unit->focus_file();
     ZEXPECT(file.content() == text);
-    auto buffer = unit->loaded_file_content(file.file());
+    auto buffer = unit->loaded_file_bytes(file.file());
     ZASSERT(buffer);
     ZEXPECT(buffer->starts_with(text));
     ZEXPECT(buffer->drop_front(text.size()).starts_with("\n#include "));
@@ -321,7 +321,7 @@ ZEST_CASE(CompletionOffsetsInText) {
     ZASSERT(try_compile());
     auto file = unit->focus_file();
     ZEXPECT(file.content() == text);
-    auto buffer = unit->loaded_file_content(file.file());
+    auto buffer = unit->loaded_file_bytes(file.file());
     ZASSERT(buffer);
     ZEXPECT((*buffer)[point] == '\0');
     ZEXPECT(buffer->drop_front(text.size() + 1).starts_with("\n#include "));
@@ -399,7 +399,7 @@ ZEST_CASE(SuffixNeedsFocus) {
     ZASSERT(try_compile());
     auto file = unit->focus_file();
     ZEXPECT(file.content() == text);
-    ZEXPECT(unit->loaded_file_content(file.file()) == text);
+    ZEXPECT(unit->loaded_file_bytes(file.file()) == text);
 }
 
 ZEST_CASE(NoErrorLimit) {

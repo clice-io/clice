@@ -9,6 +9,7 @@ import :index.shard.tables;
 import :index.symbol;
 import :semantic.symbol;
 import :support.text;
+import :syntax.source_text;
 import :syntax.token;
 
 namespace clice::index {
@@ -272,9 +273,10 @@ ContentInfo content_info_of(const Root& root) {
     };
 }
 
-ContentInfo content_info_of(llvm::StringRef content) {
+ContentInfo content_info_of(SourceText& source) {
+    auto content = source.text();
     ContentInfo info;
-    info.hash = llvm::xxh3_64bits(content);
+    info.hash = source.hash();
     info.size = static_cast<std::uint32_t>(content.size());
 
     auto starts = lsp::line_starts({content.data(), content.size()});
@@ -718,7 +720,7 @@ std::vector<std::byte> write_merged(const Root* old_root,
 std::vector<std::byte>
     write_shard(const FileIndex& file_index,
                 llvm::function_ref<std::optional<SymbolView>(SymbolHash)> symbols,
-                llvm::StringRef content) {
+                SourceText& source) {
     // Canonicalize straight from the in-memory entries: sorted, deduplicated.
     // MaskT is irrelevant for a single variant (no mask columns) — use the
     // cheap one.
@@ -751,7 +753,7 @@ std::vector<std::byte>
         }
     }
 
-    return emit_blob(merged, locals, {}, content_info_of(content));
+    return emit_blob(merged, locals, {}, content_info_of(source));
 }
 
 /// merge_shards, keeping of `old`'s entries those `within` accepts when

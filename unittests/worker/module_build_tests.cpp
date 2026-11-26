@@ -73,7 +73,7 @@ ZEST_CASE(BuildPCMThenImport) {
         worker::CompileParams params;
         params.path = consumer;
         params.version = 1;
-        params.text =
+        params.bytes =
             "import Hello;\n"
             "int main() { return hello()[0]; }\n";
         params.directory = "/tmp";
@@ -183,7 +183,7 @@ ZEST_CASE(BuildChainThenCompile) {
         worker::CompileParams params;
         params.path = consumer;
         params.version = 1;
-        params.text =
+        params.bytes =
             "import B;\n"
             "int main() { return val_b(); }\n";
         params.directory = "/tmp";
@@ -264,7 +264,7 @@ ZEST_CASE(ModuleImplementationUnit) {
         worker::CompileParams params;
         params.path = impl;
         params.version = 1;
-        params.text =
+        params.bytes =
             "module Calc;\n"
             "int add(int a, int b) { return a + b; }\n";
         params.directory = "/tmp";

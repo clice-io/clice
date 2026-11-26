@@ -36,11 +36,12 @@ bool in_focus_file(clang::SourceLocation loc, const clang::SourceManager& sm) {
 /// replayed.
 class PreambleReplay : public clang::PPCallbacks {
 public:
-    PreambleReplay(clang::Preprocessor& pp,
+    PreambleReplay(CompilationUnit& unit,
+                   clang::Preprocessor& pp,
                    clang::PPCallbacks& delegate,
-                   unsigned bound,
+                   std::uint32_t bound,
                    llvm::ArrayRef<std::uint32_t> inactive) :
-        pp(pp), delegate(delegate), bound(bound), inactive(inactive) {}
+        unit(unit), pp(pp), delegate(delegate), bound(bound), inactive(inactive) {}
 
     /// The preamble's includes follow the predefines buffer, the last
     /// thing the compile enters before the focus file's rest; replayed once
@@ -59,9 +60,7 @@ public:
 private:
     void replay() {
         using Kind = LexicalInfo::Directive::Kind;
-        auto& sm = pp.getSourceManager();
-        auto focus = sm.getMainFileID();
-        auto text = sm.getBufferData(focus);
+        auto text = unit.file_content(pp.getSourceManager().getMainFileID());
         // A prefix is lexed off a copy: the lexer reads up to a NUL
         // terminator, which a prefix lacks.
         auto lexical = lexical_scan(text.take_front(bound).str(), pp.getLangOpts());
@@ -94,12 +93,11 @@ private:
     /// The focus file's raw identifier `token` as the preprocessor sees it,
     /// its identifier looked up.
     clang::Token token_of(const Token& token, llvm::StringRef text) {
-        auto& sm = pp.getSourceManager();
         clang::Token result;
         result.startToken();
         result.setKind(clang::tok::raw_identifier);
         result.setLocation(
-            sm.getLocForStartOfFile(sm.getMainFileID()).getLocWithOffset(token.range.begin));
+            unit.create_location(pp.getSourceManager().getMainFileID(), token.range.begin));
         result.setLength(token.range.length());
         result.setRawIdentifierData(text.data() + token.range.begin);
         if(token.text(text).contains('\\')) {
@@ -122,9 +120,8 @@ private:
         written = written.drop_front(written.find_first_of("<\""));
         auto name = written.drop_front().drop_back();
         bool angled = written.front() == '<';
-        auto& sm = pp.getSourceManager();
-        auto start = sm.getLocForStartOfFile(sm.getMainFileID());
-        auto location = start.getLocWithOffset(written.data() - text.data());
+        auto location = unit.create_location(pp.getSourceManager().getMainFileID(),
+                                             written.data() - text.data());
         auto file = pp.LookupFile(location,
                                   name,
                                   angled,
@@ -146,7 +143,7 @@ private:
         filename.setLiteralData(written.data());
         auto kind = file ? pp.getHeaderSearchInfo().getFileDirFlavor(*file) : clang::SrcMgr::C_User;
         delegate.InclusionDirective(
-            start.getLocWithOffset(directive.range.begin),
+            unit.create_location(pp.getSourceManager().getMainFileID(), directive.range.begin),
             include,
             name,
             angled,
@@ -166,7 +163,7 @@ private:
     /// where the focus file spells it, as an include's is.
     void replay_define(const clang::Token& name) {
         auto& sm = pp.getSourceManager();
-        auto offset = sm.getFileOffset(name.getLocation());
+        auto spelled = unit.written_at(name.getLocation());
         auto* identifier = name.getIdentifierInfo();
         for(auto* directive = pp.getLocalMacroDirectiveHistory(identifier); directive;
             directive = directive->getPrevious()) {
@@ -174,24 +171,25 @@ private:
             if(!define) {
                 continue;
             }
-            auto [fid, defined_at] =
-                sm.getDecomposedLoc(define->getMacroInfo()->getDefinitionLoc());
-            if(fid == sm.getPreambleFileID() && defined_at == offset) {
+            auto defined_at = define->getMacroInfo()->getDefinitionLoc();
+            if(sm.getFileID(defined_at) == sm.getPreambleFileID() &&
+               unit.written_at(defined_at) == spelled) {
                 delegate.MacroDefined(name, define);
                 return;
             }
         }
     }
 
+    CompilationUnit& unit;
     clang::Preprocessor& pp;
     clang::PPCallbacks& delegate;
-    unsigned bound;
+    std::uint32_t bound;
     std::vector<std::uint32_t> inactive;
 };
 
 /// The view of the disk a .clang-tidy resolution reads, recording each
-/// configuration file it looks for: by the hash of the text it read, or
-/// as absent.
+/// configuration file it looks for: by the hash of the bytes it read,
+/// or as absent.
 class ConfigReads : public llvm::vfs::ProxyFileSystem {
 public:
     ConfigReads() : ProxyFileSystem(llvm::makeIntrusiveRefCnt<vfs::View>()) {}
@@ -225,12 +223,12 @@ public:
         if(!status || !buffer) {
             return status ? buffer.getError() : status.getError();
         }
-        files.push_back({.path = path.str(), .hash = llvm::xxh3_64bits((*buffer)->getBuffer())});
+        files.push_back({.path = path.str(), .hash = vfs::content_hash((*buffer)->getBuffer())});
         return std::make_unique<ReadFile>(*status, std::move(*buffer));
     }
 
 private:
-    /// The text a recorded read hands on, so the provider parses the bytes
+    /// The bytes a recorded read hands on, so the provider parses the file
     /// the record hashed.
     class ReadFile : public llvm::vfs::File {
     public:
@@ -292,7 +290,11 @@ struct ConfigFiles : clang::tidy::FileOptionsProvider {
     /// The places in them the parser's messages point at.
     std::vector<ErrorLocation> locations;
 
-    llvm::ErrorOr<clang::tidy::ClangTidyOptions> parse(llvm::MemoryBufferRef config) {
+    llvm::ErrorOr<clang::tidy::ClangTidyOptions> parse(llvm::MemoryBufferRef bytes) {
+        // Parsed as its text, so the parser's lines, columns and places are
+        // where the editor shows them.
+        llvm::MemoryBufferRef config(vfs::without_bom(bytes.getBuffer()),
+                                     bytes.getBufferIdentifier());
         std::string messages;
         llvm::raw_string_ostream os(messages);
         auto parsed = clang::tidy::parseConfigurationWithDiags(
@@ -677,9 +679,11 @@ void ClangTidyChecker::adjust_diag(Diagnostic& diag) {
     }
 }
 
-std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
+std::unique_ptr<ClangTidyChecker> configure(CompilationUnit& unit,
+                                            clang::CompilerInstance& instance,
                                             const TidyParams& params,
                                             bool batch,
+                                            std::uint32_t preamble_bound,
                                             llvm::ArrayRef<std::uint32_t> preamble_inactive) {
     auto file_name = instance.getFrontendOpts().Inputs[0].getFile();
     tidy::ClangTidyOptions opts = create_options(params, batch);
@@ -759,10 +763,12 @@ std::unique_ptr<ClangTidyChecker> configure(clang::CompilerInstance& instance,
     }
     // The checks' callbacks are all the preprocessor has yet: the replay
     // reaches them alone, never the unit's own recorders added later.
-    if(auto bound = instance.getPreprocessorOpts().PrecompiledPreambleBytes.first;
-       bound != 0 && pp->getPPCallbacks()) {
-        pp->addPPCallbacks(
-            std::make_unique<PreambleReplay>(*pp, *pp->getPPCallbacks(), bound, preamble_inactive));
+    if(preamble_bound != 0 && pp->getPPCallbacks()) {
+        pp->addPPCallbacks(std::make_unique<PreambleReplay>(unit,
+                                                            *pp,
+                                                            *pp->getPPCallbacks(),
+                                                            preamble_bound,
+                                                            preamble_inactive));
     }
     return checker;
 }
@@ -854,9 +860,19 @@ namespace clice {
 auto CompilationUnit::take_tidy_findings() -> std::vector<clang::tidy::ClangTidyError> {
     assert(checker && checker->batch && "take_tidy_findings: no batch clang-tidy run");
     auto findings = checker->findings.take();
+    auto in_text = [&](clang::tooling::DiagnosticMessage& message) {
+        if(message.FilePath.empty()) {
+            return;
+        }
+        message.FileOffset = decompose(file_id(message.FilePath), message.FileOffset).offset;
+    };
     for(auto& finding: findings) {
         if(auto it = reworded.find(finding.Message.Message); it != reworded.end()) {
             finding.Message.Message = it->second;
+        }
+        in_text(finding.Message);
+        for(auto& note: finding.Notes) {
+            in_text(note);
         }
     }
     return findings;

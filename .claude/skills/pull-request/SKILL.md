@@ -24,7 +24,7 @@ Each stage has its file beside this one, read when the stage starts:
 
 1. **Docs sync — once, at the end, delegated.** If the branch touched documented cases (a `README.md` or the output of a case that has one), config annotations, or anything under `docs/`, hand the sync to an Opus subagent following the write-docs skill's `sync.md`. Repeat on later pushes only when those inputs changed again.
 2. `pixi run format`.
-3. `npm run check` at the repo root when TypeScript changed; `pixi run check-layers` when C++ imports or includes changed; `pixi run check-timers` when C++ waits on the clock.
+3. `npm run check` at the repo root when TypeScript changed; `pixi run check-layers` when C++ imports or includes changed; `pixi run check-timers` when C++ waits on the clock; `pixi run check-offsets` when C++ reads clang's offsets.
 4. What the change runs (the build-and-test skill, "What a change runs") passes, beside CI: push without waiting for it.
 
 ## Pushing

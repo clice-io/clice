@@ -8,6 +8,16 @@ int user3()
 '''
 range = "int ⟦user3⟧() {"
 
+["first line".tokens]
+semantic_tokens = [
+    { at = "⟦int⟧ user3() {", type = "primitive" },
+    { at = "int ⟦user3⟧() {", type = "function", modifiers = ["definition", "global"] },
+    { at = "⟦return⟧ 3;", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦3⟧;", type = "number" },
+    { at = '⟦#include⟧ "a.h"', type = "directive" },
+    { at = '#include ⟦"a.h"⟧', type = "header" },
+]
+
 [navigation.shared_fn]
 definition = ["a.h │ int ⟦shared_fn⟧();"]
 
@@ -16,7 +26,90 @@ workspace_symbols = [
     { name = "user3()", kind = "Function", at = "c.cpp │ int ⟦user3⟧() {" },
 ]
 
-["marked host keeps the context"."utils.h"]
+[navigation.ANSWER]
+definition = ["answer.h │ #define ⟦ANSWER⟧ 42"]
+
+["header with a byte order mark".extent.hover]
+markdown = '''
+**struct** `Extent`
+
+A size on the plane.
+
+```cpp
+struct Extent {
+  int width;
+  int height;
+}
+```
+**Size:** 8 bytes
+**Alignment:** 4 bytes
+'''
+range = "struct ⟦Extent⟧ {"
+
+["header with a byte order mark".area.hover]
+markdown = '''
+**function** `area`
+
+```cpp
+inline int area(Extent extent)
+```
+'''
+range = "return get_x({1, 2}) + shared_fn() + ⟦area⟧({3, 4});"
+
+["header with a byte order mark".outline]
+document_symbols = [
+    {
+        name = "Extent",
+        kind = "Struct",
+        at = "struct ⟦Extent⟧ {",
+        children = [
+            { name = "width", kind = "Field", at = "int ⟦width⟧;" },
+            { name = "height", kind = "Field", at = "int ⟦height⟧;" },
+        ],
+    },
+    { name = "area", kind = "Function", at = "inline int ⟦area⟧(Extent extent) {" },
+]
+
+["header with a byte order mark".folding]
+folding_ranges = [
+    { kind = "struct", at = "struct Extent ⟦{ … }⟧ (4 lines)", collapsed = "{...}" },
+    { kind = "functionBody", at = "inline int area(Extent extent) ⟦{ … }⟧ (3 lines)", collapsed = "{...}" },
+]
+
+["header with a byte order mark".tokens]
+semantic_tokens = [
+    { at = "⟦/// A size on the plane.⟧", type = "comment", modifiers = ["documentation"] },
+    { at = "⟦struct⟧ Extent {", type = "keyword" },
+    { at = "struct ⟦Extent⟧ {", type = "struct", modifiers = ["definition", "global"] },
+    { at = "⟦int⟧ width;", type = "primitive" },
+    { at = "int ⟦width⟧;", type = "field", modifiers = ["definition", "member"] },
+    { at = "⟦int⟧ height;", type = "primitive" },
+    { at = "int ⟦height⟧;", type = "field", modifiers = ["definition", "member"] },
+    { at = "⟦inline⟧ int area(Extent extent) {", type = "keyword" },
+    { at = "inline ⟦int⟧ area(Extent extent) {", type = "primitive" },
+    { at = "inline int ⟦area⟧(Extent extent) {", type = "function", modifiers = ["definition", "global"] },
+    { at = "inline int area(⟦Extent⟧ extent) {", type = "struct", modifiers = ["global"] },
+    { at = "inline int area(Extent ⟦extent⟧) {", type = "parameter", modifiers = ["definition", "local"] },
+    { at = "⟦return⟧ extent.width * extent.height;", type = "keyword", modifiers = ["controlFlow"] },
+    { at = "return ⟦extent⟧.width * extent.height;", type = "parameter", modifiers = ["local"] },
+    { at = "return extent.⟦width⟧ * extent.height;", type = "field", modifiers = ["member"] },
+    { at = "return extent.width ⟦*⟧ extent.height;", type = "operator" },
+    { at = "return extent.width * ⟦extent⟧.height;", type = "parameter", modifiers = ["local"] },
+    { at = "return extent.width * extent.⟦height⟧;", type = "field", modifiers = ["member"] },
+]
+
+["host with a byte order mark keeps the context"."utils.h"]
 contexts = [
     { label = "main.cpp", description = "${WS}/main.cpp", host = "main.cpp" },
+]
+
+["a save adding the mark"."after the save"]
+errors = [
+    {
+        at = "static_assert(⟦__builtin_COLUMN() == 15⟧);",
+        severity = "error",
+        message = "static assertion failed due to requirement '__builtin_COLUMN() == 15'",
+        source = "clang",
+        code = "err_static_assert_requirement_failed",
+    },
 ]

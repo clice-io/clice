@@ -143,8 +143,7 @@ const static ServedDocument::MergedIndex* merged_index(const ServedProject& serv
     }
     auto& state = *compiled->index;
     auto& own = state.shard_of(state.focus_file());
-    if(!served.current(session.path_id) &&
-       !own.matches_content(session.text().size(), session.source->hash())) {
+    if(!served.current(session.path_id) && !own.matches_content(*session.source)) {
         document.merged.reset();
         return nullptr;
     }
@@ -152,7 +151,7 @@ const static ServedDocument::MergedIndex* merged_index(const ServedProject& serv
         return &*document.merged;
     }
     auto* stored = served.project.index.shard(session.path_id);
-    if(!stored || !stored->matches_content(session.text().size(), session.source->hash())) {
+    if(!stored || !stored->matches_content(*session.source)) {
         document.merged.reset();
         return nullptr;
     }

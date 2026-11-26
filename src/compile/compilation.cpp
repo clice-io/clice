@@ -10,9 +10,11 @@ import :compile.tokens;
 import :support.logging;
 import :support.process;
 import :syntax.header_context;
+import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.position;
 import :syntax.preamble;
+import :syntax.token;
 import :vfs.file_system;
 
 namespace clice {
@@ -111,7 +113,10 @@ std::unique_ptr<clang::CompilerInvocation>
     }
     pp_opts.ImplicitPCHInclude = pch;
     if(bound != 0) {
-        pp_opts.PrecompiledPreambleBytes = {bound, false};
+        pp_opts.PrecompiledPreambleBytes = {
+            bound + vfs::bom_length(input.buffers.lookup(input.focus)),
+            false,
+        };
     }
     // A preamble with errors still gets its PCH, and every parse loading
     // it accepts it: without one, every edit parses the whole preamble
@@ -617,28 +622,25 @@ private:
         if(!brace || !brace->is(clang::tok::l_brace)) {
             return true;
         }
-        auto [file, begin] = sources.getDecomposedLoc(brace->getLocation());
+        auto [file, brace_at] = unit.written_at(brace->getLocation());
         if(file != unit.focus_file().file()) {
             return true;
         }
-        auto buffer = sources.getBufferData(file);
-        clang::Lexer lexer(sources.getLocForStartOfFile(file),
-                           unit.lang_options(),
-                           buffer.begin(),
-                           buffer.begin() + begin + 1,
-                           buffer.end());
-        clang::Token token;
+        auto begin = brace_at + 1;
+        auto body = unit.file_content(file).substr(begin);
+        Lexer lexer(body, unit.lang_options());
+        Token token;
         std::uint32_t depth = 1;
-        while(depth != 0 && !lexer.LexFromRawLexer(token)) {
-            if(token.is(clang::tok::l_brace)) {
+        while(depth != 0 && !(token = lexer.advance()).is_eof()) {
+            if(token.kind == clang::tok::l_brace) {
                 depth += 1;
-            } else if(token.is(clang::tok::r_brace)) {
+            } else if(token.kind == clang::tok::r_brace) {
                 depth -= 1;
-            } else if(token.is(clang::tok::raw_identifier) && names(token.getRawIdentifier())) {
+            } else if(token.is_identifier() && names(token.text(body))) {
                 return true;
             }
         }
-        return begin <= point && point <= sources.getFileOffset(token.getLocation());
+        return brace_at <= point && point <= begin + token.range.begin;
     }
 
     /// Notes a call past the point instantiating the template looked for
@@ -651,12 +653,11 @@ private:
         if(!instantiating || !instantiating->templated || found_enough() || !pattern) {
             return;
         }
-        auto& sources = unit.context().getSourceManager();
         auto focus = unit.focus_file().file();
-        auto declared = sources.getDecomposedExpansionLoc(pattern->getLocation());
-        auto called = sources.getDecomposedExpansionLoc(function->getPointOfInstantiation());
-        if(declared == std::pair(focus, *instantiating->templated) && called.first == focus &&
-           called.second > instantiating->point) {
+        auto declared = unit.produced_at(pattern->getLocation());
+        auto called = unit.produced_at(function->getPointOfInstantiation());
+        if(declared == FileOffset{focus, *instantiating->templated} && called.file == focus &&
+           called.offset > instantiating->point) {
             found_calls.insert(function);
         }
     }
@@ -866,49 +867,6 @@ struct SystemHeaderPragma : clang::PragmaHandler {
     SilencedHeaders& silenced;
 };
 
-/// `#embed` reads a file through the one content clang keeps for it, which
-/// the file system serves as text, without its byte order mark, when an
-/// earlier lookup found the file without opening it. After `__has_embed`, a
-/// file with the mark that nothing has read or included, here or in the
-/// PCH, gets its bytes as that content, which a later `#include` of it
-/// reads too.
-class EmbeddedBytes : public clang::PPCallbacks {
-public:
-    explicit EmbeddedBytes(clang::Preprocessor& pp) : pp(pp) {}
-
-    void HasEmbed(clang::SourceLocation,
-                  llvm::StringRef,
-                  bool,
-                  clang::OptionalFileEntryRef file) override {
-        // Reading a pipe or a device would wait on it, or take a worker's
-        // standard input.
-        if(!file || file->isNamedPipe() || file->isDeviceFile()) {
-            return;
-        }
-        auto path = file->getFileEntry().tryGetRealPathName();
-        if(!vfs::starts_with_bom(path) || pp.alreadyIncluded(*file)) {
-            return;
-        }
-        auto& sources = pp.getSourceManager();
-        if(ranges::any_of(sources.fileinfo_begin(), sources.fileinfo_end(), [&](const auto& entry) {
-               return entry.first == *file;
-           })) {
-            return;
-        }
-        if(auto bytes = sources.getFileManager().getVirtualFileSystem().getBufferForFile(
-               path,
-               /*FileSize=*/-1,
-               /*RequiresNullTerminator=*/true,
-               /*IsVolatile=*/false,
-               /*IsText=*/false)) {
-            sources.overrideFileContents(*file, std::move(*bytes));
-        }
-    }
-
-private:
-    clang::Preprocessor& pp;
-};
-
 }  // namespace
 
 static void handle_system_header_pragmas(clang::Preprocessor& pp) {
@@ -971,11 +929,12 @@ CompilationStatus CompilationUnit::run() {
         point = std::min(point, static_cast<std::uint32_t>(focus.content().size()));
         auto position = focus.positions().position(point, PositionEncoding::UTF8);
         assert(position && "clamped completion offset must be mappable");
-        /// Clang completion locations are 1-based.
+        /// Clang completion locations are 1-based, and count a byte order
+        /// mark in the first line's columns.
         auto& at = instance->getFrontendOpts().CodeCompletionAt;
         at.FileName = SM().getFileEntryRefForID(focus.file())->getName().str();
         at.Line = position->line + 1;
-        at.Column = position->character + 1;
+        at.Column = position->character + 1 + (position->line == 0 ? bom_length(focus.file()) : 0);
         instance->setCodeCompletionConsumer(params.completion.consumer(*this).release());
     }
 
@@ -1009,16 +968,16 @@ CompilationStatus CompilationUnit::run() {
     /// The checks' PPCallbacks go first: the preamble replay reaches the
     /// callbacks registered before it (see tidy::configure).
     if(params.tidy) {
-        checker = tidy::configure(*instance,
+        checker = tidy::configure(*this,
+                                  *instance,
                                   *params.tidy,
                                   params.kind != CompilationKind::Content,
+                                  params.input.pch.second,
                                   params.preamble_inactive_regions);
     }
 
     /// Add PPCallbacks to collect preprocessing information.
     instance->getPreprocessor().addPPCallbacks(directive_recorder());
-    instance->getPreprocessor().addPPCallbacks(
-        std::make_unique<EmbeddedBytes>(instance->getPreprocessor()));
     handle_system_header_pragmas(instance->getPreprocessor());
 
     // Past the end of the focus file clang instantiates the templates the
@@ -1034,7 +993,8 @@ CompilationStatus CompilationUnit::run() {
     }
 
     if(params.kind == CompilationKind::Content) {
-        collected_tokens.emplace(instance->getPreprocessor());
+        collected_tokens.emplace(instance->getPreprocessor(),
+                                 create_location(SM().getMainFileID(), 0));
     }
 
     // Upstream FrontendAction::Execute() always returns success: errors go

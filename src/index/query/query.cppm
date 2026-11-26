@@ -59,7 +59,7 @@ struct IndexSource {
 struct OpenBuffer {
     Fid file;
 
-    /// The buffer's text, its content hash and its positions.
+    /// The buffer's text, the hash of its bytes and its positions.
     llvm::StringRef text;
 
     std::uint64_t hash = 0;
@@ -176,9 +176,9 @@ void add_resolved(const InstantiationShard& shard,
                   bool expansions,
                   std::optional<Named>& named);
 
-/// The disk bytes of a shard's file, served only while their
-/// hash still matches what the shard was built from — a moved-on file
-/// degrades to no text rather than slicing mismatched text.
+/// The text of a shard's file on disk, served only while its bytes still
+/// hash as those the shard was built from — a moved-on file degrades to
+/// no text rather than slicing mismatched text.
 std::optional<llvm::StringRef> disk_text(llvm::StringRef path,
                                          const Shard& shard,
                                          std::string& kept);
@@ -224,7 +224,7 @@ inline bool is_function(SymbolKind kind) {
 ///      against its own stored content snapshot — unless the file's own
 ///      content moved on from it, in which case the cursor is
 ///      unresolvable (clause 2).
-///   2. Every index source carries the hash of the text it indexed, and
+///   2. Every index source carries the hash of the bytes it indexed, and
 ///      serves only while that is the file's current content: disk indexes
 ///      (shards, PCH overlay entries) while the disk still holds it (the
 ///      freshness gate), an open buffer's index while the buffer does.

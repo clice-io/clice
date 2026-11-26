@@ -1089,13 +1089,18 @@ auto token_text(const clang::ASTContext& context,
                 clang::CharSourceRange range,
                 llvm::ArrayRef<clang::SourceRange> elided) -> std::optional<std::string> {
     auto& sources = context.getSourceManager();
-    auto [fid, begin] = sources.getDecomposedLoc(range.getBegin());
-    auto end = sources.getFileOffset(range.getEnd());
+    auto decomposed = [&](clang::SourceLocation location) {
+        // Clang's offsets: the text is read in clang's buffer of it, the
+        // bodies left out too.
+        return sources.getDecomposedLoc(location);
+    };
+    auto [fid, begin] = decomposed(range.getBegin());
+    auto end = decomposed(range.getEnd()).second;
     auto buffer = sources.getBufferData(fid);
     llvm::SmallVector<std::pair<std::uint32_t, std::uint32_t>> skipped;
     for(auto body: elided) {
-        auto first = sources.getDecomposedLoc(body.getBegin());
-        auto last = sources.getDecomposedLoc(body.getEnd());
+        auto first = decomposed(body.getBegin());
+        auto last = decomposed(body.getEnd());
         if(body.getBegin().isFileID() && body.getEnd().isFileID() && first.first == fid &&
            last.first == fid) {
             skipped.emplace_back(first.second, last.second);
@@ -1632,6 +1637,7 @@ struct DeclarationPrinter {
                 continue;
             }
             /// The `#define`, from the line it begins on.
+            // Clang's offsets: read in clang's buffer of it.
             auto [file, offset] = sources.getDecomposedLoc(spelled);
             auto content = sources.getBufferData(file).substr(
                 logical_line_begin(sources.getBufferData(file), offset));

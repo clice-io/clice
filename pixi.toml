@@ -131,6 +131,9 @@ cmd = "node tools/precheck/layers.ts"
 [feature.build.tasks.check-timers]
 cmd = "node tools/precheck/timers.ts"
 
+[feature.build.tasks.check-offsets]
+cmd = "node tools/precheck/offsets.ts"
+
 # Workspace-level (default feature) so every environment can run them —
 # the lint job uses the bare `node` env, local runs use `default`.
 # docs/en and docs/zh are both hand-edited; docs/meta/translations holds

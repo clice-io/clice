@@ -222,38 +222,39 @@ ZEST_CASE(FreshReadNotConfirmed) {
     ZASSERT(!pool.disk.cached_hash(fid, read->stamp).has_value());
 }
 
-ZEST_CASE(ReadDropsBom) {
+ZEST_CASE(ReadHashesBytes) {
     // A file saved with a UTF-8 byte order mark reads as the text an editor
-    // sends: both sides of every buffer-versus-disk comparison agree.
+    // sends, and its hash is of the bytes: a mark gained or lost is a
+    // change.
     TempDir tmp;
     tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
     auto observed = vfs::read_observed(tmp.path("bom.h"));
     ZASSERT(observed);
     ZASSERT(observed->text == "int x;\n");
-    ZASSERT(observed->obs.hash == llvm::xxh3_64bits("int x;\n"));
+    ZASSERT(observed->obs.hash == vfs::content_hash("\xEF\xBB\xBFint x;\n"));
 }
 
-ZEST_CASE(CompileFSDropsBom) {
-    // The compile's file system serves the same text, its stat agreeing on
-    // the size as clang checks.
+ZEST_CASE(CompileFSKeepsBom) {
+    // The compile's file system serves a source as the compiler reads it,
+    // the mark kept, its stat agreeing on the size as clang checks.
     TempDir tmp;
     tmp.touch("bom.h", "\xEF\xBB\xBFint x;\n");
     auto path = tmp.path("bom.h");
     vfs::View view;
     auto status = view.status(path);
     ZASSERT(bool(status));
-    ZASSERT(status->getSize() == 7u);
+    ZASSERT(status->getSize() == 10u);
     auto file = view.openFileForRead(path);
     ZASSERT(bool(file));
     auto buffer = (*file)->getBuffer(path, -1, true, false);
     ZASSERT(bool(buffer));
-    ZASSERT((*buffer)->getBuffer() == "int x;\n");
+    ZASSERT((*buffer)->getBuffer() == "\xEF\xBB\xBFint x;\n");
     ZASSERT(*(*buffer)->getBufferEnd() == '\0');
-    ZASSERT((*file)->status()->getSize() == 7u);
+    ZASSERT((*file)->status()->getSize() == 10u);
 }
 
 ZEST_CASE(BinaryReadKeepsBom) {
-    // `#embed` data, PCH and PCM files are bytes, served as they are.
+    // A binary read (`#embed` data, PCH and PCM files) serves the bytes too.
     TempDir tmp;
     tmp.touch("data.bin",
               "\xEF\xBB\xBF"
@@ -292,10 +293,11 @@ ZEST_CASE(WriteKeepsBom) {
     auto path = tmp.path("bom.h");
     ZASSERT(vfs::write_text(path, "int y;\n", true).has_value());
     ZASSERT(read_file(path).value_or("") == "\xEF\xBB\xBFint y;\n");
-    ZASSERT(vfs::starts_with_bom(path));
+    ZASSERT(vfs::starts_with_bom(path) == true);
     ZASSERT(vfs::write_text(path, "int z;\n", false).has_value());
     ZASSERT(read_file(path).value_or("") == "int z;\n");
-    ZASSERT(!vfs::starts_with_bom(path));
+    ZASSERT(vfs::starts_with_bom(path) == false);
+    ZASSERT(!vfs::starts_with_bom(tmp.path("missing.h")).has_value());
 }
 
 ZEST_CASE(ListingKnowsDirectories) {

@@ -176,7 +176,7 @@ ZEST_CASE(ChoiceChangedResets) {
     auto compiled = std::make_shared<DocumentCompile>();
     compiled->pch_key = "key";
     compiled->base_pch_key = "base";
-    compiled->output = CompileOutput{.version = 3};
+    compiled->output = CompileOutput{.version = 3, .source = session->source};
     compiled->generation = fixture.generation(pid);
     entry.latest = std::move(compiled);
     entry.inputs.emplace();
@@ -233,9 +233,10 @@ ZEST_CASE(CrashPublishesNote) {
     ServedProjectFixture fixture;
     auto& served = *fixture.served;
     auto session = fixture.open("/proj/poison.cpp", "int x;\n");
-    fixture.update_latest(session->path_id, [](DocumentCompile& compiled) {
+    fixture.update_latest(session->path_id, [&](DocumentCompile& compiled) {
         compiled.output = CompileOutput{
             .version = 1,
+            .source = session->source,
             .diagnostics = {.own = {feature::file_warning("old")}},
         };
     });

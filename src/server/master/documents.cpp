@@ -5,6 +5,7 @@ import :server.client;
 import :server.master;
 import :server.served_project;
 import :support.logging;
+import :vfs.file_system;
 import :vfs.path;
 
 namespace clice {
@@ -29,6 +30,15 @@ MasterServer::SecondName* MasterServer::find_second_name(Fid path_id, llvm::Stri
 }
 
 void MasterServer::open_document(Fid path_id, llvm::StringRef name, std::string text, int version) {
+    // LIMITATION: the document takes a mark the client sends as the file's,
+    // while the client counts it as its text's first character: positions
+    // on the first line are one off, and edits there land one early.
+    if(llvm::StringRef(text).starts_with(vfs::byte_order_mark)) {
+        LOG_GUIDANCE(
+            "didOpen: the client sent {} with its byte order mark, which LSP clients "
+            "leave out of a document's text; positions on its first line are one off",
+            name);
+    }
     // One file, one buffer: a second document naming it through another
     // path (a symlink) would fold its own edits into the first one's. The
     // document opened first keeps it; this one waits with its own text.
@@ -52,7 +62,7 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
     // A file just created is a change the file table saw only now: it
     // cascades before the document resolves its command, which its host's
     // rescan gives the edge to it.
-    files.disk.current(path_id);
+    auto observed = files.disk.current(path_id);
     apply_disk_changes();
 
     auto [it, inserted] = documents.try_emplace(path_id);
@@ -62,6 +72,12 @@ void MasterServer::open_first_name(Fid path_id, std::string text, int version) {
         end_session(document);
     }
     document.session = std::make_shared<Session>(path_id, std::move(text), version);
+    // LIMITATION: only text the disk holds tells the mark, so a document
+    // opened with unsaved changes over a file with the mark takes it at its
+    // first save; until then, its first line's columns are those without.
+    if(observed) {
+        document.session->follow_bom(observed->hash);
+    }
     if(projects.empty()) {
         return;
     }
@@ -195,9 +211,15 @@ void MasterServer::close_document(Fid path_id, llvm::StringRef name) {
 }
 
 void MasterServer::save_document(Fid path_id) {
+    auto* document = find_document(path_id);
+    // The user may have saved the file with another mark.
+    if(auto observed = files.disk.current(path_id);
+       document && observed && document->session->follow_bom(observed->hash) && document->owner) {
+        document->owner->edited(*document->session);
+    }
     // The user's retry: whatever crashed on the saved document runs again
     // on its next request.
-    if(auto* document = find_document(path_id); document && document->owner) {
+    if(document && document->owner) {
         document->owner->retry_after_save(*document->session);
     }
     llvm::SmallVector<Fid> closures{path_id};

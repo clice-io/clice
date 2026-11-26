@@ -22,6 +22,7 @@ import :support.json;
 import :support.logging;
 import :support.text;
 import :syntax.dependency_graph;
+import :syntax.source_text;
 import :vfs.file_table;
 import :vfs.path;
 import :worker.preamble_index;
@@ -149,7 +150,7 @@ void ServedProject::retry_after_save(Session& session) {
     // that stands holds for the text saved.
     auto selection = project.select_command(path_id, command_request(path_id));
     if(selection.self_containment) {
-        auto compiled = latest_at(path_id, session.version);
+        auto compiled = latest_at(session);
         bool errs = !compiled || feature::count_errors(compiled->output->diagnostics.own) > 0;
         if(project.header_saved(*selection.self_containment,
                                 project.file_table.intern_version(path_id, session.source->hash()),
@@ -500,6 +501,9 @@ struct ServedProject::CompileAttempt {
     /// What the current send compiles.
     worker::CompileParams params;
 
+    /// The buffer whose bytes `params` holds.
+    std::shared_ptr<SourceText> source;
+
     Resolution resolution;
 
     /// The self-containment check this send is.
@@ -600,7 +604,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
         // holds; typing never runs it again (self_contained), a save may.
         // The parse counts nothing the preamble's build raised.
         auto errors = reply.errors;
-        if(preamble_index && preamble_index->matches(params.text)) {
+        if(preamble_index && preamble_index->matches(source->text())) {
             errors += static_cast<std::uint32_t>(
                 feature::count_errors(preamble_diagnostics(*preamble_index)));
         }
@@ -616,7 +620,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
         };
         if(self_containment) {
             auto inputs = read();
-            auto text = project.file_table.intern_version(path_id, session->source->hash());
+            auto text = project.file_table.intern_version(path_id, source->hash());
             // LIMITATION: a process killed between the two compiles can have
             // saved this steering `false`; the header then compiles in its
             // host's context until what the check read changes.
@@ -661,7 +665,8 @@ async::task<std::optional<Result>>
     params.indexing.function_bodies = project.rules.function_body_rules();
     params.path = file_path;
     params.version = session->version;
-    params.text = session->text().str();
+    source = session->source;
+    params.bytes = source->bytes().str();
     params.project_root = project.root.str();
     if(tidy_dispatch) {
         params.tidy = tidy_config->params;
@@ -697,7 +702,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::modules() {
     bool retry = session->crash_record(kind) && !session->crash_stops(kind, Session::Clock::now());
     Session::Dispatch pcm_dispatch(*session, kind);
     auto waited = co_await project.build_imports(path_id,
-                                                 params.text,
+                                                 *source,
                                                  resolution,
                                                  {.attempt = &attempt, .retry_crashed = retry});
     if(!waited) {
@@ -734,7 +739,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::pch() {
         served.enter_phase(path_id, CompilePhase::Preamble);
     }
     auto waited = co_await project.build_pch(path_id,
-                                             params.text,
+                                             *source,
                                              std::nullopt,
                                              resolution,
                                              imports.imports,
@@ -921,7 +926,7 @@ async::task<std::optional<Result>> ServedProject::CompileAttempt::send(worker::C
             compiled.generation.reset();
             compiled.output = CompileOutput{
                 .version = setup_fail ? std::optional(session->version) : std::nullopt,
-                .text = session->source,
+                .source = source,
                 .diagnostics = facts(),
                 .failed = setup_fail,
             };
@@ -959,7 +964,7 @@ feature::CompileDiagnostics ServedProject::CompileAttempt::facts() const {
 }
 
 void ServedProject::CompileAttempt::assemble(std::vector<feature::FileDiagnostic>& diagnostics) {
-    if(preamble_index && preamble_index->matches(params.text)) {
+    if(preamble_index && preamble_index->matches(source->text())) {
         diagnostics =
             feature::with_preamble(std::move(diagnostics), preamble_diagnostics(*preamble_index));
     }
@@ -1032,7 +1037,7 @@ Result ServedProject::CompileAttempt::commit(worker::CompileResult& reply) {
                                           : std::vector<feature::FileDiagnostic>();
     next->output = CompileOutput{
         .version = session->version,
-        .text = session->source,
+        .source = source,
         .diagnostics = facts(),
     };
     next->output->diagnostics.own = std::move(diagnostics);

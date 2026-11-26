@@ -11,6 +11,7 @@ import type { Case } from "../cases/case.ts";
 import { SNAPSHOT, statusOf } from "../cases/output.ts";
 import { CASES_DIR, MARKED, copyName } from "../cases/project.ts";
 import { TOPICS } from "../cases/topics.ts";
+import { withoutBom } from "../render/position.ts";
 
 function documented(cases: readonly Case[]): Case[] {
     return cases.filter((c) => c.readme !== undefined);
@@ -105,7 +106,7 @@ function inline(c: Case, files: "all" | "config"): string[] {
             continue;
         }
         const raw = fs.readFileSync(path.join(c.dir, rel), "utf8");
-        const text = MARKED.test(name) ? parseAnnotations(raw).content : raw;
+        const text = withoutBom(MARKED.test(name) ? parseAnnotations(raw).content : raw);
         out.push(`\`${name}\``, "", ...fence(text.trimEnd(), language(name)), "");
     }
     const output = path.join(c.dir, SNAPSHOT);

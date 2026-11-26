@@ -81,6 +81,10 @@ Memo<Fid, HeaderContext>::Entry Project::synthesize(Fid header,
             }
             return commit();
         }
+        // LIMITATION: a fragment holds the text of the file it is cut from,
+        // and follows a line marker, where no byte order mark can stand: code
+        // on the first line of a host with the mark sees its columns three
+        // less than the compiler gives them (__builtin_COLUMN()).
         contents.push_back(std::move(observed->text));
         spellings.push_back(files.spelling(chain[i]));
         entries.push_back({.path = spellings.back(),

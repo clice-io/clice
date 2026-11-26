@@ -20,8 +20,8 @@ std::int64_t generous_started_at() {
 /// The consumed hash a worker would report for the file's current bytes
 /// (0 = unreadable, which no test here expects).
 std::uint64_t consumed_hash(llvm::StringRef path) {
-    auto text = vfs::read_text(path);
-    return text ? llvm::xxh3_64bits(*text) : 0;
+    auto bytes = vfs::read_bytes(path);
+    return bytes ? vfs::content_hash(*bytes) : 0;
 }
 
 /// Whether the file table answers the file's current stat without a read.
@@ -93,6 +93,25 @@ ZEST_CASE(ImmediateEditDetected) {
     },
                               generous_started_at());
     tmp.touch("dep.h", "int renamed();\n");
+    ZASSERT(!inputs_hold(pool, snap));
+}
+
+ZEST_CASE(MarkAddedDetected) {
+    // The text stays as it was, but the compile read no byte order mark,
+    // which clang counts in what it built.
+    TempDir tmp;
+    tmp.touch("dep.h", "int value();\n");
+    auto dep = tmp.path("dep.h");
+    age_file(dep);
+
+    FileTable pool;
+    auto snap = intern_inputs(pool,
+                              {
+                                  ReportedInput{dep, consumed_hash(dep)}
+    },
+                              generous_started_at());
+    ZASSERT(inputs_hold(pool, snap));
+    tmp.touch("dep.h", "\xEF\xBB\xBFint value();\n");
     ZASSERT(!inputs_hold(pool, snap));
 }
 

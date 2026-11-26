@@ -5,34 +5,43 @@ import :syntax.lexer;
 import :syntax.lexical_scan;
 import :syntax.position;
 import :syntax.token;
+import :vfs.file_system;
 
 namespace clice {
 
-/// One text and what its readers derive from it, each made on first use
-/// and kept: its hash, its line tables, its comments, its lexical scan.
-/// Borrows the
-/// text, which a NUL must follow as the lexer reads one, or owns it; borrows
-/// the dialect it is read in and that dialect's keywords (lexed_kind).
+/// A file's bytes and what its readers derive from them, each made on
+/// first use and kept: their hash, and of their text — the bytes
+/// without a byte order mark (vfs::without_bom), which every reader in
+/// clice reads — its line tables, its comments, its lexical scan. Borrows
+/// the bytes, which a NUL must follow as the lexer reads one, or owns them;
+/// borrows the dialect it is read in and that dialect's keywords
+/// (lexed_kind).
 class SourceText {
 public:
-    /// Borrows `text`, read in `dialect` with `keywords`.
-    SourceText(llvm::StringRef text,
+    /// Borrows `bytes`, read in `dialect` with `keywords`.
+    SourceText(llvm::StringRef bytes,
                const clang::LangOptions& dialect,
                const clang::IdentifierTable& keywords) :
-        content(text), options(&dialect), table(&keywords) {}
+        raw(bytes), content(vfs::without_bom(bytes)), options(&dialect), table(&keywords) {}
 
-    /// Borrows `text`, read in `dialect` with its keywords().
-    SourceText(llvm::StringRef text, const clang::LangOptions& dialect) :
-        SourceText(text, dialect, clice::keywords(dialect)) {}
+    /// Borrows `bytes`, read in `dialect` with its keywords().
+    SourceText(llvm::StringRef bytes, const clang::LangOptions& dialect) :
+        SourceText(bytes, dialect, clice::keywords(dialect)) {}
 
-    /// Owns `text`, read in no dialect until set_dialect.
-    explicit SourceText(std::string text) : owned(std::move(text)), content(owned) {}
+    /// Owns `bytes`, read in no dialect until set_dialect.
+    explicit SourceText(std::string bytes) :
+        owned(std::move(bytes)), raw(owned), content(vfs::without_bom(owned)) {}
 
     SourceText(const SourceText&) = delete;
     SourceText& operator=(const SourceText&) = delete;
 
     llvm::StringRef text() const {
         return content;
+    }
+
+    /// The bytes, as a compile reads them.
+    llvm::StringRef bytes() const {
+        return raw;
     }
 
     /// Read the text in `dialect`, with its keywords(), from now on: the
@@ -46,8 +55,8 @@ public:
         return *options;
     }
 
-    /// xxh3 of the text: what "a buffer holds these bytes" is compared by
-    /// against disk observations and index shards.
+    /// The bytes' hash (vfs::content_hash): what "a buffer holds these
+    /// bytes" is compared by against disk observations and index shards.
     auto hash() -> std::uint64_t;
 
     auto positions() -> PositionMap;
@@ -68,13 +77,15 @@ public:
 private:
     std::string owned;
 
+    llvm::StringRef raw;
+
     llvm::StringRef content;
 
     const clang::LangOptions* options = nullptr;
 
     const clang::IdentifierTable* table = nullptr;
 
-    std::optional<std::uint64_t> text_hash;
+    std::optional<std::uint64_t> bytes_hash;
 
     struct LineTables {
         std::vector<std::uint32_t> starts;

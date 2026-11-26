@@ -216,8 +216,9 @@ private:
     std::uint32_t longest = 0;
 };
 
-/// Encode one run's instantiations of one file as a worker blob: `content_hash`
-/// and `content_size` describe the text the run compiled.
+/// Encode one run's instantiations of one file as a worker blob:
+/// `content_hash` is the hash of the bytes the run compiled, and
+/// `content_size` the size of their text.
 std::vector<std::byte> write_instantiations(const FileInstantiations& instantiations,
                                             std::uint64_t content_hash,
                                             std::uint32_t content_size);
