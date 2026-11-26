@@ -427,18 +427,32 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         }
 
         llvm::StringRef dir_ref(dir_sv.data(), dir_sv.size());
+        // A database written inside Cygwin or MSYS2 spells its directory as a
+        // POSIX path, or leaves it relative and spells its compiler so.
+        bool posix_dir = fs::cygwin::is_posix_path(dir_ref);
+        std::optional<std::string> posix_compiler;
+        if(path::native_style == path::Style::Windows &&
+           (posix_dir ? !table : !path::has_root(dir_ref))) {
+            auto tokens = command ? split_command(*command, sys::cmd::Quoting::POSIX) : args;
+            auto compiler = wrapper_prefix_len(tokens);
+            if(compiler < tokens.size() && fs::cygwin::is_posix_path(tokens[compiler])) {
+                posix_compiler = tokens[compiler];
+            }
+        }
         normalizer.mounts = nullptr;
-        if(fs::cygwin::is_posix_path(dir_ref)) {
+        if(posix_dir || posix_compiler) {
             if(!table) {
                 // Another runtime's table maps the directory under its own
                 // root; another of one kind, Git for Windows' MSYS2 beside
                 // MSYS2, maps a drive's paths alike but lacks the compiler.
-                std::vector<std::string> written = {dir_ref.str()};
-                auto tokens = command ? split_command(*command, sys::cmd::Quoting::POSIX) : args;
-                auto compiler = wrapper_prefix_len(tokens);
-                if(compiler < tokens.size() && fs::cygwin::is_posix_path(tokens[compiler])) {
-                    written.emplace_back(tokens[compiler]);
+                std::vector<std::string> written;
+                if(posix_dir) {
+                    written.push_back(dir_ref.str());
                 }
+                if(posix_compiler) {
+                    written.push_back(*posix_compiler);
+                }
+                auto spelled = written.front();
                 auto [found] = async::run(find_mount_table({}, std::move(written)));
                 if(!*found) {
                     LOG_GUIDANCE(
@@ -447,7 +461,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                         "that wrote it on clice's PATH (in VS Code, clice.serverEnv); one "
                         "written outside them names its directories with a drive.",
                         path,
-                        dir_ref,
+                        spelled,
                         found->error());
                     return std::nullopt;
                 }

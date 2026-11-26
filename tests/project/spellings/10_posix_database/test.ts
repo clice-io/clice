@@ -97,6 +97,28 @@ test("a command quoted for sh", { except: EXCEPT }, async (t) => {
     await t.show("main.cpp", s.errors("main.cpp"));
 });
 
+// A database that leaves its directory relative is MSYS2's by its compiler,
+// and the runtime maps the paths it spells POSIX-style.
+test("a relative directory", { except: EXCEPT }, async (t) => {
+    const entry = {
+        directory: ".",
+        file: "main.cpp",
+        arguments: [
+            compiler(),
+            `-I${posix(path.join(t.root, "inc dir"))}`,
+            "-include",
+            posix(path.join(t.root, "inc dir", "forced.h")),
+            "-c",
+            "main.cpp",
+        ],
+    };
+    t.disk.write("compile_commands.json", JSON.stringify([entry], null, 2));
+    const s = await t.start({
+        env: { [PATH]: [GIT_RUNTIME, ...withoutRuntimes()].join(path.delimiter) },
+    });
+    await t.show("main.cpp", s.errors("main.cpp"));
+});
+
 // A runtime ahead on PATH that cannot list its mounts is passed over for the
 // next one.
 test("a broken runtime ahead", { except: EXCEPT }, async (t) => {
