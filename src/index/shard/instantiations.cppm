@@ -218,10 +218,10 @@ private:
 
 /// Encode one run's instantiations of one file as a worker blob:
 /// `content_hash` is the hash of the bytes the run compiled, and
-/// `text_size` the size of their text.
+/// `content_size` the size of their text.
 std::vector<std::byte> write_instantiations(const FileInstantiations& instantiations,
                                             std::uint64_t content_hash,
-                                            std::uint32_t text_size);
+                                            std::uint32_t content_size);
 
 /// Merge into one blob of the same content generation: the uses of `old` in
 /// `keep` with their resolutions, the keys of `old` whose producer

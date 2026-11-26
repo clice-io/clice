@@ -75,7 +75,7 @@ public:
 
     /// Size of the text the shard was built from (vfs::without_bom); the
     /// upper bound of every stored range.
-    std::uint32_t text_size() const;
+    std::uint32_t content_size() const;
 
     /// Whether `source` holds the exact bytes the shard was built from.
     /// Compares by size and hash: the shard does not keep the content.

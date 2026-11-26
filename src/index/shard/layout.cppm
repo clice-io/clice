@@ -49,7 +49,7 @@ struct ShardBlobOf {
 
     /// Size of the consumed text (vfs::without_bom); bounds every stored
     /// range.
-    std::uint32_t text_size = 0;
+    std::uint32_t content_size = 0;
 
     /// The lines holding non-ASCII bytes, ascending, and their text without
     /// the line end, back to back: all UTF-16 and UTF-32 position mapping
@@ -171,7 +171,7 @@ struct InstantiationShardBlobOf {
     /// The content generation of the file the records lie in
     /// (ShardBlob::content_hash), and its size, which bounds every range.
     std::uint64_t content_hash = 0;
-    std::uint32_t text_size = 0;
+    std::uint32_t content_size = 0;
 
     /// The symbols the records and the keys name, sorted by hash; an index
     /// into this table is a symbol id.

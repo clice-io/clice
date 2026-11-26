@@ -298,7 +298,7 @@ ZEST_CASE(CorruptBlobRejected) {
     index::InstantiationShardBlob blob;
     blob.format_version = index::index_format_version;
     blob.content_hash = generation;
-    blob.text_size = size;
+    blob.content_size = size;
     blob.symbol_hashes = {11};
     blob.records.block_begins = {10};
     blob.records.deltas = {0};

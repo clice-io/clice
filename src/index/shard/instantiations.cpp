@@ -159,7 +159,7 @@ CheckResult symbols_ok(const Root& root) {
 // records by their key.
 CheckResult records_ok(const Root& root) {
     auto table = RecordTable::of(root);
-    if(auto ok = range_encoding_ok(table.columns, root.text_size, RangeEncoding::Delta); !ok) {
+    if(auto ok = range_encoding_ok(table.columns, root.content_size, RangeEncoding::Delta); !ok) {
         return ok;
     }
     auto count = table.size();
@@ -560,7 +560,7 @@ namespace {
 /// Everything a write accumulates before choosing column encodings.
 struct Draft {
     std::uint64_t content_hash = 0;
-    std::uint32_t text_size = 0;
+    std::uint32_t content_size = 0;
     /// Ascending by identity, each resolution's records sorted and unique.
     std::vector<std::pair<ResolutionHash, std::vector<InstantiationRecord>>> resolutions;
     /// Ascending by key.
@@ -597,7 +597,7 @@ std::vector<std::byte> emit(const Draft& draft) {
     InstantiationShardBlob blob;
     blob.format_version = index_format_version;
     blob.content_hash = draft.content_hash;
-    blob.text_size = draft.text_size;
+    blob.content_size = draft.content_size;
     blob.symbol_hashes.assign(referenced.begin(), referenced.end());
     ranges::sort(blob.symbol_hashes);
     auto symbol_index = [&](SymbolHash hash) {
@@ -720,8 +720,8 @@ void fold_resolutions(DecodedResolutions& resolutions) {
 
 std::vector<std::byte> write_instantiations(const FileInstantiations& instantiations,
                                             std::uint64_t content_hash,
-                                            std::uint32_t text_size) {
-    Draft draft{.content_hash = content_hash, .text_size = text_size};
+                                            std::uint32_t content_size) {
+    Draft draft{.content_hash = content_hash, .content_size = content_size};
     std::vector<ResolutionHash> identities;
     for(auto records: instantiations.resolutions) {
         ranges::sort(records, {}, record_key);
@@ -757,7 +757,7 @@ std::optional<std::vector<std::byte>>
     auto& root = view_of((fresh ? *fresh : old).bytes());
     Draft draft{
         .content_hash = root.content_hash,
-        .text_size = root.text_size,
+        .content_size = root.content_size,
     };
 
     // The uses kept, and the added one; their resolutions are the ones of

@@ -922,9 +922,9 @@ int run_show_file(Project& project, llvm::StringRef argument) {
     }
     auto& shard = *found;
     driver::println("file {}", project.file_table.display(file));
-    driver::println("  blob={}  text size={}  content hash={}",
+    driver::println("  blob={}  content size={}  content hash={}",
                     format_bytes(shard.bytes().size()),
-                    shard.text_size(),
+                    shard.content_size(),
                     format_hash(shard.content_hash()));
 
     // Which unit contributed which variant, from the dependents record.

@@ -262,7 +262,7 @@ ContentInfo content_info_of(const Root& root) {
     };
     return {
         .hash = root.content_hash,
-        .size = root.text_size,
+        .size = root.content_size,
         .line_lengths = copy(root.line_lengths),
         .long_lines = copy(root.long_lines),
         .long_line_lengths = copy(root.long_line_lengths),
@@ -414,7 +414,7 @@ std::vector<std::byte> emit_blob(const MergedEntries<MaskT>& merged,
     ShardBlob blob;
     blob.format_version = index_format_version;
     blob.content_hash = content.hash;
-    blob.text_size = content.size;
+    blob.content_size = content.size;
     blob.utf8_lines = content.utf8_lines;
     blob.utf8_text = content.utf8_text;
     blob.utf8_text_ends = content.utf8_text_ends;
