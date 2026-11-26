@@ -8,7 +8,7 @@ message = "${WS}/byte_order_mark/.clang-format:1:1: unknown key 'IndentWdith'"
 
 [command."$ clice format"]
 stderr = '''
-${WS}/.clang-format:2:1: unknown key 'IndentWdith'
 ${WS}/byte_order_mark/.clang-format:1:1: unknown key 'IndentWdith'
+${WS}/.clang-format:2:1: unknown key 'IndentWdith'
 '''
 exit = 2
