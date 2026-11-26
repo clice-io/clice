@@ -1,0 +1,22 @@
+[test.diagnostics]
+diagnostics = []
+
+[test.completion.completion]
+items = [
+    { label = "held", kind = "Field", detail = "int" },
+    { label = "template", kind = "Keyword" },
+]
+
+[test.references]
+references = ["int ⟦held⟧;", "return value.⟦held⟧;"]
+
+[test."cut short"]
+diagnostics = [
+    {
+        at = '#include ⟦"deep.h"⟧',
+        severity = "error",
+        message = "In included file: bracket nesting level exceeded maximum of 10",
+        source = "clang",
+        code = "err_bracket_depth_exceeded",
+    },
+]

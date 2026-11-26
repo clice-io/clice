@@ -542,6 +542,11 @@ public:
                Fid anchor,
                llvm::function_ref<std::vector<Site>(const IndexQuery&, SymbolHash)> ask) const;
 
+    /// How many times the relation walks of this query and of the other
+    /// projects it asks looked into a disk file so far, once per file and
+    /// walk: what a lookup cost beside what it found (perf lines).
+    std::uint32_t file_visits() const;
+
 private:
     /// The open buffer of `file`; null for a closed file.
     const OpenBuffer* buffer_of(Fid file) const;
@@ -596,6 +601,8 @@ private:
     FileTable& files;
 
     const FreshnessGate* gate;
+
+    mutable std::uint32_t visits = 0;
 
     std::vector<OpenBuffer> open;
 

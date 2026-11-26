@@ -510,6 +510,7 @@ void IndexQuery::for_each_relation(SymbolHash hash,
             if(!completed || !seen.insert(file).second) {
                 return;
             }
+            visits += 1;
             auto source = serving(file);
             if(!source || source->kind != IndexSource::Kind::Shard) {
                 return;
@@ -566,6 +567,14 @@ void IndexQuery::for_each_relation(SymbolHash hash,
     } else {
         [[maybe_unused]] bool completed = disk() && sessions() && overlays() && preambles();
     }
+}
+
+std::uint32_t IndexQuery::file_visits() const {
+    auto total = visits;
+    for(auto& other: other_projects) {
+        total += other.file_visits();
+    }
+    return total;
 }
 
 const Shard* IndexQuery::declaring_shard(Fid file) const {

@@ -456,6 +456,11 @@ private:
     /// is on, the configuration files, and the memory freed meanwhile.
     async::task<> poll_task();
 
+    /// With perf lines on, reports each time the event loop was held up
+    /// long enough to delay requests: a merge, a save's preparation, a
+    /// query, the project's load.
+    async::task<> watch_loop();
+
     // projects.cpp
 
     /// A project over `root`.

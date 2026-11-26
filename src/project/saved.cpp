@@ -458,6 +458,8 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
     }
 
     co_await index.update_search(search);
+    auto search_ms = timer.ms();
+    Timer prepare_timer;
     index::SaveBatch batch;
     index.begin_save(batch, report);
     auto& blobs = batch.blobs;
@@ -519,7 +521,10 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
         choices.dirty = choices.dirty || carries_choices;
     };
     auto cancelled = llvm::make_scope_exit(restore);
+    auto prepare_ms = prepare_timer.ms();
+    Timer write_timer;
     co_await async::queue([&] { committed = db.write(blobs, batch.removals); });
+    auto write_ms = write_timer.ms();
     cancelled.release();
 
     if(!committed) {
@@ -537,9 +542,11 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
         co_return report;
     }
 
+    Timer migrate_timer;
     if(!co_await index.migrate_views(db, *loop, report)) {
         recover_corrupt_database(report);
     }
+    auto migrate_ms = migrate_timer.ms();
 
     if(committed) {
         unsaved_bytes = 0;
@@ -559,9 +566,14 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
     }
 
     LOG_PERF("index",
-             "phase=save blobs={} shards={} elapsed_ms={}",
+             "phase=save blobs={} shards={} search_ms={} prepare_ms={} write_ms={} migrate_ms={} "
+             "elapsed_ms={}",
              blobs.size(),
              batch.shards,
+             search_ms,
+             prepare_ms,
+             write_ms,
+             migrate_ms,
              timer.ms());
     co_return report;
 }

@@ -168,6 +168,7 @@ std::optional<index::Site> first_block(const index::IndexQuery& index,
 std::vector<index::Site> project_definition(const index::IndexQuery& index,
                                             const index::IndexQuery::Cursor& cursor) {
     Timer timer;
+    auto visits = index.file_visits();
     auto anchor = cursor.site.file;
     std::vector<index::Site> result;
     for(auto symbol: cursor.symbols) {
@@ -209,9 +210,10 @@ std::vector<index::Site> project_definition(const index::IndexQuery& index,
     }
     index::dedup_sites(result);
     LOG_PERF("index_query",
-             "kind=definition path={} results={} elapsed_ms={:.2f}",
+             "kind=definition path={} results={} file_visits={} elapsed_ms={:.2f}",
              cursor.site.path,
              result.size(),
+             index.file_visits() - visits,
              timer.precise_ms());
     return result;
 }
@@ -220,6 +222,7 @@ std::vector<index::Site> project_definition(const index::IndexQuery& index,
 std::vector<index::Site> project_declaration(const index::IndexQuery& index,
                                              const index::IndexQuery::Cursor& cursor) {
     Timer timer;
+    auto visits = index.file_visits();
     std::vector<index::Site> result;
     for(auto symbol: cursor.symbols) {
         // Every block of a namespace declares it: the one definition gives,
@@ -250,9 +253,10 @@ std::vector<index::Site> project_declaration(const index::IndexQuery& index,
         }
     }
     LOG_PERF("index_query",
-             "kind=declaration path={} results={} elapsed_ms={:.2f}",
+             "kind=declaration path={} results={} file_visits={} elapsed_ms={:.2f}",
              cursor.site.path,
              result.size(),
+             index.file_visits() - visits,
              timer.precise_ms());
     return result;
 }
@@ -354,6 +358,7 @@ std::vector<index::Site> references(const index::IndexQuery& index,
                                     const index::IndexQuery::Cursor& cursor,
                                     bool include_declaration) {
     Timer timer;
+    auto visits = index.file_visits();
     llvm::SmallVector<RelationKind, 5> kinds{RelationKind::Reference,
                                              RelationKind::Candidate,
                                              RelationKind::Guess};
@@ -407,9 +412,10 @@ std::vector<index::Site> references(const index::IndexQuery& index,
     }
     index::dedup_sites(result);
     LOG_PERF("index_query",
-             "kind=references path={} results={} elapsed_ms={:.2f}",
+             "kind=references path={} results={} file_visits={} elapsed_ms={:.2f}",
              cursor.site.path,
              result.size(),
+             index.file_visits() - visits,
              timer.precise_ms());
     return result;
 }
@@ -611,6 +617,8 @@ std::vector<index::Site> type_definition(const index::IndexQuery& query,
 
 std::vector<index::Site> implementation(const index::IndexQuery& query,
                                         const index::IndexQuery::Cursor& cursor) {
+    Timer timer;
+    auto visits = query.file_visits();
     auto file = cursor.site.file;
     std::vector<index::Site> sites;
     for(auto symbol: cursor.symbols) {
@@ -634,6 +642,12 @@ std::vector<index::Site> implementation(const index::IndexQuery& query,
     }
     index::dedup_sites(sites);
     std::erase_if(sites, [&](const index::Site& site) { return index::covers(site, cursor.site); });
+    LOG_PERF("index_query",
+             "kind=implementation path={} results={} file_visits={} elapsed_ms={:.2f}",
+             cursor.site.path,
+             sites.size(),
+             query.file_visits() - visits,
+             timer.precise_ms());
     return sites;
 }
 
