@@ -443,13 +443,11 @@ ZEST_CASE(DiscoveredSourceOrder) {
     }
 
     auto main = files.intern(Spelling::absolute(tmp.path("main.cpp")));
-    ZEXPECT(project.source_order(main) ==
-            (llvm::SmallVector<SourceID, 4>{root, build_dir, sub}));
+    ZEXPECT(project.source_order(main) == (llvm::SmallVector<SourceID, 4>{root, build_dir, sub}));
     ZEXPECT(project.entries(main).front().source == root);
 
     cdb.set_present(root, false);
-    ZEXPECT(project.source_order(main) ==
-            (llvm::SmallVector<SourceID, 4>{build_dir, sub, root}));
+    ZEXPECT(project.source_order(main) == (llvm::SmallVector<SourceID, 4>{build_dir, sub, root}));
     ZEXPECT(project.entries(main).front().source == build_dir);
 };
 
