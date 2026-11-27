@@ -56,8 +56,10 @@ import :support.prelude;
 /// phase timings), "cache" (hits and misses; why a miss rebuilds is in
 /// the build's info line), "startup" (phase
 /// durations), "request" (per-request latency on the master: wait_ms =
-/// time until a worker was ready, total_ms = end-to-end, and for a
-/// stateless request resolve_ms = the command's resolution before them),
+/// the wait before the request goes to a worker, for its document's
+/// compile or a stateless request's imports and PCH, total_ms = from that
+/// wait's start to the answer, and for a stateless request resolve_ms =
+/// the command's resolution before both),
 /// "disk" (a slow turn of looks at files: looked, cost_ms, and trust_ms =
 /// how long checks then trust a look), "completion" (worker-side split of a
 /// completion: compile_ms, documentation_ms), "query"
