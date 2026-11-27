@@ -87,7 +87,49 @@ lint = false
     Rules rules(settings, project_root, settings.fallback_configuration());
     ZEXPECT(!rules.lintable(CanonicalPath(Spelling::absolute(tmp.path("vendor/lib.cpp")))));
 };
+
+ZEST_CASE(PatternMatchesBuildPath) {
+    /// Bazel links an external repository from its cache: a `**` pattern
+    /// naming external/ matches the path the build reaches a file by, though
+    /// the file's identity lies in the cache.
+    TempDir tmp;
+    tmp.touch("clice.toml", R"([[rules]]
+patterns = ["**/external/**"]
+lint = false
+)");
+    tmp.touch("cache/kotatsu/a.cpp", "int a() { return 0; }\n");
+    tmp.mkdir("external");
+    ZASSERT(::symlink(tmp.path("cache/kotatsu").c_str(), tmp.path("external/kotatsu").c_str()) ==
+            0);
+
+    CanonicalPath project_root(Spelling::absolute(tmp.root));
+    Settings settings = load_settings(project_root).settings;
+    Rules rules(settings, project_root, settings.fallback_configuration());
+    auto reached = Spelling::absolute(tmp.path("external/kotatsu/a.cpp"));
+    CanonicalPath identity(reached);
+    ZEXPECT(rules.lintable(identity));
+    ZEXPECT(!rules.lintable({identity, reached}));
+};
 #endif
+
+ZEST_CASE(PatternSkipsClimbedOut) {
+    /// Meson's database names a source from its build directory: the path
+    /// climbs out of it, and a rule for the build directory's files leaves
+    /// the source alone.
+    TempDir tmp;
+    tmp.touch("clice.toml", R"([[rules]]
+patterns = ["build/**"]
+lint = false
+)");
+    tmp.touch("src/a.c", "int a(void) { return 0; }\n");
+    tmp.mkdir("build");
+
+    CanonicalPath project_root(Spelling::absolute(tmp.root));
+    Settings settings = load_settings(project_root).settings;
+    Rules rules(settings, project_root, settings.fallback_configuration());
+    auto reached = Spelling::absolute(tmp.path("build/../src/a.c"));
+    ZEXPECT(rules.lintable({CanonicalPath(reached), reached}));
+};
 
 ZEST_CASE(FormatSet) {
     /// The format set reads its own rule field: a `lint = false` directory
@@ -211,7 +253,7 @@ ZEST_CASE(HeaderCarriesHostEdits) {
 
     CanonicalPath host(Spelling::absolute(tmp.path("src/main.cpp")));
     CanonicalPath header(Spelling::absolute(tmp.path("include/x.h")));
-    CanonicalRef both[] = {host, header};
+    RulePath both[] = {host, header};
     auto edits = rules.edits(both).edits;
     ZASSERT(edits.size() == 4U);
     ZEXPECT(edits[0].flags == (std::vector<std::string>{"-DA"}));

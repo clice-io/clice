@@ -665,7 +665,7 @@ A rule names files by pattern and says where they take their compile commands fr
 | ---------- | ----------------- | ------- |
 | `patterns` | `array of string` | `[]`    |
 
-Glob patterns selecting the files this rule applies to. A relative pattern is anchored at the project root (`..` segments allowed); an absolute pattern or one starting with `**` matches the file's absolute path. `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range, `[*]` a literal `*`. Separators are `/` on every platform. Omitted means every file: such a rule belongs last, where it decides what no rule above it does.
+Glob patterns selecting the files this rule applies to. A relative pattern is anchored at the project root (`..` segments allowed); an absolute pattern or one starting with `**` matches the file's absolute path: its real path, symlinks resolved, or the path the build reaches it by, either one (Bazel's `external/...`, linked from elsewhere). `*` matches within a path segment, `?` a single character, `**` any number of segments, `{a,b}` alternatives, `[0-9]` a character range, `[!...]` a negated range, `[*]` a literal `*`. Separators are `/` on every platform. Omitted means every file: such a rule belongs last, where it decides what no rule above it does.
 
 </div>
 

@@ -63,3 +63,21 @@ errors = [
         code = "err_undeclared_var_use",
     },
 ]
+
+["header renamed while open".renamed]
+errors = [
+    {
+        at = '#include ⟦"header.h"⟧',
+        severity = "error",
+        message = "'header.h' file not found",
+        source = "clang",
+        code = "err_pp_file_not_found",
+    },
+    {
+        at = "int use_target() { return ⟦TARGET⟧(); }",
+        severity = "error",
+        message = "use of undeclared identifier 'TARGET'",
+        source = "clang",
+        code = "err_undeclared_var_use",
+    },
+]

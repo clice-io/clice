@@ -397,14 +397,14 @@ std::optional<CommandID> Normalizer::normalize(const Spelling& directory,
                                                llvm::StringRef command) {
     llvm::SmallVector<std::string_view> views;
     std::vector<std::string> tokens;
-    return normalize(directory, file, split(command, views, tokens));
+    return normalize(directory, file, split(command, mounts != nullptr, views, tokens));
 }
 
 kotatsu::string_list_ref Normalizer::split(llvm::StringRef command,
+                                           bool posix,
                                            llvm::SmallVectorImpl<std::string_view>& views,
-                                           std::vector<std::string>& tokens) const {
-    // A database written inside Cygwin or MSYS2 quotes its commands for sh.
-    auto quoting = mounts ? sys::cmd::Quoting::POSIX : sys::cmd::native_quoting;
+                                           std::vector<std::string>& tokens) {
+    auto quoting = posix ? sys::cmd::Quoting::POSIX : sys::cmd::native_quoting;
     views.clear();
     // Blanks before the program are none of the command (split_command).
     for(auto it = sys::cmd::split(command.ltrim(), quoting).begin(); it != std::default_sentinel;

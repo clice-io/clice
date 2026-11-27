@@ -273,7 +273,7 @@ void ServedProject::inputs_changed(Session& session) {
 }
 
 ReadonlyMode ServedProject::readonly(Fid path_id) const {
-    return project.rules.readonly(project.file_table.resolve(path_id));
+    return project.rules.readonly(rule_path(project.file_table, path_id));
 }
 
 void ServedProject::start_compiling(Fid path_id) {
@@ -530,7 +530,7 @@ async::task<Result> ServedProject::CompileAttempt::run() {
               ticket.generation);
     served.enter_phase(path_id, CompilePhase::Command);
     if(project.settings.diagnostics.clang_tidy &&
-       project.rules.lintable(project.file_table.resolve(path_id))) {
+       project.rules.lintable(rule_path(project.file_table, path_id))) {
         tidy_config = tidy::resolve_tidy_params(project.file_table.spelling(path_id));
         auto slow_checks = project.settings.diagnostics.slow_clang_tidy_checks;
         tidy_config->params.slow_checks = slow_checks.value_or(false);

@@ -47,8 +47,9 @@ std::optional<CommandID> command_of(Project& project, const CompiledRule& rule) 
 /// without patterns applies to every file, so its forced language covers
 /// only what clang recognizes — or the configuration file itself would
 /// become a unit.
-bool default_source(Project& project, CanonicalRef path, const CompiledRule& rule) {
-    if(is_source_path(path)) {
+bool default_source(Project& project, const RulePath& path, const CompiledRule& rule) {
+    auto identity = path.identity;
+    if(is_source_path(identity)) {
         return true;
     }
     // A header is no translation unit of its own; a file clang has no
@@ -56,12 +57,15 @@ bool default_source(Project& project, CanonicalRef path, const CompiledRule& rul
     // and a pattern singles it out, naming its suffix (`*.ino`) or the file
     // itself: one matching any name there (`src/**`) reaches CMakeLists.txt
     // and README.md too.
-    if(suffix_type(path) != clang::driver::types::TY_INVALID || path::extension(path) == ".cuh") {
+    if(suffix_type(identity) != clang::driver::types::TY_INVALID ||
+       path::extension(identity) == ".cuh") {
         return false;
     }
-    auto another_name = llvm::StringRef(path).str() + "~";
+    auto names = path.names();
     bool singled_out = ranges::any_of(rule.patterns, [&](const CompiledRule::Pattern& pattern) {
-        return pattern.glob.match(llvm::StringRef(path)) && !pattern.glob.match(another_name);
+        return ranges::any_of(names, [&](llvm::StringRef name) {
+            return pattern.glob.match(name) && !pattern.glob.match(name.str() + "~");
+        });
     });
     if(!singled_out) {
         return false;
@@ -77,7 +81,7 @@ bool default_source(Project& project, CanonicalRef path, const CompiledRule& rul
 /// Whether `rule`, the first rule matching `path` declaring a default
 /// command, makes `path` a unit: its default command is a compile command
 /// and compiles `path` as one.
-bool default_unit(Project& project, CanonicalRef path, const CompiledRule& rule) {
+bool default_unit(Project& project, const RulePath& path, const CompiledRule& rule) {
     return command_of(project, rule) && default_source(project, path, rule);
 }
 
@@ -112,9 +116,9 @@ bool Project::discovered(SourceID id) const {
     return !ranges::contains(hidden_sources(*this), id);
 }
 
-llvm::SmallVector<SourceID, 4> Project::source_order(CanonicalRef path) const {
+llvm::SmallVector<SourceID, 4> Project::source_order(Fid file) const {
     llvm::SmallVector<SourceID, 4> order;
-    for(auto* database: rules.database_order(path)) {
+    for(auto* database: rules.database_order(rule_path(file_table, file))) {
         if(auto id = cdb.find_source(*database); id && !ranges::contains(order, *id)) {
             order.push_back(*id);
         }
@@ -142,7 +146,7 @@ llvm::SmallVector<CompilationEntry, 2> Project::entries(Fid file) const {
         return {};
     }
     llvm::SmallVector<CompilationEntry, 2> result;
-    for(auto id: source_order(file_table.resolve(file))) {
+    for(auto id: source_order(file)) {
         for(auto& entry: all) {
             if(entry.source == id) {
                 result.push_back(entry);
@@ -158,7 +162,7 @@ llvm::SmallVector<Candidate, 2> Project::candidates(Fid file) {
         result.push_back({.base = entry.command, .source = CommandSource::Database});
     }
     if(result.empty()) {
-        if(auto id = default_command(file_table.resolve(file))) {
+        if(auto id = default_command(file)) {
             result.push_back({.base = *id, .source = CommandSource::Default});
         } else if(auto* command = provisional.command(file)) {
             result.push_back(*command);
@@ -167,8 +171,8 @@ llvm::SmallVector<Candidate, 2> Project::candidates(Fid file) {
     return result;
 }
 
-std::optional<CommandID> Project::default_command(CanonicalRef path) {
-    auto* rule = rules.default_rule(path);
+std::optional<CommandID> Project::default_command(Fid file) {
+    auto* rule = rules.default_rule(rule_path(file_table, file));
     return rule ? command_of(*this, *rule) : std::nullopt;
 }
 
@@ -199,11 +203,11 @@ CommandID Project::fallback_command(CanonicalRef path) {
 }
 
 Edits Project::rule_edits(Fid file, const Candidate& candidate) const {
-    llvm::SmallVector<CanonicalRef, 3> paths;
+    llvm::SmallVector<RulePath, 3> paths;
     for(auto from: candidate.rules_from) {
-        paths.push_back(file_table.resolve(from));
+        paths.push_back(rule_path(file_table, from));
     }
-    paths.push_back(file_table.resolve(file));
+    paths.push_back(rule_path(file_table, file));
     return rules.edits(paths);
 }
 
@@ -305,7 +309,7 @@ bool Project::declared(Fid file) {
     if(!entries(file).empty()) {
         return true;
     }
-    auto path = file_table.resolve(file);
+    auto path = rule_path(file_table, file);
     auto* rule = rules.default_rule(path);
     return rule && default_unit(*this, path, *rule);
 }
@@ -348,7 +352,7 @@ CDBDiff Project::refresh_provisional() {
 
 bool Project::units_pending(llvm::function_ref<bool(Fid unit)> covered) {
     return ranges::any_of(members(), [&](Fid unit) {
-        return rules.indexable(file_table.resolve(unit)) && !index.indexed(unit) &&
+        return rules.indexable(rule_path(file_table, unit)) && !index.indexed(unit) &&
                !(covered && covered(unit));
     });
 }

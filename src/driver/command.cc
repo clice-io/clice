@@ -99,9 +99,8 @@ struct WrittenEntry {
         if(command) {
             json::from_string(command->data, text);
         }
-        return split_command(text,
-                             fs::cygwin::is_posix_path(directory) ? sys::cmd::Quoting::POSIX
-                                                                  : sys::cmd::native_quoting);
+        auto sh = split_command(text, sys::cmd::Quoting::POSIX);
+        return posix_entry(directory, sh) ? sh : split_command(text, sys::cmd::native_quoting);
     }
 };
 
@@ -159,7 +158,7 @@ struct FileCommands {
 
 /// The settings the rules give the file at `path`, in the order the rule
 /// fields are documented.
-std::vector<FileSetting> file_settings(const Rules& rules, CanonicalRef path) {
+std::vector<FileSetting> file_settings(const Rules& rules, const RulePath& path) {
     std::vector<FileSetting> settings;
     auto add = [&](llvm::StringRef name, auto field, std::string value) {
         auto* rule = rules.deciding(path, field);
@@ -337,7 +336,7 @@ int run(Command& opts) {
     auto& files = project.file_table;
     auto file = files.intern(path);
     FileCommands commands{.file = files.display(file),
-                          .settings = file_settings(project.rules, files.resolve(file))};
+                          .settings = file_settings(project.rules, rule_path(files, file))};
     auto print = [&] {
         if(opts.json) {
             print_json(commands);
@@ -524,7 +523,7 @@ int convert_database(Project& project, const Spelling& path) {
             continue;
         }
         auto ref = refs.find(index);
-        if(!fs::cygwin::is_posix_path(entry.directory)) {
+        if(!posix_entry(entry.directory, entry.argv())) {
             entry.directory = Spelling(entry.directory, base).str();
         } else if(ref != refs.end()) {
             // A database written inside Cygwin or MSYS2 converts to the

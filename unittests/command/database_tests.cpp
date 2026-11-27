@@ -324,6 +324,20 @@ ZEST_CASE(PerFileOption) {
             }).empty());
 };
 
+ZEST_CASE(PosixEntries) {
+    /// An entry written inside Cygwin or MSYS2 says so by its directory, or,
+    /// relative, by the compiler past its launcher; a drive's directory
+    /// stays the host's. Elsewhere a POSIX path is the host's own.
+#ifdef _WIN32
+    ZEXPECT(posix_entry("/c/proj", {"gcc", "-c", "a.c"}));
+    ZEXPECT(posix_entry(".", {"ccache", "/cygdrive/d/gcc", "-c", "a.c"}));
+    ZEXPECT(!posix_entry(".", {"gcc", "-c", "a.c"}));
+    ZEXPECT(!posix_entry("C:/proj", {"/c/gcc", "-c", "a.c"}));
+#else
+    ZEXPECT(!posix_entry(".", {"/usr/bin/gcc", "-c", "a.c"}));
+#endif
+}
+
 };  // ZEST_SUITE(Database)
 
 /// path_id that `cdb` assigns to a file under the temp root.

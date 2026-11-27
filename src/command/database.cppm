@@ -14,6 +14,17 @@ namespace clice {
 /// byte becomes U+FFFD. Nullopt when the bytes are UTF-8.
 std::optional<std::string> repaired_database_text(llvm::StringRef bytes);
 
+/// The compiler `argv` runs past any launcher (wrapper_prefix_len), when it
+/// is spelled as a POSIX path, as Cygwin and MSYS2 programs spell paths.
+std::optional<std::string_view> posix_compiler(kotatsu::string_list_ref argv);
+
+/// Whether a database entry was written inside Cygwin or MSYS2, its paths
+/// POSIX paths and its `command` quoted for sh: its directory is a POSIX
+/// path, or it is relative (`.`) and its compiler is one. `argv` is the
+/// command as sh splits it. Never off Windows, where every such path is
+/// native.
+bool posix_entry(llvm::StringRef directory, kotatsu::string_list_ref argv);
+
 /// A loaded compilation database file. Ids are stable for the database's
 /// lifetime; a source reloads or unloads in place.
 enum class SourceID : std::uint32_t {};

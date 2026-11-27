@@ -84,7 +84,8 @@ bool names_standard(llvm::ArrayRef<Arg> args);
 /// `-Werror=<group>` is `-W<group>`, since clang warns of what it does not
 /// and its build never shows those as errors; GCC's `-fmodules` goes,
 /// its C++20 modules, which clang's C++20 has, where to clang it would mean
-/// header modules; and what clang-cl ignores but cl defines macros for
+/// header modules; Andes GCC's size levels (`-Os1`, `-Os2`) are `-Os`; and
+/// what clang-cl ignores but cl defines macros for
 /// becomes those macros: the runtime checks (`/RTC1`, `/GZ`) cl's
 /// `__MSVC_RUNTIME_CHECKS`, `/sdl` its `_GUARDOVERFLOW_CRT_ALLOCATORS`,
 /// `/guard:cf` its `_CONTROL_FLOW_GUARD` and `/utf-8` its `_UTF8`, the last of

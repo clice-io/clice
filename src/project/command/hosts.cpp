@@ -39,7 +39,7 @@ llvm::SmallVector<Fid> Project::ranked_hosts(Fid header) {
     auto header_path = files.resolve(header);
     auto header_stem = path::stem(header_path);
     auto header_dir = path::parent(header_path);
-    auto sources = source_order(header_path);
+    auto sources = source_order(header);
 
     // The lexical scan follows each header's includes under the first
     // command that reached it; a unit whose compile resolved them

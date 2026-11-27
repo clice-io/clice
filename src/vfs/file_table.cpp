@@ -6,13 +6,6 @@ namespace clice {
 
 namespace {
 
-/// `path` with its `..` segments resolved as text.
-Spelling fold(const Spelling& path) {
-    llvm::SmallString<256> text(path);
-    path::normalize(text);
-    return Spelling::absolute(text);
-}
-
 /// `path` in the workspace folder holding it, spelled the way the folder
 /// shows; none outside every folder.
 std::optional<std::string> in_folder(llvm::ArrayRef<FileTable::Folder> folders,
@@ -91,6 +84,10 @@ Spelling FileTable::spelling(Fid fid) const {
     return Spelling(resolve(fid));
 }
 
+RulePath rule_path(const FileTable& files, Fid fid) {
+    return {files.resolve(fid), files.spelling(fid)};
+}
+
 std::string FileTable::display_identity(llvm::StringRef identity) {
     return display(intern(Spelling::absolute(identity)));
 }
@@ -105,7 +102,7 @@ std::string FileTable::display(Fid fid) const {
     }
     // Folding `..` right after a link lands elsewhere than the build does.
     if(auto it = spelled.find(fid); it != spelled.end()) {
-        auto build = fold(Spelling::absolute(it->second));
+        auto build = Spelling::absolute(it->second).folded();
         if(build.str() == it->second || CanonicalPath(build) == identity) {
             if(auto inside = in_folder(folders, build)) {
                 return std::move(*inside);
@@ -122,7 +119,7 @@ std::string FileTable::display(CanonicalRef identity) const {
 void FileTable::spell_root(llvm::StringRef root) {
     auto spelled = Spelling::absolute(root);
     CanonicalPath identity(spelled);
-    auto opened = fold(spelled);
+    auto opened = spelled.folded();
     bool names_folder = CanonicalPath(opened) == identity;
     auto shown = names_folder ? opened : Spelling(identity);
     auto written = names_folder ? root.str() : shown.str();
@@ -131,7 +128,7 @@ void FileTable::spell_root(llvm::StringRef root) {
 }
 
 void FileTable::unspell_root(llvm::StringRef root) {
-    auto opened = fold(Spelling::absolute(root));
+    auto opened = Spelling::absolute(root).folded();
     folders.erase(
         ranges::remove_if(folders, [&](const Folder& folder) { return folder.opened == opened; })
             .begin(),

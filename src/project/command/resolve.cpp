@@ -178,7 +178,7 @@ struct Tiers {
     /// 4. A rule's default command for a file the build does not compile
     ///    as a unit (a header under a default-command rule).
     std::optional<Candidate> default_command() {
-        if(auto id = project.default_command(path)) {
+        if(auto id = project.default_command(file)) {
             return Candidate{.base = *id, .source = CommandSource::Default};
         }
         return std::nullopt;

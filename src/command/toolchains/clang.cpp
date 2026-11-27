@@ -153,7 +153,12 @@ std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, Comp
         }
         llvm::StringRef warning =
             id == clang_options::OPT_W_Joined ? llvm::StringRef(parsed->values[0]) : "";
-        if(!modules && !runtime_checks && !cl_switch && warning != "error" &&
+        llvm::StringRef level = family == CompilerFamily::GCC && id == clang_options::OPT_O
+                                    ? llvm::StringRef(parsed->values[0])
+                                    : "";
+        bool size_level =
+            level.consume_front("s") && !level.empty() && ranges::all_of(level, llvm::isDigit);
+        if(!modules && !runtime_checks && !cl_switch && !size_level && warning != "error" &&
            !warning.starts_with("error=")) {
             continue;
         }
@@ -161,6 +166,9 @@ std::vector<std::string> flags_for_clang(llvm::ArrayRef<std::string> flags, Comp
         next = parsed->index + 1;
         if(warning.consume_front("error=")) {
             result.push_back("-W" + warning.str());
+        }
+        if(size_level) {
+            result.push_back("-Os");
         }
         if(runtime_checks) {
             result.push_back("-D__MSVC_RUNTIME_CHECKS");

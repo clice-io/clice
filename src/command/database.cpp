@@ -117,6 +117,19 @@ std::string per_file_option(const CommandTable& commands,
     return {};
 }
 
+std::optional<std::string_view> posix_compiler(kotatsu::string_list_ref argv) {
+    auto compiler = wrapper_prefix_len(argv);
+    if(compiler < argv.size() && fs::cygwin::is_posix_path(argv[compiler])) {
+        return argv[compiler];
+    }
+    return std::nullopt;
+}
+
+bool posix_entry(llvm::StringRef directory, kotatsu::string_list_ref argv) {
+    return fs::cygwin::is_posix_path(directory) ||
+           (!path::has_root(directory) && posix_compiler(argv));
+}
+
 std::optional<std::string> repaired_database_text(llvm::StringRef bytes) {
     if(simdjson::validate_utf8(bytes.data(), bytes.size())) {
         return std::nullopt;
@@ -304,6 +317,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // spells its paths POSIX-style: the mount table of the runtime on PATH,
     // found at the first such entry, maps the entries so spelled.
     std::optional<fs::cygwin::MountTable> table;
+    // The compilers of entries whose directory is relative that no runtime
+    // maps, once asked: such entries read as written.
+    llvm::StringSet<> unmapped;
 
     // An entry's strings: views of the database's own bytes when they hold
     // no escape, else unescaped into the entry's storage. simdjson's own
@@ -427,20 +443,36 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         }
 
         llvm::StringRef dir_ref(dir_sv.data(), dir_sv.size());
+        bool posix_dir = fs::cygwin::is_posix_path(dir_ref);
+        // The command splits only where the directory does not tell, or the
+        // runtime is still to be found by the compiler.
+        bool posix = posix_dir;
+        std::optional<std::string> compiler;
+        if(path::native_style == path::Style::Windows &&
+           (posix_dir ? !table : !path::has_root(dir_ref))) {
+            auto tokens = command ? split_command(*command, sys::cmd::Quoting::POSIX) : args;
+            posix = posix_entry(dir_ref, tokens);
+            if(auto found = posix_compiler(tokens)) {
+                compiler = std::string(*found);
+            }
+        }
         normalizer.mounts = nullptr;
-        if(fs::cygwin::is_posix_path(dir_ref)) {
-            if(!table) {
+        if(posix) {
+            if(!table && !(compiler && unmapped.contains(*compiler))) {
                 // Another runtime's table maps the directory under its own
                 // root; another of one kind, Git for Windows' MSYS2 beside
                 // MSYS2, maps a drive's paths alike but lacks the compiler.
-                std::vector<std::string> written = {dir_ref.str()};
-                auto tokens = command ? split_command(*command, sys::cmd::Quoting::POSIX) : args;
-                auto compiler = wrapper_prefix_len(tokens);
-                if(compiler < tokens.size() && fs::cygwin::is_posix_path(tokens[compiler])) {
-                    written.emplace_back(tokens[compiler]);
+                std::vector<std::string> written;
+                if(posix_dir) {
+                    written.push_back(dir_ref.str());
+                }
+                if(compiler) {
+                    written.push_back(*compiler);
                 }
                 auto [found] = async::run(find_mount_table({}, std::move(written)));
-                if(!*found) {
+                if(*found) {
+                    table = std::move(**found);
+                } else if(posix_dir) {
                     LOG_GUIDANCE(
                         "Compilation database {} spells its paths POSIX-style ({}), and they "
                         "cannot be mapped: {}. Put the bin directory of the Cygwin or MSYS2 "
@@ -450,10 +482,23 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                         dir_ref,
                         found->error());
                     return std::nullopt;
+                } else {
+                    // A database written elsewhere names such a compiler too
+                    // (Linux's /usr/bin/cc), and its relative paths hold.
+                    LOG_GUIDANCE(
+                        "Compilation database {} names its compiler POSIX-style ({}), and it "
+                        "cannot be mapped: {}. If Cygwin or MSYS2 wrote the database, put the "
+                        "bin directory of the one that did on clice's PATH (in VS Code, "
+                        "clice.serverEnv); its entries read as written until then.",
+                        path,
+                        *compiler,
+                        found->error());
+                    unmapped.insert(*compiler);
                 }
-                table = std::move(**found);
             }
-            normalizer.mounts = &*table;
+            if(table) {
+                normalizer.mounts = &*table;
+            }
         }
 
         // A relative `directory` anchors to the CDB file's own location —
@@ -481,8 +526,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             file_table.intern_entry(file);
         }
 
-        kotatsu::string_list_ref tokens =
-            command ? normalizer.split(*command, views, args) : kotatsu::string_list_ref(args);
+        kotatsu::string_list_ref tokens = command ? Normalizer::split(*command, posix, views, args)
+                                                  : kotatsu::string_list_ref(args);
         auto key = normalizer.shared_key(working, file_ref, tokens);
         std::optional<CommandID> normalized;
         if(auto known = key ? shared.find(*key) : shared.end(); known != shared.end()) {

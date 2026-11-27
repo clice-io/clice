@@ -81,6 +81,68 @@ ZEST_CASE(PackageTrustedUntilDue) {
     ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 }
 
+ZEST_CASE(SlowChecksTrustRecentLooks) {
+    // Where every look is slow, a check of a workspace file trusts what the
+    // last turn's look found, for ten times what that turn cost and at most
+    // longest_trust; then it looks again.
+    Fixture f;
+    auto fid = f.file("src/a.h", "int a;\n");
+    auto hash = f.hash_of(fid);
+    f.disk.now = [&f] {
+        return f.time += 40ms;
+    };
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
+    f.disk.now = [&f] {
+        return f.time;
+    };
+    f.rewrite("src/a.h", "int b;\n");
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
+    ZASSERT(f.disk.checks.trusted == 1u);
+
+    f.time += vfs::DiskState::longest_trust;
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Stale);
+}
+
+ZEST_CASE(FailedReadEndsTrust) {
+    // A look that cannot read the file ends the trust in what an earlier
+    // look found.
+    Fixture f;
+    auto fid = f.file("src/a.h", "int a;\n");
+    auto hash = f.hash_of(fid);
+    f.disk.now = [&f] {
+        return f.time += 40ms;
+    };
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
+    f.disk.now = [&f] {
+        return f.time;
+    };
+    ZASSERT(fs::remove(f.tmp.path("src/a.h")));
+    f.tmp.mkdir("src/a.h");
+    ZASSERT(!f.disk.current(fid));
+    ZEXPECT(f.disk.check(fid, hash) != CheckResult::Fresh);
+    ZEXPECT(f.disk.checks.trusted == 0u);
+}
+
+ZEST_CASE(BuildReadIsNoLook) {
+    // A build's read of a file nobody looked at is no look a check trusts:
+    // the file may have changed since the build read it.
+    Fixture f;
+    auto looked = f.file("src/a.h", "int a;\n");
+    auto read = f.file("src/b.h", "int b;\n");
+    auto read_hash = llvm::xxh3_64bits("int b;\n");
+    auto hash = f.hash_of(looked);
+    f.disk.now = [&f] {
+        return f.time += 40ms;
+    };
+    ZASSERT(f.disk.check(looked, hash) == CheckResult::Fresh);
+    f.disk.now = [&f] {
+        return f.time;
+    };
+    f.disk.consumed(read, read_hash);
+    f.rewrite("src/b.h", "int c;\n");
+    ZEXPECT(f.disk.check(read, read_hash) == CheckResult::Stale);
+}
+
 ZEST_CASE(MarkAddedIsChange) {
     // The text stays as it was: what clang builds from the bytes does not.
     Fixture f;

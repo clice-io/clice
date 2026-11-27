@@ -1,3 +1,12 @@
+module;
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <winioctl.h>
+#endif
+
 module clice;
 
 import :compile.compilation;
@@ -44,6 +53,51 @@ struct Reader {
 
     inline static std::string released;
 };
+
+#ifdef _WIN32
+/// Make `link` a WSL symlink to `target`, the kind WSL and Cygwin's `ln -s`
+/// make: a reparse point Win32 does not follow.
+void make_wsl_symlink(llvm::StringRef link, llvm::StringRef target) {
+    std::wstring name;
+    ZASSERT(llvm::ConvertUTF8toWide(link, name));
+    HANDLE file = ::CreateFileW(name.c_str(),
+                                GENERIC_WRITE,
+                                0,
+                                nullptr,
+                                CREATE_NEW,
+                                FILE_ATTRIBUTE_NORMAL,
+                                nullptr);
+    ZASSERT(file != INVALID_HANDLE_VALUE);
+    struct {
+        DWORD tag = 0xA000001D;
+        WORD length;
+        WORD reserved = 0;
+        DWORD version = 2;
+    } header{.length = static_cast<WORD>(sizeof(DWORD) + target.size())};
+    std::string data(reinterpret_cast<const char*>(&header), sizeof(header));
+    data += target;
+    DWORD returned = 0;
+    bool set = ::DeviceIoControl(file,
+                                 FSCTL_SET_REPARSE_POINT,
+                                 data.data(),
+                                 static_cast<DWORD>(data.size()),
+                                 nullptr,
+                                 0,
+                                 &returned,
+                                 nullptr);
+    ::CloseHandle(file);
+    ZASSERT(set);
+}
+
+/// `path` as WSL spells it: `C:\x` is `/mnt/c/x`.
+std::string wsl_path(llvm::StringRef path) {
+    std::string result = "/mnt/";
+    result += llvm::toLower(path[0]);
+    result += path.drop_front(2);
+    path::to_slash(result);
+    return result;
+}
+#endif
 
 ZEST_SUITE(CompilationUnit, Tester) {
 
@@ -168,6 +222,44 @@ ZEST_CASE(FilePathResolvesLinks) {
     ZEXPECT(unit->file_path(directive.includes[0].fid) == real.str());
     ZEXPECT(unit->file_path(*directive.has_includes[0].file) == real.str());
 }
+
+#ifdef _WIN32
+ZEST_CASE(FilePathResolvesWslLinks) {
+    TempDir tmp;
+    tmp.touch("real/a.h", "extern int a;\n");
+    tmp.touch("real/b.h", "extern int b;\n");
+    tmp.touch("real/c.h", "extern int c;\n");
+    make_wsl_symlink(tmp.path("a.h"), "real/a.h");
+    make_wsl_symlink(tmp.path("dir"), "real");
+    make_wsl_symlink(tmp.path("c.h"), wsl_path(tmp.path("real/c.h")));
+    tmp.touch("main.cpp", "#include \"a.h\"\n#include \"dir/b.h\"\n#include \"c.h\"\n");
+    prepare();
+    params.input.vfs = llvm::makeIntrusiveRefCnt<vfs::View>();
+    params.input.arguments.back() = tmp.path("main.cpp");
+    ZASSERT(try_compile());
+    ZEXPECT(unit->diagnostics().empty());
+    auto& includes = unit->directives()[unit->focus_file().file()].includes;
+    ZASSERT(includes.size() == 3U);
+    for(auto [include, real]:
+        views::zip(includes, std::array{"real/a.h", "real/b.h", "real/c.h"})) {
+        ZEXPECT(unit->file_path(include.fid) ==
+                CanonicalPath(Spelling::absolute(tmp.path(real))).str());
+    }
+}
+
+ZEST_CASE(WslLinkToPosixPathReported) {
+    TempDir tmp;
+    make_wsl_symlink(tmp.path("a.h"), "/usr/include/a.h");
+    tmp.touch("main.cpp", "#include \"a.h\"\n");
+    prepare();
+    params.input.vfs = llvm::makeIntrusiveRefCnt<vfs::View>();
+    params.input.arguments.back() = tmp.path("main.cpp");
+    ZASSERT(try_compile());
+    ZASSERT(unit->diagnostics().size() == 1U);
+    ZEXPECT(
+        llvm::StringRef(unit->diagnostics()[0].message).contains("WSL symlink to a POSIX path"));
+}
+#endif
 
 ZEST_CASE(HardLinksSharePath) {
     TempDir tmp;
@@ -481,6 +573,26 @@ int own;
 
     ZEXPECT(!unit->skips_bodies(file("own.h")).has_value());
     ZEXPECT(unit->indexes_bodies(declared("own_header")->getLocation()));
+}
+
+ZEST_CASE(BodyRuleMatchesReachedPath) {
+    // A rule's pattern matches the path the compile reached a file by too:
+    // a linked directory (Bazel's external/) whose files lie elsewhere.
+    TempDir tmp;
+    tmp.touch("cache/lib/lib.h", "int library;\n");
+    tmp.mkdir("external");
+    ZASSERT(!fs::create_directory_symlink(tmp.path("cache/lib"), tmp.path("external/lib")));
+    tmp.touch("main.cpp", "#include \"external/lib/lib.h\"\nint own;\n");
+    prepare();
+    params.input.vfs = llvm::makeIntrusiveRefCnt<vfs::View>();
+    params.input.arguments.back() = tmp.path("main.cpp");
+    params.function_bodies.rules = {
+        {.patterns = {"**/external/**"}, .skip = true}
+    };
+    ZASSERT(try_compile());
+    auto& includes = unit->directives()[unit->focus_file().file()].includes;
+    ZASSERT(includes.size() == 1U);
+    ZEXPECT(unit->skips_bodies(includes[0].fid) == true);
 }
 
 ZEST_CASE(LibraryBodiesUnindexed) {

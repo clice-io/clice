@@ -39,10 +39,19 @@ struct Flag {
 /// Each file looked at is also due for its next look after an interval
 /// that tick() keeps: its root's policy's shortest, doubled at every look
 /// that finds the file unchanged and dropped back at a change. A
-/// check of a workspace file always looks; a check of a package file is
-/// answered "unchanged" without a look when the last look, not yet due,
-/// found what the check expects — any other answer is the disk's. No tick
-/// running lets every file fall due, so every check looks again.
+/// check of a workspace file looks, unless checks are slow here (trust); a
+/// check of a package file is answered "unchanged" without a look when the
+/// last look, not yet due, found what the check expects — any other answer
+/// is the disk's. No tick running lets every file fall due, so every check
+/// looks again.
+///
+/// Where every status is slow (antivirus or encryption software filtering
+/// each call), a turn that looks at the files of one request at all costs
+/// what the user waits for, at every keystroke: a turn that looked without
+/// trusting anything measures it, and when it took `slow_turn` or more,
+/// checks of a workspace file looked at since trust what it found for ten
+/// times as long, at most `longest_trust`. A save looks at what the open
+/// documents read (MasterServer::save_document), as the user asks.
 ///
 /// A check looks at a file once per turn of the owner's event loop: the
 /// steps of one request — a staleness check, the PCH it prepares, the
@@ -58,7 +67,7 @@ public:
     enum class Kind : std::uint8_t {
         /// The user, and the tools they run — sources, generated files,
         /// anything under no registered root, edited by agents outside the
-        /// editor as often as in it: a check always looks.
+        /// editor as often as in it: a check looks, unless checks are slow.
         Workspace,
         /// An install or upgrade, which replaces a toolchain or an
         /// environment as a whole: a check trusts a look that is not due.
@@ -183,8 +192,8 @@ public:
     void add_package(llvm::StringRef dir);
 
     /// A build read this file's bytes, hashing to `hash`: for a file nobody
-    /// looked at yet, that read is the first look, so that a change after
-    /// it is a change.
+    /// looked at yet, a change is measured from that read, though a check
+    /// trusts no look of a build's.
     void consumed(Fid fid, std::uint64_t hash);
 
     /// Make every file under the directory `dir` (an identity) due now.
@@ -222,11 +231,16 @@ public:
     bool shadow = false;
 
     /// How the turns' checks were answered: by a look at the disk, or from
-    /// a look not yet due.
+    /// a look not yet due or, where checks are slow, recent.
     struct Checks {
         std::uint64_t looked = 0;
         std::uint64_t trusted = 0;
     } checks;
+
+    /// The shortest turn of looks that makes checks slow, and the longest a
+    /// check then trusts a look.
+    constexpr static Clock::duration slow_turn = chrono::milliseconds(50);
+    constexpr static Clock::duration longest_trust = chrono::seconds(2);
 
 private:
     /// The last reliable read: the hash of the bytes the stamp described.
@@ -243,6 +257,10 @@ private:
         std::uint32_t root = no_root;
         Clock::duration interval{};
         Clock::time_point due;
+        /// When the last look took place; none before the first, or after
+        /// a read that failed: what a build read is no look, and nothing
+        /// answers from a look a failed read followed.
+        std::optional<Clock::time_point> looked;
         /// When the file's entry in the queue comes up; max() when it has
         /// none.
         Clock::time_point queued = Clock::time_point::max();
@@ -284,8 +302,13 @@ private:
     /// look, at a package file not yet due, found what is `expected`.
     Look turn_look(Fid fid, std::optional<Look> expected);
 
-    /// The last look's finding, for a package file not yet due.
+    /// The last look's finding, for a package file not yet due, or for a
+    /// workspace file looked at while checks are slow (`trust`).
     std::optional<Look> trusted(Fid fid);
+
+    /// How long a check trusts a workspace file's look now: zero unless the
+    /// last turn that trusted nothing was slow.
+    Clock::duration trust() const;
 
     /// Report a trusted finding a look contradicts.
     void verify(Fid fid, const Look& found);
@@ -323,6 +346,18 @@ private:
     llvm::DenseMap<Fid, Look> turn_looks;
     StatusBatch turn_statuses;
     bool turn_open = false;
+
+    /// What the open turn's looks cost, how many it took, and whether a
+    /// check in it trusted a workspace file.
+    Clock::duration turn_cost{};
+    std::uint32_t turn_looked = 0;
+    bool turn_trusted = false;
+
+    /// What the last turn that looked without trusting a workspace file
+    /// cost.
+    Clock::duration measured_cost{};
+    /// Whether the log said once that checks are slow here.
+    bool told_slow = false;
 
     llvm::SmallVector<Root> roots;
 

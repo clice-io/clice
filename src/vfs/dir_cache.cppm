@@ -17,7 +17,7 @@ struct Listing {
     llvm::StringMap<bool> entries;
 
     /// Whether the directory matches names with their case
-    /// (fs::case_sensitive).
+    /// (fs::Directory::case_sensitive).
     bool case_sensitive = true;
 
     /// Each entry's name with ASCII letters lowered, where the directory

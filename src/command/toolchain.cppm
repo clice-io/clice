@@ -161,12 +161,16 @@ private:
     /// A synthesized full compile configuration, self-contained: rendering
     /// it needs no trip back to the source command.
     struct Resolved {
-        /// The query's frontend, whose driver, hidden files and shadowed
-        /// directories it keeps; `queries` never moves or drops one.
+        /// The query's frontend, whose driver and shadowed directories it
+        /// keeps; `queries` never moves or drops one.
         const Frontend* frontend = nullptr;
 
         /// Frontend-level args (cc1): render as `driver -cc1 <args>`.
         llvm::ArrayRef<Arg> args;
+
+        /// The frontend's hidden files, also under the spelling the
+        /// command's own search directories give their directories.
+        std::shared_ptr<const vfs::HiddenFiles> hidden;
     };
 
     const Resolved& resolved(ResolvedID id) const {

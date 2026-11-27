@@ -425,7 +425,7 @@ bool BackgroundIndex::enqueue(Fid file, ReindexReason reason, bool diagnostics) 
     // does not compile as a unit, or a rule's `index = false` keeps out,
     // stays out here, whichever path asked — a cascade reaching a unit the
     // same change took out of the build included.
-    if(!project.is_unit(file) || !project.rules.indexable(project.file_table.resolve(file))) {
+    if(!project.is_unit(file) || !project.rules.indexable(rule_path(project.file_table, file))) {
         return false;
     }
     // A new pending reindex voids the running pass's freshness memos: one

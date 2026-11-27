@@ -14,7 +14,7 @@ std::optional<bool> Project::self_contained(const SelfContainmentKey& key, bool 
     if(is_context_header_path(files.resolve(key.first))) {
         return false;
     }
-    if(auto declared = rules.self_contained(files.resolve(key.first))) {
+    if(auto declared = rules.self_contained(rule_path(files, key.first))) {
         return declared;
     }
     auto* entry = hosting.self_containment.lookup(files, key);

@@ -503,11 +503,14 @@ auto CompilationUnit::body_rule(clang::FileID fid) -> const BodyRule& {
             }
         }
     }
-    auto path = file_path(fid);
+    llvm::SmallString<128> reached(SM().getFileEntryRefForID(fid)->getName());
+    SM().getFileManager().makeAbsolutePath(reached);
+    auto path = RulePath::input(file_path(fid), Spelling::absolute(reached));
+    auto names = path.names();
     BodyRule found;
     for(auto [rule, globs]: views::zip(rules, *body_globs)) {
         if(!rule.patterns.empty() && ranges::none_of(globs, [&](const kotatsu::GlobPattern& glob) {
-               return glob.match(path);
+               return ranges::any_of(names, [&](llvm::StringRef name) { return glob.match(name); });
            })) {
             continue;
         }

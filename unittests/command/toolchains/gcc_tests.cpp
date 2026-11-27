@@ -627,6 +627,60 @@ echo '#define __STDC_VERSION__ 201710L'
     ZEXPECT(fs::equivalent(next->path.str(), tmp.path("libc/include/limits.h")).value_or(false));
 }
 
+ZEST_CASE(GCCPrivateHeadersRespelled) {
+    /// The command's own -isystem naming GCC's private include directory by
+    /// a symlink or through `..` comes first in the search, by that
+    /// spelling: GCC's versions of clang's builtin headers stay hidden.
+    tmp.touch("gcc/13/include/stdatomic.h", "#error GCC's stdatomic.h\n");
+    auto alias = tmp.path("alias");
+    ZASSERT(!fs::create_directory_symlink(tmp.path("gcc/13/include"), alias));
+    auto driver = fake_driver("riscv32-elf-gcc",
+                              std::format(R"(cat >&2 <<'OUTPUT'
+Target: riscv32-elf
+ {2} -E -quiet -v query.c -march=rv32imac -mabi=ilp32 -dM
+#include <...> search starts here:
+ {0}
+End of search list.
+LIBRARY_PATH={1}/
+OUTPUT
+echo '#define __STDC_VERSION__ 201710L'
+)",
+                                          tmp.path("gcc/13/include"),
+                                          tmp.path("gcc/13"),
+                                          host_path("/opt/libexec/gcc/riscv32-elf/13/cc1")));
+    std::string spellings[] = {alias, tmp.path("gcc/13/include/../include")};
+    for(auto [i, spelled]: views::enumerate(spellings)) {
+        auto file = std::format("{}.c", i);
+        tmp.touch(file, "#include <stdatomic.h>\natomic_int counter;\n");
+        auto ref = add(file, {driver.c_str(), "-isystem", spelled.c_str(), "-c"});
+        ZASSERT(f.toolchain.resolve(ref.command, ref.language));
+        auto rendered = f.toolchain.render(ref, f.db.files().spelling(ref.file));
+        ZEXPECT(rendered.hidden.hides(path::join(spelled, "stdatomic.h")));
+        auto unit = clice::compile({
+            .kind = CompilationKind::Content,
+            .input = {.arguments = {rendered.argv.begin(), rendered.argv.end()},
+                      .directory = tmp.root,
+                      .vfs = llvm::makeIntrusiveRefCnt<vfs::View>(std::move(rendered.hidden))},
+        });
+        ZASSERT(unit->completed());
+        ZEXPECT(unit->diagnostics().empty());
+
+        /// clice's own include search agrees with the compile.
+        auto search = f.toolchain.search_config(ref);
+        vfs::DirCache cache;
+        vfs::Scope scope(cache);
+        auto atomic = resolve_include("stdatomic.h", true, "", false, {}, search, scope);
+        ZASSERT(atomic);
+        ZEXPECT(
+            fs::equivalent(atomic->path.str(), path::join(resource_dir(), "include", "stdatomic.h"))
+                .value_or(false));
+    }
+
+    /// A directory of the sysroot names none of them.
+    auto sysroot = add("sysroot.c", {driver.c_str(), "-isystem=/include", "-c"});
+    ZEXPECT(f.toolchain.resolve(sysroot.command, sysroot.language));
+}
+
 ZEST_CASE(GCCTargetNames) {
     auto render = [&](llvm::StringRef target, llvm::StringRef options) {
         auto driver =
@@ -751,6 +805,11 @@ echo ' {} -E -quiet query.cpp -fmodules -dM' >&2
     /// The value of another option is that option's.
     argv = f.resolve(add("b.cpp", {driver.c_str(), "-Xpreprocessor", "-Werror", "-c"}));
     ZEXPECT(contains(argv, "-Werror"));
+
+    /// Andes GCC's size levels, which clang refuses.
+    argv = f.resolve(add("c.cpp", {driver.c_str(), "-Os2", "-c"}));
+    ZEXPECT(contains(argv, "-Os"));
+    ZEXPECT(!contains(argv, "-Os2"));
 }
 
 ZEST_CASE(CommandISAForClang) {

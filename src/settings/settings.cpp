@@ -368,12 +368,15 @@ bool CompiledRule::declares_sources() const {
     return !compile_commands.empty() || (has_default_command() && !unmatchable);
 }
 
-bool CompiledRule::matches(CanonicalRef path) const {
+bool CompiledRule::matches(const RulePath& path) const {
     if(unmatchable) {
         return false;
     }
+    auto names = path.names();
     return patterns.empty() || ranges::any_of(patterns, [&](const Pattern& pattern) {
-               return pattern.glob.match(llvm::StringRef(path));
+               return ranges::any_of(names, [&](llvm::StringRef name) {
+                   return pattern.glob.match(name);
+               });
            });
 }
 
