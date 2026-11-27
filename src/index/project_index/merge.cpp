@@ -325,7 +325,7 @@ std::expected<IndexReport, MergeError> ProjectIndex::merge(llvm::StringRef tu_in
     // on arrival.
     IndexReport report;
     for(std::uint32_t i = 0; i < view.absent_count(); i += 1) {
-        auto fid = files.intern(CanonicalPath::of_place(Spelling::absolute(view.absent(i))));
+        auto fid = files.intern(Spelling::absolute(view.absent(i)));
         if(files.disk.current(fid)) {
             report.add_reindex(tu_path_id);
         }

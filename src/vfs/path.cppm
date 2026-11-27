@@ -180,12 +180,6 @@ public:
     /// The identity of what `spelled` names.
     explicit CanonicalPath(const Spelling& spelled);
 
-    /// The identity of a place a lookup found empty: a `..` after a part
-    /// that does not exist stays, as the OS fails `missing/../a.h`. Folded,
-    /// an existing a.h would look as if it had appeared there, and every
-    /// check would take the lookup's results for stale.
-    static CanonicalPath of_place(const Spelling& spelled);
-
     CanonicalPath(CanonicalRef ref) : text(ref.str()) {}
 
     operator CanonicalRef() const {
