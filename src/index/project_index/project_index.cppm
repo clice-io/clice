@@ -752,7 +752,10 @@ private:
 
     /// Files the next save looks at for compaction: their live variant or
     /// use set changed, or a unit that walked instantiation keys there ran
-    /// again or left.
+    /// again or left. A stored shard or instantiation shard holds dead
+    /// variants or uses only while its file is here, so only these are
+    /// masked as they are read (shard, instantiation_shard): a change of a
+    /// live set that leaves its file out serves the dead ones.
     llvm::DenseSet<Fid> compact;
 
     /// Files whose internals record the next save rewrites.

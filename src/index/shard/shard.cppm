@@ -96,10 +96,6 @@ public:
     /// contributions). Hashes the blob does not store are ignored.
     void set_live(llvm::ArrayRef<VariantHash> live);
 
-    /// Whether any stored variant was masked out by set_live — the signal
-    /// that the next serialization of this file should compact.
-    bool has_dead_variants() const;
-
     void occurrences_at(std::uint32_t offset,
                         llvm::function_ref<bool(const Occurrence&)> callback) const;
 

@@ -201,7 +201,6 @@ ZEST_CASE(ResolutionsFoldAcrossRuns) {
     // Only the second unit's use dies, and with it the resolution holding
     // (30, 33): the shared record stays.
     stored.set_live({first_use.use});
-    ZEXPECT(stored.has_dead_uses());
     ZEXPECT(at(stored, 11).size() == 1u);
     ZEXPECT(at(stored, 31).empty());
 

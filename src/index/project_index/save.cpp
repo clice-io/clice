@@ -58,7 +58,8 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
             requeue_owners(file, report);
             continue;
         }
-        if(!current->has_dead_variants()) {
+        if(ranges::all_of(current->variants(),
+                          [&](std::uint64_t hash) { return ranges::contains(live, hash); })) {
             continue;
         }
         auto bytes = merge_shards(*current, live, {});
@@ -95,11 +96,13 @@ void ProjectIndex::begin_save(SaveBatch& batch, IndexReport& report) {
             gone_runs = !is_current(*key.producer);
             return !gone_runs;
         });
-        if(!held->has_dead_uses() && !gone_runs) {
+        auto live = live_uses(file);
+        if(!gone_runs && ranges::all_of(held->uses(), [&](std::uint64_t use) {
+               return ranges::contains(live, use);
+           })) {
             continue;
         }
-        auto bytes =
-            merge_instantiations(*held, live_uses(file), is_current, nullptr, {}, std::nullopt);
+        auto bytes = merge_instantiations(*held, live, is_current, nullptr, {}, std::nullopt);
         if(!bytes) {
             replace_instantiations(file, {});
             report.add_index_changed(file);

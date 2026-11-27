@@ -715,7 +715,7 @@ ZEST_CASE(SaveCompactsAndRetires) {
     auto b2 = index_file(tmp, tmp.path("b.cpp"));
     ZASSERT(!b2.data.empty());
     merge(b2.data);
-    ZASSERT(project.index.shard(header_id)->has_dead_variants());
+    ZASSERT(project.index.shard(header_id)->variants().size() == std::size_t(2));
     save();
     ZASSERT(project.index.shard(header_id)->variants().size() == std::size_t(1));
 
@@ -731,6 +731,90 @@ ZEST_CASE(SaveCompactsAndRetires) {
                  .has_value());
     ZASSERT(!project.database->contains(index::BlobKind::Shard,
                                         IndexInternals::file_key(project.index, header_id)));
+}
+
+ZEST_CASE(CompactsUnreadShard) {
+    // A session compacts the shard of a header a unit stopped including
+    // though it never read the shard before: a later session reads the
+    // stored shard as it is, the dead variant unmasked.
+    TempDir tmp;
+    tmp.touch("shared.h",
+              "#pragma once\n#ifdef MODE\nint mode_fn();\n#endif\n"
+              "inline int shared_fn() { return 1; }\n");
+    tmp.touch("a.cpp", "#include \"shared.h\"\nint a() { return shared_fn(); }\n");
+    tmp.touch("b.cpp", "#include \"shared.h\"\nint b() { return shared_fn(); }\n");
+    {
+        IndexerFixture first;
+        open_store(tmp, first.project);
+        first.list_units(tmp,
+                         {
+                             {"a.cpp"},
+                             {"b.cpp", {"-DMODE"}}
+        });
+        ZASSERT(first.merge(index_file(tmp, tmp.path("a.cpp")).data));
+        ZASSERT(first.merge(index_file(tmp, tmp.path("b.cpp"), {"-DMODE"}).data));
+        first.save();
+    }
+
+    open_store(tmp, project);
+    fx.list_units(tmp,
+                  {
+                      {"a.cpp"},
+                      {"b.cpp", {"-DMODE"}}
+    });
+    fx.load();
+    tmp.touch("b.cpp", "int b() { return 2; }\n");
+    ZASSERT(merge(index_file(tmp, tmp.path("b.cpp"), {"-DMODE"}).data));
+    fx.save();
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("shared.h")));
+    auto* shard = project.index.shard(header_id);
+    ZASSERT(shard != nullptr);
+    ZEXPECT(shard->variants().size() == std::size_t(1));
+}
+
+ZEST_CASE(CompactsAppendedShard) {
+    // A unit bringing back the variant a rebuild discarded appends it to a
+    // shard holding a dead variant, which the copy carries along: the next
+    // save still erases it.
+    TempDir tmp;
+    auto header = [](int value) {
+        return std::format(
+            "#pragma once\n#ifdef MODE\nint mode_fn();\n#endif\n"
+            "#ifdef OTHER\nint other_fn();\n#endif\n"
+            "inline int pin_fn() {{ return {}; }}\n",
+            value);
+    };
+    tmp.touch("h.h", header(1));
+    tmp.touch("t.cpp", "#include \"h.h\"\nint t() { return pin_fn(); }\n");
+    tmp.touch("u.cpp", "#include \"h.h\"\nint u() { return pin_fn(); }\n");
+    open_store(tmp, project);
+    fx.list_units(tmp,
+                  {
+                      {"t.cpp", {"-DMODE"}},
+                      {"u.cpp"}
+    });
+    auto index = [&](llvm::StringRef name, std::vector<std::string> args = {}) {
+        ZASSERT(merge(index_file(tmp, tmp.path(name), std::move(args)).data));
+    };
+    index("t.cpp", {"-DMODE"});
+    index("u.cpp");
+    auto header_id = project.file_table.intern(Spelling::absolute(tmp.path("h.h")));
+
+    // The header moves on and back while t.cpp waits: each move starts the
+    // shard over with u.cpp's variant, t.cpp's still pinned.
+    tmp.touch("h.h", header(2));
+    index("u.cpp");
+    tmp.touch("h.h", header(1));
+    index("u.cpp");
+    ZASSERT(project.index.shard(header_id)->variants().size() == std::size_t(1));
+
+    // u.cpp's variant changes, leaving the old one dead; t.cpp then brings
+    // its own back.
+    index("u.cpp", {"-DOTHER"});
+    index("t.cpp", {"-DMODE"});
+    ZASSERT(project.index.shard(header_id)->variants().size() == std::size_t(3));
+    fx.save();
+    ZEXPECT(project.index.shard(header_id)->variants().size() == std::size_t(2));
 }
 
 ZEST_CASE(SaveRetiresPinnedShard) {

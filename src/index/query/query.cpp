@@ -297,7 +297,7 @@ std::vector<Fid> IndexQuery::outdated_files() const {
     return outdated;
 }
 
-std::optional<IndexSource> IndexQuery::serving(Fid file) const {
+std::optional<IndexSource> IndexQuery::serving(Fid file, bool instantiations) const {
     if(auto* buffer = buffer_of(file)) {
         if(auto* shard = buffer_shard(*buffer)) {
             return buffer_source(IndexSource::Kind::SessionShard, *buffer, *shard);
@@ -317,8 +317,10 @@ std::optional<IndexSource> IndexQuery::serving(Fid file) const {
                        .path = files.display(file),
                        .shard = shard,
                        .positions = shard->positions()};
-    if(auto* instantiations = instantiations_of(file, *shard)) {
-        source.instantiations.push_back(instantiations);
+    if(!instantiations) {
+        source.instantiations_pending = true;
+    } else if(auto* stored = instantiations_of(file, *shard)) {
+        source.instantiations.push_back(stored);
     }
     return source;
 }
@@ -475,14 +477,23 @@ void IndexQuery::for_each_relation(SymbolHash hash,
             }
             return true;
         });
-        if(stopped || !with_instantiations || source.instantiations.empty()) {
+        if(stopped || !with_instantiations) {
             return !stopped;
         }
         auto instantiated = source;
+        if(source.instantiations_pending) {
+            instantiated.instantiations_pending = false;
+            if(auto* stored = instantiations_of(source.file, *source.shard)) {
+                instantiated.instantiations.push_back(stored);
+            }
+        }
+        if(instantiated.instantiations.empty()) {
+            return true;
+        }
         instantiated.origin = SiteOrigin::Instantiation;
-        auto expanded = source;
+        auto expanded = instantiated;
         expanded.origin = SiteOrigin::Expansion;
-        for(auto* instantiations: source.instantiations) {
+        for(auto* instantiations: instantiated.instantiations) {
             stopped = !resolved_relations(*instantiations,
                                           hash,
                                           kind,
@@ -498,8 +509,8 @@ void IndexQuery::for_each_relation(SymbolHash hash,
     };
 
     // TODO: each reference file is resolved (stale check, display path,
-    // positions, instantiation shard) before its shard is asked for a relation
-    // of `kind`: narrow kinds on widely referenced symbols pay that per file.
+    // positions) before its shard is asked for a relation of `kind`: narrow
+    // kinds on widely referenced symbols pay that per file.
     auto disk = [&] {
         if(!mask.shard) {
             return true;
@@ -510,7 +521,7 @@ void IndexQuery::for_each_relation(SymbolHash hash,
             if(!completed || !seen.insert(file).second) {
                 return;
             }
-            auto source = serving(file);
+            auto source = serving(file, /*instantiations=*/false);
             if(!source || source->kind != IndexSource::Kind::Shard) {
                 return;
             }

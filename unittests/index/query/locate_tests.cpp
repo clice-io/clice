@@ -214,6 +214,25 @@ ZEST_CASE(LocateEveryExactMatch) {
     ZEXPECT(locate("value").size() == 70U);
 }
 
+ZEST_CASE(ExactSpellingAnswersAlone) {
+    // A name some symbol spells exactly answers with that symbol alone; one
+    // no symbol spells falls back to the fuzzy ranking.
+    add_focus("main.cpp", R"(
+        int GetWorld();
+        int GetWorldSettings();
+        int GetWorlds();
+    )");
+    index_workspace();
+
+    auto exact = locate("GetWorld");
+    ZASSERT(exact.size() == 1U);
+    ZEXPECT(exact.front().symbol.name == "GetWorld");
+
+    auto fuzzy = locate("WorldSett");
+    ZASSERT(fuzzy.size() == 1U);
+    ZEXPECT(fuzzy.front().symbol.name == "GetWorldSettings");
+}
+
 ZEST_CASE(ClassNameOverConstructor) {
     add_focus("main.cpp", R"(
         namespace outer {

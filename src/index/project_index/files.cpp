@@ -200,7 +200,10 @@ const Shard* ProjectIndex::shard(Fid file) const {
     auto key = file_key(file);
     auto* found = read(shard_records, key, [&](std::unique_ptr<llvm::MemoryBuffer> buffer) {
         auto read = Shard::from_buffer(std::move(buffer));
-        if(read.loaded()) {
+        // A save compacts every shard that lost a variant (begin_save), so a
+        // stored one holds live variants alone but where the merges since
+        // marked it: only those read the file's Dependents.
+        if(read.loaded() && compact.contains(file)) {
             read.set_live(live_variants(file));
         }
         return read.loaded() ? std::optional(std::move(read)) : std::nullopt;
@@ -247,7 +250,8 @@ const InstantiationShard* ProjectIndex::instantiation_shard(Fid file) const {
                 file_key(file),
                 [&](std::unique_ptr<llvm::MemoryBuffer> buffer) {
                     auto read = InstantiationShard::from_buffer(std::move(buffer));
-                    if(read.loaded()) {
+                    // Stored with live uses alone, as a shard is.
+                    if(read.loaded() && compact.contains(file)) {
                         read.set_live(live_uses(file));
                     }
                     return read.loaded() ? std::optional(std::move(read)) : std::nullopt;

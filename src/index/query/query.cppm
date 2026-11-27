@@ -40,12 +40,17 @@ struct IndexSource {
 
     /// What the instantiations and macro expansions of the text resolve,
     /// beside the shard: an open buffer's own compile's, and the stored
-    /// ones while the buffer is the stored text; empty when none serves.
+    /// ones while the buffer is the stored text; empty when none serves,
+    /// or while `instantiations_pending`.
     llvm::SmallVector<const InstantiationShard*, 2> instantiations;
 
     /// What the entries handed out with the source come from: the shard's
     /// are written, `instantiations`' records are not.
     SiteOrigin origin = SiteOrigin::Written;
+
+    /// `instantiations` are read when a walk of the source's relations
+    /// reaches them (IndexQuery::serving).
+    bool instantiations_pending = false;
 
     /// The site of an entry's range; nullopt for a range outside the text.
     std::optional<Site> site(LocalSourceRange range) const {
@@ -287,7 +292,9 @@ public:
     /// (clauses 1 and 3), else by its shard while the buffer is
     /// byte-identical to the text the shard indexed (clause 4), both in
     /// buffer coordinates; by nothing while the buffer moved on from both.
-    std::optional<IndexSource> serving(Fid file) const;
+    /// Without `instantiations` a closed file's instantiation shard stays
+    /// unread until a walk of its relations reaches it.
+    std::optional<IndexSource> serving(Fid file, bool instantiations = true) const;
 
     /// Visit the preamble index paired with an open buffer's source: the
     /// PCH's overlay of the buffer's preamble region, in the buffer's

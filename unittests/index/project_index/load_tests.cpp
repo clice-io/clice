@@ -71,23 +71,6 @@ ZEST_CASE(OpenReadsHeaderOnly) {
         f.save(index::SearchRebuild::Idle);
     }
 
-    struct ReadLog final : ForwardingDatabase {
-        using ForwardingDatabase::ForwardingDatabase;
-
-        llvm::SmallVector<index::BlobKind> reads;
-
-        index::ReadBlob read(index::BlobKind kind, llvm::StringRef key) override {
-            reads.push_back(kind);
-            return real->read(kind, key);
-        }
-
-        void for_each(index::BlobKind kind,
-                      llvm::function_ref<bool(llvm::StringRef, index::ReadBlob)> fn) override {
-            reads.push_back(kind);
-            real->for_each(kind, fn);
-        }
-    };
-
     IndexerFixture f;
     open_store(tmp, f.project);
     auto log = std::make_unique<ReadLog>(std::move(f.project.database));

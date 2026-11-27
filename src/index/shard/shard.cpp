@@ -575,10 +575,6 @@ void Shard::set_live(llvm::ArrayRef<VariantHash> live_hashes) {
     live = std::move(next);
 }
 
-bool Shard::has_dead_variants() const {
-    return loaded() && !live.all;
-}
-
 LiveFilter Shard::live_filter(const MaskColumnsView& masks) const {
     return {
         .all = live.all,

@@ -148,10 +148,6 @@ public:
     /// manifest names); uses the blob does not store are ignored.
     void set_live(llvm::ArrayRef<UseHash> live);
 
-    /// Whether set_live masked out a stored use or resolution — the signal
-    /// that the next save should compact the blob.
-    bool has_dead_uses() const;
-
     struct Key {
         SymbolHash key = 0;
         SymbolHash pattern = 0;
