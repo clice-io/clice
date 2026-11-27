@@ -1,6 +1,7 @@
 module clice;
 
 import :support.logging;
+import :support.text;
 import :vfs.disk_state;
 import :vfs.path;
 
@@ -88,6 +89,26 @@ std::optional<std::uint64_t> DiskState::cached_hash(Fid fid, const Stamp& stamp)
 }
 
 void DiskState::end_turn() {
+    if(turn_looked != 0 && !turn_trusted) {
+        measured_cost = turn_cost;
+        if(measured_cost >= slow_turn) {
+            auto cost_ms = chrono::duration_cast<chrono::milliseconds>(measured_cost).count();
+            auto trust_ms = chrono::duration_cast<chrono::milliseconds>(trust()).count();
+            LOG_PERF("disk", "looked={} cost_ms={} trust_ms={}", turn_looked, cost_ms, trust_ms);
+            if(!told_slow) {
+                told_slow = true;
+                LOG_INFO(
+                    "Looking at {} took {} ms: checks are slow here, and trust a look "
+                    "for up to {} ms",
+                    counted(turn_looked, "file", "files"),
+                    cost_ms,
+                    trust_ms);
+            }
+        }
+    }
+    turn_cost = {};
+    turn_looked = 0;
+    turn_trusted = false;
     turn_looks.clear();
     turn_statuses = {};
     turn_open = false;
@@ -277,6 +298,7 @@ void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool stable) {
     }
     auto previous = std::exchange(file.seen, hash);
     bool moved = !first && previous != hash;
+    file.looked = now();
     if(!hash) {
         file.pair.reset();
     }
@@ -311,12 +333,14 @@ DiskState::Look DiskState::turn_look(Fid fid, std::optional<Look> expected) {
     // the disk may not hold (a build may have read newer bytes than it).
     if(auto last = trusted(fid); last && last == expected) {
         checks.trusted += 1;
+        turn_trusted = turn_trusted || policy(files.find(fid)->second).kind == Kind::Workspace;
         if(shadow) {
             verify(fid, *last);
         }
         return *last;
     }
     checks.looked += 1;
+    auto started = now();
     Look look{.found = Look::Found::Missing};
     if(auto status = turn_statuses.status(path(fid)); !status) {
         saw_missing(fid);
@@ -325,8 +349,17 @@ DiskState::Look DiskState::turn_look(Fid fid, std::optional<Look> expected) {
     } else {
         look.found = Look::Found::Unreadable;
     }
+    turn_cost += now() - started;
+    turn_looked += 1;
     turn_looks.try_emplace(fid, look);
     return look;
+}
+
+DiskState::Clock::duration DiskState::trust() const {
+    if(measured_cost < slow_turn) {
+        return {};
+    }
+    return std::min(measured_cost * 10, longest_trust);
 }
 
 std::optional<DiskState::Look> DiskState::trusted(Fid fid) {
@@ -335,7 +368,7 @@ std::optional<DiskState::Look> DiskState::trusted(Fid fid) {
         return std::nullopt;
     }
     auto& file = it->second;
-    if(policy(file).kind != Kind::Package || file.due <= now()) {
+    if(policy(file).kind == Kind::Package ? file.due <= now() : now() - file.looked >= trust()) {
         return std::nullopt;
     }
     if(!file.seen) {

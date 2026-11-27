@@ -56,7 +56,11 @@ import :support.prelude;
 /// phase timings), "cache" (hits and misses; why a miss rebuilds is in
 /// the build's info line), "startup" (phase
 /// durations), "request" (per-request latency on the master: wait_ms =
-/// time until a worker was ready, total_ms = end-to-end), "query"
+/// time until a worker was ready, total_ms = end-to-end, and for a
+/// stateless request resolve_ms = the command's resolution before them),
+/// "disk" (a slow turn of looks at files: looked, cost_ms, and trust_ms =
+/// how long checks then trust a look), "completion" (worker-side split of a
+/// completion: compile_ms, documentation_ms), "query"
 /// (worker-side share of a request: acquire_ms = AST wait + strand lock,
 /// compute_ms = the feature call itself), "build" (stateless-worker build
 /// tasks: kind=pch|pcm|compile_unit with per-stage splits — compile_ms, then

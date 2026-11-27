@@ -12,6 +12,7 @@ import :semantic.decls;
 import :semantic.identity;
 import :semantic.template_resolver;
 import :support.json;
+import :support.logging;
 
 namespace clice::feature {
 
@@ -680,7 +681,9 @@ auto code_complete(CompilationParams params,
             items,
             &whole_buffer);
     };
+    Timer compiling;
     auto unit = compile(std::move(params));
+    auto compile_ms = compiling.precise_ms();
 
     // An item's documentation costs most: those the list leaves out get
     // none. Where an item waits for its #include, the server cuts the list.
@@ -701,6 +704,7 @@ auto code_complete(CompilationParams params,
         }
         items = std::move(kept);
     }
+    Timer documenting;
     // LIMITATION: every listed item's documentation is read on each request,
     // its header lexed again for the comment: in a large file that is some
     // 20 ms of a completion, 40 to 70 with nothing typed, and part of why it
@@ -725,6 +729,12 @@ auto code_complete(CompilationParams params,
             .value = client.markdown ? shown.as_markdown() : shown.as_plain_text(),
         };
     }
+
+    LOG_PERF("completion",
+             "items={} compile_ms={:.2f} documentation_ms={:.2f}",
+             items.size(),
+             compile_ms,
+             documenting.precise_ms());
 
     auto listed = items | views::transform([](Item& entry) { return std::move(entry.item); }) |
                   ranges::to<std::vector>();

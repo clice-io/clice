@@ -81,6 +81,28 @@ ZEST_CASE(PackageTrustedUntilDue) {
     ZASSERT(f.disk.take_changes() == llvm::SmallVector<Fid>{fid});
 }
 
+ZEST_CASE(SlowChecksTrustRecentLooks) {
+    // Where every look is slow, a check of a workspace file trusts what the
+    // last turn's look found, for ten times what that turn cost and at most
+    // longest_trust; then it looks again.
+    Fixture f;
+    auto fid = f.file("src/a.h", "int a;\n");
+    auto hash = f.hash_of(fid);
+    f.disk.now = [&f] {
+        return f.time += 40ms;
+    };
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
+    f.disk.now = [&f] {
+        return f.time;
+    };
+    f.rewrite("src/a.h", "int b;\n");
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
+    ZASSERT(f.disk.checks.trusted == 1u);
+
+    f.time += vfs::DiskState::longest_trust;
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Stale);
+}
+
 ZEST_CASE(MarkAddedIsChange) {
     // The text stays as it was: what clang builds from the bytes does not.
     Fixture f;

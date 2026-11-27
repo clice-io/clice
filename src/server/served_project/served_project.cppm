@@ -1226,8 +1226,10 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     if(broken()) {
         co_return empty_value<Result>();
     }
+    Timer resolving;
     auto resolution =
         co_await project.resolve_with_trees(path_id, [&] { return command_request(path_id); });
+    auto resolve_ms = resolving.precise_ms();
     params.directory = resolution.directory;
     params.arguments = resolution.arguments;
     params.settings = project.settings;
@@ -1294,9 +1296,10 @@ async::task<typename protocol::RequestTraits<Params>::Result, ipc::Error>
     result = finish(ticket, kind, std::move(result), snapshot());
     if(result.has_value()) {
         LOG_PERF("request",
-                 "kind={} file={} wait_ms={:.2f} total_ms={:.2f}",
+                 "kind={} file={} resolve_ms={:.2f} wait_ms={:.2f} total_ms={:.2f}",
                  feature::request_name(kind),
                  path,
+                 resolve_ms,
                  wait_ms,
                  timer.precise_ms());
     }
