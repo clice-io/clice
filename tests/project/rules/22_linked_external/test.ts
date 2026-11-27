@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { test } from "@clice/tools/testing";
 
 // Bazel links an external repository from its cache: the build reaches a
@@ -8,7 +9,7 @@ test(async (t) => {
     const entry = {
         directory: t.root,
         file: "external/kotatsu/a.cpp",
-        arguments: ["clang++", "-std=c++20", "-c", "external/kotatsu/a.cpp"],
+        arguments: [path.join(t.root, "missing-cc"), "-c", "external/kotatsu/a.cpp"],
     };
     t.disk.write("compile_commands.json", JSON.stringify([entry], null, 2));
     await t.cli("command external/kotatsu/a.cpp");
