@@ -4,6 +4,7 @@ import :command.edit;
 import :index.database;
 import :settings.rules;
 import :settings.settings;
+import :vfs.file_table;
 import :vfs.path;
 
 namespace clice {
@@ -39,6 +40,10 @@ std::vector<std::string> edits_of(const Settings& settings, llvm::StringRef conf
 
 }  // namespace
 
+RulePath rule_path(const FileTable& files, Fid fid) {
+    return {files.resolve(fid), files.spelling(fid)};
+}
+
 Rules::Rules(const Settings& settings, CanonicalRef root, llvm::StringRef configuration) :
     settings(&settings), root(root), tag(configuration) {
     assert(configuration.empty() ? settings.configurations().empty()
@@ -51,7 +56,7 @@ Rules::Rules(const Settings& settings, CanonicalRef root, llvm::StringRef config
     }
 }
 
-llvm::SmallVector<const CompiledRule*> Rules::matching(CanonicalRef path) const {
+llvm::SmallVector<const CompiledRule*> Rules::matching(const RulePath& path) const {
     llvm::SmallVector<const CompiledRule*> result;
     for(auto* rule: active) {
         if(rule->matches(path)) {
@@ -73,7 +78,7 @@ llvm::SmallVector<Spelling> Rules::declared_databases() const {
     return result;
 }
 
-llvm::SmallVector<const Spelling*> Rules::database_order(CanonicalRef path) const {
+llvm::SmallVector<const Spelling*> Rules::database_order(const RulePath& path) const {
     auto matched = matching(path);
     llvm::SmallVector<const Spelling*> order;
     auto add = [&](const CompiledRule& rule) {
@@ -104,9 +109,9 @@ llvm::SmallVector<const Spelling*> Rules::hiding_databases() const {
     return hiding;
 }
 
-Edits Rules::edits(llvm::ArrayRef<CanonicalRef> paths) const {
+Edits Rules::edits(llvm::ArrayRef<RulePath> paths) const {
     llvm::SmallVector<const CompiledRule*> matched;
-    for(auto path: paths) {
+    for(auto& path: paths) {
         for(auto* rule: matching(path)) {
             if(!ranges::contains(matched, rule)) {
                 matched.push_back(rule);
@@ -134,7 +139,7 @@ Edits Rules::edits(llvm::ArrayRef<CanonicalRef> paths) const {
     return result;
 }
 
-const CompiledRule* Rules::default_rule(CanonicalRef path) const {
+const CompiledRule* Rules::default_rule(const RulePath& path) const {
     for(auto* rule: active) {
         if(rule->has_default_command() && rule->matches(path)) {
             return rule;
@@ -144,39 +149,39 @@ const CompiledRule* Rules::default_rule(CanonicalRef path) const {
 }
 
 template <typename T>
-std::optional<T> Rules::first(CanonicalRef path, std::optional<T> CompiledRule::* field) const {
+std::optional<T> Rules::first(const RulePath& path, std::optional<T> CompiledRule::* field) const {
     auto* rule = deciding(path, field);
     return rule ? rule->*field : std::nullopt;
 }
 
-bool Rules::indexable(CanonicalRef path) const {
+bool Rules::indexable(const RulePath& path) const {
     return first(path, &CompiledRule::background_index).value_or(true);
 }
 
-bool Rules::inside(CanonicalRef path, std::optional<bool> CompiledRule::* field) const {
-    if(!root.empty() && !path::is_within(path, root)) {
+bool Rules::inside(const RulePath& path, std::optional<bool> CompiledRule::* field) const {
+    if(!root.empty() && !path::is_within(path.identity, root)) {
         return false;
     }
     return first(path, field).value_or(true);
 }
 
-bool Rules::lintable(CanonicalRef path) const {
+bool Rules::lintable(const RulePath& path) const {
     return inside(path, &CompiledRule::lint);
 }
 
-bool Rules::formattable(CanonicalRef path) const {
+bool Rules::formattable(const RulePath& path) const {
     return inside(path, &CompiledRule::format);
 }
 
-ReadonlyMode Rules::readonly(CanonicalRef path) const {
+ReadonlyMode Rules::readonly(const RulePath& path) const {
     return first(path, &CompiledRule::readonly).value_or(ReadonlyMode::Off);
 }
 
-std::optional<bool> Rules::self_contained(CanonicalRef path) const {
+std::optional<bool> Rules::self_contained(const RulePath& path) const {
     return first(path, &CompiledRule::self_contained);
 }
 
-bool Rules::other_contexts(CanonicalRef path) const {
+bool Rules::other_contexts(const RulePath& path) const {
     return first(path, &CompiledRule::other_contexts).value_or(true);
 }
 

@@ -177,14 +177,15 @@ async::task<bool> lint_compile(BatchRun& run,
             // it reports nothing. A compiler error stays wherever it is:
             // broken code is not a clean run. So does a finding no file
             // holds (the configuration's).
-            ranges::copy_if(result->tidy_diagnostics,
-                            std::back_inserter(pass.findings),
-                            [&](const worker::TidyDiagnostic& d) {
-                                auto& files = project.file_table;
-                                return d.compiler_error || d.file.empty() ||
-                                       project.rules.lintable(
-                                           files.resolve(files.intern(Spelling::absolute(d.file))));
-                            });
+            ranges::copy_if(
+                result->tidy_diagnostics,
+                std::back_inserter(pass.findings),
+                [&](const worker::TidyDiagnostic& d) {
+                    auto& files = project.file_table;
+                    return d.compiler_error || d.file.empty() ||
+                           project.rules.lintable(
+                               rule_path(files, files.intern(Spelling::absolute(d.file))));
+                });
             co_return false;
         }
         case Skipped:
@@ -222,7 +223,7 @@ async::task<bool> lint_compile(BatchRun& run,
 async::task<> lint_one(BatchRun& run, bool with_index, LintJob job, LintPass& pass) {
     auto& project = run.project;
     auto path_id = job.file;
-    auto file = project.file_table.resolve(path_id);
+    auto file = rule_path(project.file_table, path_id);
     // A TU outside the lint set is here for the index only.
     UnitRequest request;
     request.index = with_index && project.rules.indexable(file);
@@ -332,7 +333,7 @@ async::task<> lint_batch(BatchRun& run, BatchProject batch, bool with_index, Rep
     // set is not even parsed, unless the index wants it.
     std::vector<LintJob> jobs;
     for(auto member: members) {
-        auto file = project.file_table.resolve(member);
+        auto file = rule_path(project.file_table, member);
         bool lintable = project.rules.lintable(file);
         if(!lintable && !(with_index && project.rules.indexable(file))) {
             continue;

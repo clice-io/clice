@@ -275,7 +275,7 @@ void Project::reconcile_index(index::IndexReport& report) {
         // compiling the unit indexes it all the same, for what its importers
         // or the units loading its header read, as a header's declarations
         // are through the units including it: that index stays.
-        if(!rules.indexable(path) && !compiled_by_build(unit)) {
+        if(!rules.indexable(rule_path(file_table, unit)) && !compiled_by_build(unit)) {
             LOG_INFO("A rule keeps {} out of the index; dropping its entries", path);
             index.drop(unit, report);
             continue;

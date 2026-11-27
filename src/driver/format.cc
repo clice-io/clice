@@ -159,7 +159,7 @@ std::vector<Target> project_files(Project& project, llvm::ArrayRef<Fid> members)
         // A header only a command forces in, which no unit's text
         // includes, is left as it is: often a build generated it (CMake's
         // cmake_pch.hxx).
-        if(!formats(path) || !project.rules.formattable(path) || in_nested(path) ||
+        if(!formats(path) || !project.rules.formattable(rule_path(files, fid)) || in_nested(path) ||
            (unit.contains(fid) ? !project_file(root, cache_dir, path)
                                : project.dep_graph.get_includers(fid).empty() ||
                                      ranges::any_of(skipped_dirs, [&](auto& dir) {
@@ -276,7 +276,7 @@ Result format_project(const Request& options) {
                         : std::format("{}: outside the project at {}", path, options.root);
                 return result;
             }
-            if(!project.rules.formattable(target)) {
+            if(!project.rules.formattable({target, Spelling(path, Spelling::cwd())})) {
                 result.exit_code = 2;
                 result.error = std::format("{}: a rule says `format = false`", path);
                 return result;

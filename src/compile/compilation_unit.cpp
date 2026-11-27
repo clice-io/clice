@@ -504,10 +504,14 @@ auto CompilationUnit::body_rule(clang::FileID fid) -> const BodyRule& {
         }
     }
     auto path = file_path(fid);
+    // A pattern matches the path clang reached the file by too (RulePath).
+    llvm::SmallString<128> reached(SM().getFileEntryRefForID(fid)->getName());
+    SM().getFileManager().makeAbsolutePath(reached);
+    path::canonicalize(reached);
     BodyRule found;
     for(auto [rule, globs]: views::zip(rules, *body_globs)) {
         if(!rule.patterns.empty() && ranges::none_of(globs, [&](const kotatsu::GlobPattern& glob) {
-               return glob.match(path);
+               return glob.match(path) || glob.match(reached);
            })) {
             continue;
         }

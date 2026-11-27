@@ -335,7 +335,7 @@ bool MasterServer::shows_other_contexts(Fid path_id) {
         return it->second;
     }
     auto& owner = owner_of(path_id);
-    return owner.project.rules.other_contexts(owner.project.file_table.resolve(path_id));
+    return owner.project.rules.other_contexts(rule_path(owner.project.file_table, path_id));
 }
 
 }  // namespace clice

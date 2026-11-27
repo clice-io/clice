@@ -158,7 +158,7 @@ struct FileCommands {
 
 /// The settings the rules give the file at `path`, in the order the rule
 /// fields are documented.
-std::vector<FileSetting> file_settings(const Rules& rules, CanonicalRef path) {
+std::vector<FileSetting> file_settings(const Rules& rules, const RulePath& path) {
     std::vector<FileSetting> settings;
     auto add = [&](llvm::StringRef name, auto field, std::string value) {
         auto* rule = rules.deciding(path, field);
@@ -336,7 +336,7 @@ int run(Command& opts) {
     auto& files = project.file_table;
     auto file = files.intern(path);
     FileCommands commands{.file = files.display(file),
-                          .settings = file_settings(project.rules, files.resolve(file))};
+                          .settings = file_settings(project.rules, rule_path(files, file))};
     auto print = [&] {
         if(opts.json) {
             print_json(commands);

@@ -456,7 +456,7 @@ struct Project {
     /// declares (discovered ones) — those still on disk before the
     /// vanished, shallower before deeper, then by path. While the rules
     /// declare sources, one only inactive rules declare is left out.
-    llvm::SmallVector<SourceID, 4> source_order(CanonicalRef path) const;
+    llvm::SmallVector<SourceID, 4> source_order(Fid file) const;
 
     /// Whether discovery registered the source: no rule hides it
     /// (Rules::hiding_databases).
@@ -476,7 +476,7 @@ struct Project {
     /// The interned default command of the first matching rule declaring
     /// one; nullopt when no rule does or its command is not a compile
     /// command.
-    std::optional<CommandID> default_command(CanonicalRef path);
+    std::optional<CommandID> default_command(Fid file);
 
     /// The builtin command of a file nothing gives one
     /// (CommandSource::Fallback), run from the file's directory: the driver

@@ -5,6 +5,7 @@ import :compile.compilation;
 import :index.database;
 import :settings.settings;
 import :support.prelude;
+import :vfs.file_table;
 import :vfs.path;
 
 namespace clice {
@@ -40,6 +41,9 @@ struct SourceWalk {
     CanonicalPath cache_dir;
 };
 
+/// The file `fid` as rules see it.
+RulePath rule_path(const FileTable& files, Fid fid);
+
 /// The rules of clice.toml under one configuration: which a file matches,
 /// how they edit its command, whether it is indexed, linted and formatted,
 /// which default command covers it, which databases it compiles from in
@@ -60,7 +64,7 @@ public:
     }
 
     /// The active rules matching `path`, in declaration order.
-    llvm::SmallVector<const CompiledRule*> matching(CanonicalRef path) const;
+    llvm::SmallVector<const CompiledRule*> matching(const RulePath& path) const;
 
     /// Whether an active rule declares a command source — a database or a
     /// default command. Declared sources turn automatic discovery off.
@@ -75,7 +79,7 @@ public:
     /// The databases `path` compiles from as the rules declare them, in
     /// priority order: those of the active rules matching it, then those of
     /// the other active rules, each in declaration order.
-    llvm::SmallVector<const Spelling*> database_order(CanonicalRef path) const;
+    llvm::SmallVector<const Spelling*> database_order(const RulePath& path) const;
 
     /// The databases discovery leaves to the rules: those of the active
     /// rules — and, while they declare sources, of the inactive ones too,
@@ -84,34 +88,34 @@ public:
 
     /// The edits the rules matching any of `paths` contribute, in
     /// declaration order, each rule once.
-    Edits edits(llvm::ArrayRef<CanonicalRef> paths) const;
+    Edits edits(llvm::ArrayRef<RulePath> paths) const;
 
     /// The first matching active rule declaring a default command.
-    const CompiledRule* default_rule(CanonicalRef path) const;
+    const CompiledRule* default_rule(const RulePath& path) const;
 
     /// Whether the background index compiles a file as a unit of its own:
     /// `background_index` (Rule).
-    bool indexable(CanonicalRef path) const;
+    bool indexable(const RulePath& path) const;
 
     /// Whether `clice lint` checks a file and the editor runs clang-tidy on
     /// it: it sits inside the project root and `lint` (Rule) does not keep
     /// it out.
-    bool lintable(CanonicalRef path) const;
+    bool lintable(const RulePath& path) const;
 
     /// Whether `clice format` formats a file: it sits inside the project root
     /// and `format` (Rule) does not keep it out.
-    bool formattable(CanonicalRef path) const;
+    bool formattable(const RulePath& path) const;
 
     /// How an open file is served: `readonly` (Rule).
-    ReadonlyMode readonly(CanonicalRef path) const;
+    ReadonlyMode readonly(const RulePath& path) const;
 
     /// Whether a header compiles on its own as the rules say; nullopt when
     /// none says (Rule::self_contained).
-    std::optional<bool> self_contained(CanonicalRef path) const;
+    std::optional<bool> self_contained(const RulePath& path) const;
 
     /// Whether an open file shows what its other contexts compile in the
     /// code its own skips: `other_contexts` (Rule).
-    bool other_contexts(CanonicalRef path) const;
+    bool other_contexts(const RulePath& path) const;
 
     /// What the active rules say about function bodies, for the compiles
     /// to decide by the files they read.
@@ -130,7 +134,8 @@ public:
     /// The first matching active rule setting `field`, which decides it for
     /// `path`; null when none does, and the default decides.
     template <typename T>
-    const CompiledRule* deciding(CanonicalRef path, std::optional<T> CompiledRule::* field) const {
+    const CompiledRule* deciding(const RulePath& path,
+                                 std::optional<T> CompiledRule::* field) const {
         for(auto* rule: active) {
             if((rule->*field).has_value() && rule->matches(path)) {
                 return rule;
@@ -162,11 +167,11 @@ private:
     /// The value of `field` the first matching active rule setting it
     /// gives; nullopt when none sets it.
     template <typename T>
-    std::optional<T> first(CanonicalRef path, std::optional<T> CompiledRule::* field) const;
+    std::optional<T> first(const RulePath& path, std::optional<T> CompiledRule::* field) const;
 
     /// Whether a file sits inside the project root, when there is one, and
     /// `field` does not keep it out: the lint and format sets.
-    bool inside(CanonicalRef path, std::optional<bool> CompiledRule::* field) const;
+    bool inside(const RulePath& path, std::optional<bool> CompiledRule::* field) const;
 
 private:
     const Settings* settings;

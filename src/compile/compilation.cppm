@@ -193,7 +193,8 @@ class CompilationUnit;
 /// decides each.
 struct FunctionBodyRules {
     struct Rule {
-        /// Glob patterns over canonical absolute paths, as compiled; none
+        /// Glob patterns over absolute paths, as compiled, which match a
+        /// file's identity or the path the compile reached it by; none
         /// matches every file.
         std::vector<std::string> patterns;
 

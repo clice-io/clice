@@ -112,9 +112,9 @@ bool Project::discovered(SourceID id) const {
     return !ranges::contains(hidden_sources(*this), id);
 }
 
-llvm::SmallVector<SourceID, 4> Project::source_order(CanonicalRef path) const {
+llvm::SmallVector<SourceID, 4> Project::source_order(Fid file) const {
     llvm::SmallVector<SourceID, 4> order;
-    for(auto* database: rules.database_order(path)) {
+    for(auto* database: rules.database_order(rule_path(file_table, file))) {
         if(auto id = cdb.find_source(*database); id && !ranges::contains(order, *id)) {
             order.push_back(*id);
         }
@@ -142,7 +142,7 @@ llvm::SmallVector<CompilationEntry, 2> Project::entries(Fid file) const {
         return {};
     }
     llvm::SmallVector<CompilationEntry, 2> result;
-    for(auto id: source_order(file_table.resolve(file))) {
+    for(auto id: source_order(file)) {
         for(auto& entry: all) {
             if(entry.source == id) {
                 result.push_back(entry);
@@ -158,7 +158,7 @@ llvm::SmallVector<Candidate, 2> Project::candidates(Fid file) {
         result.push_back({.base = entry.command, .source = CommandSource::Database});
     }
     if(result.empty()) {
-        if(auto id = default_command(file_table.resolve(file))) {
+        if(auto id = default_command(file)) {
             result.push_back({.base = *id, .source = CommandSource::Default});
         } else if(auto* command = provisional.command(file)) {
             result.push_back(*command);
@@ -167,8 +167,8 @@ llvm::SmallVector<Candidate, 2> Project::candidates(Fid file) {
     return result;
 }
 
-std::optional<CommandID> Project::default_command(CanonicalRef path) {
-    auto* rule = rules.default_rule(path);
+std::optional<CommandID> Project::default_command(Fid file) {
+    auto* rule = rules.default_rule(rule_path(file_table, file));
     return rule ? command_of(*this, *rule) : std::nullopt;
 }
 
@@ -199,11 +199,11 @@ CommandID Project::fallback_command(CanonicalRef path) {
 }
 
 Edits Project::rule_edits(Fid file, const Candidate& candidate) const {
-    llvm::SmallVector<CanonicalRef, 3> paths;
+    llvm::SmallVector<RulePath, 3> paths;
     for(auto from: candidate.rules_from) {
-        paths.push_back(file_table.resolve(from));
+        paths.push_back(rule_path(file_table, from));
     }
-    paths.push_back(file_table.resolve(file));
+    paths.push_back(rule_path(file_table, file));
     return rules.edits(paths);
 }
 
@@ -305,9 +305,8 @@ bool Project::declared(Fid file) {
     if(!entries(file).empty()) {
         return true;
     }
-    auto path = file_table.resolve(file);
-    auto* rule = rules.default_rule(path);
-    return rule && default_unit(*this, path, *rule);
+    auto* rule = rules.default_rule(rule_path(file_table, file));
+    return rule && default_unit(*this, file_table.resolve(file), *rule);
 }
 
 CDBDiff Project::refresh_provisional() {
@@ -348,7 +347,7 @@ CDBDiff Project::refresh_provisional() {
 
 bool Project::units_pending(llvm::function_ref<bool(Fid unit)> covered) {
     return ranges::any_of(members(), [&](Fid unit) {
-        return rules.indexable(file_table.resolve(unit)) && !index.indexed(unit) &&
+        return rules.indexable(rule_path(file_table, unit)) && !index.indexed(unit) &&
                !(covered && covered(unit));
     });
 }

@@ -80,7 +80,10 @@ struct Rule {
                   "Glob patterns selecting the files this rule applies "
                   "to. A relative pattern is anchored at the project root "
                   "(`..` segments allowed); an absolute pattern or one "
-                  "starting with `**` matches the file's absolute path. "
+                  "starting with `**` matches the file's absolute path: "
+                  "its real path, symlinks resolved, or the path the "
+                  "build reaches it by, either one (Bazel's "
+                  "`external/...`, linked from elsewhere). "
                   "`*` matches within a path segment, `?` a single "
                   "character, `**` any number of segments, `{a,b}` "
                   "alternatives, `[0-9]` a character range, `[!...]` a "
@@ -341,11 +344,25 @@ struct ReferencesSettings {
     Limit limit = 2000u;
 };
 
+/// A file as rules see it: its identity, symlinks resolved, and the path the
+/// build reaches it by (FileTable::spelling), through the links and `..` its
+/// identity resolves. A pattern matching either matches the file.
+struct RulePath {
+    /// A file known by its identity alone, as a walk names it.
+    RulePath(CanonicalRef identity) : identity(identity), spelled(identity) {}
+
+    RulePath(CanonicalRef identity, Spelling spelled) :
+        identity(identity), spelled(std::move(spelled)) {}
+
+    CanonicalRef identity;
+    Spelling spelled;
+};
+
 /// A rule after finalize(): patterns compiled, paths anchored at the
 /// project root.
 struct CompiledRule {
     struct Pattern {
-        /// Matches the canonical absolute path: a relative pattern was
+        /// Matches an absolute path (RulePath): a relative pattern was
         /// anchored at the project root when compiled.
         kotatsu::GlobPattern glob;
 
@@ -394,7 +411,7 @@ struct CompiledRule {
     bool declares_sources() const;
 
     /// Whether the rule applies to `path`.
-    bool matches(CanonicalRef path) const;
+    bool matches(const RulePath& path) const;
 
     /// Whether the rule applies while `configuration` is active: it is
     /// untagged or tagged so.

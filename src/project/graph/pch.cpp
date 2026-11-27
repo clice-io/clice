@@ -533,7 +533,7 @@ async::task<std::optional<BuiltPCH>> Project::build_pch(Fid file,
                                                         const Imports& imports,
                                                         BuildOptions options) {
     BuiltPCH built;
-    if(rules.readonly(file_table.resolve(file)) == ReadonlyMode::On) {
+    if(rules.readonly(rule_path(file_table, file)) == ReadonlyMode::On) {
         co_return built;
     }
     // Through depend, the attempt's edge to the PCH makes a staleness
