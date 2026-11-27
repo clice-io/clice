@@ -526,7 +526,33 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
     }
     stage(query.args.drop_front(query.forwarded));
 
-    resolved_configs.push_back({.frontend = &query, .args = commands.persist(staged)});
+    // The command's own -isystem may name a directory of hidden files by
+    // another spelling than the job's (a symlink, `..`): clang keeps the
+    // first spelling of a directory, and looks its files up by that one.
+    auto hidden = query.hidden;
+    if(hidden) {
+        std::vector<vfs::HiddenFiles::Dir> respelled;
+        for(auto& arg: command.args) {
+            if(arg.cls != ArgClass::UserContent || !names_search_dir(arg.opt_id)) {
+                continue;
+            }
+            auto dir = Spelling::absolute(arg.values[0]);
+            for(auto& known: hidden->dirs) {
+                if(dir.str() != known.path &&
+                   files.intern(dir) == files.intern(Spelling::absolute(known.path))) {
+                    respelled.push_back({.path = dir.str(), .names = known.names});
+                }
+            }
+        }
+        if(!respelled.empty()) {
+            auto all = std::make_shared<vfs::HiddenFiles>(*hidden);
+            all->dirs.insert(all->dirs.end(), respelled.begin(), respelled.end());
+            hidden = std::move(all);
+        }
+    }
+
+    resolved_configs.push_back(
+        {.frontend = &query, .args = commands.persist(staged), .hidden = std::move(hidden)});
     return static_cast<ResolvedID>(resolved_configs.size() - 1);
 }
 
@@ -820,7 +846,7 @@ Toolchain::RenderedCommand Toolchain::render(const CommandRef& ref,
     argv.push_back(source.data());
     return {.argv = std::move(argv),
             .query_failure = std::move(resolution->query_failure),
-            .hidden = rc.frontend->hidden ? *rc.frontend->hidden : vfs::HiddenFiles{}};
+            .hidden = rc.hidden ? *rc.hidden : vfs::HiddenFiles{}};
 }
 
 std::vector<const char*> Toolchain::render_for_clang(const CommandRef& ref,
@@ -851,7 +877,7 @@ SearchConfig Toolchain::search_config(const CommandRef& ref) {
     auto [it, inserted] = search_configs.try_emplace(resolution->id);
     if(inserted) {
         it->second = extract_search_config(resolved(resolution->id).args, directory);
-        it->second.hidden = resolved(resolution->id).frontend->hidden;
+        it->second.hidden = resolved(resolution->id).hidden;
         // A directory the command names is the user's, however the driver
         // passes it on: clang-cl's /imsvc reaches cc1 as -internal-isystem.
         llvm::StringSet<> named;
