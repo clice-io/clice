@@ -5,7 +5,6 @@ import :compile.compilation;
 import :index.database;
 import :settings.settings;
 import :support.prelude;
-import :vfs.file_table;
 import :vfs.path;
 
 namespace clice {
@@ -40,9 +39,6 @@ struct SourceWalk {
     llvm::SmallVector<CanonicalPath> patterned;
     CanonicalPath cache_dir;
 };
-
-/// The file `fid` as rules see it.
-RulePath rule_path(const FileTable& files, Fid fid);
 
 /// The rules of clice.toml under one configuration: which a file matches,
 /// how they edit its command, whether it is indexed, linted and formatted,

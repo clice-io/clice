@@ -4,7 +4,6 @@ import :command.edit;
 import :index.database;
 import :settings.rules;
 import :settings.settings;
-import :vfs.file_table;
 import :vfs.path;
 
 namespace clice {
@@ -39,10 +38,6 @@ std::vector<std::string> edits_of(const Settings& settings, llvm::StringRef conf
 }
 
 }  // namespace
-
-RulePath rule_path(const FileTable& files, Fid fid) {
-    return {files.resolve(fid), files.spelling(fid)};
-}
 
 Rules::Rules(const Settings& settings, CanonicalRef root, llvm::StringRef configuration) :
     settings(&settings), root(root), tag(configuration) {

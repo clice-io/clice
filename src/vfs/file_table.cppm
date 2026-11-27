@@ -203,6 +203,9 @@ struct FileTable {
     vfs::DiskState::CheckResult check_version(VersionID vid);
 };
 
+/// The file `fid` as rules see it.
+RulePath rule_path(const FileTable& files, Fid fid);
+
 /// Whether every consumed version still matches the disk, any text of
 /// `any_text` aside (not its absence); see FileTable::check_version and Input
 /// for the per-reference absent policy. Every dependency is looked at, so the

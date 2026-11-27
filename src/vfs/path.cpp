@@ -58,12 +58,30 @@ Spelling Spelling::parent() const {
     return result;
 }
 
+Spelling Spelling::folded() const {
+    llvm::SmallString<256> result(text);
+    path::normalize(result);
+    return absolute(result);
+}
+
 CanonicalPath::CanonicalPath(const Spelling& spelled) {
     // FIXME: the OS fails `missing/../a.h` where the fold of the part that
     // does not exist names an existing a.h: an absent input spelled so looks
     // present, and its PCH rebuilds on every edit.
     fs::weakly_canonical(text, spelled);
     path::canonicalize(text);
+}
+
+RulePath RulePath::input(llvm::StringRef identity, const Spelling& reached) {
+    return {CanonicalRef(identity), reached};
+}
+
+llvm::SmallVector<llvm::StringRef, 2> RulePath::names() const {
+    llvm::SmallVector<llvm::StringRef, 2> result = {llvm::StringRef(identity)};
+    if(llvm::StringRef(spelled) != result.front()) {
+        result.push_back(spelled);
+    }
+    return result;
 }
 
 std::pair<std::size_t, std::size_t> path::tree_distance(llvm::StringRef path,

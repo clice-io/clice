@@ -39,6 +39,7 @@ inline std::string with_drive_of(std::string path, llvm::StringRef written) {
 }  // namespace path
 
 struct FileTable;
+struct RulePath;
 class CanonicalRef;
 class CanonicalPath;
 
@@ -98,6 +99,10 @@ public:
     /// The directory holding it, as spelled.
     Spelling parent() const;
 
+    /// The path with its `..` segments resolved as text, as if no
+    /// directory they climb out of were a symlink.
+    Spelling folded() const;
+
     friend auto operator<=>(const Spelling&, const Spelling&) = default;
 
 private:
@@ -112,11 +117,12 @@ private:
 /// is exactly what clang merges into one file there. Two spellings of one
 /// file compare equal whether it exists yet or not.
 ///
-/// Only resolution (CanonicalPath's constructor), the file table and the
-/// derivations below (parent(), and entry() on its caller's word) make
-/// one, and one never compares with a plain string: a spelling taken for
-/// an identity is a compile error. Either reads as a plain string wherever
-/// a spelling will do.
+/// Only resolution (CanonicalPath's constructor), the file table, the name
+/// a compile gives a file it read (RulePath::input) and the derivations
+/// below (parent(), and entry() on its caller's word) make one, and one
+/// never compares with a plain string: a spelling taken for an identity is
+/// a compile error. Either reads as a plain string wherever a spelling will
+/// do.
 class CanonicalRef {
 public:
     CanonicalRef() = default;
@@ -167,6 +173,7 @@ public:
 private:
     friend class CanonicalPath;
     friend struct FileTable;
+    friend struct RulePath;
 
     explicit CanonicalRef(llvm::StringRef text) : text(text) {}
 
@@ -249,6 +256,32 @@ bool operator==(const L& lhs, const R& rhs) = delete;
 template <typename L, typename R>
     requires (Canonical<L> != Canonical<R>)
 std::strong_ordering operator<=>(const L& lhs, const R& rhs) = delete;
+
+/// A file as rules see it: its identity, symlinks resolved, and the path the
+/// build reaches it by (FileTable::spelling), through the links its identity
+/// resolves. A pattern matching either of its names matches the file.
+struct RulePath {
+    /// A file known by its identity alone, as a walk names it.
+    RulePath(CanonicalRef identity) : identity(identity), spelled(identity.str()) {}
+
+    RulePath(const CanonicalPath& identity) : RulePath(CanonicalRef(identity)) {}
+
+    /// `spelled` with its `..` folded by text: a path climbing out of a
+    /// directory (Meson's `build/../src/a.c`) names no file in it.
+    RulePath(CanonicalRef identity, const Spelling& spelled) :
+        identity(identity), spelled(spelled.folded().str()) {}
+
+    /// A file a compile read, by the identity the compile names it by
+    /// (CompilationUnit::file_path) and the path clang reached it by.
+    static RulePath input(llvm::StringRef identity, const Spelling& reached);
+
+    /// What a pattern is matched against: the identity, then the spelled
+    /// path where it differs.
+    llvm::SmallVector<llvm::StringRef, 2> names() const;
+
+    CanonicalRef identity;
+    std::string spelled;
+};
 
 namespace path {
 

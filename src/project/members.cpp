@@ -61,12 +61,11 @@ bool default_source(Project& project, const RulePath& path, const CompiledRule& 
        path::extension(identity) == ".cuh") {
         return false;
     }
+    auto names = path.names();
     bool singled_out = ranges::any_of(rule.patterns, [&](const CompiledRule::Pattern& pattern) {
-        return ranges::any_of(std::array{llvm::StringRef(identity), llvm::StringRef(path.spelled)},
-                              [&](llvm::StringRef name) {
-                                  return pattern.glob.match(name) &&
-                                         !pattern.glob.match(name.str() + "~");
-                              });
+        return ranges::any_of(names, [&](llvm::StringRef name) {
+            return pattern.glob.match(name) && !pattern.glob.match(name.str() + "~");
+        });
     });
     if(!singled_out) {
         return false;

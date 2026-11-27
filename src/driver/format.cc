@@ -276,7 +276,7 @@ Result format_project(const Request& options) {
                         : std::format("{}: outside the project at {}", path, options.root);
                 return result;
             }
-            if(!project.rules.formattable({target, Spelling(path, Spelling::cwd())})) {
+            if(!project.rules.formattable({target, path})) {
                 result.exit_code = 2;
                 result.error = std::format("{}: a rule says `format = false`", path);
                 return result;
