@@ -1,9 +1,10 @@
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-// The lookup through `gen/..` fails while gen is missing, as the compiler's
-// does, and stays failed: the PCH recording it is reused by every edit.
-test("search directory through a missing one", async (t) => {
+// The lookup of inc/gen/../h.h fails, as the compiler's does while inc/gen is
+// missing, and stays failed though inc/h.h exists: the PCH recording it is
+// reused by every edit. (Windows folds `..` by text, and finds inc/h.h.)
+test("include through a missing directory", async (t) => {
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);
     s.edit("main.cpp", { replace: "return answer();", with: "return answer() + 1;" });

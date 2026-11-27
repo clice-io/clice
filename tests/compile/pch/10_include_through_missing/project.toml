@@ -1,0 +1,2 @@
+# The include climbs out of gen/, which only the second directory has.
+flags = ["-Iinc", "-Iother"]

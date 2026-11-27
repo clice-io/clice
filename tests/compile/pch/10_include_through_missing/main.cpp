@@ -1,4 +1,4 @@
-#include "h.h"
+#include "gen/../h.h"
 
 int main() {
     return answer();
