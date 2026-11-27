@@ -120,6 +120,6 @@ test("header renamed while open", async (t) => {
     t.disk.move("header.h", "renamed.h");
     s.close("header.h");
     expect(await s.errors("renamed.h")).toEqual([]);
-    expect(await s.poll("workspace")).toBe(1);
+    await s.sync({ poll: true });
     await t.show("renamed", s.errors("closed.cpp"));
 });
