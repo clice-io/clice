@@ -246,6 +246,19 @@ ZEST_CASE(FilePathResolvesWslLinks) {
                 CanonicalPath(Spelling::absolute(tmp.path(real))).str());
     }
 }
+
+ZEST_CASE(WslLinkToPosixPathReported) {
+    TempDir tmp;
+    make_wsl_symlink(tmp.path("a.h"), "/usr/include/a.h");
+    tmp.touch("main.cpp", "#include \"a.h\"\n");
+    prepare();
+    params.input.vfs = llvm::makeIntrusiveRefCnt<vfs::View>();
+    params.input.arguments.back() = tmp.path("main.cpp");
+    ZASSERT(try_compile());
+    ZASSERT(unit->diagnostics().size() == 1U);
+    ZEXPECT(
+        llvm::StringRef(unit->diagnostics()[0].message).contains("WSL symlink to a POSIX path"));
+}
 #endif
 
 ZEST_CASE(HardLinksSharePath) {
