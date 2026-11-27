@@ -109,3 +109,17 @@ test("deleted header reaches open includer", async (t) => {
     expect(await s.poll("workspace")).toBe(1);
     expect(await s.errors("closed.cpp")).toEqual([]);
 });
+
+test("header renamed while open", async (t) => {
+    // An editor's rename moves the file, closes the old name and opens the
+    // new one; the open includer then names a header that is gone.
+    const s = await t.start();
+    expect(await s.errors("closed.cpp")).toEqual([]);
+    s.open("header.h", { pull: false });
+    await s.sync();
+    t.disk.move("header.h", "renamed.h");
+    s.close("header.h");
+    expect(await s.errors("renamed.h")).toEqual([]);
+    expect(await s.poll("workspace")).toBe(1);
+    await t.show("renamed", s.errors("closed.cpp"));
+});
