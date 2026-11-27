@@ -533,7 +533,10 @@ Toolchain::ResolvedID Toolchain::synthesize(CommandID id, const Frontend& query)
     if(hidden) {
         std::vector<vfs::HiddenFiles::Dir> respelled;
         for(auto& arg: command.args) {
-            if(arg.cls != ArgClass::UserContent || !names_search_dir(arg.opt_id)) {
+            // A directory of the sysroot (`=dir`, `$SYSROOT/dir`) stays
+            // unanchored.
+            if(arg.cls != ArgClass::UserContent || !names_search_dir(arg.opt_id) ||
+               !path::is_absolute(arg.values[0])) {
                 continue;
             }
             auto dir = Spelling::absolute(arg.values[0]);

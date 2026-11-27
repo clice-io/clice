@@ -665,6 +665,10 @@ echo '#define __STDC_VERSION__ 201710L'
         ZASSERT(unit->completed());
         ZEXPECT(unit->diagnostics().empty());
     }
+
+    /// A directory of the sysroot names none of them.
+    auto sysroot = add("sysroot.c", {driver.c_str(), "-isystem=/include", "-c"});
+    ZEXPECT(f.toolchain.resolve(sysroot.command, sysroot.language));
 }
 
 ZEST_CASE(GCCTargetNames) {

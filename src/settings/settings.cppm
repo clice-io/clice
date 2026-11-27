@@ -345,19 +345,20 @@ struct ReferencesSettings {
 };
 
 /// A file as rules see it: its identity, symlinks resolved, and the path the
-/// build reaches it by (FileTable::spelling), through the links and `..` its
-/// identity resolves. A pattern matching either matches the file.
+/// build reaches it by (FileTable::spelling), through the links its identity
+/// resolves. A pattern matching either matches the file.
 struct RulePath {
     /// A file known by its identity alone, as a walk names it.
-    RulePath(CanonicalRef identity) : identity(identity), spelled(identity) {}
+    RulePath(CanonicalRef identity) : identity(identity), spelled(identity.str()) {}
 
     RulePath(const CanonicalPath& identity) : RulePath(CanonicalRef(identity)) {}
 
-    RulePath(CanonicalRef identity, Spelling spelled) :
-        identity(identity), spelled(std::move(spelled)) {}
+    /// `spelled` with its `..` folded by text: a path climbing out of a
+    /// directory (Meson's `build/../src/a.c`) names no file in it.
+    RulePath(CanonicalRef identity, const Spelling& spelled);
 
     CanonicalRef identity;
-    Spelling spelled;
+    std::string spelled;
 };
 
 /// A rule after finalize(): patterns compiled, paths anchored at the

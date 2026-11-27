@@ -368,6 +368,12 @@ bool CompiledRule::declares_sources() const {
     return !compile_commands.empty() || (has_default_command() && !unmatchable);
 }
 
+RulePath::RulePath(CanonicalRef identity, const Spelling& spelled) :
+    identity(identity), spelled(spelled.str()) {
+    path::normalize(this->spelled, path::DotDot::Fold);
+    path::canonicalize(this->spelled);
+}
+
 bool CompiledRule::matches(const RulePath& path) const {
     if(unmatchable) {
         return false;

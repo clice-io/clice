@@ -112,6 +112,25 @@ lint = false
 };
 #endif
 
+ZEST_CASE(PatternSkipsClimbedOut) {
+    /// Meson's database names a source from its build directory: the path
+    /// climbs out of it, and a rule for the build directory's files leaves
+    /// the source alone.
+    TempDir tmp;
+    tmp.touch("clice.toml", R"([[rules]]
+patterns = ["build/**"]
+lint = false
+)");
+    tmp.touch("src/a.c", "int a(void) { return 0; }\n");
+    tmp.mkdir("build");
+
+    CanonicalPath project_root(Spelling::absolute(tmp.root));
+    Settings settings = load_settings(project_root).settings;
+    Rules rules(settings, project_root, settings.fallback_configuration());
+    auto reached = Spelling::absolute(tmp.path("build/../src/a.c"));
+    ZEXPECT(rules.lintable({CanonicalPath(reached), reached}));
+};
+
 ZEST_CASE(FormatSet) {
     /// The format set reads its own rule field: a `lint = false` directory
     /// still formats, a `format = false` one does not.

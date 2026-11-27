@@ -507,6 +507,7 @@ auto CompilationUnit::body_rule(clang::FileID fid) -> const BodyRule& {
     // A pattern matches the path clang reached the file by too (RulePath).
     llvm::SmallString<128> reached(SM().getFileEntryRefForID(fid)->getName());
     SM().getFileManager().makeAbsolutePath(reached);
+    path::normalize(reached, path::DotDot::Fold);
     path::canonicalize(reached);
     BodyRule found;
     for(auto [rule, globs]: views::zip(rules, *body_globs)) {
