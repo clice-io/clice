@@ -664,6 +664,16 @@ echo '#define __STDC_VERSION__ 201710L'
         });
         ZASSERT(unit->completed());
         ZEXPECT(unit->diagnostics().empty());
+
+        /// clice's own include search agrees with the compile.
+        auto search = f.toolchain.search_config(ref);
+        vfs::DirCache cache;
+        vfs::Scope scope(cache);
+        auto atomic = resolve_include("stdatomic.h", true, "", false, {}, search, scope);
+        ZASSERT(atomic);
+        ZEXPECT(
+            fs::equivalent(atomic->path.str(), path::join(resource_dir(), "include", "stdatomic.h"))
+                .value_or(false));
     }
 
     /// A directory of the sysroot names none of them.

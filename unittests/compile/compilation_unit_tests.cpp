@@ -483,6 +483,26 @@ int own;
     ZEXPECT(unit->indexes_bodies(declared("own_header")->getLocation()));
 }
 
+ZEST_CASE(BodyRuleMatchesReachedPath) {
+    // A rule's pattern matches the path the compile reached a file by too:
+    // a linked directory (Bazel's external/) whose files lie elsewhere.
+    TempDir tmp;
+    tmp.touch("cache/lib/lib.h", "int library;\n");
+    tmp.mkdir("external");
+    ZASSERT(!fs::create_directory_symlink(tmp.path("cache/lib"), tmp.path("external/lib")));
+    tmp.touch("main.cpp", "#include \"external/lib/lib.h\"\nint own;\n");
+    prepare();
+    params.input.vfs = llvm::makeIntrusiveRefCnt<vfs::View>();
+    params.input.arguments.back() = tmp.path("main.cpp");
+    params.function_bodies.rules = {
+        {.patterns = {"**/external/**"}, .skip = true}
+    };
+    ZASSERT(try_compile());
+    auto& includes = unit->directives()[unit->focus_file().file()].includes;
+    ZASSERT(includes.size() == 1U);
+    ZEXPECT(unit->skips_bodies(includes[0].fid) == true);
+}
+
 ZEST_CASE(LibraryBodiesUnindexed) {
     add_file("sys/lib.h", "int library;\n");
     add_focus("main.cpp", "#include <lib.h>\nint own;\n");
