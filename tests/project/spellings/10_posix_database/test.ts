@@ -120,23 +120,48 @@ test("a relative directory", { except: EXCEPT }, async (t) => {
 });
 
 // A database written elsewhere names such a compiler too: unmapped, its
-// entries read as written, and their relative paths hold.
+// entries read as written, their commands quoted for sh, and their relative
+// paths hold.
 test("a relative directory without a runtime", { except: EXCEPT }, async (t) => {
     const entry = {
         directory: ".",
         file: "main.cpp",
-        arguments: [
-            "/usr/bin/clang++",
-            "-Iinc dir",
-            "-include",
-            "inc dir/forced.h",
-            "-c",
-            "main.cpp",
-        ],
+        command: "/usr/bin/clang++ '-Iinc dir' -DFORCED=1 -c main.cpp",
     };
     t.disk.write("compile_commands.json", JSON.stringify([entry], null, 2));
     const s = await t.start({ env: { [PATH]: withoutRuntimes().join(path.delimiter) } });
     await t.show("main.cpp", s.errors("main.cpp"));
+    await t.show("guidance", await s.guidance());
+});
+
+// A compiler no runtime maps leaves the next entry's to be asked for: the
+// runtime on PATH maps that one's paths.
+test("a relative directory past an unmapped compiler", { except: EXCEPT }, async (t) => {
+    t.disk.write("other.cpp", '#include "h.h"\nint o() { return f(); }\n');
+    const entries = [
+        {
+            directory: ".",
+            file: "main.cpp",
+            arguments: [
+                "/usr/bin/clang++",
+                "-Iinc dir",
+                "-include",
+                "inc dir/forced.h",
+                "-c",
+                "main.cpp",
+            ],
+        },
+        {
+            directory: ".",
+            file: "other.cpp",
+            arguments: [compiler(), `-I${posix(path.join(t.root, "inc dir"))}`, "-c", "other.cpp"],
+        },
+    ];
+    t.disk.write("compile_commands.json", JSON.stringify(entries, null, 2));
+    const s = await t.start({
+        env: { [PATH]: [GIT_RUNTIME, ...withoutRuntimes()].join(path.delimiter) },
+    });
+    await t.show("other.cpp", s.errors("other.cpp"));
     await t.show("guidance", await s.guidance());
 });
 

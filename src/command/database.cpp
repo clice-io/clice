@@ -317,9 +317,9 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
     // spells its paths POSIX-style: the mount table of the runtime on PATH,
     // found at the first such entry, maps the entries so spelled.
     std::optional<fs::cygwin::MountTable> table;
-    // Whether no runtime maps the compiler of an entry whose directory is
-    // relative, once asked: such entries read as written.
-    bool unmapped = false;
+    // The compilers of entries whose directory is relative that no runtime
+    // maps, once asked: such entries read as written.
+    llvm::StringSet<> unmapped;
 
     // An entry's strings: views of the database's own bytes when they hold
     // no escape, else unescaped into the entry's storage. simdjson's own
@@ -449,7 +449,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         bool posix = posix_dir;
         std::optional<std::string> compiler;
         if(path::native_style == path::Style::Windows &&
-           (posix_dir ? !table : !path::has_root(dir_ref) && !unmapped)) {
+           (posix_dir ? !table : !path::has_root(dir_ref))) {
             auto tokens = command ? split_command(*command, sys::cmd::Quoting::POSIX) : args;
             posix = posix_entry(dir_ref, tokens);
             if(auto found = posix_compiler(tokens)) {
@@ -458,7 +458,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
         }
         normalizer.mounts = nullptr;
         if(posix) {
-            if(!table) {
+            if(!table && !(compiler && unmapped.contains(*compiler))) {
                 // Another runtime's table maps the directory under its own
                 // root; another of one kind, Git for Windows' MSYS2 beside
                 // MSYS2, maps a drive's paths alike but lacks the compiler.
@@ -493,7 +493,7 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
                         path,
                         *compiler,
                         found->error());
-                    unmapped = true;
+                    unmapped.insert(*compiler);
                 }
             }
             if(table) {
@@ -526,8 +526,8 @@ std::optional<std::size_t> CompilationDatabase::load_source(SourceID id) {
             file_table.intern_entry(file);
         }
 
-        kotatsu::string_list_ref tokens =
-            command ? normalizer.split(*command, views, args) : kotatsu::string_list_ref(args);
+        kotatsu::string_list_ref tokens = command ? Normalizer::split(*command, posix, views, args)
+                                                  : kotatsu::string_list_ref(args);
         auto key = normalizer.shared_key(working, file_ref, tokens);
         std::optional<CommandID> normalized;
         if(auto known = key ? shared.find(*key) : shared.end(); known != shared.end()) {

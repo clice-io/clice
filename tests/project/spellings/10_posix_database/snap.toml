@@ -15,6 +15,14 @@ value = [
     "Compilation database ${WS}/compile_commands.json names its compiler POSIX-style (/usr/bin/clang++), and it cannot be mapped: PATH holds no Cygwin or MSYS2 runtime. If Cygwin or MSYS2 wrote the database, put the bin directory of the one that did on clice's PATH (in VS Code, clice.serverEnv); its entries read as written until then.",
 ]
 
+["a relative directory past an unmapped compiler"."other.cpp"]
+errors = []
+
+["a relative directory past an unmapped compiler".guidance]
+value = [
+    "Compilation database ${WS}/compile_commands.json names its compiler POSIX-style (/usr/bin/clang++), and it cannot be mapped: no runtime maps /usr/bin/clang++ to files that exist (C:\\Program Files\\Git\\usr\\bin maps /usr/bin/clang++ to C:/Program Files/Git/usr/bin/clang++). If Cygwin or MSYS2 wrote the database, put the bin directory of the one that did on clice's PATH (in VS Code, clice.serverEnv); its entries read as written until then.",
+]
+
 ["a relative directory converted"."$ clice command convert compile_commands.json"]
 stdout = '''
 [

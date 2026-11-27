@@ -2,8 +2,6 @@ module clice;
 
 import :command.argument;
 import :command.normalize;
-import :command.table;
-import :vfs.file_table;
 import :unittests.utils;
 
 namespace clice::testing {
@@ -31,18 +29,15 @@ ZEST_CASE(BlanksBeforeProgram) {
 ZEST_CASE(DatabaseViews) {
     /// A database command with nothing to unquote is read as views of its
     /// bytes, splitting as unquoting it would; any other is unquoted.
-    FileTable files;
-    CommandTable commands;
-    Normalizer normalizer{.commands = commands, .files = files};
     llvm::SmallVector<std::string_view> views;
     std::vector<std::string> tokens;
     for(llvm::StringRef line: {"  cc -c  x.c ", "/usr/bin/c++ -DA=1 -I/x -o a.o -c a.cpp"}) {
-        auto read = normalizer.split(line, views, tokens);
+        auto read = Normalizer::split(line, false, views, tokens);
         ZEXPECT(read.size() == views.size());
         ZEXPECT(ranges::equal(read, split_command(line)));
     }
     llvm::StringRef quoted = R"(cc "-DA=1" x.c)";
-    auto read = normalizer.split(quoted, views, tokens);
+    auto read = Normalizer::split(quoted, false, views, tokens);
     ZEXPECT(read.size() == tokens.size());
     ZEXPECT(tokens == split_command(quoted));
 };
