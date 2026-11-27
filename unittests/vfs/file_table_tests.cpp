@@ -415,17 +415,20 @@ ZEST_CASE(RootDotDotFolded) {
     ZASSERT(pool.display(fid) == pool.resolve(fid).str());
 }
 
-ZEST_CASE(AbsentDotDotKept) {
+ZEST_CASE(EmptyPlaceDotDotKept) {
     // The OS fails `missing/../a.h` on POSIX, where the name climbs out of a
-    // directory that is not there; Windows folds `..` by text first.
+    // directory that is not there, so a lookup that looked there found
+    // nothing; Windows folds `..` by text first. A file the build names so
+    // is the a.h the path reaches.
     TempDir tmp;
     tmp.touch("a.h", "");
-    auto through = CanonicalPath(Spelling::absolute(tmp.path("missing/../a.h")));
+    auto through = Spelling::absolute(tmp.path("missing/../a.h"));
     auto direct = CanonicalPath(Spelling::absolute(tmp.path("a.h")));
+    ZEXPECT(CanonicalPath(through) == direct);
 #ifdef _WIN32
-    ZEXPECT(through == direct);
+    ZEXPECT(CanonicalPath::of_place(through) == direct);
 #else
-    ZEXPECT(through != direct);
+    ZEXPECT(CanonicalPath::of_place(through) != direct);
 #endif
 }
 

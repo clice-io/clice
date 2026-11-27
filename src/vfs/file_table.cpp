@@ -33,8 +33,8 @@ std::optional<std::string> in_folder(llvm::ArrayRef<FileTable::Folder> folders,
 
 Fid FileTable::intern(const Spelling& path) {
     // FIXME: a spelling keeps the identity it first resolved to: a directory
-    // that later appears as a symlink, or before a `..` where none was, or a
-    // case-only rename, leaves the file a second fid until restart.
+    // that later appears as a symlink, or a case-only rename, leaves the file a
+    // second fid until restart.
     if(auto it = ids.find(path); it != ids.end()) {
         return it->second;
     }
@@ -186,17 +186,17 @@ Inputs intern_inputs(FileTable& files,
     vfs::StatusBatch statuses;
     for(const auto& file: deps) {
         auto& dep = snap.emplace_back();
-        dep.file = files.intern(Spelling::absolute(file.path));
-        auto hash = file.hash;
-
         // A place a failed lookup looked: the build saw nothing there,
         // whatever is there by now. The file table watches it from here on;
         // a file there is a change.
         if(file.absent) {
+            dep.file = files.intern(CanonicalPath::of_place(Spelling::absolute(file.path)));
             dep.absent = true;
             files.disk.current(dep.file);
             continue;
         }
+        dep.file = files.intern(Spelling::absolute(file.path));
+        auto hash = file.hash;
 
         auto status = statuses.status(file.path);
         if(!status) {

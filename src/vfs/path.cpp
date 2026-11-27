@@ -59,11 +59,15 @@ Spelling Spelling::parent() const {
 }
 
 CanonicalPath::CanonicalPath(const Spelling& spelled) {
-    // A `..` after a part that does not exist stays, as the OS fails
-    // `missing/../a.h`: folded, an absent input spelled so would look
-    // present, and its PCH rebuild on every edit.
-    fs::weakly_canonical(text, spelled, path::DotDot::Keep);
+    fs::weakly_canonical(text, spelled);
     path::canonicalize(text);
+}
+
+CanonicalPath CanonicalPath::of_place(const Spelling& spelled) {
+    CanonicalPath place;
+    fs::weakly_canonical(place.text, spelled, path::DotDot::Keep);
+    path::canonicalize(place.text);
+    return place;
 }
 
 std::pair<std::size_t, std::size_t> path::tree_distance(llvm::StringRef path,
