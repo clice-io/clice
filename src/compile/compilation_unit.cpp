@@ -511,7 +511,7 @@ auto CompilationUnit::body_rule(clang::FileID fid) -> const BodyRule& {
     BodyRule found;
     for(auto [rule, globs]: views::zip(rules, *body_globs)) {
         if(!rule.patterns.empty() && ranges::none_of(globs, [&](const kotatsu::GlobPattern& glob) {
-               return glob.match(path) || glob.match(reached);
+               return glob.match(path) || glob.match(reached.str());
            })) {
             continue;
         }
