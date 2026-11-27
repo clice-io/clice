@@ -87,6 +87,29 @@ lint = false
     Rules rules(settings, project_root, settings.fallback_configuration());
     ZEXPECT(!rules.lintable(CanonicalPath(Spelling::absolute(tmp.path("vendor/lib.cpp")))));
 };
+
+ZEST_CASE(PatternMatchesBuildPath) {
+    /// Bazel links an external repository from its cache: a `**` pattern
+    /// naming external/ matches the path the build reaches a file by, though
+    /// the file's identity lies in the cache.
+    TempDir tmp;
+    tmp.touch("clice.toml", R"([[rules]]
+patterns = ["**/external/**"]
+lint = false
+)");
+    tmp.touch("cache/kotatsu/a.cpp", "int a() { return 0; }\n");
+    tmp.mkdir("external");
+    ZASSERT(::symlink(tmp.path("cache/kotatsu").c_str(), tmp.path("external/kotatsu").c_str()) ==
+            0);
+
+    CanonicalPath project_root(Spelling::absolute(tmp.root));
+    Settings settings = load_settings(project_root).settings;
+    Rules rules(settings, project_root, settings.fallback_configuration());
+    auto reached = Spelling::absolute(tmp.path("external/kotatsu/a.cpp"));
+    CanonicalPath identity(reached);
+    ZEXPECT(rules.lintable(identity));
+    ZEXPECT(!rules.lintable({identity, reached}));
+};
 #endif
 
 ZEST_CASE(FormatSet) {
