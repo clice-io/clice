@@ -59,10 +59,10 @@ Spelling Spelling::parent() const {
 }
 
 CanonicalPath::CanonicalPath(const Spelling& spelled) {
-    // FIXME: the OS fails `missing/../a.h` where the fold of the part that
-    // does not exist names an existing a.h: an absent input spelled so looks
-    // present, and its PCH rebuilds on every edit.
-    fs::weakly_canonical(text, spelled);
+    // A `..` after a part that does not exist stays, as the OS fails
+    // `missing/../a.h`: folded, an absent input spelled so would look
+    // present, and its PCH rebuild on every edit.
+    fs::weakly_canonical(text, spelled, path::DotDot::Keep);
     path::canonicalize(text);
 }
 

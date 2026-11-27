@@ -1,0 +1,2 @@
+# The first search directory climbs out of one that does not exist.
+flags = ["-Igen/../inc", "-Iinc"]
