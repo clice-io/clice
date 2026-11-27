@@ -1,0 +1,4 @@
+[[rules]]
+patterns = ["**/external/**"]
+skip_function_body = true
+lint = false
