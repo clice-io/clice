@@ -123,6 +123,26 @@ ZEST_CASE(FailedReadEndsTrust) {
     ZEXPECT(f.disk.checks.trusted == 0u);
 }
 
+ZEST_CASE(BuildReadIsNoLook) {
+    // A build's read of a file nobody looked at is no look a check trusts:
+    // the file may have changed since the build read it.
+    Fixture f;
+    auto looked = f.file("src/a.h", "int a;\n");
+    auto read = f.file("src/b.h", "int b;\n");
+    auto read_hash = llvm::xxh3_64bits("int b;\n");
+    auto hash = f.hash_of(looked);
+    f.disk.now = [&f] {
+        return f.time += 40ms;
+    };
+    ZASSERT(f.disk.check(looked, hash) == CheckResult::Fresh);
+    f.disk.now = [&f] {
+        return f.time;
+    };
+    f.disk.consumed(read, read_hash);
+    f.rewrite("src/b.h", "int c;\n");
+    ZEXPECT(f.disk.check(read, read_hash) == CheckResult::Stale);
+}
+
 ZEST_CASE(MarkAddedIsChange) {
     // The text stays as it was: what clang builds from the bytes does not.
     Fixture f;

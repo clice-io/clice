@@ -192,8 +192,8 @@ public:
     void add_package(llvm::StringRef dir);
 
     /// A build read this file's bytes, hashing to `hash`: for a file nobody
-    /// looked at yet, that read is the first look, so that a change after
-    /// it is a change.
+    /// looked at yet, a change is measured from that read, though a check
+    /// trusts no look of a build's.
     void consumed(Fid fid, std::uint64_t hash);
 
     /// Make every file under the directory `dir` (an identity) due now.
@@ -257,11 +257,10 @@ private:
         std::uint32_t root = no_root;
         Clock::duration interval{};
         Clock::time_point due;
-        /// When the last look took place.
-        Clock::time_point looked;
-        /// A read failed since: nothing answers from the last look until one
-        /// succeeds.
-        bool unread = false;
+        /// When the last look took place; none before the first, or after
+        /// a read that failed: what a build read is no look, and nothing
+        /// answers from a look a failed read followed.
+        std::optional<Clock::time_point> looked;
         /// When the file's entry in the queue comes up; max() when it has
         /// none.
         Clock::time_point queued = Clock::time_point::max();
