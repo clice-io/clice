@@ -503,6 +503,24 @@ ZEST_CASE(ResolvedSpelling) {
     ZEXPECT(CanonicalPath(Spelling::absolute(tmp.path("real/.clice"))).str() ==
             path::join(real, ".clice"));
 };
+
+ZEST_CASE(LinkedSketchSingledOut) {
+    /// A pattern naming the path the build reaches a file by singles it out
+    /// as one naming its real path does: a sketch Bazel links from its cache.
+    TempDir tmp;
+    tmp.touch("cache/lib/blink.ino", "");
+    tmp.mkdir("external");
+    ZASSERT(::symlink(tmp.path("cache/lib").c_str(), tmp.path("external/lib").c_str()) == 0);
+    FileTable files;
+    Project project{files, CanonicalPath(Spelling::absolute(tmp.root))};
+    project.settings.rules.push_back(Rule{.patterns = {"**/external/**/*.ino"},
+                                          .default_command = std::string("clang++ -x c++")});
+    activate(project);
+    auto reached = Spelling::absolute(tmp.path("external/lib/blink.ino"));
+    auto fid = files.intern(reached);
+    files.intern_entry(reached);
+    ZEXPECT(project.is_unit(fid));
+};
 #endif
 
 ZEST_CASE(RefreshDefaultSources) {

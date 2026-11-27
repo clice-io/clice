@@ -47,8 +47,9 @@ std::optional<CommandID> command_of(Project& project, const CompiledRule& rule) 
 /// without patterns applies to every file, so its forced language covers
 /// only what clang recognizes — or the configuration file itself would
 /// become a unit.
-bool default_source(Project& project, CanonicalRef path, const CompiledRule& rule) {
-    if(is_source_path(path)) {
+bool default_source(Project& project, const RulePath& path, const CompiledRule& rule) {
+    auto identity = path.identity;
+    if(is_source_path(identity)) {
         return true;
     }
     // A header is no translation unit of its own; a file clang has no
@@ -56,12 +57,16 @@ bool default_source(Project& project, CanonicalRef path, const CompiledRule& rul
     // and a pattern singles it out, naming its suffix (`*.ino`) or the file
     // itself: one matching any name there (`src/**`) reaches CMakeLists.txt
     // and README.md too.
-    if(suffix_type(path) != clang::driver::types::TY_INVALID || path::extension(path) == ".cuh") {
+    if(suffix_type(identity) != clang::driver::types::TY_INVALID ||
+       path::extension(identity) == ".cuh") {
         return false;
     }
-    auto another_name = llvm::StringRef(path).str() + "~";
     bool singled_out = ranges::any_of(rule.patterns, [&](const CompiledRule::Pattern& pattern) {
-        return pattern.glob.match(llvm::StringRef(path)) && !pattern.glob.match(another_name);
+        return ranges::any_of(std::array{llvm::StringRef(identity), llvm::StringRef(path.spelled)},
+                              [&](llvm::StringRef name) {
+                                  return pattern.glob.match(name) &&
+                                         !pattern.glob.match(name.str() + "~");
+                              });
     });
     if(!singled_out) {
         return false;
@@ -77,7 +82,7 @@ bool default_source(Project& project, CanonicalRef path, const CompiledRule& rul
 /// Whether `rule`, the first rule matching `path` declaring a default
 /// command, makes `path` a unit: its default command is a compile command
 /// and compiles `path` as one.
-bool default_unit(Project& project, CanonicalRef path, const CompiledRule& rule) {
+bool default_unit(Project& project, const RulePath& path, const CompiledRule& rule) {
     return command_of(project, rule) && default_source(project, path, rule);
 }
 
@@ -305,8 +310,9 @@ bool Project::declared(Fid file) {
     if(!entries(file).empty()) {
         return true;
     }
-    auto* rule = rules.default_rule(rule_path(file_table, file));
-    return rule && default_unit(*this, file_table.resolve(file), *rule);
+    auto path = rule_path(file_table, file);
+    auto* rule = rules.default_rule(path);
+    return rule && default_unit(*this, path, *rule);
 }
 
 CDBDiff Project::refresh_provisional() {
