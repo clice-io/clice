@@ -234,7 +234,7 @@ ZEST_CASE(HeaderCarriesHostEdits) {
 
     CanonicalPath host(Spelling::absolute(tmp.path("src/main.cpp")));
     CanonicalPath header(Spelling::absolute(tmp.path("include/x.h")));
-    CanonicalRef both[] = {host, header};
+    RulePath both[] = {host, header};
     auto edits = rules.edits(both).edits;
     ZASSERT(edits.size() == 4U);
     ZEXPECT(edits[0].flags == (std::vector<std::string>{"-DA"}));
