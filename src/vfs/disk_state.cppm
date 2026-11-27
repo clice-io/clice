@@ -259,6 +259,9 @@ private:
         Clock::time_point due;
         /// When the last look took place.
         Clock::time_point looked;
+        /// A read failed since: nothing answers from the last look until one
+        /// succeeds.
+        bool unread = false;
         /// When the file's entry in the queue comes up; max() when it has
         /// none.
         Clock::time_point queued = Clock::time_point::max();

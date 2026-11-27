@@ -103,6 +103,26 @@ ZEST_CASE(SlowChecksTrustRecentLooks) {
     ZASSERT(f.disk.check(fid, hash) == CheckResult::Stale);
 }
 
+ZEST_CASE(FailedReadEndsTrust) {
+    // A look that cannot read the file ends the trust in what an earlier
+    // look found.
+    Fixture f;
+    auto fid = f.file("src/a.h", "int a;\n");
+    auto hash = f.hash_of(fid);
+    f.disk.now = [&f] {
+        return f.time += 40ms;
+    };
+    ZASSERT(f.disk.check(fid, hash) == CheckResult::Fresh);
+    f.disk.now = [&f] {
+        return f.time;
+    };
+    ZASSERT(fs::remove(f.tmp.path("src/a.h")));
+    f.tmp.mkdir("src/a.h");
+    ZASSERT(!f.disk.current(fid));
+    ZEXPECT(f.disk.check(fid, hash) != CheckResult::Fresh);
+    ZEXPECT(f.disk.checks.trusted == 0u);
+}
+
 ZEST_CASE(MarkAddedIsChange) {
     // The text stays as it was: what clang builds from the bytes does not.
     Fixture f;

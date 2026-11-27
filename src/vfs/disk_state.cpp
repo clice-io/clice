@@ -43,6 +43,7 @@ std::optional<DiskObservation> DiskState::read(Fid fid) {
         // and nothing is answered from the last look until a read succeeds.
         if(auto it = files.find(fid); it != files.end()) {
             it->second.due = std::min(it->second.due, now());
+            it->second.unread = true;
         }
         return std::nullopt;
     }
@@ -299,6 +300,7 @@ void DiskState::saw(Fid fid, std::optional<std::uint64_t> hash, bool stable) {
     auto previous = std::exchange(file.seen, hash);
     bool moved = !first && previous != hash;
     file.looked = now();
+    file.unread = false;
     if(!hash) {
         file.pair.reset();
     }
@@ -368,7 +370,8 @@ std::optional<DiskState::Look> DiskState::trusted(Fid fid) {
         return std::nullopt;
     }
     auto& file = it->second;
-    if(policy(file).kind == Kind::Package ? file.due <= now() : now() - file.looked >= trust()) {
+    if(file.unread ||
+       (policy(file).kind == Kind::Package ? file.due <= now() : now() - file.looked >= trust())) {
         return std::nullopt;
     }
     if(!file.seen) {
