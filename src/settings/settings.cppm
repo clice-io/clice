@@ -351,6 +351,8 @@ struct RulePath {
     /// A file known by its identity alone, as a walk names it.
     RulePath(CanonicalRef identity) : identity(identity), spelled(identity) {}
 
+    RulePath(const CanonicalPath& identity) : RulePath(CanonicalRef(identity)) {}
+
     RulePath(CanonicalRef identity, Spelling spelled) :
         identity(identity), spelled(std::move(spelled)) {}
 
