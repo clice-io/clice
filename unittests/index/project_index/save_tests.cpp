@@ -45,6 +45,32 @@ struct WriteLog final : ForwardingDatabase {
     }
 };
 
+/// Remove the database's value files under `directory`, as a user wiping
+/// the cache under a running server; Windows removes none a process maps.
+void remove_value_files(llvm::StringRef directory) {
+    auto entries = fs::Directory::open(directory);
+    ZASSERT(entries.has_value());
+    for(const auto& entry: *entries) {
+        if(entry && llvm::StringRef(entry->name).starts_with("index.mdb-value-")) {
+            fs::remove(path::join(directory, entry->name));
+        }
+    }
+}
+
+/// A database whose value files go as soon as each write commits them.
+struct WipedAfterWrite final : ForwardingDatabase {
+    using ForwardingDatabase::ForwardingDatabase;
+
+    std::string directory;
+
+    std::expected<void, std::string> write(llvm::ArrayRef<Blob> puts,
+                                           llvm::ArrayRef<index::BlobKey> removes) override {
+        auto committed = real->write(puts, removes);
+        remove_value_files(directory);
+        return committed;
+    }
+};
+
 /// Open the cache store under `tmp` with a logged LMDB database of
 /// `mapsize` bytes (0 = the default).
 WriteLog& open_logged(TempDir& tmp, Project& project, std::size_t mapsize = 0) {
@@ -61,6 +87,10 @@ WriteLog& open_logged(TempDir& tmp, Project& project, std::size_t mapsize = 0) {
 
 ZEST_SUITE(ProjectIndexSave) {
 
+/// The cases' files, and the cache store a case opens there: declared
+/// before the fixture, it outlives the project holding the store's database
+/// open, which Windows cannot delete.
+TempDir tmp;
 IndexerFixture fx;
 async::event_loop& loop = fx.loop;
 Project& project = fx.project;
@@ -86,7 +116,6 @@ std::uint32_t stored_segments() {
 }
 
 ZEST_CASE(SaveCommitsDirtyShard) {
-    TempDir tmp;
     tmp.touch("main.cpp", "int flip_value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
     open_store(tmp, project);
@@ -118,7 +147,6 @@ ZEST_CASE(SaveCommitsDirtyShard) {
 }
 
 ZEST_CASE(SaveMigratesShardViews) {
-    TempDir tmp;
     tmp.touch("main.cpp", "int migrate_value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
 
@@ -181,7 +209,6 @@ ZEST_CASE(SaveMigratesShardViews) {
 }
 
 ZEST_CASE(RefusedGrowthKeepsBatch) {
-    TempDir tmp;
     tmp.touch("main.cpp", "int kept_value() { return 1; }\n");
     open_store(tmp, project);
 
@@ -229,7 +256,6 @@ ZEST_CASE(RefusedGrowthKeepsBatch) {
 }
 
 ZEST_CASE(MidSaveMergeKept) {
-    TempDir tmp;
     tmp.touch("main.cpp", "int first_value() { return 1; }\n");
     auto src = tmp.path("main.cpp");
     open_store(tmp, project);
@@ -290,7 +316,6 @@ ZEST_CASE(MidSaveMergeKept) {
 ZEST_CASE(RetiredDuringMigration) {
     // A shard retired while the migration onto a fresh snapshot yields
     // between its batches is the retirement's: the migration leaves it.
-    TempDir tmp;
     open_store(tmp, project);
     index::FileIndex file_index;
     file_index.relations[7].push_back({
@@ -334,7 +359,6 @@ ZEST_CASE(RetiredDuringMigration) {
 }
 
 ZEST_CASE(RebuildKeepsPendingFindable) {
-    TempDir tmp;
     tmp.touch("a.cpp", "int first_value() { return 1; }\n");
     tmp.touch("b.cpp", "int second_value() { return 2; }\n");
     open_store(tmp, project);
@@ -385,7 +409,6 @@ ZEST_CASE(RebuildKeepsPendingFindable) {
 }
 
 ZEST_CASE(RebuildThroughUnnamedScopes) {
-    TempDir tmp;
     tmp.touch("main.cpp",
               "namespace ns { enum { kSize = 4 }; }\nint main() { return ns::kSize; }\n");
     open_store(tmp, project);
@@ -404,7 +427,6 @@ ZEST_CASE(RebuildThroughUnnamedScopes) {
 }
 
 ZEST_CASE(RebuildKeepsConcurrentChanges) {
-    TempDir tmp;
     tmp.touch("a.cpp", "int first_value() { return 1; }\n");
     tmp.touch("b.cpp", "int second_value() { return 2; }\n");
     tmp.touch("c.cpp", "int second_value() { return 3; }\n");
@@ -448,7 +470,6 @@ ZEST_CASE(SavesAddRuns) {
     // Every save adds what changed as a run of its own; a save that may
     // fold the newest runs, and an idle one the whole index, once they
     // outgrow the runs they fold into.
-    TempDir tmp;
     tmp.touch("a.cpp", "int first_value() { return 1; }\nstatic int first_local = 1;\n");
     tmp.touch("b.cpp", "int second_value() { return 2; }\nstatic int second_local = 2;\n");
     tmp.touch("c.cpp", "int third_value() { return 3; }\n");
@@ -483,10 +504,40 @@ ZEST_CASE(SavesAddRuns) {
     }
 }
 
+ZEST_CASE(SaveMapsOnlyItsSegments) {
+    // A save moves the segments it committed onto their files and reads no
+    // other: one whose file went under a running server (a wiped cache)
+    // keeps the bytes it maps.
+    tmp.touch("a.cpp", "int first_value() { return 1; }\n");
+    tmp.touch("b.cpp", "int second_value() { return 2; }\n");
+    open_store(tmp, project);
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Idle);
+    remove_value_files(index::database_directory(*project.store, {}));
+    ZASSERT(merge(index_file(tmp, tmp.path("b.cpp")).data));
+    fx.save(index::SearchRebuild::Never);
+    ZEXPECT(project.index.search_index().run_count() == 2u);
+    ZEXPECT(index_hits("first_value") == 1u);
+    ZEXPECT(index_hits("second_value") == 1u);
+}
+
+ZEST_CASE(SegmentKeepsBytesWithoutFile) {
+    // A segment whose file goes between its commit and its mapping keeps
+    // the bytes it holds, and answers.
+    tmp.touch("a.cpp", "int first_value() { return 1; }\n");
+    open_store(tmp, project);
+    auto wiped = std::make_unique<WipedAfterWrite>(std::move(project.database));
+    wiped->directory = index::database_directory(*project.store, {});
+    project.database = std::move(wiped);
+    ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
+    fx.save(index::SearchRebuild::Idle);
+    ZEXPECT(project.index.search_index().run_count() == 1u);
+    ZEXPECT(index_hits("first_value") == 1u);
+}
+
 ZEST_CASE(FoldsKeepRunsFew) {
     // Saves of like-sized changes fold as they go: the runs stay few, and
     // every symbol stays found.
-    TempDir tmp;
     tmp.touch("base.cpp", "int base_value() { return 0; }\n");
     open_store(tmp, project);
     ZASSERT(merge(index_file(tmp, tmp.path("base.cpp")).data));
@@ -506,7 +557,6 @@ ZEST_CASE(FoldsKeepRunsFew) {
 ZEST_CASE(NewestRunHidesOlder) {
     // Checkpoints pile up runs unfolded: the newest one says what holds,
     // and a fold of them all keeps that.
-    TempDir tmp;
     tmp.touch("a.cpp", "int first_value() { return 1; }\n");
     tmp.touch("b.cpp", "int second_value() { return 2; }\nstatic int old_name = 1;\n");
     tmp.touch("c.cpp", "int third_value() { return 3; }\n");
@@ -536,7 +586,6 @@ ZEST_CASE(NewestRunHidesOlder) {
 ZEST_CASE(RunResolvesScopes) {
     // A run of a few symbols carries the scopes above them, as a whole
     // build does, without offering them twice.
-    TempDir tmp;
     tmp.touch("a.cpp", "namespace ns { int first_value() { return 1; } }\n");
     tmp.touch("b.cpp", "namespace ns { int second_value() { return 2; } }\n");
     open_store(tmp, project);
@@ -555,7 +604,6 @@ ZEST_CASE(RunResolvesScopes) {
 ZEST_CASE(CountBucketsRequalify) {
     // A symbol whose reference count crosses a power of two is read again
     // by the next run, its quality moved; one that only grows is not.
-    TempDir tmp;
     tmp.touch("shared.h", "#pragma once\ninline int shared_fn() { return 1; }\n");
     for(auto unit: {"a", "b", "c", "d", "e"}) {
         tmp.touch(std::format("{}.cpp", unit),
@@ -591,7 +639,6 @@ ZEST_CASE(CountBucketsRequalify) {
 ZEST_CASE(ReindexHidesOldNames) {
     // A file indexed again replaces its names of internal linkage, and a
     // symbol its old ones in the older runs.
-    TempDir tmp;
     tmp.touch("a.cpp", "static int old_local = 1;\nint use() { return old_local; }\n");
     open_store(tmp, project);
     ZASSERT(merge(index_file(tmp, tmp.path("a.cpp")).data));
@@ -632,7 +679,6 @@ ZEST_CASE(FailedSaveKeepsSearch) {
         }
     };
 
-    TempDir tmp;
     tmp.touch("a.cpp", "int first_value() { return 1; }\n");
     tmp.touch("b.cpp", "int second_value() { return 2; }\n");
     tmp.touch("c.cpp", "int third_value() { return 3; }\n");
@@ -682,7 +728,6 @@ ZEST_CASE(FailedSaveKeepsSearch) {
 }
 
 ZEST_CASE(SaveCompactsAndRetires) {
-    TempDir tmp;
     tmp.touch("shared.h",
               "#pragma once\n#ifdef MODE\nint mode_fn();\n#endif\n"
               "inline int shared_fn() { return 1; }\n");
@@ -734,7 +779,6 @@ ZEST_CASE(SaveCompactsAndRetires) {
 }
 
 ZEST_CASE(SaveRetiresPinnedShard) {
-    TempDir tmp;
     tmp.touch("pinned.h",
               "#pragma once\n#ifdef MODE\nint pin_mode();\n#endif\n"
               "inline int pin_fn() { return 1; }\n");
@@ -795,7 +839,6 @@ ZEST_CASE(SaveRetiresPinnedShard) {
 }
 
 ZEST_CASE(FailedWriteNotCounted) {
-    TempDir tmp;
     tmp.touch("main.cpp", "int uncommitted() { return 1; }\n");
     auto src = tmp.path("main.cpp");
 
@@ -842,7 +885,6 @@ ZEST_CASE(FailedWriteNotCounted) {
 }
 
 ZEST_CASE(WriteCorruptionRebuildsDatabase) {
-    TempDir tmp;
     tmp.touch("clean.cpp", "int clean_value() { return 1; }\n");
     tmp.touch("dirty.cpp", "int dirty_value() { return 2; }\n");
     open_store(tmp, project);
@@ -887,7 +929,6 @@ ZEST_CASE(WriteCorruptionRebuildsDatabase) {
 }
 
 ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
-    TempDir tmp;
     tmp.touch("main.cpp", "int migrate_value() { return 1; }\n");
     open_store(tmp, project);
     project.cdb.add_command(tmp.root, tmp.path("main.cpp"), llvm::StringRef("clang++ -c main.cpp"));
@@ -949,7 +990,6 @@ ZEST_CASE(MigrationCorruptionRebuildsDatabase) {
 }
 
 ZEST_CASE(GrownMapRetriesNow) {
-    TempDir tmp;
     std::string header = "#pragma once\n";
     for(int i = 0; i < 2000; i += 1) {
         header += std::format("inline int function_{0}(int x) {{ return x + {0}; }}\n", i);
@@ -975,7 +1015,6 @@ ZEST_CASE(GrownMapRetriesNow) {
 }
 
 ZEST_CASE(ShutdownSkipsSearchRebuild) {
-    TempDir tmp;
     tmp.touch("main.cpp", "int use() { return 1; }\n");
 
     async::event_loop loop;
@@ -1001,7 +1040,6 @@ ZEST_CASE(ShutdownSkipsSearchRebuild) {
 }
 
 ZEST_CASE(InstantiationsPersist) {
-    TempDir tmp;
     tmp.touch("box.h", R"(#pragma once
 template <typename T>
 struct Box {
@@ -1053,7 +1091,6 @@ void a() { Box<A>{}.show(); }
 ZEST_CASE(DamagedInstantiationsRebuildAll) {
     // An instantiation blob failing its checks damages the database like
     // any record: the next save discards it and every unit is indexed again.
-    TempDir tmp;
     tmp.touch("box.h", R"(#pragma once
 template <typename T>
 struct Box {

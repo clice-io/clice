@@ -308,9 +308,9 @@ using ::pid_t;
 #endif
 #ifdef LLVM_DEFAULT_TARGET_TRIPLE
 #endif
-#ifdef MDB_CORRUPTED
+#ifdef MDB_APPEND
 #endif
-#ifdef MDB_CP_COMPACT
+#ifdef MDB_CORRUPTED
 #endif
 #ifdef MDB_INVALID
 #endif
@@ -318,7 +318,11 @@ using ::pid_t;
 #endif
 #ifdef MDB_MAP_RESIZED
 #endif
+#ifdef MDB_NOLOCK
+#endif
 #ifdef MDB_NOSUBDIR
+#endif
+#ifdef MDB_NOSYNC
 #endif
 #ifdef MDB_NOTFOUND
 #endif

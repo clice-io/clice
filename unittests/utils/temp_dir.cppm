@@ -21,6 +21,13 @@ struct TempDir {
     TempDir(const TempDir&) = delete;
     TempDir& operator=(const TempDir&) = delete;
 
+    /// A directory that stays holds a file the test left open, which
+    /// Windows does not remove: an index database a project still maps
+    /// left 256 MB in the temp directory every run.
+    ~TempDir() {
+        ZEXPECT(!directory.remove());
+    }
+
     fs::TempDirectory directory;
 
     /// As the OS names it, so path() spells files as the compiler reports

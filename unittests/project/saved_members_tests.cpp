@@ -670,8 +670,8 @@ ZEST_CASE(CorruptWriteSavesSnapshot) {
     // A save whose write finds the database corrupt reopens a fresh one and
     // owes it a save; the retry commits the members there too, or the
     // next session could not tell a removed unit.
-    IndexerFixture f;
     TempDir tmp;
+    IndexerFixture f;
     tmp.touch("main.cpp", "int use() { return 0; }\n");
     tmp.touch("compile_commands.json",
               std::format(R"([{{"directory": "{}", "file": "main.cpp", )"

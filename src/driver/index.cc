@@ -201,6 +201,13 @@ async::task<> index_batch(BatchRun& run, const BatchOptions& options, BatchResul
         result.shard_bytes = project.index.shard_bytes();
         result.symbol_count = project.index.symbol_count();
         result.damaged = project.index.damaged();
+        // With nothing queued no pass ran: the search index the queries of
+        // the run's product read is owed its build all the same. A damaged
+        // database waits for the shutdown save to discard it: discarded now,
+        // the pass indexing it again would race the shutdown.
+        if(!result.damaged) {
+            co_await project.save_owed();
+        }
     }
     auto interrupted = co_await lifetime.finish();
     // The shutdown save was the last retry for failed writes; whatever is

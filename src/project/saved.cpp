@@ -324,9 +324,26 @@ async::task<> Project::checkpoint() {
     // thread pool when a shutdown cancels the checkpoint, holding up the
     // final save behind seconds of derived work: the pass end does them,
     // and a pass with nothing queued builds what the search index is owed.
-    co_await save(index::SearchRebuild::Never);
+    if(save_due()) {
+        co_await save(index::SearchRebuild::Never);
+    }
     background_index.schedule();
     forget_evicted_pchs();
+}
+
+bool Project::save_due() const {
+    if(!index.has_unsaved_state() || unsaved_bytes != 0) {
+        return true;
+    }
+    if(chrono::steady_clock::now() - saved_at >= chrono::minutes(30)) {
+        return true;
+    }
+    std::uint64_t stored = 0;
+    if(database) {
+        stored = std::uint64_t(database->count(index::BlobKind::Shard)) +
+                 database->count(index::BlobKind::InstantiationShard);
+    }
+    return std::uint64_t(index.pending_shard_writes()) * 4 >= stored;
 }
 
 async::task<> Project::save(index::SearchRebuild search) {
@@ -383,6 +400,7 @@ async::task<> Project::stop_feeding() {
 }
 
 async::task<> Project::shutdown() {
+    shrink_abandoned = true;
     co_await stop_feeding();
     co_await tree_tasks.join();
     co_await graph.shutdown();
@@ -544,6 +562,7 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
     if(committed) {
         unsaved_bytes = 0;
         save_error.clear();
+        saved_at = chrono::steady_clock::now();
     } else if(!report.owes_retry) {
         save_error = committed.error();
         // A map that grew takes the batch again at once; any other refusal
@@ -566,10 +585,18 @@ async::task<index::IndexReport> Project::write_database(index::SearchRebuild sea
     co_return report;
 }
 
-bool shrink_due(const index::PageUsage& usage) {
+async::task<> Project::save_owed() {
+    if(index.damaged() || index.search_update_due(index::SearchRebuild::Idle)) {
+        co_await save(index::SearchRebuild::Idle);
+    }
+}
+
+bool shrink_due(const index::PageUsage& usage, ShrinkAt at) {
     constexpr std::uint64_t worth = 64ull << 20;
+    constexpr std::uint64_t always = 1ull << 30;
     auto free = usage.free_pages * usage.page_size;
-    return free >= worth && free * 4 >= usage.pages * usage.page_size;
+    std::uint64_t parts = at == ShrinkAt::BatchEnd ? 10 : 4;
+    return free >= always || (free >= worth && free * parts >= usage.pages * usage.page_size);
 }
 
 async::task<index::IndexReport> Project::shrink_database() {
@@ -586,16 +613,17 @@ async::task<index::IndexReport> Project::shrink_database() {
     }
     auto& db = *database;
     auto before = db.usage();
-    if(!before || !shrink_due(*before)) {
+    if(!before || !shrink_due(*before, shrink_at)) {
         co_return report;
     }
     Timer timer;
     using Database = index::BlobDatabase;
     auto copy = Database::Copy::Failed;
-    co_await async::queue([&] { copy = db.write_compact_copy(); });
+    co_await async::queue([&] { copy = db.write_compact_copy(shrink_abandoned); });
     switch(copy) {
         case Database::Copy::Written: break;
-        case Database::Copy::Busy: co_return report;
+        case Database::Copy::Busy:
+        case Database::Copy::Abandoned: co_return report;
         case Database::Copy::Failed:
             shrink_failed = true;
             // The copy read every page: a damaged one it met is discarded

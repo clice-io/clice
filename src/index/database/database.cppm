@@ -76,7 +76,8 @@ enum class BlobKind : std::uint8_t {
     ContextChoices,
     /// The segments of the name search index (index/search_index.cppm)
     /// derived from the symbol records, keyed by a number_key of the
-    /// segment id the header lists.
+    /// segment id the header lists. Each is stored in a value file of its
+    /// own next to the database file.
     SearchSegment,
 };
 
@@ -84,7 +85,7 @@ enum class BlobKind : std::uint8_t {
 /// contract applies:
 ///
 /// - 0: the buffer owns its bytes (small LMDB values copied out for
-///   alignment) — valid for the buffer's lifetime.
+///   alignment) or maps a value file — valid for the buffer's lifetime.
 /// - nonzero: the bytes are borrowed from the backend's read snapshot of
 ///   that generation and die when it is retired (advance_read_snapshot()
 ///   followed by retire_old_snapshot(), a grow(), or a swap_compact_copy()
@@ -124,8 +125,9 @@ struct PageUsage {
 /// Boundary with CacheStore: CacheStore manages the versioned cache
 /// directory and file-shaped products (PCH/PCM/header contexts — clang
 /// consumes those by path, so they must be real files); BlobDatabase is
-/// the index's keyed blob database inside that directory, a single
-/// LMDB `index.mdb`. The interface stays virtual for test doubles (spies,
+/// the index's keyed blob database inside that directory, an LMDB
+/// `index.mdb` and the value files of the kinds it keeps out of the B-tree
+/// (search segments). The interface stays virtual for test doubles (spies,
 /// failure injection).
 ///
 /// `write` does the heavy IO and belongs off the event loop; every other
@@ -191,9 +193,9 @@ public:
         /// rebinds every borrower before yielding the event loop.
         Grown,
         /// The resize would fail — the address space cap or the free disk a
-        /// mapping without sparse support allocates cannot take the larger
-        /// map — so none was tried, since a failed resize leaves the
-        /// environment unusable. Nothing changed; the batch stays unsaved.
+        /// Windows mapping allocates cannot take the larger map — so none
+        /// was tried, since a failed resize leaves the environment
+        /// unusable. Nothing changed; the batch stays unsaved.
         Refused,
     };
 
@@ -210,12 +212,17 @@ public:
         /// Writing it failed (logged): too little free disk, a damaged page
         /// (which corrupted() reports from now on), an IO error.
         Failed,
+        /// `abandon` was set before the copy finished: none was written.
+        Abandoned,
     };
 
-    /// Write a copy of the read snapshot without the free pages beside the
-    /// file, for swap_compact_copy(). Heavy IO, off the event loop; no write
-    /// may commit until the swap.
-    virtual Copy write_compact_copy() = 0;
+    /// Write a copy of the read snapshot beside the file, for
+    /// swap_compact_copy(): its records in key order on pages filled one
+    /// after another, without the free pages and the room that writes in
+    /// random order leave in each page. Heavy IO, off the event loop; no
+    /// write may commit until the swap. Setting `abandon` gives it up
+    /// within a moment.
+    virtual Copy write_compact_copy(const std::atomic<bool>& abandon) = 0;
 
     /// What swap_compact_copy() did.
     enum class Swap : std::uint8_t {
@@ -303,11 +310,12 @@ std::string database_directory(const CacheStore& store, const DatabaseKey& key);
 /// was ever built for it.
 bool database_exists(const CacheStore& store, const DatabaseKey& key);
 
-/// The build's database: a single `index.mdb` (plus its `-lock`
-/// file, and the `-open` file every reader holds locked while it has the
-/// database open, which the writer locks exclusively to swap in a compact
-/// copy) in its
-/// database directory, created on demand. A writable open
+/// The build's database: an `index.mdb` (plus its `-lock` file, the
+/// `-open` file every reader holds locked while it has the database open,
+/// which the writer locks exclusively to swap in a compact copy, cut the
+/// file to its pages or remove a value file, and the `-value-` files of
+/// the values kept out of the B-tree) in its database directory, created
+/// on demand. A writable open
 /// presumes the caller holds the cache directory's writer lock
 /// (index/writer_lock.cppm) — the records form one mutable lineage that
 /// tolerates no second writer. The error says why when the

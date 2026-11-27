@@ -87,6 +87,16 @@ struct Affected {
     CDBDiff commands;
 };
 
+/// What a save with no indexing queued is, which sets the free pages a
+/// compact copy of the database file is worth (shrink_due).
+enum class ShrinkAt : std::uint8_t {
+    /// A server's idle time: more saves free pages again soon.
+    Idle,
+    /// A batch run's end: the file is only read from then on, and a cold
+    /// query reads the free pages between the live ones ahead with them.
+    BatchEnd,
+};
+
 /// A project: its build — the rules, the compilation databases and the
 /// members they make, the commands each file compiles under — and what it
 /// builds from it: its PCHs, its modules and its units' index, persisted in
@@ -230,6 +240,13 @@ struct Project {
     /// replace the file: the file shrinks no more until the next session.
     bool shrink_failed = false;
 
+    /// What a save with no indexing queued is: a run that ends with its
+    /// indexing (`clice index`, `clice lint`) sets ShrinkAt::BatchEnd.
+    ShrinkAt shrink_at = ShrinkAt::Idle;
+
+    /// Set as shutdown starts: a compact copy being written gives up.
+    std::atomic<bool> shrink_abandoned = false;
+
     /// The bytes of the batch the database refused at the last save, which
     /// stay in memory for the next one; zero once a save commits. The first
     /// refusal in a row tells the user, and a server stops indexing while
@@ -238,6 +255,9 @@ struct Project {
 
     /// Why the database refused the last save; empty once a save commits.
     std::string save_error;
+
+    /// When the last save committed, or the project opened.
+    chrono::steady_clock::time_point saved_at = chrono::steady_clock::now();
 
     /// The units a worker compiles now (compile_unit), each since it reached
     /// the worker: what a batch run names when one takes long.
@@ -1251,6 +1271,13 @@ struct Project {
     /// saves queued start a pass when none runs.
     async::task<> save(index::SearchRebuild search = index::SearchRebuild::Behind);
 
+    /// The save a moment with nothing to index owes, when it owes one: the
+    /// search index's full build a previous session never reached — until
+    /// it runs, every search scans the symbol records — or a run of the
+    /// entries it left pending, or the discard of a damaged record a scan
+    /// met, which only a save does.
+    async::task<> save_owed();
+
     /// Take an index report — of the load, a save or a unit's merge: book its
     /// reindexes, before the attempt that merged finishes and its waiters
     /// wake, so a waker never observes an index as current that the report
@@ -1258,11 +1285,20 @@ struct Project {
     /// (on_index_changed).
     void take_report(const index::IndexReport& report);
 
-    /// Persist the index and the cache store's manifest as they stand, a
-    /// pass running or not: a cold pass covers the whole project, and a
-    /// process killed mid-pass loses only what merged since the last
-    /// checkpoint; then forget the PCHs the store evicted.
+    /// Persist the cache store's manifest, and the index as it stands when
+    /// its save is due (save_due), a pass running or not: a cold pass covers
+    /// the whole project, and a process killed mid-pass loses only what
+    /// merged since the last save; then forget the PCHs the store evicted.
     async::task<> checkpoint();
+
+    /// Whether a checkpoint saves the index. A save rewrites nearly every
+    /// page of the database's small records (the symbols' above all) however
+    /// few of them it changes, so the saves come further apart as the index
+    /// grows: due once the shards and instantiation shards changed since the
+    /// last save are a quarter of those stored, or half an hour after it. A
+    /// save changing nothing of the index writes a few records at most, and
+    /// a batch the database refused waits on no one: both are always due.
+    bool save_due() const;
 
     /// Stop what feeds the workers on its own, the include-tree runs and
     /// the background index, before the pool stops: a stopped pool fails
@@ -1312,11 +1348,12 @@ struct Project {
     /// every unit of its own the index held owed a reindex.
     void recover_corrupt_database(index::IndexReport& report);
 
-    /// Replace the database file by a compact copy when shrink_due, no save
-    /// running meanwhile, and move the index's views onto it. Meant for when
-    /// indexing is idle: the copy takes seconds on a large project, and it
-    /// replaces the file only while no other process has the database open —
-    /// else the file shrinks at a later call.
+    /// Replace the database file by a compact copy when shrink_due at
+    /// `shrink_at`, no save running meanwhile, and move the index's views
+    /// onto it. Meant for when indexing is idle: the copy takes a minute on
+    /// a large project, a shutdown gives it up, and it replaces the file only
+    /// while no other process has the database open — else the file shrinks
+    /// at a later call.
     async::task<index::IndexReport> shrink_database();
 
     /// Confirmed corruption heals through rebuildability: condemn the corrupt
@@ -1337,9 +1374,10 @@ struct Project {
     void load_precompiled_records(llvm::StringRef bytes);
 };
 
-/// Whether a database file's free pages are worth a compact copy: a quarter
-/// of the file, and 64 MB at least.
-bool shrink_due(const index::PageUsage& usage);
+/// Whether a database file's free pages are worth a compact copy at `at`:
+/// 64 MB at least and a quarter of the file when idle, a tenth at a batch
+/// run's end, or 1 GB whatever the file's size.
+bool shrink_due(const index::PageUsage& usage, ShrinkAt at);
 
 /// How often a long-lived owner calls Project::checkpoint().
 chrono::milliseconds checkpoint_interval();

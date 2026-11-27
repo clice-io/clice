@@ -10,10 +10,10 @@
 /// them and answers at once. A newer run hides what older ones say of the
 /// symbols it offers and of the names of internal linkage of the files it
 /// covers, so the owner records a change as a small run and folds runs
-/// together now and then. Each segment holds a bounded number of entries
-/// (segment_entries): a store rewrites a small run, never one big value.
-/// Symbols merged after the newest run's snapshot are not in it; the owner
-/// keeps their hashes aside and scans those directly.
+/// together now and then. A run is built as one segment, which the
+/// database keeps in a file of its own, read in place. Symbols merged
+/// after the newest run's snapshot are not in it; the owner keeps their
+/// hashes aside and scans those directly.
 
 module clice:index.search;
 
@@ -73,13 +73,8 @@ struct SearchSnapshot {
     std::vector<std::uint32_t> covered;
 };
 
-/// How many symbols a segment offers at most.
-constexpr std::uint32_t segment_entries = 16384;
-
-/// Encode a run's segments, each offering at most `bound` symbols; one
-/// segment at least.
-std::vector<std::vector<std::byte>> build_search_segments(const SearchSnapshot& snapshot,
-                                                          std::uint32_t bound = segment_entries);
+/// Encode a run's segment.
+std::vector<std::byte> build_search_segment(const SearchSnapshot& snapshot);
 
 /// How a symbol answers a query's name pattern.
 struct NameRank {
@@ -163,9 +158,9 @@ public:
     /// search and marks the index damaged.
     bool replace(std::uint32_t runs, std::vector<std::unique_ptr<llvm::MemoryBuffer>> segments);
 
-    /// Swap a segment's bytes for byte-identical ones elsewhere (a newer
-    /// read snapshot); false, keeping the old ones, when the sizes differ.
-    bool rebind(std::uint32_t segment, std::unique_ptr<llvm::MemoryBuffer> bytes);
+    /// Swap a segment's bytes for byte-identical ones elsewhere (the file a
+    /// save stored them in), keeping the old ones when the sizes differ.
+    void rebind(std::uint32_t segment, std::unique_ptr<llvm::MemoryBuffer> bytes);
 
     void clear();
 

@@ -400,8 +400,8 @@ ZEST_CASE(RetireReportsIndexChanged) {
     // The save-side recovery source: a shard retired by the compaction
     // vanishes from memory, which changes index-served answers exactly
     // like a merge — the report must say so.
-    IndexerFixture f;
     TempDir tmp;
+    IndexerFixture f;
     tmp.touch("dep.h", "#pragma once\ninline int dep() { return 1; }\n");
     tmp.touch("main.cpp", "#include \"dep.h\"\nint use() { return dep(); }\n");
     open_store(tmp, f.project);
@@ -572,6 +572,26 @@ ZEST_CASE(EmptyPassBuildsSearch) {
 
     f.run_pass();
     ZEXPECT(f.project.index.search_index().loaded());
+}
+
+ZEST_CASE(OwedSaveBuildsSearch) {
+    // A batch run with nothing queued runs no pass: the save it owes the
+    // search index all the same.
+    TempDir tmp;
+    tmp.touch("main.cpp", "int value() { return 1; }\n");
+    IndexerFixture f;
+    open_store(tmp, f.project);
+    auto indexed = index_file(tmp, tmp.path("main.cpp"));
+    ZASSERT(!indexed.data.empty());
+    ZASSERT(f.merge(indexed.data));
+    f.save();
+    ZASSERT(f.project.index.search_update_due(index::SearchRebuild::Idle));
+
+    auto owed = f.project.save_owed();
+    f.loop.schedule(owed);
+    f.loop.run();
+    ZEXPECT(f.project.index.search_index().loaded());
+    ZEXPECT(!f.project.index.search_update_due(index::SearchRebuild::Idle));
 }
 
 ZEST_CASE(EmptyPassDiscardsDamage) {

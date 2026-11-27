@@ -399,11 +399,12 @@ public:
     /// caller discards it.
     async::task<bool> migrate_views(BlobDatabase& db, async::event_loop& loop, IndexReport& report);
 
-    /// Move the views borrowing an earlier read snapshot — resident shards
-    /// and search segments — onto the database's current one, then retire
-    /// the earlier ones: in batches with yields between them, or `at_once`
-    /// when the earlier snapshots died already (a grown map, a file
-    /// replaced by its compact copy). False when the database turned out corrupt or a view diverged
+    /// Move the resident shards, which borrow an earlier read snapshot,
+    /// onto the database's current one, and the search segments a save
+    /// committed onto their files, then retire the earlier snapshots: in
+    /// batches with yields between them, or `at_once` when the earlier
+    /// snapshots died already (a grown map, a file replaced by its compact
+    /// copy). False when the database turned out corrupt or a view diverged
     /// from its blob: the caller discards it.
     async::task<bool> rebind_views(BlobDatabase& db, async::event_loop& loop, bool at_once);
 
@@ -785,6 +786,10 @@ private:
         std::vector<BlobDatabase::Blob> writes;
 
         llvm::SmallVector<std::uint32_t> drops;
+
+        /// The segments built this session that keep their bytes in memory
+        /// until a save commits them to their files, which they then map.
+        std::vector<std::uint32_t> in_memory;
 
         void symbol_changed(SymbolHash hash) {
             pending_symbols.insert(hash);

@@ -350,6 +350,7 @@ inline std::string start_batch(BatchRun& run,
     auto& project = run.project;
     run.files.spell_root(batch.root);
     project.root = CanonicalPath(batch.root);
+    project.shrink_at = ShrinkAt::BatchEnd;
     project.settings = batch.loaded.settings;
     auto& settings = project.settings;
     settings.workers.background_delay_ms = 0;
