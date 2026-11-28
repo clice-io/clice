@@ -3347,6 +3347,29 @@ ZEST_CASE(ClassKeepsSignatures) {
     }));
 }
 
+ZEST_CASE(ClassGuessesNothing) {
+    // `val` is still a template in `Box<A>`: what its `auto` stands for is
+    // no instantiation's to say.
+    build(R"(
+        struct A { using type = int; };
+        struct S {};
+        template <typename U>
+        struct Helper { static constexpr S make() { return {}; } };
+        template <typename T>
+        struct Box {
+            typename T::type field;
+            template <typename U>
+            static constexpr auto val = Helper<U>::make();
+        };
+        Box<A> box;
+    )",
+          {},
+          CompilationKind::Content);
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"type", Reference, "type"},
+    });
+}
+
 ZEST_CASE(DeclaredSignatureResolved) {
     // The instantiation takes its signature from the declaration before the
     // definition.
