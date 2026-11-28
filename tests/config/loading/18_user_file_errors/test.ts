@@ -11,7 +11,7 @@ function env(t: TestContext): Record<string, string> {
 // there, and the project, which reads it, serves nothing.
 test("server", async (t) => {
     const s = await t.start({ env: env(t) });
-    await t.show("config.toml", s.pushes("user/clice/config.toml"));
+    await t.show("clice.toml", s.pushes("user/clice/clice.toml"));
     s.open("main.cpp");
     await t.show("main.cpp", s.documentSymbols("main.cpp"));
 });

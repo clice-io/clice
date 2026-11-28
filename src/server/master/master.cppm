@@ -167,7 +167,7 @@ public:
     /// user's, as each of the master's ticks does whatever the polling
     /// setting: a change asks for a restart, and so does one appearing
     /// where a project's rule looked. clice.toml is the one in use where it
-    /// exists, else .clice/config.toml; the local file applies beside
+    /// exists, else .clice/clice.toml; the local file applies beside
     /// either.
     void look_at_settings();
 
@@ -608,11 +608,11 @@ private:
     struct SettingsWatch {
         CanonicalPath dir;
 
-        /// clice.toml, and .clice/config.toml, which applies without it.
+        /// clice.toml, and .clice/clice.toml, which applies without it.
         vfs::Flag file;
         vfs::Flag hidden;
 
-        /// .clice/local.toml, which applies beside either.
+        /// .clice/clice.local.toml, which applies beside either.
         vfs::Flag local;
     };
 

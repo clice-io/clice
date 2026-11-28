@@ -138,7 +138,7 @@
         "clice.initializationOptions": {
           "type": "object",
           "default": {},
-          "markdownDescription": "Configuration sent to the server as `initializationOptions`, in the shape of `clice.toml`: `{ \"diagnostics\": { \"clang_tidy\": false } }`. A setting given here takes the place of the same setting in the configuration files — the user's, the project's `clice.toml` and its `.clice/local.toml` — and rules given here replace theirs (see the [configuration guide](https://docs.clice.io/clice/guide/configuration)); it applies when the server restarts."
+          "markdownDescription": "Configuration sent to the server as `initializationOptions`, in the shape of `clice.toml`: `{ \"diagnostics\": { \"clang_tidy\": false } }`. A setting given here takes the place of the same setting in the configuration files — the user's, the project's `clice.toml` and its `.clice/clice.local.toml` — and rules given here replace theirs (see the [configuration guide](https://docs.clice.io/clice/guide/configuration)); it applies when the server restarts."
         },
         "clice.trace.server": {
           "type": "string",
@@ -1181,9 +1181,7 @@
       {
         "fileMatch": [
           "clice.toml",
-          ".clice/config.toml",
-          ".clice/local.toml",
-          "clice/config.toml"
+          "clice.local.toml"
         ],
         "url": "https://docs.clice.io/clice-config.schema.json"
       }

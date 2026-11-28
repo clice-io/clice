@@ -55,7 +55,7 @@ ZEST_CASE(NestedProjectsLeftOut) {
     tmp.touch("sub/clice.toml", "");
     tmp.touch("sub/compile_commands.json", "[]");
     tmp.touch("sub/deep/build/x/compile_commands.json", "[]");
-    tmp.touch("hidden/.clice/config.toml", "");
+    tmp.touch("hidden/.clice/clice.toml", "");
     tmp.touch("hidden/compile_commands.json", "[]");
     CanonicalPath root(Spelling::absolute(tmp.root));
     Spelling spelled(root);
@@ -161,7 +161,7 @@ ZEST_CASE(DefinesProject) {
     /// file or a database where startup discovery looks.
     TempDir tmp;
     tmp.touch("toml/clice.toml", "");
-    tmp.touch("hidden/.clice/config.toml", "");
+    tmp.touch("hidden/.clice/clice.toml", "");
     tmp.touch("db/build/compile_commands.json", "[]");
     tmp.touch("plain/src/main.cpp", "");
     tmp.touch("deep/a/b/compile_commands.json", "[]");

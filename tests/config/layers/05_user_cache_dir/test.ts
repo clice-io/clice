@@ -12,7 +12,7 @@ function env(t: TestContext): Record<string, string> {
 // first only: the other falls back to its own, and is told how each gets
 // one.
 test("one directory", async (t) => {
-    t.disk.write("user/clice/config.toml", 'cache_dir = "../shared/.clice"\n');
+    t.disk.write("user/clice/clice.toml", 'cache_dir = "../shared/.clice"\n');
     await t.cli("index --workspace a --jobs 1", { env: env(t) });
     await t.cli("index --workspace b --jobs 1", { env: env(t) });
     expect(t.disk.list("b/.clice/**").length).toBeGreaterThan(0);
@@ -22,7 +22,7 @@ test("one directory", async (t) => {
 // the logs go elsewhere, where the transcript can name them.
 test("a directory each", async (t) => {
     t.disk.write(
-        "user/clice/config.toml",
+        "user/clice/clice.toml",
         'cache_dir = "../caches/${workspace_id}/.clice"\nlogging_dir = "../.clice/logs"\n',
     );
     await t.cli("index --workspace a --jobs 1", { env: env(t) });

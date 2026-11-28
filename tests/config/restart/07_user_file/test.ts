@@ -8,25 +8,25 @@ import { test } from "@clice/tools/testing";
 test("written", async (t) => {
     const s = await t.start({ env: { XDG_CONFIG_HOME: path.join(t.root, "user") } });
     await s.sync();
-    t.disk.write("user/clice/config.toml", "[workers]\nforeground = 1\n");
+    t.disk.write("user/clice/clice.toml", "[workers]\nforeground = 1\n");
     await s.poll("workspace");
     await t.show("asked", await s.restarted());
 });
 
 test("changed", async (t) => {
-    t.disk.write("user/clice/config.toml", "[workers]\nforeground = 1\n");
+    t.disk.write("user/clice/clice.toml", "[workers]\nforeground = 1\n");
     const s = await t.start({ env: { XDG_CONFIG_HOME: path.join(t.root, "user") } });
     await s.sync();
-    t.disk.write("user/clice/config.toml", "[workers]\nforeground = 2\n");
+    t.disk.write("user/clice/clice.toml", "[workers]\nforeground = 2\n");
     await s.poll("workspace");
     await t.show("asked", await s.restarted());
 });
 
 test("deleted", async (t) => {
-    t.disk.write("user/clice/config.toml", "[workers]\nforeground = 1\n");
+    t.disk.write("user/clice/clice.toml", "[workers]\nforeground = 1\n");
     const s = await t.start({ env: { XDG_CONFIG_HOME: path.join(t.root, "user") } });
     await s.sync();
-    t.disk.rm("user/clice/config.toml");
+    t.disk.rm("user/clice/clice.toml");
     await s.poll("workspace");
     await t.show("asked", await s.restarted());
 });

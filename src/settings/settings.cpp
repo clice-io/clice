@@ -708,7 +708,7 @@ std::string user_settings_file() {
         dir = path::join(dir, ".config");
 #endif
     }
-    auto file = path::join(dir, "clice", "config.toml");
+    auto file = path::join(dir, "clice", "clice.toml");
     path::canonicalize(file);
     return file;
 }

@@ -67,7 +67,7 @@ test("the editor's default command opens no folder", async (t) => {
 
 // A rule of the user's file applies to every folder too.
 test("the user's default command opens no folder", async (t) => {
-    t.disk.write("user/clice/config.toml", '[[rules]]\ndefault_command = "clang++ -std=c++20"\n');
+    t.disk.write("user/clice/clice.toml", '[[rules]]\ndefault_command = "clang++ -std=c++20"\n');
     const s = await t.start({
         folders: ["alpha", "plain"],
         env: { XDG_CONFIG_HOME: path.join(t.root, "user") },

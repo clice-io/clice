@@ -1,4 +1,4 @@
-[test."config.toml"]
+[test."clice.toml"]
 pushes = [
     [
         {

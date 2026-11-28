@@ -129,7 +129,7 @@ export function withLastRule(
     if (rules !== undefined) {
         return { ...config, rules: [...rules, last] };
     }
-    for (const name of ["clice.toml", path.join(".clice", "config.toml")]) {
+    for (const name of ["clice.toml", path.join(".clice", "clice.toml")]) {
         const file = path.join(root, name);
         if (!fs.existsSync(file)) {
             continue;

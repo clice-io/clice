@@ -1,4 +1,4 @@
-[server."config.toml"]
+[server."clice.toml"]
 pushes = [
     [
         {
@@ -14,5 +14,5 @@ pushes = [
 document_symbols = []
 
 ["command line"."$ clice lint"]
-stderr = "error: user/clice/config.toml:2:13: 'src\\**' holds a backslash: separate directories with `/` on every platform, and match a literal `*`, `?`, `[` or `{` with a range such as `[*]` at rules[0].patterns[0]"
+stderr = "error: user/clice/clice.toml:2:13: 'src\\**' holds a backslash: separate directories with `/` on every platform, and match a literal `*`, `?`, `[` or `{` with a range such as `[*]` at rules[0].patterns[0]"
 exit = 2

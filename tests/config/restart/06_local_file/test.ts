@@ -6,16 +6,16 @@ test("written", async (t) => {
     t.disk.write("clice.toml", "[[rules]]\nbackground_index = false\n");
     const s = await t.start();
     await s.sync();
-    t.disk.write(".clice/local.toml", '[[rules]]\nappend = ["-DEDITED"]\n');
+    t.disk.write(".clice/clice.local.toml", '[[rules]]\nappend = ["-DEDITED"]\n');
     await s.poll("workspace");
     await t.show("asked", await s.restarted());
 });
 
 test("deleted", async (t) => {
-    t.disk.write(".clice/local.toml", '[[rules]]\nappend = ["-DEDITED"]\n');
+    t.disk.write(".clice/clice.local.toml", '[[rules]]\nappend = ["-DEDITED"]\n');
     const s = await t.start();
     await s.sync();
-    t.disk.rm(".clice/local.toml");
+    t.disk.rm(".clice/clice.local.toml");
     await s.poll("workspace");
     await t.show("asked", await s.restarted());
 });

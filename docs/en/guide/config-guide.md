@@ -4,7 +4,7 @@ clice needs no configuration once it finds a compilation database (see [Project 
 
 ## The Configuration File
 
-clice reads `clice.toml` in the project root, or `.clice/config.toml` when there is none, once, when the server starts; saving the file makes the server ask the editor to restart it. Settings for every project — the workers, the features' preferences, rules for the files every project has — go in the user's file, `clice/config.toml` in `$XDG_CONFIG_HOME` where it is set to an absolute path, else in `~/.config` (`%APPDATA%` on Windows), under the project's; a rule there naming databases or a default command turns the discovery of databases off in every project, so those stay in the project's files. A developer's own settings for one project go in `.clice/local.toml`, over the project's, which Git does not see while the cache directory is the default one, `.clice`. An editor can send settings too, in `initializationOptions`, and those take the place of the same settings in the files. `clice inspect config` shows which files a project reads and where each setting it changes comes from.
+clice reads `clice.toml` in the project root, or `.clice/clice.toml` when there is none, once, when the server starts; saving the file makes the server ask the editor to restart it. Settings for every project — the workers, the features' preferences, rules for the files every project has — go in the user's file, `clice/clice.toml` in `$XDG_CONFIG_HOME` where it is set to an absolute path, else in `~/.config` (`%APPDATA%` on Windows), under the project's; a rule there naming databases or a default command turns the discovery of databases off in every project, so those stay in the project's files. A developer's own settings for one project go in `.clice/clice.local.toml`, over the project's, which Git does not see while the cache directory is the default one, `.clice`. An editor can send settings too, in `initializationOptions`, and those take the place of the same settings in the files. `clice inspect config` shows which files a project reads and where each setting it changes comes from.
 
 <!-- BEGIN GENERATED ITEMS: config/loading -->
 
@@ -46,7 +46,7 @@ tests/config/layers/01_editor_overrides
 
 Settings for every project go in the user's configuration file, under each project's own settings
 
-`clice/config.toml` in the user's configuration directory (`~/.config` on Linux and macOS, `%APPDATA%` on Windows, `$XDG_CONFIG_HOME` wherever it is set to an absolute path) applies to every project, under its `clice.toml`. Here the user's rule and the project's both give `main.cpp` a macro, and the file compiles; `clice inspect config` lists the files read and where each setting comes from.
+`clice/clice.toml` in the user's configuration directory (`~/.config` on Linux and macOS, `%APPDATA%` on Windows, `$XDG_CONFIG_HOME` wherever it is set to an absolute path) applies to every project, under its `clice.toml`. Here the user's rule and the project's both give `main.cpp` a macro, and the file compiles; `clice inspect config` lists the files read and where each setting comes from.
 
 ```case
 tests/config/layers/03_user_file
@@ -58,7 +58,7 @@ tests/config/layers/03_user_file
 
 **The local file**
 
-`.clice/local.toml` holds a developer's own settings for a project whose `clice.toml` is committed
+`.clice/clice.local.toml` holds a developer's own settings for a project whose `clice.toml` is committed
 
 The project's `clice.toml` compiles `main.cpp` as C++17 with a macro; the local file, which the cache directory's `.gitignore` keeps out of Git, asks for C++20 and takes the macro away. Its rules come before the project's, so they decide first, and their flags come after, so they win on the command line: the concept compiles and the `#error` stays out.
 

@@ -787,7 +787,7 @@ public:
     std::vector<SettingsFile> settings_files;
 
     /// The project's own configuration file, where what concerns the
-    /// project is shown: its clice.toml (or .clice/config.toml), else its
+    /// project is shown: its clice.toml (or .clice/clice.toml), else its
     /// local file; empty for none.
     llvm::StringRef settings_file() const;
 

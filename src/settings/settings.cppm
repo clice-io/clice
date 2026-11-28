@@ -39,17 +39,16 @@ void set_cache_dir_owner(llvm::StringRef cache_dir,
 /// The configuration files a project root may hold, in lookup order: the
 /// first there is the project's.
 constexpr inline std::array<llvm::StringRef, 2> settings_file_names = {"clice.toml",
-                                                                       ".clice/config.toml"};
+                                                                       ".clice/clice.toml"};
 
 /// The personal configuration file a project root may hold beside the
 /// project's, which the default cache directory's .gitignore keeps out of
 /// Git.
-constexpr inline llvm::StringRef local_settings_file_name = ".clice/local.toml";
+constexpr inline llvm::StringRef local_settings_file_name = ".clice/clice.local.toml";
 
-/// The user's configuration file, laid under every project's: `clice/config.toml`
-/// in XDG_CONFIG_HOME when it is absolute, on every platform, else in
-/// ~/.config, on Windows in the roaming application data. Its name is none
-/// of a project root's, so its directory is never taken for a project.
+/// The user's configuration file, laid under every project's:
+/// `clice/clice.toml` in XDG_CONFIG_HOME when it is absolute, on every
+/// platform, else in ~/.config, on Windows in the roaming application data.
 /// Empty when the home directory is unknown.
 std::string user_settings_file();
 
@@ -151,7 +150,7 @@ struct Rule {
                   "immediate subdirectories loads, and so do the ones in "
                   "the directories above a file when it is opened; a "
                   "directory below the root with a clice.toml, "
-                  ".clice/config.toml or .clice/local.toml of its own is "
+                  ".clice/clice.toml or .clice/clice.local.toml of its own is "
                   "another project, and none in it loads.")
     std::vector<std::string> compile_commands;
 
@@ -502,8 +501,8 @@ struct Settings {
                   "defaults to `${workspace}/.clice`, which keeps itself "
                   "out of version control and backups via generated "
                   ".gitignore and CACHEDIR.TAG markers (a "
-                  "`.clice/config.toml` stays visible to Git, a "
-                  "`.clice/local.toml` does not; backup tools honoring "
+                  "`.clice/clice.toml` stays visible to Git, a "
+                  "`.clice/clice.local.toml` does not; backup tools honoring "
                   "CACHEDIR.TAG skip the whole directory); an explicitly "
                   "configured directory is never marked. A cache "
                   "directory serves one project: one set for every "
@@ -709,7 +708,7 @@ bool has_error(llvm::ArrayRef<SettingsIssue> issues);
 
 /// Read the configuration of the project at `root` (empty for a project
 /// without a folder): find its files — the user's, the project's
-/// (clice.toml, else .clice/config.toml) and its local one, every one
+/// (clice.toml, else .clice/clice.toml) and its local one, every one
 /// anchoring its relative paths at `root` —, decode them in that order,
 /// lay the overlay over them, finalize and check every value;
 /// choose the cache directory — the one the merged configuration names,

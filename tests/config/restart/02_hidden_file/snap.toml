@@ -1,5 +1,5 @@
 ["in use".asked]
-value = "${WS}/.clice/config.toml changed"
+value = "${WS}/.clice/clice.toml changed"
 
 ["beside clice.toml".asked]
 value = []

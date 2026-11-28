@@ -44,7 +44,7 @@ The rules of `clice.toml` decide, under the active build configuration, what the
 
 ### Discovery
 
-A configuration that declares no database and no `default_command` discovers them: the `compile_commands.json` of the project root and of its immediate subdirectories, and when a file is opened, those in the directories between it and the root. A directory with a `clice.toml`, `.clice/config.toml` or `.clice/local.toml` of its own is another project. A link to a database found already is the same database. The server keeps looking on its poll, so a database generated later loads when it appears. As soon as a rule declares a source, discovery is off: the declaration is the whole intent.
+A configuration that declares no database and no `default_command` discovers them: the `compile_commands.json` of the project root and of its immediate subdirectories, and when a file is opened, those in the directories between it and the root. A directory with a `clice.toml`, `.clice/clice.toml` or `.clice/clice.local.toml` of its own is another project. A link to a database found already is the same database. The server keeps looking on its poll, so a database generated later loads when it appears. As soon as a rule declares a source, discovery is off: the declaration is the whole intent.
 
 ## Asking the Compiler
 

@@ -1,7 +1,7 @@
 import { test } from "@clice/tools/testing";
 
 // A clice.toml that does not parse is the project's configuration all the
-// same: .clice/config.toml does not stand in, and nothing is served.
+// same: .clice/clice.toml does not stand in, and nothing is served.
 test(async (t) => {
     const s = await t.start();
     await t.show("clice.toml", s.pushes("clice.toml"));

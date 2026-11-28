@@ -5,7 +5,7 @@ clice implements the [Language Server Protocol](https://microsoft.github.io/lang
 All setups assume:
 
 - The `clice` executable is on your `PATH` (or use an absolute path in the snippets below); the VS Code extension ships its own, and the Zed extension downloads one when there is none.
-- Your project provides a `compile_commands.json` (by default clice searches the project's root directory, then each of its immediate subdirectories without a `clice.toml`, `.clice/config.toml` or `.clice/local.toml` of its own).
+- Your project provides a `compile_commands.json` (by default clice searches the project's root directory, then each of its immediate subdirectories without a `clice.toml`, `.clice/clice.toml` or `.clice/clice.local.toml` of its own).
 
 ## Compiler Environment
 

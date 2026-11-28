@@ -10,5 +10,5 @@ test(async (t) => {
         folders: ["a", "b"],
         env: { XDG_CONFIG_HOME: path.join(t.root, "user") },
     });
-    await t.show("config.toml", s.pushes("user/clice/config.toml"));
+    await t.show("clice.toml", s.pushes("user/clice/clice.toml"));
 });
