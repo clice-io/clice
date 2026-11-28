@@ -205,6 +205,9 @@ bool names_project(llvm::StringRef name) {
 bool open_precompiled_store(Project& project, bool read_only, Project::Opened& opened) {
     auto& settings = project.settings;
     if(settings.precompiled_dir.empty()) {
+        if(read_only) {
+            return true;
+        }
         opened.unwritable =
             "There is no user cache directory for PCHs and PCMs; set `precompiled_dir` in "
             "clice.toml to a directory clice can write";
@@ -295,6 +298,13 @@ void open_store(Project& project, const Project::OpenOptions& options, Project::
     if((options.load == Project::OpenOptions::Load::Members || options.cache == Cache::Build) &&
        !open_precompiled_store(project, read_only, opened)) {
         return;
+    }
+    if(!read_only) {
+        // An earlier clice kept the PCHs and PCMs beside the index; no clice reads
+        // them there any more.
+        for(auto name: {"pch", "pcm", "manifest.json"}) {
+            store->remove_stale(name);
+        }
     }
     project.store.emplace(std::move(*store));
     if(!read_only) {

@@ -704,6 +704,46 @@ ZEST_CASE(UnusedEntriesGo) {
     ZEXPECT(evicted[0].key == "old");
 }
 
+ZEST_CASE(FindIsNoUse) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp);
+        register_lru(store);
+        put(store, "pch", "old", "used long ago");
+        store.shutdown();
+    }
+    tmp.touch("root/cache/v1/manifest.json", R"({"entries":[{"ns":"pch","key":"old","atime":1}]})");
+    {
+        auto store = open_store(tmp);
+        register_lru(store);
+        ZEXPECT(store.find("pch", "old"));
+        store.shutdown();
+    }
+    auto store = open_store(tmp);
+    store.register_namespace({.name = "pch", .extension = ".pch", .max_unused = chrono::days(15)});
+    ZEXPECT(!store.find("pch", "old"));
+}
+
+ZEST_CASE(StaleRemoved) {
+    TempDir tmp;
+    tmp.touch("root/cache/v1/pcm/M-k.pcm", "an earlier clice's");
+    auto store = open_store(tmp);
+    store.remove_stale("pcm");
+    ZEXPECT(!fs::exists(tmp.path("root/cache/v1/pcm")));
+}
+
+#ifndef _WIN32
+ZEST_CASE(StaleKeptWhileAnotherWorks) {
+    TempDir tmp;
+    // The parent process stands for an earlier clice serving from v1.
+    tmp.touch("root/cache/v1/tmp/" + std::to_string(::getppid()) + "/0.pcm");
+    tmp.touch("root/cache/v1/pcm/M-k.pcm", "an earlier clice's");
+    auto store = open_store(tmp);
+    store.remove_stale("pcm");
+    ZEXPECT(fs::exists(tmp.path("root/cache/v1/pcm/M-k.pcm")));
+}
+#endif
+
 ZEST_CASE(UnusedStoreRemoved) {
     TempDir tmp;
     {

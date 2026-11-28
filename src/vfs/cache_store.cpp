@@ -55,20 +55,49 @@ bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {
     return tmp_bytes->bytes() == final_bytes->bytes();
 }
 
-/// Whether a live process is working inside this cache layout: every
-/// writable open creates `tmp/{pid}` and keeps it until shutdown.
-bool has_live_instance(llvm::StringRef base) {
+/// Whether a live process other than `except` is working inside this cache
+/// layout: every writable open creates `tmp/{pid}` and keeps it until
+/// shutdown.
+bool has_live_instance(llvm::StringRef base, int except = 0) {
     auto entries = fs::Directory::open(path::join(base, "tmp"));
-    return entries && ranges::any_of(*entries, [](const auto& entry) {
+    return entries && ranges::any_of(*entries, [&](const auto& entry) {
                int pid = 0;
                return entry && !llvm::StringRef(entry->name).getAsInteger(10, pid) &&
-                      sys::process_alive(pid);
+                      pid != except && sys::process_alive(pid);
            });
 }
 
 std::int64_t now_ms() {
     auto now = chrono::system_clock::now().time_since_epoch();
     return chrono::duration_cast<chrono::milliseconds>(now).count();
+}
+
+/// The lock file of the store in `dir`, made when missing, locked. A
+/// removal of the store (remove_unused) unlinks it, and the directory,
+/// under the lock this may be waiting for, and a lock on a file no longer
+/// at the path serializes nothing: the one there then is taken instead.
+/// None when the file system refuses.
+std::optional<fs::File> lock_store(llvm::StringRef dir) {
+    auto lock_path = path::join(dir, store_lock_name);
+    while(true) {
+        auto lock = fs::File::open(lock_path, {.read = true, .write = true, .create = true});
+        if(!lock) {
+            LOG_WARN("Cannot open the cache's lock file {}: {}", lock_path, lock.error().message());
+            return std::nullopt;
+        }
+        if(auto error = lock->lock()) {
+            LOG_WARN("Cannot lock the cache's lock file {}: {}", lock_path, error.message());
+            return std::nullopt;
+        }
+        auto held = lock->status();
+        auto there = fs::status(lock_path);
+        if(!held || (there && there->id == held->id)) {
+            return std::move(*lock);
+        }
+        if(auto made = fs::create_directories(dir); !made) {
+            return std::nullopt;
+        }
+    }
 }
 
 /// remove_unused's work under the directory's lock: the layouts and the
@@ -115,8 +144,14 @@ bool remove_layouts_unused(llvm::StringRef dir,
     if(now_ms() - used_ms < max_unused.count()) {
         return false;
     }
+    // What a removal leaves behind (a file another program holds open on
+    // Windows) keeps the lock file, for a later removal to try again.
+    bool all = true;
     for(auto& layout: removed) {
-        fs::remove_all(layout);
+        all = fs::remove_all(layout).has_value() && all;
+    }
+    if(!all) {
+        return false;
     }
     fs::remove(lock_path);
     return true;
@@ -256,13 +291,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef dir,
     // exactly that window — every writable open holds it from before its
     // version directory exists until its marker does. Best effort: on a
     // filesystem without advisory locks the window stays open, as before.
-    auto lock_path = path::join(parent, store_lock_name);
-    auto lock = fs::File::open(lock_path, {.read = true, .write = true, .create = true});
-    if(!lock) {
-        LOG_WARN("Cannot open the cache's lock file {}: {}", lock_path, lock.error().message());
-    } else if(auto error = lock->lock()) {
-        LOG_WARN("Cannot lock the cache's lock file {}: {}", lock_path, error.message());
-    }
+    auto lock = lock_store(parent);
 
     if(auto made = fs::create_directories(state->base); !made) {
         return std::unexpected(made.error());
@@ -386,6 +415,15 @@ bool CacheStore::remove_unused(llvm::StringRef dir, chrono::milliseconds max_unu
     return true;
 }
 
+void CacheStore::remove_stale(llvm::StringRef name) {
+    std::lock_guard guard(state->mutex);
+    assert(!state->read_only && "write on a read-only store");
+    if(has_live_instance(state->base, sys::pid())) {
+        return;
+    }
+    fs::remove_all(path::join(state->base, name));
+}
+
 void CacheStore::register_namespace(CacheNamespace ns) {
     std::lock_guard guard(state->mutex);
 
@@ -498,6 +536,21 @@ std::optional<std::string> CacheStore::lookup(llvm::StringRef ns, llvm::StringRe
     it->second.atime = state->next_generation();
     state->dirty = true;
     return state->blob_path(*ns_state, key);
+}
+
+std::optional<std::string> CacheStore::find(llvm::StringRef ns,
+                                            llvm::StringRef key,
+                                            bool aux) const {
+    std::lock_guard guard(state->mutex);
+    auto* ns_state = state->find_namespace(ns);
+    if(!ns_state) {
+        return std::nullopt;
+    }
+    auto it = ns_state->entries.find(key);
+    if(it == ns_state->entries.end() || (aux && it->second.aux_size == 0)) {
+        return std::nullopt;
+    }
+    return aux ? state->aux_blob_path(*ns_state, key) : state->blob_path(*ns_state, key);
 }
 
 std::optional<std::string> CacheStore::lookup_aux(llvm::StringRef ns, llvm::StringRef key) {

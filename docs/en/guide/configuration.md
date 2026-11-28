@@ -10,13 +10,13 @@ clice reads configuration from `clice.toml` in the project root, or from `.clice
 
 Configuration is read once, when the server starts; there is no hot reload. When a project's configuration file is saved, created or deleted, the server asks the editor to restart it: VS Code (unless it connects to a server over a socket) and Neovim 0.12 or later restart it on their own; other editors show a diagnostic on the file, or a message for a deleted one, saying the change applies once clice restarts.
 
-A configuration clice cannot honor is an error: a file that does not parse, a value of the wrong type, a value outside an option's choices, a worker count or a limit of zero, a pattern that does not compile or holds a backslash, a variable that is not set, a `default_configuration` no rule's tag names, a key of the layout before clice 1.0 (the error names where it went). The server shows each problem as an error diagnostic on the file and serves nothing of that project until the fixed file is saved; a command-line run names each problem with its place and exits with code 2. A key clice does not know is a warning on the file, and the rest applies. An error in the settings from `initializationOptions` is shown as a message, and nothing of the project is served until they are fixed and clice restarts.
+A configuration clice cannot honor is an error: a file that does not parse, a value of the wrong type, a value outside an option's choices, a worker count or a limit of zero, a size of `[cache]` it cannot read, a pattern that does not compile or holds a backslash, a variable that is not set, a `default_configuration` no rule's tag names, a key of the layout before clice 1.0 (the error names where it went). The server shows each problem as an error diagnostic on the file and serves nothing of that project until the fixed file is saved; a command-line run names each problem with its place and exits with code 2. A key clice does not know is a warning on the file, and the rest applies. An error in the settings from `initializationOptions` is shown as a message, and nothing of the project is served until they are fixed and clice restarts.
 
 A JSON schema of the whole configuration is published at [`clice-config.schema.json`](/clice-config.schema.json); editors that validate TOML or JSON against a schema can point at it. The VS Code extension associates it with both files for [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml), which then completes and checks them; elsewhere a first line `#:schema https://docs.clice.io/clice-config.schema.json` points taplo, the TOML language server of Zed and Neovim setups alike, at it.
 
 Relative paths and patterns resolve against the project root, whether they are written in `clice.toml`, in `.clice/config.toml` or in `initializationOptions`.
 
-Settings come in two kinds. What applies to the whole server — its cache and log directories, how often it looks at the disk, how many workers it runs — is a top-level key or sits in `[workers]`. What can differ from one file to another — whether the background index compiles it, whether its function bodies are parsed and indexed, how it is served, linted and formatted — is a field of `[[rules]]`: to set it for every file, write it on a last rule without `patterns`. The feature sections (`[hover]`, `[inlay_hints]`, …) hold the preferences of each feature.
+Settings come in two kinds. What applies to the whole server — its cache, PCH and log directories, how often it looks at the disk, how many workers it runs — is a top-level key or sits in `[cache]` or `[workers]`. What can differ from one file to another — whether the background index compiles it, whether its function bodies are parsed and indexed, how it is served, linted and formatted — is a field of `[[rules]]`: to set it for every file, write it on a last rule without `patterns`. The feature sections (`[hover]`, `[inlay_hints]`, …) hold the preferences of each feature.
 
 ## Several Folders
 
@@ -32,7 +32,7 @@ The logs keep `info` and above whatever the log level; `CLICE_LOG_LEVEL` in the 
 
 ## Variable Substitution
 
-The following variables are supported in `cache_dir`, `logging_dir`, and a rule's `patterns`, `compile_commands`, `default_command`, `append` and `remove`:
+The following variables are supported in `cache_dir`, `precompiled_dir`, `logging_dir`, and a rule's `patterns`, `compile_commands`, `default_command`, `append` and `remove`:
 
 | Variable       | Description                                                                                                                                         |
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |

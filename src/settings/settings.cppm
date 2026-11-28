@@ -295,8 +295,8 @@ struct CacheSettings {
     KANNOTATE(&pch_size,
               description =
                   "The most disk the PCHs of a project take: a whole number "
-                  "followed by K, M, G or T, in binary multiples (`4G` is "
-                  "4 GiB). Past it the least recently used go, each built "
+                  "above 0 followed by K, M, G or T, in binary multiples "
+                  "(`4G` is 4 GiB). Past it the least recently used go, each built "
                   "again when a file needing it opens.")
     std::string pch_size = "4G";
 
@@ -494,9 +494,10 @@ struct Settings {
                   "must be a directory clice can write on a local disk: a "
                   "project whose cache directory cannot be written or is "
                   "on a network file system (NFS, SMB, a Windows drive "
-                  "under WSL) serves nothing, and clice says why. Files "
-                  "outside every workspace folder keep theirs in clice's "
-                  "temporary directory, removed when the server exits. "
+                  "under WSL) serves nothing, and clice says why. A file "
+                  "served apart from every project keeps its cache in "
+                  "clice's temporary directory, removed when the server "
+                  "exits. "
                   "The resolved path is printed at startup.")
     std::string cache_dir;
 
@@ -517,15 +518,15 @@ struct Settings {
                   "to the project root; each project keeps them in a "
                   "subdirectory of its own. Empty defaults to clice's directory in the "
                   "user's cache directory: `~/.cache/clice` "
-                  "(`$XDG_CACHE_HOME/clice` when set), "
+                  "(`$XDG_CACHE_HOME/clice` when it is an absolute path), "
                   "`~/Library/Caches/clice` on macOS, "
                   "`%LOCALAPPDATA%\\clice` on Windows. A PCH or PCM no clice "
                   "used for 15 days is removed, and so is the subdirectory "
                   "of a project no clice opened for 15 days. A temporary "
                   "directory makes a restart of the machine remove them, "
                   "each built again when next needed; on many Linux "
-                  "systems `/tmp` is held in memory. Files outside every "
-                  "workspace folder keep theirs in clice's temporary "
+                  "systems `/tmp` is held in memory. A file served apart "
+                  "from every project keeps them in clice's temporary "
                   "directory, removed when the server exits.")
     std::string precompiled_dir;
 

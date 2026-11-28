@@ -830,7 +830,9 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
     };
 
     // A run reading the index alone opens no store of PCHs and PCMs. A
-    // record dropped takes its blob along: nothing else names it.
+    // record dropped takes its blob along: nothing else names it. Finding
+    // a blob is no use of it: one no session uses goes once unused for
+    // precompiled_unused.
     if(precompiled_store) {
         auto& precompiled = *precompiled_store;
         bool pch_format_ok = data.pch_index_format == index::index_format_version;
@@ -843,7 +845,7 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
                 precompiled.invalidate("pch", *entry.blob);
                 continue;
             }
-            auto pch_path = precompiled.lookup("pch", *entry.blob);
+            auto pch_path = precompiled.find("pch", *entry.blob);
             if(!pch_path)
                 continue;
             // A preamble's PCH without its pch.idx index is an incomplete pair
@@ -851,7 +853,7 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
             // rebuilds both.
             std::optional<std::string> index_path;
             if(!entry.whole_file) {
-                index_path = precompiled.lookup_aux("pch", *entry.blob);
+                index_path = precompiled.find("pch", *entry.blob, /*aux=*/true);
                 if(!index_path) {
                     precompiled.invalidate("pch", *entry.blob);
                     continue;
@@ -874,7 +876,7 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
                 precompiled.invalidate("pcm", entry.key);
                 continue;
             }
-            auto pcm_path = precompiled.lookup("pcm", *entry.blob);
+            auto pcm_path = precompiled.find("pcm", *entry.blob);
             if(!pcm_path)
                 continue;
             // A dep-less entry is an unvalidatable snapshot that would blindly

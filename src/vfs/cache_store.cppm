@@ -155,6 +155,11 @@ public:
     CacheStore& operator=(CacheStore&&) noexcept;
     ~CacheStore();
 
+    /// Remove `name` from the layout, which an earlier clice kept there and
+    /// no clice of this layout reads; left while another process works in
+    /// the layout, which may be that clice.
+    void remove_stale(llvm::StringRef name);
+
     /// Register a namespace and scan its directory to rebuild in-memory
     /// state.  Blobs already on disk are adopted; their last-accessed time
     /// comes from the manifest, falling back to file mtime.
@@ -163,6 +168,13 @@ public:
     /// Return the absolute blob path on hit and refresh its in-memory
     /// last-accessed time (persisted on the next checkpoint).  No disk IO.
     std::optional<std::string> lookup(llvm::StringRef ns, llvm::StringRef key);
+
+    /// The blob's path — its aux blob's with `aux` — while the store holds
+    /// it, without counting a use as lookup does: a load of the records
+    /// naming it is no use of it.
+    std::optional<std::string> find(llvm::StringRef ns,
+                                    llvm::StringRef key,
+                                    bool aux = false) const;
 
     /// Return the key's aux blob path when the entry exists and its aux
     /// blob was committed.  Also refreshes last-accessed.  A miss with a

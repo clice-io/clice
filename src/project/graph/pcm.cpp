@@ -15,6 +15,7 @@ import :syntax.dependency_graph;
 import :syntax.header_context;
 import :syntax.preamble;
 import :syntax.scan;
+import :vfs.cache_store;
 import :vfs.file_system;
 import :vfs.file_table;
 import :vfs.path;
@@ -31,12 +32,14 @@ namespace {
 constexpr llvm::StringRef pcm_version = "7";
 
 /// The entry's PCM, or the PCH it was built over, left the disk: forget it,
-/// so the module's next attempt builds again. Returns whether it had.
-bool drop_evicted(PCMEntry& entry) {
+/// so the module's next attempt builds again. Returns whether it had. A PCM
+/// still there is used: importers read it while its node stays clean, which
+/// looks it up nowhere else.
+bool drop_evicted(CacheStore& store, PCMEntry& entry) {
     if(entry.path.empty()) {
         return false;
     }
-    if(!fs::exists(entry.path)) {
+    if(!store.lookup("pcm", entry.blob) || !fs::exists(entry.path)) {
         entry.blob.clear();
     } else if(entry.pch.empty() || fs::exists(entry.pch)) {
         return false;
@@ -504,7 +507,8 @@ bool Project::imports_present(llvm::ArrayRef<NodeId> modules) {
     bool present = true;
     for(auto module: module_closure(*this, modules)) {
         auto it = pcms.find(module);
-        if(it == pcms.end() || drop_evicted(it->second) || it->second.path.empty()) {
+        if(it == pcms.end() || drop_evicted(*precompiled_store, it->second) ||
+           it->second.path.empty()) {
             present = false;
         }
     }
