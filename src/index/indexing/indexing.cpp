@@ -395,11 +395,15 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
     // its expressions and constructor initializers make, the types its
     // dependent names come to name and the types its placeholders deduce;
     // it declares nothing its template does not. A class's resolves its
-    // member declarations' types alone: the expressions they hold, template
-    // arguments above all, resolve anew in each of the class's
-    // instantiations, an Eigen expression type's thousands, which doubles
-    // the index for what the template's own entries mostly tell.
-    if(instantiated_class && !semantics.node(i).node.get<clang::TypeLoc>()) {
+    // members' types alone: the expressions they hold, template arguments
+    // above all, resolve anew in each of the class's instantiations, an
+    // Eigen expression type's thousands, which doubles the index for what
+    // the template's own entries mostly tell.
+    const auto* type = semantics.node(i).node.get<clang::TypeLoc>();
+    if(instantiated_class) {
+        if(type) {
+            add_instantiated_type(semantics, i);
+        }
         return;
     }
     const auto* stmt = semantics.node(i).node.get<clang::Stmt>();
@@ -412,25 +416,17 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
     if(!place_resolver && stmt && llvm::isa<clang::OverloadExpr>(stmt)) {
         return;
     }
-    if(instantiation_entries && !stmt && !semantics.node(i).node.get<clang::CXXCtorInitializer>() &&
-       !semantics.node(i).node.get<clang::TypeLoc>()) {
+    if(instantiation_entries && !stmt && !semantics.node(i).node.get<clang::CXXCtorInitializer>()) {
+        if(type) {
+            add_instantiated_type(semantics, i);
+        }
         project_placeholder(semantics, i);
         if(const auto* value = semantics.node(i).node.get<clang::ValueDecl>()) {
             add_deduced_type(value);
         }
         return;
     }
-    // An instantiation's type names something of its own only at a
-    // dependent name, and a name it leaves dependent stays a guess, which
-    // no record keeps; the type a construction names gives way to the
-    // constructor it calls, which the construction records.
-    bool instantiated_type = instantiation_entries && semantics.node(i).node.get<clang::TypeLoc>();
-    for(auto& occurrence:
-        resolve_occurrences(semantics, i, instantiated_type ? nullptr : place_resolver)) {
-        if(instantiated_type &&
-           (occurrence.outranked || !dependent_type_names.contains(occurrence.location))) {
-            continue;
-        }
+    for(auto& occurrence: resolve_occurrences(semantics, i, place_resolver)) {
         auto name = add_name(occurrence);
         if(instantiation_entries || occurrence.later_piece) {
             continue;
@@ -484,6 +480,17 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
 
     project_placeholder(semantics, i);
     project_relations(semantics, i);
+}
+
+void Builder::add_instantiated_type(const Semantics& semantics, std::uint32_t index) {
+    // A name the instantiation leaves dependent stays a guess, which no
+    // record keeps; the type a construction names gives way to the
+    // constructor it calls, which the construction records.
+    for(auto& occurrence: resolve_occurrences(semantics, index, nullptr)) {
+        if(!occurrence.outranked && dependent_type_names.contains(occurrence.location)) {
+            add_name(occurrence);
+        }
+    }
 }
 
 void Builder::project_macros() {

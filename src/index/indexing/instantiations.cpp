@@ -281,10 +281,6 @@ void Builder::project_instantiations(llvm::ArrayRef<const clang::Decl*> walked) 
                  instantiation_entries = &entries;
                  instantiated_function = llvm::dyn_cast<clang::FunctionDecl>(root);
                  instantiated_class = llvm::isa<clang::CXXRecordDecl>(root);
-                 // A class's walk passes no declaration to see from.
-                 if(instantiated_class) {
-                     place_resolver = nullptr;
-                 }
              },
          .leave =
              [&](const clang::Decl* root) {

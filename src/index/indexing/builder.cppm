@@ -249,6 +249,10 @@ private:
     /// dependent name; the known ones a file holds go to its skipped keys.
     std::vector<const clang::Decl*> walked_instantiations();
 
+    /// In an instantiation, what the type at `index` names where its
+    /// template writes a dependent name (dependent_type_names).
+    void add_instantiated_type(const Semantics& semantics, std::uint32_t index);
+
     /// Adds to dependent_type_names the places `pattern` writes a type by a
     /// dependent name (`typename T::type`): a function's or a variable's
     /// whole text, the types a class's members declare
