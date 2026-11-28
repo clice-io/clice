@@ -21,10 +21,16 @@ export const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
 
 /// The environment servers under test run in: every freshness answer given
 /// without a look at the disk is checked against one, a contradiction
-/// being an anomaly the gates catch, and the test hooks are on (the
-/// clice/internal requests the tests wait through).
+/// being an anomaly the gates catch, the test hooks are on (the
+/// clice/internal requests the tests wait through), and the PCHs and PCMs
+/// of a test go with its cache directory, not in the user's.
 export function serverEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-    return { ...base, CLICE_SHADOW_FRESHNESS: "1", CLICE_TEST_HOOKS: "1" };
+    return {
+        ...base,
+        CLICE_SHADOW_FRESHNESS: "1",
+        CLICE_TEST_HOOKS: "1",
+        CLICE_TEST_PRECOMPILED_DIR: "precompiled",
+    };
 }
 
 /// A session directory's name: when its process started and its pid,

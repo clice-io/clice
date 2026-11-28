@@ -15,7 +15,7 @@ test("rebuilt meanwhile", async (t) => {
     const main = s.errors("main.cpp");
     await b.reached();
     const a = await s.park("pcm", "a.cppm", { at: "reply" });
-    const lost = t.disk.list(".clice/cache/*/pcm/A-*.pcm");
+    const lost = t.disk.list(".clice/precompiled/*/*/pcm/A-*.pcm");
     expect(lost).toHaveLength(1);
     t.disk.rm(lost[0] ?? "");
     s.edit("other.cpp", { replace: "return a();", with: "return a() + 0;" });
@@ -38,7 +38,7 @@ test("lost meanwhile", async (t) => {
     expect(await s.poll("workspace")).toBe(1);
     const main = s.errors("main.cpp");
     await b.reached();
-    const lost = t.disk.list(".clice/cache/*/pcm/A-*.pcm");
+    const lost = t.disk.list(".clice/precompiled/*/*/pcm/A-*.pcm");
     expect(lost).toHaveLength(1);
     t.disk.rm(lost[0] ?? "");
     await b.release();

@@ -55,20 +55,112 @@ bool same_content(llvm::StringRef tmp_path, llvm::StringRef final_path) {
     return tmp_bytes->bytes() == final_bytes->bytes();
 }
 
-/// Whether a live process is working inside this cache layout: every
-/// writable open creates `tmp/{pid}` and keeps it until shutdown.
-bool has_live_instance(llvm::StringRef base) {
+/// Whether a live process other than `except` is working inside this cache
+/// layout: every writable open creates `tmp/{pid}` and keeps it until
+/// shutdown.
+bool has_live_instance(llvm::StringRef base, int except = 0) {
     auto entries = fs::Directory::open(path::join(base, "tmp"));
-    return entries && ranges::any_of(*entries, [](const auto& entry) {
+    return entries && ranges::any_of(*entries, [&](const auto& entry) {
                int pid = 0;
                return entry && !llvm::StringRef(entry->name).getAsInteger(10, pid) &&
-                      sys::process_alive(pid);
+                      pid != except && sys::process_alive(pid);
            });
 }
 
 std::int64_t now_ms() {
     auto now = chrono::system_clock::now().time_since_epoch();
     return chrono::duration_cast<chrono::milliseconds>(now).count();
+}
+
+/// The lock file of the store in `dir`, made when missing, locked. A
+/// removal of the store (remove_unused) unlinks it, and the directory,
+/// under the lock this may be waiting for, and a lock on a file no longer
+/// at the path serializes nothing: the one there then is taken instead.
+/// None when the file system refuses.
+std::optional<fs::File> lock_store(llvm::StringRef dir) {
+    auto lock_path = path::join(dir, store_lock_name);
+    while(true) {
+        auto lock = fs::File::open(lock_path, {.read = true, .write = true, .create = true});
+        if(!lock) {
+            LOG_WARN("Cannot open the cache's lock file {}: {}", lock_path, lock.error().message());
+            return std::nullopt;
+        }
+        if(auto error = lock->lock()) {
+            LOG_WARN("Cannot lock the cache's lock file {}: {}", lock_path, error.message());
+            return std::nullopt;
+        }
+        auto held = lock->status();
+        auto there = fs::status(lock_path);
+        if(!held || (there && there->id == held->id)) {
+            return std::move(*lock);
+        }
+        if(auto made = fs::create_directories(dir); !made) {
+            return std::nullopt;
+        }
+    }
+}
+
+/// remove_unused's work under the directory's lock: the layouts and the
+/// lock file removed, or nothing.
+bool remove_layouts_unused(llvm::StringRef dir,
+                           llvm::StringRef lock_path,
+                           chrono::milliseconds max_unused) {
+    auto lock = fs::File::open(lock_path, {.read = true, .write = true});
+    if(!lock) {
+        return false;
+    }
+    // Held by a store opening in the directory right now; or no longer the
+    // lock file, which another removal unlinked.
+    if(auto held = lock->try_lock(); !held || !*held) {
+        return false;
+    }
+    auto locked = lock->status();
+    auto there = fs::status(lock_path);
+    if(!locked || !there || there->id != locked->id) {
+        return false;
+    }
+    auto entries = fs::Directory::open(dir);
+    if(!entries) {
+        return false;
+    }
+    // Every writable open makes its `tmp/{pid}`, and every checkpoint
+    // rewrites the list of entries: the newer of the two is the last use.
+    std::int64_t used_ms = 0;
+    llvm::SmallVector<std::string> removed;
+    for(auto& entry: *entries) {
+        if(!entry) {
+            return false;
+        }
+        if(entry->name == store_lock_name) {
+            continue;
+        }
+        auto layout = path::join(dir, entry->name);
+        if(entry->type == fs::FileType::Directory) {
+            if(has_live_instance(layout)) {
+                return false;
+            }
+            for(auto name: {"manifest.json", "tmp"}) {
+                if(auto status = fs::status(path::join(layout, name))) {
+                    used_ms = std::max(used_ms, vfs::Stamp::of(*status).mtime_ns / 1'000'000);
+                }
+            }
+        }
+        removed.push_back(std::move(layout));
+    }
+    if(now_ms() - used_ms < max_unused.count()) {
+        return false;
+    }
+    // What a removal leaves behind (a file another program holds open on
+    // Windows) keeps the lock file, for a later removal to try again.
+    bool all = true;
+    for(auto& layout: removed) {
+        all = fs::remove_all(layout).has_value() && all;
+    }
+    if(!all) {
+        return false;
+    }
+    fs::remove(lock_path);
+    return true;
 }
 
 }  // namespace
@@ -96,7 +188,8 @@ struct CacheStore::State {
 
     std::mutex mutex;
 
-    /// `{root}/cache/v{version}` — everything the store manages lives here.
+    /// The directory the store was opened in, and its layout
+    /// `{root}/v{version}`, where everything the store manages lives.
     std::string root;
     std::string base;
 
@@ -171,17 +264,17 @@ CacheStore& CacheStore::operator=(CacheStore&&) noexcept = default;
 
 CacheStore::~CacheStore() = default;
 
-std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root,
+std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef dir,
                                                             std::uint32_t version,
                                                             bool read_only) {
-    assert(!root.empty() && "cache root must not be empty");
+    assert(!dir.empty() && "cache directory must not be empty");
 
     auto state = std::make_unique<State>();
     state->read_only = read_only;
 
-    auto parent = path::join(root, "cache");
+    auto parent = dir.str();
     auto version_dir = std::format("v{}", version);
-    state->root = std::string(root);
+    state->root = parent;
     state->base = path::join(parent, version_dir);
 
     if(read_only) {
@@ -192,7 +285,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     }
 
     // Only the parent may exist before the lock is held: it holds the lock
-    // file and is never removed.
+    // file, and goes only with the whole store (remove_unused).
     if(auto made = fs::create_directories(parent); !made) {
         return std::unexpected(made.error());
     }
@@ -204,13 +297,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
     // exactly that window — every writable open holds it from before its
     // version directory exists until its marker does. Best effort: on a
     // filesystem without advisory locks the window stays open, as before.
-    auto lock_path = path::join(parent, store_lock_name);
-    auto lock = fs::File::open(lock_path, {.read = true, .write = true, .create = true});
-    if(!lock) {
-        LOG_WARN("Cannot open the cache's lock file {}: {}", lock_path, lock.error().message());
-    } else if(auto error = lock->lock()) {
-        LOG_WARN("Cannot lock the cache's lock file {}: {}", lock_path, error.message());
-    }
+    auto lock = lock_store(parent);
 
     if(auto made = fs::create_directories(state->base); !made) {
         return std::unexpected(made.error());
@@ -315,12 +402,32 @@ void CacheStore::write_ignore_markers(llvm::StringRef root) {
     };
     write_marker(path::join(root, ".gitignore"), "*\n!config.toml\n");
     // LIMITATION: Time Machine and iCloud read no CACHEDIR.TAG, so on macOS
-    // the precompiled files and the index are backed up and synced; the
-    // configuration guide advises a `cache_dir` under ~/Library/Caches.
+    // the index is backed up and synced; the configuration guide advises a
+    // `cache_dir` under ~/Library/Caches.
     write_marker(path::join(root, "CACHEDIR.TAG"),
                  "Signature: 8a477f597d28d172789f06886806bc55\n"
                  "# This file marks a cache directory created by clice.\n"
                  "# For information see https://bford.info/cachedir/\n");
+}
+
+bool CacheStore::remove_unused(llvm::StringRef dir, chrono::milliseconds max_unused) {
+    auto lock_path = path::join(dir, store_lock_name);
+    if(!remove_layouts_unused(dir, lock_path, max_unused)) {
+        return false;
+    }
+    // Empty once the lock file is closed, unless a store started opening
+    // in it meanwhile.
+    fs::remove(dir);
+    return true;
+}
+
+void CacheStore::remove_stale(llvm::StringRef name) {
+    std::lock_guard guard(state->mutex);
+    assert(!state->read_only && "write on a read-only store");
+    if(has_live_instance(state->base, sys::pid())) {
+        return;
+    }
+    fs::remove_all(path::join(state->base, name));
 }
 
 void CacheStore::register_namespace(CacheNamespace ns) {
@@ -415,7 +522,8 @@ void CacheStore::register_namespace(CacheNamespace ns) {
         }
     }
 
-    // Enforce the budget immediately in case it shrank since the last run.
+    // Enforce the budget immediately in case it shrank since the last run,
+    // and remove what went unused meanwhile.
     state->evict_locked(ns_state, "");
 }
 
@@ -435,6 +543,21 @@ std::optional<std::string> CacheStore::lookup(llvm::StringRef ns, llvm::StringRe
     it->second.atime = state->next_generation();
     state->dirty = true;
     return state->blob_path(*ns_state, key);
+}
+
+std::optional<std::string> CacheStore::find(llvm::StringRef ns,
+                                            llvm::StringRef key,
+                                            bool aux) const {
+    std::lock_guard guard(state->mutex);
+    auto* ns_state = state->find_namespace(ns);
+    if(!ns_state) {
+        return std::nullopt;
+    }
+    auto it = ns_state->entries.find(key);
+    if(it == ns_state->entries.end() || (aux && it->second.aux_size == 0)) {
+        return std::nullopt;
+    }
+    return aux ? state->aux_blob_path(*ns_state, key) : state->blob_path(*ns_state, key);
 }
 
 std::optional<std::string> CacheStore::lookup_aux(llvm::StringRef ns, llvm::StringRef key) {
@@ -697,7 +820,18 @@ bool CacheStore::read_only() const {
 }
 
 void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
-    if(read_only || ns.config.max_bytes == 0 || ns.total_size <= ns.config.max_bytes) {
+    if(read_only) {
+        return;
+    }
+    // Entries last used before this go whatever the budget.
+    auto unused_since = ns.config.max_unused.count() == 0 ? std::numeric_limits<std::int64_t>::min()
+                                                          : now_ms() - ns.config.max_unused.count();
+    auto over_budget = [&] {
+        return ns.config.max_bytes != 0 && ns.total_size > ns.config.max_bytes;
+    };
+    if(!over_budget() && ranges::none_of(ns.entries, [&](const auto& entry) {
+           return entry.second.atime < unused_since;
+       })) {
         return;
     }
 
@@ -718,7 +852,7 @@ void CacheStore::State::evict_locked(Namespace& ns, llvm::StringRef keep_key) {
     ranges::sort(candidates, {}, &Candidate::atime);
 
     for(auto& candidate: candidates) {
-        if(ns.total_size <= ns.config.max_bytes) {
+        if(candidate.atime >= unused_since && !over_budget()) {
             break;
         }
         // Aux first, then primary: whatever a failure leaves behind is a

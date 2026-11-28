@@ -4,6 +4,7 @@ import :command.database;
 import :index.database;
 import :index.project_index;
 import :project.discovery;
+import :project.graph.precompiled;
 import :project.project;
 import :project.saved;
 import :settings.settings;
@@ -188,7 +189,78 @@ std::string open_writer(Project& project, index::WriterLock lock) {
     return {};
 }
 
-/// Open the cache store and the index database as `options` say; why the
+/// Whether `name`, in `precompiled_dir`, is a project's directory: a cache
+/// key, its cache directory's. Nothing else there is ever removed, as the
+/// directory may hold other programs' files too (`/tmp`).
+bool names_project(llvm::StringRef name) {
+    return name.size() == 32 &&
+           ranges::all_of(name, [](char c) { return llvm::isDigit(c) || (c >= 'a' && c <= 'f'); });
+}
+
+/// Open the store of the project's PCHs and PCMs, its directory in
+/// `precompiled_dir`, first removing the directories of the projects there
+/// no clice used for precompiled_unused; false, why in `opened`, when a run
+/// building into it cannot. A run reading the index finds none when
+/// nothing was ever built.
+bool open_precompiled_store(Project& project, bool read_only, Project::Opened& opened) {
+    auto& settings = project.settings;
+    if(settings.precompiled_dir.empty()) {
+        if(read_only) {
+            return true;
+        }
+        opened.unwritable =
+            "There is no user cache directory for PCHs and PCMs; set `precompiled_dir` in "
+            "clice.toml to a directory clice can write";
+        return false;
+    }
+    auto dir = path::join(settings.precompiled_dir, cache_key({settings.cache_identity.str()}));
+    if(!read_only) {
+        if(auto entries = fs::Directory::open(settings.precompiled_dir)) {
+            for(auto& entry: *entries) {
+                if(!entry) {
+                    break;
+                }
+                auto other = path::join(settings.precompiled_dir, entry->name);
+                if(entry->type == fs::FileType::Directory && other != dir &&
+                   names_project(entry->name) &&
+                   CacheStore::remove_unused(other, precompiled_unused)) {
+                    LOG_INFO("Removed {}: no clice used its PCHs and PCMs for {} days",
+                             other,
+                             precompiled_unused.count());
+                }
+            }
+        }
+    }
+    auto store = CacheStore::open(dir, cache_format_version, read_only);
+    if(!store) {
+        if(read_only) {
+            return true;
+        }
+        opened.unwritable = std::format(
+            "Cannot use {} for PCHs and PCMs: {}; give clice write access to it, or "
+            "set `precompiled_dir` in clice.toml to a directory it can write",
+            settings.precompiled_dir,
+            store.error().message());
+        return false;
+    }
+    store->register_namespace({.name = "pch",
+                               .extension = ".pch",
+                               .aux_extension = ".pch.idx",
+                               .max_bytes = settings.cache.pch_bytes,
+                               .max_unused = precompiled_unused});
+    store->register_namespace({.name = "pcm",
+                               .extension = ".pcm",
+                               .max_bytes = settings.cache.pcm_bytes,
+                               .max_unused = precompiled_unused});
+    project.precompiled_store.emplace(std::move(*store));
+    if(!read_only) {
+        LOG_INFO("PCHs and PCMs: {}", project.precompiled_store->base_dir());
+    }
+    return true;
+}
+
+/// Open the cache store and the index database, and for a run compiling the
+/// build's members the store of its PCHs and PCMs, as `options` say; why the
 /// index cannot be read, for a run that reads it, or the cache cannot be
 /// used, for a run building into it, in `opened`.
 void open_store(Project& project, const Project::OpenOptions& options, Project::Opened& opened) {
@@ -205,7 +277,7 @@ void open_store(Project& project, const Project::OpenOptions& options, Project::
     // resolves it, so only the versioned store inside it proves an index
     // was ever built — and a live server (even one on an older layout)
     // must not lose blobs to a reader.
-    auto store = CacheStore::open(cache_dir, cache_format_version, read_only);
+    auto store = CacheStore::open(path::join(cache_dir, "cache"), cache_format_version, read_only);
     if(!store) {
         if(read_only && store.error() == std::errc::no_such_file_or_directory) {
             opened.unreadable = unreadable_index(index::LoadResult::Empty, cache_dir);
@@ -222,17 +294,18 @@ void open_store(Project& project, const Project::OpenOptions& options, Project::
         return;
     }
     // Only a run loading the build's members, or building into the store,
-    // compiles them; registering scans the whole namespace, which a run
-    // reading the index alone does not pay for. Size budgets are
-    // deliberately generous: eviction exists to bound disk usage, not to
-    // keep the working set tight.
-    if(options.load == Project::OpenOptions::Load::Members || options.cache == Cache::Build) {
-        constexpr std::uint64_t GiB = 1ull << 30;
-        store->register_namespace({.name = "pch",
-                                   .extension = ".pch",
-                                   .aux_extension = ".pch.idx",
-                                   .max_bytes = 8 * GiB});
-        store->register_namespace({.name = "pcm", .extension = ".pcm", .max_bytes = 8 * GiB});
+    // compiles them; opening their store scans all of it, which a run
+    // reading the index alone does not pay for.
+    if((options.load == Project::OpenOptions::Load::Members || options.cache == Cache::Build) &&
+       !open_precompiled_store(project, read_only, opened)) {
+        return;
+    }
+    if(!read_only) {
+        // An earlier clice kept the PCHs and PCMs beside the index; no clice reads
+        // them there any more.
+        for(auto name: {"pch", "pcm", "manifest.json"}) {
+            store->remove_stale(name);
+        }
     }
     project.store.emplace(std::move(*store));
     if(!read_only) {

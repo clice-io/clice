@@ -3,6 +3,11 @@ value = [
     "Cannot use the cache directory ${WS}/.clice: Not a directory; give clice write access to it, or set `cache_dir` in clice.toml to a directory it can write. Until clice restarts, nothing under ${WS} is served",
 ]
 
+["precompiled directory".guidance]
+value = [
+    "Cannot use ${WS}/blocked for PCHs and PCMs: Not a directory; give clice write access to it, or set `precompiled_dir` in clice.toml to a directory it can write. Until clice restarts, nothing under ${WS} is served",
+]
+
 [lint."$ clice lint"]
 stderr = '''
 error: Cannot create the log directory .clice/logs/${SESSION}: Not a directory

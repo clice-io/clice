@@ -218,9 +218,11 @@ void LSPClient::register_test_hooks() {
                 stats.index_shard_content_bytes += project.index.shard_bytes();
                 stats.last_save_shards += project.index.last_save_shards();
 
-                if(project.store) {
-                    stats.pending_tmp_files +=
-                        static_cast<std::uint32_t>(project.store->pending_tmp_files());
+                for(auto* store: {&project.store, &project.precompiled_store}) {
+                    if(*store) {
+                        stats.pending_tmp_files +=
+                            static_cast<std::uint32_t>((*store)->pending_tmp_files());
+                    }
                 }
 
                 project.hosting.contexts.for_each([&](Fid, const auto& entry) {

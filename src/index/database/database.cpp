@@ -1069,9 +1069,9 @@ std::expected<std::unique_ptr<BlobDatabase>, std::string> open_database(CacheSto
         case FsLocality::Local: break;
         case FsLocality::Remote: {
             return std::unexpected(std::format(
-                "The cache directory {} is on a remote filesystem, which the index database does "
-                "not support (set `cache_dir` in clice.toml to a directory on a local disk)",
-                store.root_dir()));
+                "The index in {} is on a remote filesystem, which its database does not support "
+                "(set `cache_dir` in clice.toml to a directory on a local disk)",
+                store.base_dir()));
         }
         case FsLocality::Unknown: {
             LOG_WARN(

@@ -30,14 +30,18 @@ inline void skip_toolchain_query(Project& project) {
     finish_settings(project);
 }
 
-/// Give `project` a cache store in `tmp` holding its PCHs and PCMs, as a
-/// project opening to compile its members registers them.
+/// Give `project` its cache store in `tmp`, and the store of its PCHs and
+/// PCMs, as a project opening to compile its members opens them.
 inline void open_cache(TempDir& tmp, Project& project) {
     auto store = CacheStore::open(tmp.path("cache"), 1);
     ZASSERT(store);
-    store->register_namespace({.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx"});
-    store->register_namespace({.name = "pcm", .extension = ".pcm"});
     project.store.emplace(std::move(*store));
+    auto precompiled = CacheStore::open(tmp.path("precompiled"), 1);
+    ZASSERT(precompiled);
+    precompiled->register_namespace(
+        {.name = "pch", .extension = ".pch", .aux_extension = ".pch.idx"});
+    precompiled->register_namespace({.name = "pcm", .extension = ".pcm"});
+    project.precompiled_store.emplace(std::move(*precompiled));
 }
 
 /// A project at `root` with the event loop and the workerless pool it

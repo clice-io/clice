@@ -13,7 +13,7 @@ import { watchTree, type TreeWatch } from "../memory.ts";
 import { loggingDir } from "../prepare.ts";
 import { computeStats, parsePerfLines, summarize } from "./logs.ts";
 import type { PerfFailure, RunResult, ServerName } from "./results.ts";
-import { CAPABILITIES, cliceDir, indexToken, isClice } from "./servers.ts";
+import { CAPABILITIES, cliceDir, indexToken, isClice, PRECOMPILED } from "./servers.ts";
 
 /// What every run of a job shares: the checkout, the database's directory,
 /// the build directory whose generated files no scenario changes, the
@@ -205,8 +205,15 @@ export class Session {
             // database's directory so that both compile under one command.
             cwd: isClice(this.server) ? undefined : database,
             checked: false,
-            // clice writes the [perf:*] lines collectPerf reads only when asked.
-            env: isClice(this.server) ? { CLICE_PERF: "1" } : undefined,
+            // clice writes the [perf:*] lines collectPerf reads only when
+            // asked, and keeps its PCHs and PCMs beside its cache, where a
+            // cold run wipes them.
+            env: isClice(this.server)
+                ? {
+                      CLICE_PERF: "1",
+                      CLICE_TEST_PRECOMPILED_DIR: PRECOMPILED,
+                  }
+                : undefined,
         });
         this.connected = client;
         // A wrapper this process may not signal (sudo's memory scope) fails a

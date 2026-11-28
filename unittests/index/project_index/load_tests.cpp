@@ -573,24 +573,24 @@ ZEST_CASE(CommandRecordedAcrossSave) {
 ZEST_CASE(OtherFormatKeepsMetadata) {
     // A database another format version wrote loses its index, not its
     // context choices and PCM records: the fresh database takes them at its
-    // first save. Its PCH records go, their pairs built under the other
-    // format.
+    // first save. Its PCH records go, and their pairs, built under the
+    // other format, with them.
     TempDir tmp;
     tmp.touch("dep.h", "int x;\n");
     tmp.touch("mod.cppm", "export module m;\n");
     auto stored = [](IndexerFixture& f, llvm::StringRef space, llvm::StringRef key) {
-        auto pending = f.project.store->begin_store(space, key);
+        auto pending = f.project.precompiled_store->begin_store(space, key);
         ZASSERT(!fs::write_file(pending.tmp_path, "bytes"));
-        ZASSERT(f.project.store->commit(std::move(pending)));
+        ZASSERT(f.project.precompiled_store->commit(std::move(pending)));
     };
 
     {
         IndexerFixture f;
         open_store(tmp, f.project);
         stored(f, "pch", "k");
-        auto aux = f.project.store->begin_store_aux("pch", "k");
+        auto aux = f.project.precompiled_store->begin_store_aux("pch", "k");
         ZASSERT(!fs::write_file(aux.tmp_path, "idx-bytes"));
-        ZASSERT(f.project.store->commit(std::move(aux)));
+        ZASSERT(f.project.precompiled_store->commit(std::move(aux)));
         stored(f, "pcm", "m");
         auto dep_id = f.project.file_table.intern(Spelling::absolute(tmp.path("dep.h")));
         auto dep = Input{.file = dep_id, .version = f.project.file_table.intern_version(dep_id, 7)};
@@ -636,6 +636,7 @@ ZEST_CASE(OtherFormatKeepsMetadata) {
         open_store(tmp, f.project);
         ZEXPECT(!f.load());
         ZEXPECT(f.project.pchs.empty());
+        ZEXPECT(!f.project.precompiled_store->lookup("pch", "k"));
         ZEXPECT(f.project.pcms.size() == 1u);
         ZEXPECT(f.project.choices.bytes == "choices");
         f.save();

@@ -56,7 +56,7 @@ A build system may compile one module several ways — once per set of importers
 
 ### PCM Cache
 
-Each module keeps a record of its last build under each command: its key, what it read, and how it ended. The key names the build by configuration — the module, the compiler, the flags, the keys of the modules it imports — so a command change anywhere below a module changes its key; content changes are caught by checking what the build read with the shared file check (see [Incremental Compilation](incremental-parse.md)). Every build writes a new file in clice's own cache directory, so a rebuild never overwrites a PCM a compile is reading, and no file is shared with the build system. The records of successful builds are saved with the index, so a restart starts warm.
+Each module keeps a record of its last build under each command: its key, what it read, and how it ended. The key names the build by configuration — the module, the compiler, the flags, the keys of the modules it imports — so a command change anywhere below a module changes its key; content changes are caught by checking what the build read with the shared file check (see [Incremental Compilation](incremental-parse.md)). Every build writes a new file in clice's own directory of PCMs (`precompiled_dir`), so a rebuild never overwrites a PCM a compile is reading, and no file is shared with the build system. The records of successful builds are saved with the index, so a restart starts warm.
 
 ## FAQ
 

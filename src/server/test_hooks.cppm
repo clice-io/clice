@@ -78,7 +78,7 @@ struct StatsResult {
     /// Shards the last index save actually wrote (the true dirty set).
     std::uint32_t last_save_shards = 0;
 
-    /// In-flight tmp blobs of this instance's cache store. Zero once
+    /// In-flight tmp blobs of this instance's stores. Zero once
     /// builds finish — every pending write either committed or cleaned
     /// itself up.
     std::uint32_t pending_tmp_files = 0;

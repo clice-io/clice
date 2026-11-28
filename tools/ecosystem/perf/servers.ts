@@ -110,7 +110,14 @@ function cacheDirs(workspace: string, database: string, server: ServerName): str
         : [...new Set([workspace, database])].map((dir) => path.join(dir, ".cache", "clangd"));
 }
 
-/// The server's whole cache gone, or for clice its PCHs alone.
+/// Where a clice keeps its PCHs and PCMs in a run, relative to its cache
+/// directory (CLICE_TEST_PRECOMPILED_DIR), each project's in a directory of
+/// its own there.
+export const PRECOMPILED = "precompiled";
+
+/// The server's whole cache gone, or for clice its PCHs alone: every `pch`
+/// directory of a store layout (`v<N>`) in its cache, as a clice that keeps
+/// them in its cache directory lays them out too.
 export function wipeCache(
     workspace: string,
     database: string,
@@ -118,9 +125,21 @@ export function wipeCache(
     only?: "pch",
 ): void {
     if (only === "pch") {
-        const cache = path.join(cliceDir(workspace, server), "cache");
-        for (const version of fs.existsSync(cache) ? fs.readdirSync(cache) : []) {
-            fs.rmSync(path.join(cache, version, "pch"), { recursive: true, force: true });
+        const dir = cliceDir(workspace, server);
+        const entries = fs.existsSync(dir)
+            ? fs.readdirSync(dir, { recursive: true, withFileTypes: true })
+            : [];
+        for (const entry of entries) {
+            if (
+                entry.isDirectory() &&
+                entry.name === "pch" &&
+                /^v\d+$/.test(path.basename(entry.parentPath))
+            ) {
+                fs.rmSync(path.join(entry.parentPath, entry.name), {
+                    recursive: true,
+                    force: true,
+                });
+            }
         }
         return;
     }
@@ -157,7 +176,7 @@ function diskBytes(file: string): number {
 /// Bytes the server's cache holds on disk, clice's logs aside: all of it,
 /// and its index alone. clangd keeps nothing but the index there (its
 /// preambles live in memory or in temporary files); clice keeps its index
-/// beside the PCHs and PCMs of its store, under cache/<version>/index.
+/// under cache/<version>/index, beside its PCHs and PCMs (PRECOMPILED).
 export function cacheBytes(
     workspace: string,
     database: string,

@@ -93,20 +93,23 @@ bool has_build(const Project& project) {
     if(declared || !discovered_databases(project.root).empty()) {
         return true;
     }
-    auto store =
-        CacheStore::open(project.settings.cache_dir, cache_format_version, /*read_only=*/true);
+    auto store = CacheStore::open(path::join(project.settings.cache_dir, "cache"),
+                                  cache_format_version,
+                                  /*read_only=*/true);
     return store && index::database_exists(*store, project.database_key);
 }
 
-/// The cache of the files outside every folder, whatever the editor's
-/// settings name — theirs is the folders', and a cache directory serves one
-/// project of a server: this server's own directory under clice's temporary
-/// one, removed with the project (make_project) — those of servers killed
-/// before, when the next one makes its own. Why there is none: the
-/// temporary directory cannot be used.
+/// The cache of the files outside every folder, PCHs and PCMs included,
+/// whatever the editor's settings name — theirs is the folders', and a
+/// cache directory serves one project of a server: this server's own
+/// directory under clice's temporary one, removed with the project
+/// (make_project) — those of servers killed before, when the next one
+/// makes its own. Why there is none: the temporary directory cannot be
+/// used.
 std::optional<std::string> use_temporary_cache(Settings& settings) {
     settings.cache_dir.clear();
     settings.cache_identity = {};
+    settings.precompiled_dir.clear();
     auto temp = temp_root();
     if(!temp) {
         return std::move(temp.error());
@@ -114,6 +117,7 @@ std::optional<std::string> use_temporary_cache(Settings& settings) {
     remove_left_by_exited(*temp);
     CanonicalPath cache(Spelling::absolute(path::join(*temp, std::to_string(sys::pid()))));
     settings.cache_dir = cache.str();
+    settings.precompiled_dir = path::join(cache.str(), "precompiled");
     settings.cache_identity = std::move(cache);
     return std::nullopt;
 }

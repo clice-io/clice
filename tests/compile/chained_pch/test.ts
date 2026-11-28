@@ -12,7 +12,7 @@ import { answers, test, type Serve, type TestContext } from "@clice/tools/testin
 
 const DATABASE = "build/compile_commands.json";
 const WRITER = "build/CMakeFiles/app.dir/cmake_pch.hxx.cxx";
-const PCH = ".clice/cache/*/pch/*.pch";
+const PCH = ".clice/precompiled/*/*/pch/*.pch";
 
 interface Entry {
     directory: string;

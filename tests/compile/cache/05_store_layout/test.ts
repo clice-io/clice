@@ -3,10 +3,10 @@ import * as path from "node:path";
 import { expect } from "vitest";
 import { test, type TestContext } from "@clice/tools/testing";
 
-/// The cache's directories and files, the store's version and the hashes
-/// in blob names elided.
-function store(t: TestContext): string[] {
-    const cache = path.join(t.root, ".clice", "cache");
+/// A store's directories and files in `.clice/<dir>`, the store's version
+/// and the hashes in directory and blob names elided.
+function store(t: TestContext, dir: string): string[] {
+    const cache = path.join(t.root, ".clice", dir);
     return fs
         .readdirSync(cache, { recursive: true, withFileTypes: true })
         .map((entry) => {
@@ -15,7 +15,7 @@ function store(t: TestContext): string[] {
         })
         .map((rel) =>
             rel
-                .replace(/^v\d+\//, "v#/")
+                .replace(/(^|\/)v\d+\//, "$1v#/")
                 .replace(/[0-9a-f]{32}/g, "<key>")
                 .replace(/[0-9a-f]{16}/g, "<nonce>"),
         )
@@ -28,5 +28,8 @@ test("store layout", async (t) => {
     await s.indexed();
     // The store is final once the server is gone: no write in flight.
     await s.stop();
-    await t.show("store", store(t));
+    // The index in the cache directory, the PCHs and PCMs in the project's
+    // directory of them, here the tests' `.clice/precompiled`.
+    await t.show("store", store(t, "cache"));
+    await t.show("precompiled", store(t, "precompiled"));
 });

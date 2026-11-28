@@ -1,0 +1,3 @@
+[cache]
+pch_size = "1K"
+pcm_size = "1K"

@@ -10,7 +10,7 @@ test(async (t) => {
     const build = await s.park("buildPcm", "m.cppm", { at: "worker" });
     const lost = s.errors("main.cpp");
     await build.reached();
-    const pcm = t.disk.list(".clice/cache/*/pcm/A-*.pcm");
+    const pcm = t.disk.list(".clice/precompiled/*/*/pcm/A-*.pcm");
     expect(pcm).toHaveLength(1);
     t.disk.rm(pcm[0] ?? "");
     await build.release();
