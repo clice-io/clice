@@ -1,0 +1,18 @@
+[server."clice.toml"]
+pushes = [
+    [
+        {
+            at = 'patterns = [⟦"src\\**"⟧]',
+            severity = "error",
+            message = "'src\\**' holds a backslash: separate directories with `/` on every platform, and match a literal `*`, `?`, `[` or `{` with a range such as `[*]` at rules[0].patterns[0]",
+            source = "clice",
+        },
+    ],
+]
+
+[server."main.cpp"]
+document_symbols = []
+
+["command line"."$ clice lint"]
+stderr = "error: user/clice/clice.toml:2:13: 'src\\**' holds a backslash: separate directories with `/` on every platform, and match a literal `*`, `?`, `[` or `{` with a range such as `[*]` at rules[0].patterns[0]"
+exit = 2

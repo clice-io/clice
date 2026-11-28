@@ -281,14 +281,15 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef root
 void CacheStore::write_ignore_markers(llvm::StringRef root) {
     // The root ignores itself, so the project-local default never
     // pollutes the repository: `*` covers git and everything honoring
-    // gitignore (ripgrep, editor search), except `config.toml` — the root
-    // doubles as the `.clice/config.toml` location, and user configuration
-    // must stay visible. CACHEDIR.TAG (the standard marker backup and
-    // scanning tools skip) sits at the root too: it must cover generated
-    // content outside the store (logs), and
+    // gitignore (ripgrep, editor search), except `clice.toml` — the root
+    // doubles as the `.clice/clice.toml` location, and the project's
+    // configuration must stay visible, while a developer's own
+    // `.clice/clice.local.toml` stays out with the rest. CACHEDIR.TAG (the
+    // standard marker backup and scanning tools skip) sits at the root too:
+    // it must cover generated content outside the store (logs), and
     // root-level files are safe from open()'s layout removal, which only
     // scans cache/. The known cost is that CACHEDIR-aware backups also
-    // skip a config.toml kept here — git, which sees it, is the intended
+    // skip a clice.toml kept here — git, which sees it, is the intended
     // preservation channel.
     // A root that cannot be made is the store's to report: it cannot open
     // there either.
@@ -313,7 +314,13 @@ void CacheStore::write_ignore_markers(llvm::StringRef root) {
             fs::remove(path);
         }
     };
-    write_marker(path::join(root, ".gitignore"), "*\n!config.toml\n");
+    auto gitignore = path::join(root, ".gitignore");
+    // The marker of a root from before the project's file there was named
+    // clice.toml would hide it.
+    if(std::string marked; !fs::read_file(marked, gitignore) && marked == "*\n!config.toml\n") {
+        fs::remove(gitignore);
+    }
+    write_marker(gitignore, "*\n!clice.toml\n");
     // LIMITATION: Time Machine and iCloud read no CACHEDIR.TAG, so on macOS
     // the precompiled files and the index are backed up and synced; the
     // configuration guide advises a `cache_dir` under ~/Library/Caches.

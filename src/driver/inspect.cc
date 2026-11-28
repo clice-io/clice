@@ -1210,7 +1210,82 @@ int run(ConfigSchema&) {
     return 0;
 }
 
-/// The operations of `clice inspect`: each feature, and the schema.
+/// A configuration file a project's settings are read from where it is.
+struct SettingsPlace {
+    SettingsLayer layer;
+    std::string path;
+
+    /// Whether it was read: the project's is the first of its names there.
+    bool read = false;
+};
+
+/// A setting the files change from its default.
+struct InspectedSetting {
+    std::string key;
+    codec::raw_value value;
+
+    /// Where it is set, `<file>:<line>`; empty for a value that follows
+    /// from others.
+    std::string origin;
+};
+
+/// What `clice inspect config` prints.
+struct InspectedSettings {
+    std::vector<SettingsPlace> files;
+    std::vector<InspectedSetting> settings;
+
+    /// Where each rule is written, in the order they are matched.
+    std::vector<std::string> rules;
+};
+
+KANNOTATE_TYPE(struct SettingsView,
+               description =
+                   "The configuration files the project reads, lowest first, and the settings "
+                   "they change from the defaults, each with where it is set");
+struct SettingsView {
+    ProjectOptions where;
+};
+
+int run(SettingsView& view) {
+    auto read = read_project(view.where);
+    if(!read) {
+        return print_error(read.error());
+    }
+    auto& [root, loaded] = *read;
+    CanonicalPath canonical(root);
+    InspectedSettings output;
+    auto place = [&](SettingsLayer layer, std::string path) {
+        bool found = ranges::contains(loaded.files, path, &SettingsFile::path);
+        output.files.push_back({.layer = layer, .path = std::move(path), .read = found});
+    };
+    if(auto user = user_settings_file(); !user.empty()) {
+        place(SettingsLayer::User, std::move(user));
+    }
+    for(auto name: settings_file_names) {
+        place(SettingsLayer::Project, path::join(canonical, name));
+    }
+    place(SettingsLayer::Local, path::join(canonical, local_settings_file_name));
+    for(auto& setting: loaded.changed) {
+        output.settings.push_back({
+            .key = std::move(setting.key),
+            .value = codec::raw_value{std::move(setting.value)},
+            .origin = std::move(setting.origin),
+        });
+    }
+    for(auto& rule: loaded.settings.compiled_rules) {
+        output.rules.push_back(rule.origin);
+    }
+    auto json = json::to_string<JsonFormat>(output, json_options);
+    if(!json) {
+        LOG_ERROR("serialization failed: {}", json.error().message);
+        return 1;
+    }
+    driver::println("{}", *json);
+    return 0;
+}
+
+/// The operations of `clice inspect`: each feature, the configuration and
+/// its schema.
 struct Operations {
     using signature = int();
 };
@@ -1232,6 +1307,7 @@ struct Inspect {
              {.name = features[I].name}),
          ...);
     }(std::make_index_sequence<features.size()>{});
+    cli::add_command<Operations>(dispatch<SettingsView>, {.name = "config"});
     cli::add_command<Operations>(dispatch<ConfigSchema>);
     return cli::add_command<Subcommands>(dispatch<Inspect>);
 }();

@@ -1,0 +1,2 @@
+default_configuration = "debug"
+inlay_hint = true

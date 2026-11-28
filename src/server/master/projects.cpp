@@ -90,7 +90,6 @@ ServedProject& MasterServer::document_owner(Fid path_id) {
     projects.push_back(project);
     projects_generation += 1;
     project->configure(init_options, {});
-    log_settings(*project);
     if(lifecycle != ServerLifecycle::Ready) {
         return *project;
     }
@@ -343,7 +342,6 @@ void MasterServer::serve_folders() {
     // previous project still holds passes to it.
     for(auto* project: made) {
         project->configure(init_options, taken_cache_dirs(project->project.root));
-        log_settings(*project);
     }
     // A removed project holds its cache directory until it is gone: one
     // taking its root over waits for that, holding the root's documents.

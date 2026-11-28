@@ -1,0 +1,28 @@
+["one directory"."$ clice index --workspace a --jobs 1"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/shared/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["one directory"."$ clice index --workspace b --jobs 1"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/b/.clice/logs/${SESSION}
+'''
+stderr = "warning: Cache directory ${WS}/shared/.clice serves the project at ${WS}/a; ${WS}/b keeps its cache in .clice (a cache_dir set for every project gives each a directory of its own with ${workspace_id})"
+exit = 0
+
+["a directory each"."$ clice index --workspace a --jobs 1"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0
+
+["a directory each"."$ clice index --workspace b --jobs 1"]
+stdout = '''
+Indexed 1 translation unit in #s: 1 file shard (# B), 1 symbol.
+Session log: ${WS}/.clice/logs/${SESSION}
+'''
+exit = 0

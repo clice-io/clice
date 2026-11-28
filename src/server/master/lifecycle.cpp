@@ -23,7 +23,8 @@ namespace clice {
 constexpr static std::size_t notify_log_limit = 128;
 
 MasterServer::MasterServer(async::event_loop& loop, std::string requested_configuration) :
-    loop(loop), pool(loop), requested_configuration(std::move(requested_configuration)) {
+    loop(loop), pool(loop), requested_configuration(std::move(requested_configuration)),
+    user_settings{.path = user_settings_file()} {
     files.disk.shadow = env_string("CLICE_SHADOW_FRESHNESS").has_value();
     // A disk change can be seen deep inside any operation — a staleness
     // check, a rescan inside a cascade: the changes apply on the next loop
@@ -64,58 +65,6 @@ MasterServer::~MasterServer() {
     logging::set_notify_hook(nullptr);
 }
 
-/// The values of `actual` that `defaults` does not have, as `a.b = <JSON>`.
-static void differing(simdjson::dom::element actual,
-                      simdjson::dom::element defaults,
-                      llvm::StringRef prefix,
-                      std::vector<std::string>& out) {
-    simdjson::dom::object fields, default_fields;
-    if(!actual.get_object().get(fields) && !defaults.get_object().get(default_fields)) {
-        for(auto [key, value]: fields) {
-            auto name = prefix.empty() ? std::string(key) : std::format("{}.{}", prefix, key);
-            simdjson::dom::element default_value;
-            if(default_fields[key].get(default_value)) {
-                out.push_back(std::format("{} = {}", name, simdjson::minify(value)));
-            } else {
-                differing(value, default_value, name, out);
-            }
-        }
-        return;
-    }
-    auto text = simdjson::minify(actual);
-    if(text != simdjson::minify(defaults)) {
-        out.push_back(std::format("{} = {}", prefix, text));
-    }
-}
-
-void MasterServer::log_settings(const ServedProject& project) const {
-    llvm::SmallVector<std::string_view> sources;
-    if(!project.settings_file.empty()) {
-        sources.push_back("clice.toml");
-    }
-    if(init_options) {
-        sources.push_back("initializationOptions");
-    }
-    // Against the defaults as the project's root derives them: its cache
-    // and logging directories are no setting of the user's.
-    Settings unset;
-    unset.finalize(project.project.root);
-    auto actual = json::to_string(project.project.settings);
-    auto defaults = json::to_string(unset);
-    simdjson::dom::parser actual_parser, defaults_parser;
-    simdjson::dom::element actual_root, defaults_root;
-    if(!actual || !defaults || actual_parser.parse(*actual).get(actual_root) ||
-       defaults_parser.parse(*defaults).get(defaults_root)) {
-        return;
-    }
-    std::vector<std::string> changed;
-    differing(actual_root, defaults_root, "", changed);
-    LOG_INFO("Settings of the project at {}, from {}: {}",
-             project.project.root,
-             sources.empty() ? "the defaults alone" : llvm::join(sources, " and "),
-             changed.empty() ? "the defaults" : llvm::join(changed, ", "));
-}
-
 void MasterServer::log_into(const ServedProject& project) {
     auto& logging_dir = project.project.settings.logging_dir;
     if(logging_dir.empty()) {
@@ -152,6 +101,7 @@ void MasterServer::initialize() {
     }
     projects_generation += 1;
     show_paths_relative();
+    user_settings.look();
     watch_settings();
     for(auto& project: projects) {
         project->configure(init_options, taken_cache_dirs());
@@ -176,10 +126,6 @@ void MasterServer::initialize() {
     if(auto ms = env_integer("CLICE_TEST_REQUEST_DEADLINE_MS")) {
         pool_opts.build_deadline = pool_opts.query_deadline = pool_opts.stall_deadline =
             chrono::milliseconds(*ms);
-    }
-
-    for(auto& project: projects) {
-        log_settings(*project);
     }
 
     if(env_string("CLICE_TEST_HOOKS") == "1") {
@@ -283,9 +229,11 @@ void MasterServer::watch_settings() {
             .dir = dir,
             .file = {.path = path::join(dir, settings_file_names[0])},
             .hidden = {.path = path::join(dir, settings_file_names[1])},
+            .local = {.path = path::join(dir, local_settings_file_name)},
         });
         watch.file.look();
         watch.hidden.look();
+        watch.local.look();
     }
     settings_watches = std::move(watches);
 }
@@ -296,11 +244,37 @@ void MasterServer::look_at_settings() {
     auto content = [](const vfs::Flag& flag) {
         return std::pair(flag.stamp.has_value(), flag.hash);
     };
+    auto changed = [&](const vfs::Flag& flag) {
+        ask_restart({
+            .file = flag.path,
+            .message = std::format("{} changed", files.display_identity(flag.path)),
+        });
+    };
+    auto user = content(user_settings);
+    user_settings.look();
+    if(content(user_settings) != user) {
+        if(user_settings.stamp) {
+            changed(user_settings);
+        } else {
+            ask_restart({.message = std::format("{} was deleted", user_settings.path)});
+        }
+    }
     for(auto& watch: settings_watches) {
         auto file = content(watch.file);
         auto hidden = content(watch.hidden);
+        auto local = content(watch.local);
         watch.file.look();
         watch.hidden.look();
+        watch.local.look();
+        if(content(watch.local) != local) {
+            if(watch.local.stamp) {
+                changed(watch.local);
+            } else {
+                ask_restart(
+                    {.message = std::format("The local configuration file of {} was deleted",
+                                            files.display(watch.dir))});
+            }
+        }
         if(content(watch.file) == file && (watch.file.stamp || content(watch.hidden) == hidden)) {
             continue;
         }
@@ -310,10 +284,7 @@ void MasterServer::look_at_settings() {
                                                 files.display(watch.dir))});
             continue;
         }
-        ask_restart({
-            .file = in_use.path,
-            .message = std::format("{} changed", files.display_identity(in_use.path)),
-        });
+        changed(in_use);
     }
 }
 
@@ -329,7 +300,12 @@ bool MasterServer::test_hooks() const {
 }
 
 feature::SemanticTokensOptions MasterServer::startup_token_options() const {
-    return load_settings(project_roots().front(), {.overlay = init_options, .strict = false})
+    return load_settings(project_roots().front(),
+                         {
+                             .overlay = init_options,
+                             .strict = false,
+                             .user_file = user_settings.path,
+                         })
         .settings.semantic_tokens;
 }
 

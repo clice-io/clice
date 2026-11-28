@@ -1,0 +1,4 @@
+# sub/ holds its database and a local file alone: a project of its own,
+# whose local file applies to its files.
+[databases]
+sub = ["sub/main.cpp"]

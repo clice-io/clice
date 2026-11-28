@@ -8,7 +8,7 @@ import :vfs.path;
 
 namespace clice {
 
-/// Whether `dir` holds a configuration file.
+/// Whether `dir` holds a configuration file: the project's or a local one.
 bool has_configuration_file(const Spelling& dir);
 
 /// The outermost directory below `project_root` that holds `path`, or is

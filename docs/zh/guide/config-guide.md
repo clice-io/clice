@@ -4,7 +4,7 @@
 
 ## 配置文件
 
-clice 在服务器启动时读取一次项目根目录下的 `clice.toml`，若该文件不存在则读取 `.clice/config.toml`；保存配置文件后，服务器会请求编辑器重启自身。编辑器也可以通过 `initializationOptions` 发送设置，这些设置会取代配置文件中的同名设置。
+clice 在服务器启动时读取一次项目根目录下的 `clice.toml`，若该文件不存在则读取 `.clice/clice.toml`；保存配置文件后，服务器会请求编辑器重启自身。适用于所有项目的设置——worker、各功能的偏好设置、针对每个项目都有的那类文件的规则——写在用户配置文件中，即 `$XDG_CONFIG_HOME`（设为绝对路径时）或 `~/.config`（Windows 上为 `%APPDATA%`）下的 `clice/clice.toml`，项目自身的设置优先于它；用户配置文件中指定编译数据库或默认命令的规则会关闭所有项目的数据库自动发现，因此这类规则应留在各项目自己的配置文件中。开发者本人针对某个项目的设置写在 `.clice/clice.local.toml` 中，它优先于项目自身的设置；只要缓存目录仍是默认的 `.clice`，Git 就看不到这个文件。编辑器也可以通过 `initializationOptions` 发送设置，这些设置会取代各配置文件中的同名设置。`clice inspect config` 会显示一个项目读取了哪些文件，以及它改动的每项设置来自何处。
 
 <!-- BEGIN GENERATED ITEMS: config/loading -->
 
@@ -40,9 +40,37 @@ tests/config/layers/01_editor_overrides
 
 <!-- END CAPABILITY -->
 
+<!-- BEGIN CAPABILITY: supported -->
+
+**用户配置文件**
+
+适用于所有项目的设置写在用户配置文件中，各项目自身的设置优先于它
+
+用户配置目录（Linux 与 macOS 上为 `~/.config`，Windows 上为 `%APPDATA%`，`$XDG_CONFIG_HOME` 设为绝对路径时一律为它）下的 `clice/clice.toml` 作用于每个项目，项目的 `clice.toml` 优先于它。本例中用户配置文件的规则与项目的规则各为 `main.cpp` 提供一个宏，文件得以正常编译；`clice inspect config` 会列出读取了哪些文件，以及每项设置来自何处。
+
+```case
+tests/config/layers/03_user_file
+```
+
+<!-- END CAPABILITY -->
+
+<!-- BEGIN CAPABILITY: supported -->
+
+**本地配置文件**
+
+项目的 `clice.toml` 已提交到仓库时，开发者本人的设置写在 `.clice/clice.local.toml` 中
+
+项目的 `clice.toml` 让 `main.cpp` 以 C++17 编译并带上一个宏；本地配置文件（缓存目录中的 `.gitignore` 会把它排除在 Git 之外）要求使用 C++20，并去掉这个宏。本地配置文件的规则排在项目规则之前，因此先作决定；它们的编译选项排在项目规则之后，因此在命令行上胜出：概念得以编译，`#error` 也不会触发。
+
+```case
+tests/config/layers/04_local_file
+```
+
+<!-- END CAPABILITY -->
+
 <!-- END GENERATED ITEMS -->
 
-下文的大部分配置都写成规则。每个 `[[rules]]` 条目用 `patterns`（相对于项目根目录）选出文件，并为它们设置字段。匹配某个文件的所有规则按顺序生效：各规则的 `append` 和 `remove` 依次累加，其余字段由第一条设置了它的规则决定。因此针对部分文件的规则应写在针对全部文件的规则之前，不带 `patterns` 的规则放在最后。`clice command <file>` 会显示规则对某个文件的作用：编译数据库为它列出的每条命令（已应用规则的编辑），以及每项按文件设置的取值和决定它的规则。在 VS Code 中，Show Compile Command 会显示已打开文件实际编译所用的命令，无论该命令来自何处。
+下文的大部分配置都写成规则。每个 `[[rules]]` 条目用 `patterns`（相对于项目根目录）选出文件，并为它们设置字段。匹配某个文件的所有规则按顺序生效：各规则的 `append` 和 `remove` 依次累加，其余字段由第一条设置了它的规则决定。因此针对部分文件的规则应写在针对全部文件的规则之前，不带 `patterns` 的规则放在最后。跨文件时，本地配置文件的规则排在最前，其次是项目的规则，最后是用户配置文件的规则；而它们的 `append` 和 `remove` 编辑命令的顺序正好相反，用户配置文件的最先：越具体的文件越先作决定，它的编译选项也排在最后。`clice command <file>` 会显示规则对某个文件的作用：编译数据库为它列出的每条命令（已应用规则的编辑），以及每项按文件设置的取值和决定它的规则。在 VS Code 中，Show Compile Command 会显示已打开文件实际编译所用的命令，无论该命令来自何处。
 
 ## 编译命令
 
@@ -293,3 +321,4 @@ clangd 查找 `compile_commands.json` 时只看文件上方的各级目录及其
 | `--limit-results`                        | `[code_completion] limit`                                     |
 | `--limit-references`                     | `[references] limit`                                          |
 | `-j`                                     | `[workers] background` 和 `[workers] max`                     |
+| clangd 的用户级 `config.yaml`            | 用户配置文件（参见[配置文件](#the-configuration-file)）       |

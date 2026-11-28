@@ -7,6 +7,8 @@ import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+import { withoutUserSettings } from "../process_gate.ts";
+
 /// What clice must make of one source file's compile command, beyond the
 /// checks every file gets (a database entry, a resolved toolchain, the
 /// real compiler's macro values, a clean parse).
@@ -215,7 +217,7 @@ export function cliceEnv(scenario: Scenario): NodeJS.ProcessEnv {
     const env = Object.fromEntries(
         Object.entries(systemEnv()).filter(([name]) => !prompt.has(name.toUpperCase())),
     );
-    return withPath(env, scenario.path);
+    return withoutUserSettings(withPath(env, scenario.path));
 }
 
 function locate(tool: string, env: NodeJS.ProcessEnv): string | undefined {

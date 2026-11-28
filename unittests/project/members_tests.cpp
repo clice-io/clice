@@ -193,7 +193,7 @@ ZEST_CASE(DefaultSourcesSkipNested) {
     tmp.touch("other/b.cpp", "");
     tmp.touch("sub/clice.toml", "");
     tmp.touch("sub/a.cpp", "");
-    tmp.touch("tool/.clice/config.toml", "");
+    tmp.touch("tool/.clice/clice.toml", "");
     tmp.touch("tool/c.cpp", "");
 
     FileTable files;

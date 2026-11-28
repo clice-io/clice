@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
+import { withoutUserSettings } from "@clice/tools/process_gate";
 import { cliceExecutable } from "@clice/tools/session";
 
 // A command that crashes, as clang compiling in its own process can, prints
@@ -12,7 +13,7 @@ import { cliceExecutable } from "@clice/tools/session";
 test("crash in a command", async (t) => {
     const command = spawn(cliceExecutable(), ["inspect", "document-symbols", "main.cpp"], {
         cwd: t.root,
-        env: { ...process.env, CLICE_TEST_PRAGMA_CRASH: "1" },
+        env: withoutUserSettings({ ...process.env, CLICE_TEST_PRAGMA_CRASH: "1" }),
         stdio: ["ignore", "ignore", "pipe"],
     });
     let stderr = "";

@@ -168,6 +168,7 @@ Options:
 Subcommands:
   code-action         The code actions on a selection
   code-completion     The completions at a point
+  config              The configuration files the project reads, lowest first, and the settings they change from the defaults, each with where it is set
   config-schema       The JSON schema of the clice configuration
   document-highlight  The places naming the symbol at a point
   document-links      The file's links

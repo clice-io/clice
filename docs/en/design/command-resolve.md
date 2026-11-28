@@ -33,10 +33,10 @@ The classification is also what keeps questions few: a compiler's answer does no
 
 ## Rules, Members and Hosts
 
-The rules of `clice.toml` decide, under the active build configuration, what the databases' entries become; every consumer — the editor, the dependency scan, the background index, the command line — asks the project, never a database directly.
+The rules of the configuration files — the user's, the project's `clice.toml` and its local file — decide, under the active build configuration, what the databases' entries become; every consumer — the editor, the dependency scan, the background index, the command line — asks the project, never a database directly.
 
 - **Entries.** A file's entries in build order: the databases its matching rules name first, then the other rules', then the discovered ones. The first is the default; the user can pick another. A rule decides priority only: no entry disappears because a pattern does not name its file.
-- **Edits.** Every matching rule's `remove` and `append`, in declaration order. A command a file takes from another — a header from its host — is edited by the rules of both files, so a header sees the macros its host compiles with.
+- **Edits.** Every matching rule's `remove` and `append`, file by file from the user's to the local one, each file's in declaration order. A command a file takes from another — a header from its host — is edited by the rules of both files, so a header sees the macros its host compiles with.
 - **Members.** The translation units of the build: the files with entries, the sources a rule's `default_command` covers, and the provisional members (below). A header a database lists is a member too, and is indexed as a unit of its own.
 - **Hosts.** A header without a command of its own compiles in a unit that includes it, of a language the header can be part of (never C for a `.hpp`). The candidates rank by the databases the header's own rules name, then a shared stem, then the same directory, then the distance by path; the first whose compile actually enters the header hosts it. See [Compilation Context](compilation-context.md).
 - **Borrowed commands.** A file with neither an entry, a host nor a `default_command` borrows a nearby unit's command of its language: one in its directory, the one sharing its stem first, else for a header the unit whose include directories contain it, else the nearest. It is labeled so, and its diagnostics about missing files say the command was borrowed.
@@ -44,7 +44,7 @@ The rules of `clice.toml` decide, under the active build configuration, what the
 
 ### Discovery
 
-A configuration that declares no database and no `default_command` discovers them: the `compile_commands.json` of the project root and of its immediate subdirectories, and when a file is opened, those in the directories between it and the root. A directory with a `clice.toml` or `.clice/config.toml` of its own is another project. A link to a database found already is the same database. The server keeps looking on its poll, so a database generated later loads when it appears. As soon as a rule declares a source, discovery is off: the declaration is the whole intent.
+A configuration that declares no database and no `default_command` discovers them: the `compile_commands.json` of the project root and of its immediate subdirectories, and when a file is opened, those in the directories between it and the root. A directory with a `clice.toml`, `.clice/clice.toml` or `.clice/clice.local.toml` of its own is another project. A link to a database found already is the same database. The server keeps looking on its poll, so a database generated later loads when it appears. As soon as a rule declares a source, discovery is off: the declaration is the whole intent.
 
 ## Asking the Compiler
 

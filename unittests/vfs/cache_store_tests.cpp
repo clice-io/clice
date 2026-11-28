@@ -86,8 +86,8 @@ ZEST_CASE(RootIgnoreMarkers) {
 
     CacheStore::write_ignore_markers(tmp.path("root"));
 
-    // config.toml stays visible: the root doubles as .clice/config.toml.
-    ZASSERT(read_file(tmp.path("root/.gitignore")).value_or("") == "*\n!config.toml\n");
+    // clice.toml stays visible: the root doubles as .clice/clice.toml.
+    ZASSERT(read_file(tmp.path("root/.gitignore")).value_or("") == "*\n!clice.toml\n");
     auto tag = read_file(tmp.path("root/CACHEDIR.TAG")).value_or("");
     ZASSERT(llvm::StringRef(tag).starts_with("Signature: 8a477f597d28d172789f06886806bc55"));
 }
@@ -98,7 +98,7 @@ ZEST_CASE(MarkersCreateRoot) {
     // Sessions mark the defaulted root before anything else creates it.
     CacheStore::write_ignore_markers(tmp.path("fresh"));
 
-    ZASSERT(read_file(tmp.path("fresh/.gitignore")).value_or("") == "*\n!config.toml\n");
+    ZASSERT(read_file(tmp.path("fresh/.gitignore")).value_or("") == "*\n!clice.toml\n");
     ZASSERT(fs::exists(tmp.path("fresh/CACHEDIR.TAG")));
 }
 
@@ -110,6 +110,17 @@ ZEST_CASE(IgnoreMarkersPreserved) {
     CacheStore::write_ignore_markers(tmp.path("root"));
     ZASSERT(read_file(tmp.path("root/.gitignore")).value_or("") == "custom\n");
     ZASSERT(fs::exists(tmp.path("root/CACHEDIR.TAG")));
+}
+
+ZEST_CASE(OldMarkerRewritten) {
+    // A marker written before the project's file was named clice.toml is
+    // the one whose rule would hide it.
+    TempDir tmp;
+    { auto store = open_store(tmp); }
+    ZASSERT(!fs::write_file(tmp.path("root/.gitignore"), "*\n!config.toml\n"));
+
+    CacheStore::write_ignore_markers(tmp.path("root"));
+    ZASSERT(read_file(tmp.path("root/.gitignore")).value_or("") == "*\n!clice.toml\n");
 }
 
 ZEST_CASE(DropRemovesTmp) {

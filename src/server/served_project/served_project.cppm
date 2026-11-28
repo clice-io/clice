@@ -351,10 +351,10 @@ public:
 
     // served_project.cpp
 
-    /// Read the settings (load_settings): clice.toml under the root,
-    /// overlaid with the client's initializationOptions (`init_options`),
-    /// its cache directory none of `taken_cache_dirs`. One with errors
-    /// leaves the project broken.
+    /// Read the settings (load_settings): the user's file, clice.toml under
+    /// the root and its local file, overlaid with the client's
+    /// initializationOptions (`init_options`), its cache directory none of
+    /// `taken_cache_dirs`. One with errors leaves the project broken.
     void configure(const std::optional<codec::dyn::Value>& init_options,
                    llvm::ArrayRef<CanonicalPath> taken_cache_dirs);
 
@@ -781,10 +781,15 @@ public:
     Project project;
 
     /// Problems found while reading the settings, kept so the client can
-    /// publish them as diagnostics on the configuration file's URI, and the
-    /// path of the file found (empty when none).
+    /// publish them as diagnostics on the configuration files' URIs, and
+    /// the files found.
     std::vector<SettingsIssue> settings_issues;
-    std::string settings_file;
+    std::vector<SettingsFile> settings_files;
+
+    /// The project's own configuration file, where what concerns the
+    /// project is shown: its clice.toml (or .clice/clice.toml), else its
+    /// local file; empty for none.
+    llvm::StringRef settings_file() const;
 
 private:
     friend struct testing::ServedProjectFixture;

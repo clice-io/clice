@@ -55,7 +55,7 @@ ZEST_CASE(NestedProjectsLeftOut) {
     tmp.touch("sub/clice.toml", "");
     tmp.touch("sub/compile_commands.json", "[]");
     tmp.touch("sub/deep/build/x/compile_commands.json", "[]");
-    tmp.touch("hidden/.clice/config.toml", "");
+    tmp.touch("hidden/.clice/clice.toml", "");
     tmp.touch("hidden/compile_commands.json", "[]");
     CanonicalPath root(Spelling::absolute(tmp.root));
     Spelling spelled(root);
@@ -79,6 +79,20 @@ ZEST_CASE(NestedProjectsLeftOut) {
     ZEXPECT(
         nested_project(root, CanonicalPath(Spelling::absolute(tmp.path("plain/a.cpp")))).empty());
 };
+
+ZEST_CASE(SettingsDirectoryNoProject) {
+    /// A project's .clice holds its configuration file, and is no project of
+    /// its own: a database in it is the project's.
+    TempDir tmp;
+    tmp.touch(".clice/clice.toml", "");
+    tmp.touch(".clice/compile_commands.json", "[]");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    ZEXPECT(has_configuration_file(Spelling(root)));
+    ZEXPECT(!has_configuration_file(Spelling::absolute(tmp.path(".clice"))));
+    auto found = discovered_databases(root);
+    ZASSERT(found.size() == 1u);
+    ZEXPECT(found[0].str() == Spelling(".clice/compile_commands.json", Spelling(root)).str());
+}
 
 ZEST_CASE(DeeperDatabasesNamed) {
     /// The walk names what discovery passes over, three directories deep
@@ -161,7 +175,7 @@ ZEST_CASE(DefinesProject) {
     /// file or a database where startup discovery looks.
     TempDir tmp;
     tmp.touch("toml/clice.toml", "");
-    tmp.touch("hidden/.clice/config.toml", "");
+    tmp.touch("hidden/.clice/clice.toml", "");
     tmp.touch("db/build/compile_commands.json", "[]");
     tmp.touch("plain/src/main.cpp", "");
     tmp.touch("deep/a/b/compile_commands.json", "[]");

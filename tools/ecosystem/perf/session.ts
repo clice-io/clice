@@ -7,7 +7,14 @@ import * as path from "node:path";
 import * as proto from "vscode-languageserver-protocol";
 import { CliceClient } from "../../client/client.ts";
 import { Workspace } from "../../client/workspace.ts";
-import { logFaults, readLogLines, sessionLogs, sessionsIn, textLines } from "../../process_gate.ts";
+import {
+    logFaults,
+    readLogLines,
+    sessionLogs,
+    sessionsIn,
+    textLines,
+    withoutUserSettings,
+} from "../../process_gate.ts";
 import { TimeoutError, withTimeout } from "../../promise.ts";
 import { watchTree, type TreeWatch } from "../memory.ts";
 import { loggingDir } from "../prepare.ts";
@@ -205,8 +212,11 @@ export class Session {
             // database's directory so that both compile under one command.
             cwd: isClice(this.server) ? undefined : database,
             checked: false,
-            // clice writes the [perf:*] lines collectPerf reads only when asked.
-            env: isClice(this.server) ? { CLICE_PERF: "1" } : undefined,
+            // clice writes the [perf:*] lines collectPerf reads only when
+            // asked, and reads no user's file, as clangd reads no config.
+            env: isClice(this.server)
+                ? (withoutUserSettings({ CLICE_PERF: "1" }) as Record<string, string>)
+                : undefined,
         });
         this.connected = client;
         // A wrapper this process may not signal (sudo's memory scope) fails a

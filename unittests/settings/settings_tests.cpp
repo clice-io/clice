@@ -379,14 +379,15 @@ ZEST_CASE(LoadMalformedTOML) {
     CanonicalPath root(Spelling::absolute(tmp.root));
     auto loaded = load_settings(root);
     ZEXPECT(loaded.broken());
-    ZEXPECT(loaded.file == path::join(root, "clice.toml"));
+    ZASSERT(loaded.files.size() == 1u);
+    ZEXPECT(loaded.files[0].path == path::join(root, "clice.toml"));
     ZEXPECT(loaded.settings.workers.foreground == 2u);
 }
 
 ZEST_CASE(MissingFileUsesDefaults) {
     TempDir tmp;
     auto loaded = load_settings(CanonicalPath(Spelling::absolute(tmp.root)));
-    ZEXPECT(loaded.file.empty());
+    ZEXPECT(loaded.files.empty());
     ZEXPECT(loaded.issues.empty());
     ZEXPECT(loaded.settings.workers.foreground == 2u);
 }
@@ -535,7 +536,7 @@ background_index = false
 
 ZEST_CASE(AnchoredRules) {
     /// Every rule anchors at the project root, also one written in
-    /// .clice/config.toml: relative databases and patterns; `**`-led and
+    /// .clice/clice.toml: relative databases and patterns; `**`-led and
     /// absolute patterns match absolute paths; the databases of a rule
     /// without patterns are the project's.
     TempDir tmp;
@@ -549,7 +550,7 @@ ZEST_CASE(AnchoredRules) {
     };
     std::string root = tmp.root;
     path::canonicalize(root);
-    tmp.touch(".clice/config.toml",
+    tmp.touch(".clice/clice.toml",
               std::format(R"(
 [[rules]]
 patterns = ["src/**"]
@@ -681,7 +682,7 @@ ZEST_CASE(RelativeProjectDirsAnchor) {
     };
     std::string root = tmp.root;
     path::canonicalize(root);
-    tmp.touch(".clice/config.toml", "cache_dir = \"cache\"\n");
+    tmp.touch(".clice/clice.toml", "cache_dir = \"cache\"\n");
 
     auto loaded = load_settings(CanonicalPath(Spelling::absolute(root)));
     ZASSERT(!loaded.broken());
@@ -1192,11 +1193,12 @@ ZEST_CASE(BadOverlayAppliesNothing) {
 ZEST_CASE(MalformedTomlNoFallback) {
     TempDir tmp;
     tmp.touch("clice.toml", "[workers\ninvalid");
-    tmp.touch(".clice/config.toml", "[workers]\nforeground = 5\n");
+    tmp.touch(".clice/clice.toml", "[workers]\nforeground = 5\n");
     CanonicalPath root(Spelling::absolute(tmp.root));
     auto loaded = load_settings(root);
     ZEXPECT(loaded.broken());
-    ZEXPECT(loaded.file == path::join(root, "clice.toml"));
+    ZASSERT(loaded.files.size() == 1u);
+    ZEXPECT(loaded.files[0].path == path::join(root, "clice.toml"));
     ZASSERT(loaded.issues.size() == 1u);
     ZEXPECT(loaded.issues[0].severity == SettingsIssue::Severity::Error);
     ZEXPECT(loaded.issues[0].file == path::join(root, "clice.toml"));
@@ -1412,6 +1414,350 @@ append = ["-DTOML_ONLY"]
     match_rules(settings, "/src/x.cc", append, remove);
     ZEXPECT(append.size() == 1u);
     ZEXPECT(append[0] == "-DFROM_JSON");
+}
+
+ZEST_CASE(LayersOverrideByField) {
+    /// The user's file lies under the project's, the local file over it:
+    /// each sets what it names, field by field, nested sections included.
+    TempDir tmp;
+    tmp.touch("user/clice/clice.toml", R"([workers]
+foreground = 4
+background = 5
+
+[inlay_hints]
+parameters = false
+)");
+    tmp.touch("clice.toml", R"([workers]
+foreground = 3
+)");
+    tmp.touch(".clice/clice.local.toml", R"([workers]
+background = 6
+)");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto user = tmp.path("user/clice/clice.toml");
+    auto loaded = load_settings(root, {.user_file = user});
+    ZEXPECT(loaded.issues.empty());
+    ZASSERT(loaded.files.size() == 3u);
+    ZEXPECT(loaded.files[0].layer == SettingsLayer::User);
+    ZEXPECT(loaded.files[1].layer == SettingsLayer::Project);
+    ZEXPECT(loaded.files[2].layer == SettingsLayer::Local);
+    ZEXPECT(loaded.files[2].path == path::join(root, ".clice/clice.local.toml"));
+    ZEXPECT(loaded.settings.workers.foreground == 3u);
+    ZEXPECT(std::get<std::uint32_t>(loaded.settings.workers.background) == 6u);
+    ZEXPECT(loaded.settings.inlay_hints.parameters == false);
+}
+
+ZEST_CASE(LocalFileAlone) {
+    /// A local file applies without the project's.
+    TempDir tmp;
+    tmp.touch(".clice/clice.local.toml", "[workers]\nforeground = 5\n");
+    auto loaded = load_settings(CanonicalPath(Spelling::absolute(tmp.root)));
+    ZEXPECT(loaded.issues.empty());
+    ZASSERT(loaded.files.size() == 1u);
+    ZEXPECT(loaded.files[0].layer == SettingsLayer::Local);
+    ZEXPECT(loaded.settings.workers.foreground == 5u);
+}
+
+ZEST_CASE(UserFileWithoutRoot) {
+    /// A file outside every folder takes the user's settings, its rules
+    /// aside.
+    TempDir tmp;
+    tmp.touch("clice.toml", R"([workers]
+foreground = 4
+
+[[rules]]
+append = ["-DUSER"]
+)");
+    auto loaded = load_settings(CanonicalPath(), {.user_file = tmp.path("clice.toml")});
+    ZEXPECT(!loaded.broken());
+    ZEXPECT(loaded.settings.workers.foreground == 4u);
+    ZEXPECT(loaded.settings.compiled_rules.empty());
+}
+
+ZEST_CASE(LayeredRulesAddUp) {
+    /// The rules of every file add up, a higher layer's first: of the rules
+    /// matching a file, the first to set a field decides it, so the local
+    /// file decides over the project's and the project's over the user's.
+    /// Their flags apply the other way round, so that a higher layer's come
+    /// last. A higher layer's rule for every file decides over a lower
+    /// one's rules for some files without a warning: that is what it is
+    /// for.
+    TempDir tmp;
+    tmp.touch("user/clice/clice.toml", R"([[rules]]
+lint = false
+other_contexts = false
+append = ["-DUSER"]
+)");
+    tmp.touch("clice.toml", R"([[rules]]
+patterns = ["src/**"]
+lint = true
+readonly = "auto"
+append = ["-std=c++20", "-Werror"]
+)");
+    tmp.touch(".clice/clice.local.toml", R"(
+[[rules]]
+readonly = "on"
+append = ["-std=c++23"]
+remove = ["-Werror"]
+)");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto user = tmp.path("user/clice/clice.toml");
+    auto loaded = load_settings(root, {.user_file = user});
+    ZEXPECT(loaded.issues.empty());
+    auto& rules = loaded.settings.compiled_rules;
+    ZASSERT(rules.size() == 3u);
+    ZEXPECT(rules[0].layer == SettingsLayer::Local);
+    ZEXPECT(rules[0].origin == path::join(root, ".clice/clice.local.toml") + ":2");
+    ZEXPECT(rules[1].layer == SettingsLayer::Project);
+    ZEXPECT(rules[1].origin == path::join(root, "clice.toml") + ":1");
+    ZEXPECT(rules[2].layer == SettingsLayer::User);
+    ZEXPECT(rules[2].origin == user + ":1");
+
+    Rules applied(loaded.settings, root, "");
+    CanonicalPath source(Spelling::absolute(tmp.path("src/a.cpp")));
+    CanonicalPath other(Spelling::absolute(tmp.path("b.cpp")));
+    ZEXPECT(applied.lintable(source));
+    ZEXPECT(!applied.lintable(other));
+    ZEXPECT(applied.readonly(source) == ReadonlyMode::On);
+    ZEXPECT(!applied.other_contexts(source));
+
+    auto edits = applied.edits({source}).edits;
+    std::vector<std::string> user_flags = {"-DUSER"};
+    std::vector<std::string> project_flags = {"-std=c++20", "-Werror"};
+    std::vector<std::string> removed = {"-Werror"};
+    std::vector<std::string> local_flags = {"-std=c++23"};
+    ZASSERT(edits.size() == 4u);
+    ZEXPECT(edits[0].kind == CommandEdit::Kind::Append);
+    ZEXPECT(edits[0].flags == user_flags);
+    ZEXPECT(edits[1].kind == CommandEdit::Kind::Append);
+    ZEXPECT(edits[1].flags == project_flags);
+    ZEXPECT(edits[2].kind == CommandEdit::Kind::Remove);
+    ZEXPECT(edits[2].flags == removed);
+    ZEXPECT(edits[3].kind == CommandEdit::Kind::Append);
+    ZEXPECT(edits[3].flags == local_flags);
+}
+
+ZEST_CASE(ProblemsNameTheirFile) {
+    /// A problem is the file's that sets the value, a rule's the file's it
+    /// is written in, at its index there.
+    TempDir tmp;
+    tmp.touch("user/clice/clice.toml", R"([[rules]]
+patterns = ["a\\b"]
+)");
+    tmp.touch("clice.toml", R"([[rules]]
+append = ["-DPROJECT"]
+
+[workers]
+foreground = 0
+)");
+    tmp.touch(".clice/clice.local.toml", R"([[rules]]
+pattrens = ["x"]
+)");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto user = tmp.path("user/clice/clice.toml");
+    auto loaded = load_settings(root, {.user_file = user});
+    auto issue_of = [&](llvm::StringRef file) -> const SettingsIssue& {
+        auto it = ranges::find(loaded.issues, file, &SettingsIssue::file);
+        ZASSERT(it != loaded.issues.end());
+        return *it;
+    };
+    ZEXPECT(loaded.issues.size() == 3u);
+    auto& glob = issue_of(user);
+    ZEXPECT(glob.severity == SettingsIssue::Severity::Error);
+    ZEXPECT(glob.message.find("rules[0]") != std::string::npos);
+    ZEXPECT(glob.line == 2u);
+    auto& workers = issue_of(path::join(root, "clice.toml"));
+    ZEXPECT(workers.severity == SettingsIssue::Severity::Error);
+    ZEXPECT(workers.line == 5u);
+    auto& unknown = issue_of(path::join(root, ".clice/clice.local.toml"));
+    ZEXPECT(unknown.severity == SettingsIssue::Severity::Warning);
+    ZEXPECT(unknown.line == 2u);
+}
+
+ZEST_CASE(LayerShadowingWarns) {
+    /// A rule for every file shadows the later rules of its own file alone,
+    /// and the warning counts the rules of that file.
+    TempDir tmp;
+    tmp.touch("user/clice/clice.toml", R"([[rules]]
+lint = false
+
+[[rules]]
+patterns = ["src/**"]
+lint = true
+)");
+    tmp.touch("clice.toml", "[[rules]]\nappend = [\"-DPROJECT\"]\n");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto user = tmp.path("user/clice/clice.toml");
+    auto loaded = load_settings(root, {.user_file = user});
+    ZASSERT(loaded.issues.size() == 1u);
+    auto& issue = loaded.issues[0];
+    ZEXPECT(issue.severity == SettingsIssue::Severity::Warning);
+    ZEXPECT(issue.file == user);
+    ZEXPECT(issue.line == 6u);
+    ZEXPECT(issue.message.find("never applies: rules[0]") != std::string::npos);
+    ZEXPECT(issue.message.find("at rules[1].lint") != std::string::npos);
+}
+
+ZEST_CASE(RejectedOverlayOwnsNothing) {
+    /// An overlay that does not decode sets nothing: a problem of a value it
+    /// names is the file's that sets it.
+    TempDir tmp;
+    tmp.touch("clice.toml", "[workers]\nforeground = 0\n");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto loaded = load_settings(root, {.overlay = overlay(R"({
+        "workers": { "foreground": 4 }, "poll_seconds": "bad"
+    })")});
+    ZASSERT(loaded.issues.size() == 2u);
+    auto at_file =
+        ranges::find(loaded.issues, path::join(root, "clice.toml"), &SettingsIssue::file);
+    ZASSERT(at_file != loaded.issues.end());
+    ZEXPECT(at_file->line == 2u);
+}
+
+ZEST_CASE(BrokenLayerLeftOut) {
+    /// A file that does not decode is left out, the others applying.
+    TempDir tmp;
+    tmp.touch("clice.toml", "[workers]\nforeground = 3\n");
+    tmp.touch(".clice/clice.local.toml", "[workers\n");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto loaded = load_settings(root);
+    ZEXPECT(loaded.broken());
+    ZASSERT(loaded.issues.size() == 1u);
+    ZEXPECT(loaded.issues[0].file == path::join(root, ".clice/clice.local.toml"));
+    ZEXPECT(loaded.files.size() == 2u);
+    ZEXPECT(loaded.settings.workers.foreground == 3u);
+}
+
+ZEST_CASE(EditorRulesReplaceFiles) {
+    /// The editor's rules replace those of every file; a problem in them is
+    /// the overlay's.
+    TempDir tmp;
+    tmp.touch("user/clice/clice.toml", "[[rules]]\nappend = [\"-DUSER\"]\n");
+    tmp.touch("clice.toml", "[[rules]]\nappend = [\"-DPROJECT\"]\n");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto loaded =
+        load_settings(root,
+                      {
+                          .overlay = overlay(R"({ "rules": [{ "patterns": ["a\\b"] }] })"),
+                          .user_file = tmp.path("user/clice/clice.toml"),
+                      });
+    ZASSERT(loaded.settings.compiled_rules.size() == 1u);
+    ZEXPECT(loaded.settings.compiled_rules[0].layer == SettingsLayer::Editor);
+    ZEXPECT(loaded.settings.compiled_rules[0].origin == "initializationOptions rules[0]");
+    ZASSERT(loaded.issues.size() == 1u);
+    ZEXPECT(loaded.issues[0].file.empty());
+    ZEXPECT(loaded.issues[0].message.starts_with("initializationOptions: "));
+}
+
+ZEST_CASE(WorkspaceIdPerRoot) {
+    /// `${workspace_id}` gives every project a name of its own: its
+    /// directory's name and a hash of its path.
+    TempDir tmp;
+    tmp.touch("user/clice/clice.toml", R"(cache_dir = "${env:CLICE_TEST_CACHES}/${workspace_id}"
+)");
+    ScopedEnv caches("CLICE_TEST_CACHES", tmp.path("caches"));
+    auto user = tmp.path("user/clice/clice.toml");
+    auto cache_of = [&](llvm::StringRef project) {
+        ZASSERT(fs::create_directories(tmp.path(project)));
+        return load_settings(CanonicalPath(Spelling::absolute(tmp.path(project))),
+                             {.user_file = user})
+            .settings.cache_dir;
+    };
+    auto first = cache_of("one/app");
+    auto second = cache_of("two/app");
+    ZEXPECT(first != second);
+    auto parent = CanonicalPath(Spelling::absolute(tmp.path("caches"))).str();
+    ZEXPECT(llvm::StringRef(first).starts_with(parent));
+    ZEXPECT(path::filename(first).starts_with("app-"));
+    ZEXPECT(path::filename(first).size() == 12u);
+    ZEXPECT(cache_of("one/app") == first);
+}
+
+ZEST_CASE(SharedCacheFallsBack) {
+    /// A cache directory set for every project falls back, when another
+    /// project has it, to the one the project's files name, and what it
+    /// changes names that file; without one, to the default.
+    TempDir tmp;
+    tmp.touch("user/clice/clice.toml", "cache_dir = \"user\"\n");
+    tmp.touch(".clice/clice.local.toml", "cache_dir = \"mine\"\n");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto identity = [&](llvm::StringRef relative) {
+        return CanonicalPath(Spelling::absolute(tmp.path(relative)));
+    };
+    std::vector<CanonicalPath> taken = {identity("shared")};
+    auto user = tmp.path("user/clice/clice.toml");
+    auto loaded = load_settings(root,
+                                {
+                                    .overlay = overlay(R"({ "cache_dir": "shared" })"),
+                                    .taken_cache_dirs = taken,
+                                    .user_file = user,
+                                });
+    ZEXPECT(loaded.issues.empty());
+    ZEXPECT(std::string_view(loaded.settings.cache_dir) == identity("mine").str());
+    auto cache = ranges::find(loaded.changed, "cache_dir", &ChangedSetting::key);
+    ZASSERT(cache != loaded.changed.end());
+    ZEXPECT(cache->origin == path::join(root, ".clice/clice.local.toml") + ":1");
+
+    taken.push_back(identity("user"));
+    tmp.touch(".clice/clice.local.toml", "\n");
+    auto fallback = load_settings(root, {.taken_cache_dirs = taken, .user_file = user});
+    ZEXPECT(fallback.issues.empty());
+    ZEXPECT(std::string_view(fallback.settings.cache_dir) == identity(".clice").str());
+    ZEXPECT(!ranges::contains(fallback.changed, "cache_dir", &ChangedSetting::key));
+}
+
+ZEST_CASE(RootlessProjectDirsIgnored) {
+    /// A directory of the project's own, set for every project, names none
+    /// in a project without a folder: neither the cache's nor the logs'.
+    TempDir tmp;
+    tmp.touch("clice.toml", R"(cache_dir = "${env:CLICE_TEST_CACHES}/${workspace_id}"
+)");
+    ScopedEnv caches("CLICE_TEST_CACHES", tmp.path("caches"));
+    auto loaded = load_settings(CanonicalPath(), {.user_file = tmp.path("clice.toml")});
+    ZEXPECT(loaded.issues.empty());
+    ZEXPECT(loaded.settings.cache_dir.empty());
+    ZEXPECT(loaded.settings.logging_dir.empty());
+}
+
+ZEST_CASE(ChangedSettingsNameOrigins) {
+    /// What the layers change from the defaults, each with where it is set;
+    /// a value that follows from another has no place of its own.
+    TempDir tmp;
+    tmp.touch("user/clice/clice.toml", "\n[workers]\nforeground = 4\n");
+    tmp.touch("clice.toml", "cache_dir = \"cache\"\n");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto user = tmp.path("user/clice/clice.toml");
+    auto loaded = load_settings(root,
+                                {
+                                    .overlay = overlay(R"({ "poll_seconds": 5 })"),
+                                    .user_file = user,
+                                });
+    ZEXPECT(loaded.issues.empty());
+    auto origin = [&](llvm::StringRef key) {
+        auto it = ranges::find(loaded.changed, key, &ChangedSetting::key);
+        ZASSERT(it != loaded.changed.end());
+        return it->origin;
+    };
+    ZEXPECT(origin("workers.foreground") == user + ":3");
+    ZEXPECT(origin("cache_dir") == path::join(root, "clice.toml") + ":1");
+    ZEXPECT(origin("logging_dir").empty());
+    ZEXPECT(origin("poll_seconds") == "initializationOptions");
+    auto foreground = ranges::find(loaded.changed, "workers.foreground", &ChangedSetting::key);
+    ZEXPECT(foreground->value == "4");
+}
+
+ZEST_CASE(UserFileFollowsXDG) {
+    /// XDG_CONFIG_HOME names the user's directory on every platform, when
+    /// it is absolute.
+    TempDir tmp;
+    {
+        ScopedEnv home("XDG_CONFIG_HOME", tmp.root);
+        auto expected = path::join(tmp.root, "clice", "clice.toml");
+        path::canonicalize(expected);
+        ZEXPECT(user_settings_file() == expected);
+    }
+    ScopedEnv relative("XDG_CONFIG_HOME", "relative");
+    ZEXPECT(!llvm::StringRef(user_settings_file()).starts_with("relative"));
 }
 
 ZEST_CASE(JsonSchema) {

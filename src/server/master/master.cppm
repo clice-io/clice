@@ -163,11 +163,12 @@ public:
     /// what earlier looks saw.
     void watch_settings();
 
-    /// Look at the configuration files watch_settings watches, as each of
-    /// the master's ticks does whatever the polling setting: a change asks
-    /// for a restart, and so does one appearing where a project's rule
-    /// looked. clice.toml is the one in use where it exists, else
-    /// .clice/config.toml.
+    /// Look at the configuration files watch_settings watches and the
+    /// user's, as each of the master's ticks does whatever the polling
+    /// setting: a change asks for a restart, and so does one appearing
+    /// where a project's rule looked. clice.toml is the one in use where it
+    /// exists, else .clice/clice.toml; the local file applies beside
+    /// either.
     void look_at_settings();
 
     // projects.cpp
@@ -433,6 +434,10 @@ public:
     /// selection, else the default.
     std::string requested_configuration;
 
+    /// The user's configuration file (user_settings_file), which every
+    /// project reads, and what the last look saw of it.
+    vfs::Flag user_settings;
+
     /// The client talks over stdio, so it runs on this host and the
     /// processId it names is a process here; a socket client may run on
     /// another machine.
@@ -444,13 +449,6 @@ public:
 
 private:
     // lifecycle.cpp
-
-    /// Dump every configuration layer of a project — the configuration file verbatim,
-    /// the client's initializationOptions overlay, and the merged result after
-    /// defaults. Absence is stated explicitly so "were my settings even read?"
-    /// never needs a support round-trip; the stderr mirror puts all of it in
-    /// the editor's output panel.
-    void log_settings(const ServedProject& project) const;
 
     /// The master's ticks: the files and databases looked at while polling
     /// is on, the configuration files, and the memory freed meanwhile.
@@ -610,9 +608,12 @@ private:
     struct SettingsWatch {
         CanonicalPath dir;
 
-        /// clice.toml, and .clice/config.toml, which applies without it.
+        /// clice.toml, and .clice/clice.toml, which applies without it.
         vfs::Flag file;
         vfs::Flag hidden;
+
+        /// .clice/clice.local.toml, which applies beside either.
+        vfs::Flag local;
     };
 
     std::vector<SettingsWatch> settings_watches;

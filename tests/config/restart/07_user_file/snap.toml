@@ -1,0 +1,8 @@
+[written.asked]
+value = "${WS}/user/clice/clice.toml changed"
+
+[changed.asked]
+value = "${WS}/user/clice/clice.toml changed"
+
+[deleted.asked]
+value = "${WS}/user/clice/clice.toml was deleted"

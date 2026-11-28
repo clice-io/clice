@@ -1,0 +1,3 @@
+[[rules]]
+patterns = ["**/*.cpp"]
+append = ["-std=c++17", "-DFROM_PROJECT"]

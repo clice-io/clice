@@ -103,7 +103,7 @@ ext::SwitchConfigurationResult
         server.withdraw_restart(topic);
     } else {
         server.ask_restart({
-            .file = project->settings_file,
+            .file = project->settings_file().str(),
             .message = std::format("Build configuration {} selected", params.name),
             .topic = std::move(topic),
         });

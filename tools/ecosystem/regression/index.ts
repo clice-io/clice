@@ -7,7 +7,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { cliceExecutable } from "../../client/session.ts";
-import { sessionsIn } from "../../process_gate.ts";
+import { sessionsIn, withoutUserSettings } from "../../process_gate.ts";
 import { watchTree, type PeakMemory } from "../memory.ts";
 import { cacheBytes } from "../perf/servers.ts";
 import { loggingDir } from "../prepare.ts";
@@ -96,7 +96,7 @@ export function runIndex(checkout: string): Promise<IndexRun> {
     const child = spawn(
         cliceExecutable(),
         ["index", "--json", "--workspace", checkout, "--jobs", String(os.availableParallelism())],
-        { stdio: ["ignore", "pipe", "pipe"] },
+        { env: withoutUserSettings(process.env), stdio: ["ignore", "pipe", "pipe"] },
     );
     const memory = child.pid === undefined ? undefined : watchTree(child.pid);
     let stdout = "";
