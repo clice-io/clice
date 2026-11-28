@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { cliceExecutable } from "../../client/session.ts";
 import { sessionsIn } from "../../process_gate.ts";
 import { watchTree, type PeakMemory } from "../memory.ts";
-import { cacheBytes } from "../perf/servers.ts";
+import { cacheBytes, PRECOMPILED } from "../perf/servers.ts";
 import { loggingDir } from "../prepare.ts";
 
 /// `clice index --json`'s report, as far as the run reads it. A run handed
@@ -96,11 +96,11 @@ export function runIndex(checkout: string): Promise<IndexRun> {
     const child = spawn(
         cliceExecutable(),
         ["index", "--json", "--workspace", checkout, "--jobs", String(os.availableParallelism())],
-        // The PCMs and PCHs it builds stay in the checkout, counted in its
-        // cache on disk.
+        // The PCMs and PCHs it builds stay in its cache directory, counted
+        // in its cache on disk.
         {
             stdio: ["ignore", "pipe", "pipe"],
-            env: { ...process.env, CLICE_TEST_PRECOMPILED_DIR: ".clice/precompiled" },
+            env: { ...process.env, CLICE_TEST_PRECOMPILED_DIR: PRECOMPILED },
         },
     );
     const memory = child.pid === undefined ? undefined : watchTree(child.pid);

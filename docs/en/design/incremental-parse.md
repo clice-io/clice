@@ -51,7 +51,7 @@ After a dependency changes — a saved header, a file a poll finds changed — o
 
 ### Content-Addressed Storage
 
-A PCH file is named by the hash of its preamble's text, the frontend-relevant flags, the directories and the clang version, so files whose preambles and commands agree share one file — unless the preamble defines or tests a macro, which places the PCH in the file that built it and adds that file's path to the name. Its record — the path, the hash, the boundary, what it read — is saved in the index database, so a restart checks each PCH and rebuilds only the stale ones. A changed preamble gets a new file; the old one is evicted when the cache outgrows its budget, coldest first.
+A PCH file is named by the hash of its preamble's text, the frontend-relevant flags, the directories and the clang version, so files whose preambles and commands agree share one file — unless the preamble defines or tests a macro, which places the PCH in the file that built it and adds that file's path to the name. Its record — the path, the hash, the boundary, what it read — is saved in the index database, so a restart checks each PCH and rebuilds only the stale ones. A changed preamble gets a new file; the old one goes once no clice used it for 15 days, or sooner, coldest first, when the PCHs outgrow their size (the `[cache]` section).
 
 A precompiled header the build declares — CMake's per target, or any command writing one that others read — is the one chain clice builds: a file reading it builds its preamble's PCH over it, so a change to its own preamble never parses the declared header's contents again. The declared PCH is built once and both the editor and the background index load it.
 

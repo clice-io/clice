@@ -110,11 +110,10 @@ function cacheDirs(workspace: string, database: string, server: ServerName): str
         : [...new Set([workspace, database])].map((dir) => path.join(dir, ".cache", "clangd"));
 }
 
-/// Where a clice keeps its PCHs and PCMs: beside its cache, each project's
-/// in a directory of its own there.
-export function precompiledDir(workspace: string, server: ServerName): string {
-    return path.join(cliceDir(workspace, server), "precompiled");
-}
+/// Where a clice keeps its PCHs and PCMs in a run, relative to its cache
+/// directory (CLICE_TEST_PRECOMPILED_DIR), each project's in a directory of
+/// its own there.
+export const PRECOMPILED = "precompiled";
 
 /// The server's whole cache gone, or for clice its PCHs alone: every `pch`
 /// directory of a store layout (`v<N>`) in its cache, as a clice that keeps
@@ -177,7 +176,7 @@ function diskBytes(file: string): number {
 /// Bytes the server's cache holds on disk, clice's logs aside: all of it,
 /// and its index alone. clangd keeps nothing but the index there (its
 /// preambles live in memory or in temporary files); clice keeps its index
-/// under cache/<version>/index, beside its PCHs and PCMs (precompiledDir).
+/// under cache/<version>/index, beside its PCHs and PCMs (PRECOMPILED).
 export function cacheBytes(
     workspace: string,
     database: string,

@@ -13,7 +13,7 @@ import { watchTree, type TreeWatch } from "../memory.ts";
 import { loggingDir } from "../prepare.ts";
 import { computeStats, parsePerfLines, summarize } from "./logs.ts";
 import type { PerfFailure, RunResult, ServerName } from "./results.ts";
-import { CAPABILITIES, cliceDir, indexToken, isClice, precompiledDir } from "./servers.ts";
+import { CAPABILITIES, cliceDir, indexToken, isClice, PRECOMPILED } from "./servers.ts";
 
 /// What every run of a job shares: the checkout, the database's directory,
 /// the build directory whose generated files no scenario changes, the
@@ -211,7 +211,7 @@ export class Session {
             env: isClice(this.server)
                 ? {
                       CLICE_PERF: "1",
-                      CLICE_TEST_PRECOMPILED_DIR: precompiledDir(workspace, this.server),
+                      CLICE_TEST_PRECOMPILED_DIR: PRECOMPILED,
                   }
                 : undefined,
         });

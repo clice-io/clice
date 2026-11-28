@@ -183,13 +183,13 @@ static std::optional<std::uint64_t> parse_size(llvm::StringRef text) {
 
 /// Where `precompiled_dir` defaults to: `clice` in the user's cache
 /// directory, empty when there is none. Test hook: CLICE_TEST_PRECOMPILED_DIR
-/// names it instead, as the setting would, so that a test keeps them with
-/// its workspace (none, relative, in a project without a folder, which
-/// keeps them in clice's temporary directory).
-static std::string default_precompiled_dir(CanonicalRef project_root) {
+/// names it instead, relative to the cache directory, so that a test keeps
+/// them with its cache, which goes with its workspace (none without a cache
+/// directory: a project without a folder keeps them in clice's temporary
+/// directory).
+static std::string default_precompiled_dir(llvm::StringRef cache_dir) {
     if(auto test = env_string("CLICE_TEST_PRECOMPILED_DIR")) {
-        auto spelled = setting_path(std::move(*test), project_root);
-        return spelled ? std::move(*spelled).str() : std::string();
+        return cache_dir.empty() ? std::string() : path::join(cache_dir, *test);
     }
     std::string user;
     if(sys::cache_dir(user)) {
@@ -304,7 +304,7 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
         resolve_dir("cache_dir", cache_dir);
     }
     if(precompiled_dir.empty()) {
-        precompiled_dir = default_precompiled_dir(root);
+        precompiled_dir = default_precompiled_dir(cache_dir);
     }
     if(!precompiled_dir.empty()) {
         resolve_dir("precompiled_dir", precompiled_dir);

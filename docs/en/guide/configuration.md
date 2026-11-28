@@ -49,6 +49,8 @@ clice looks at files on disk in the background to notice changes made outside th
 
 The index lives in the cache directory, so it must be on a local disk clice can write: a project whose cache directory is on a network filesystem (NFS, SMB, a Windows drive under WSL) or cannot be written serves nothing, and clice says why; point `cache_dir` at a local directory and restart clice. On macOS, Time Machine and iCloud back up and sync a cache directory inside the project; a `cache_dir` under `~/Library/Caches` keeps them away.
 
+The PCHs and PCMs clice builds live apart from the index, each project's in a directory of its own under `precompiled_dir`, in the user's cache directory by default. Losing them costs only building them again, so clice removes the ones no clice used for 15 days, keeps each project's within the sizes of the `[cache]` section, and removes the directory of a project no clice opened for 15 days.
+
 <!-- BEGIN GENERATED CONFIG: root -->
 
 <div class="config-option">

@@ -23,13 +23,13 @@ export const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
 /// without a look at the disk is checked against one, a contradiction
 /// being an anomaly the gates catch, the test hooks are on (the
 /// clice/internal requests the tests wait through), and the PCHs and PCMs
-/// of a test go with its workspace, not in the user's cache directory.
+/// of a test go with its cache directory, not in the user's.
 export function serverEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
     return {
         ...base,
         CLICE_SHADOW_FRESHNESS: "1",
         CLICE_TEST_HOOKS: "1",
-        CLICE_TEST_PRECOMPILED_DIR: ".clice/precompiled",
+        CLICE_TEST_PRECOMPILED_DIR: "precompiled",
     };
 }
 
