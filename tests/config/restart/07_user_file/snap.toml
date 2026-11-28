@@ -3,3 +3,6 @@ value = "${WS}/user/clice/config.toml changed"
 
 [changed.asked]
 value = "${WS}/user/clice/config.toml changed"
+
+[deleted.asked]
+value = "${WS}/user/clice/config.toml was deleted"

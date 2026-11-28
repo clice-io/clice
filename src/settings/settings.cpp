@@ -724,6 +724,202 @@ struct DecodedFile {
 
 using SettingPath = std::vector<codec::rich_error::path_segment>;
 
+/// The layers of a load — the configuration files that decoded, lowest
+/// first, then the overlay — and where each value of the merged settings is
+/// written in them.
+struct Layers {
+    std::vector<DecodedFile> files;
+    const std::optional<codec::dyn::Value>& overlay;
+    llvm::StringRef overlay_name;
+    llvm::ArrayRef<Rule> merged_rules;
+
+    /// The highest file setting the value at `path`; null for none.
+    const DecodedFile* file_setting(const SettingPath& path) const {
+        for(auto& file: views::reverse(files)) {
+            if(node_at(file.document, path)) {
+                return &file;
+            }
+        }
+        return nullptr;
+    }
+
+    /// The issue of a problem at `error.path` of the merged settings, where
+    /// it is written: a rule's in its layer, at its index there; any other
+    /// value's in the highest layer setting it.
+    SettingsIssue issue(SettingsIssue::Severity severity, codec::rich_error error) const {
+        auto& path = error.path;
+        auto* key = std::get_if<std::string>(&path.front());
+        bool overlaid = false;
+        const DecodedFile* file = nullptr;
+        if(key && *key == "rules") {
+            auto index = std::get<std::size_t>(path[1]);
+            auto layer = merged_rules[index].layer;
+            path[1] = index_in_layer(merged_rules, index);
+            overlaid = layer == SettingsLayer::Editor;
+            if(!overlaid) {
+                file = &*ranges::find(files, layer, &DecodedFile::layer);
+            }
+        } else if(overlay && sets(*overlay, path)) {
+            overlaid = true;
+        } else {
+            file = file_setting(path);
+        }
+        if(overlaid) {
+            return {.severity = severity,
+                    .message = std::format("{}: {}", overlay_name, error.to_string())};
+        }
+        return make_issue(severity,
+                          file ? llvm::StringRef(file->path) : llvm::StringRef(),
+                          error,
+                          file ? &file->document : nullptr);
+    }
+
+    /// Where the value at `path` of the merged settings is set, as
+    /// ChangedSetting::origin names it; `own_cache` when the cache directory
+    /// fell back to the one the project's own files name.
+    std::string origin(const SettingPath& path, bool own_cache) const {
+        // A cache directory that fell back is the project's files' own.
+        bool own = own_cache && path == SettingPath{"cache_dir"};
+        if(!own && overlay && sets(*overlay, path)) {
+            return overlay_name.str();
+        }
+        auto* file = file_setting(path);
+        return file ? std::format("{}:{}",
+                                  file->path,
+                                  node_at(file->document, path)->source().begin.line)
+                    : std::string();
+    }
+
+    /// Where the merged rule at `index` is written, as CompiledRule::origin
+    /// names it.
+    std::string origin(std::size_t index) const {
+        auto layer = merged_rules[index].layer;
+        auto at = index_in_layer(merged_rules, index);
+        if(layer == SettingsLayer::Editor) {
+            return std::format("{} rules[{}]", overlay_name, at);
+        }
+        auto& file = *ranges::find(files, layer, &DecodedFile::layer);
+        auto* node = node_at(file.document, {"rules", at});
+        return node ? std::format("{}:{}", file.path, node->source().begin.line) : std::string();
+    }
+};
+
+/// Decode the configuration file `file` onto `layered`, the settings of the
+/// files below it: the values it sets replace theirs, and its rules, at its
+/// layer, go before theirs. Its problems join `issues`; a file that does not
+/// read, parse or decode leaves `layered` as it was and returns nullopt.
+std::optional<DecodedFile> decode_file(const SettingsFile& file,
+                                       Settings& layered,
+                                       std::vector<SettingsIssue>& issues) {
+    using Severity = SettingsIssue::Severity;
+    auto& path = file.path;
+    auto content = vfs::read_text(path);
+    if(!content) {
+        issues.push_back(
+            {.severity = Severity::Error,
+             .file = path,
+             .message = std::format("cannot read it: {}", content.error().code.message())});
+        return std::nullopt;
+    }
+    auto table = codec::toml::parse_table(*content);
+    if(!table) {
+        issues.push_back(make_issue(Severity::Error, path, table.error(), nullptr));
+        return std::nullopt;
+    }
+    auto decoded = layered;
+    codec::UnknownFields unknown;
+    auto result = [&] {
+        codec::scoped_context<codec::UnknownFields> collecting(unknown);
+        return codec::toml::from_toml(*table, decoded);
+    }();
+    if(!result) {
+        issues.push_back(make_issue(Severity::Error, path, result.error(), &*table));
+        return std::nullopt;
+    }
+    std::vector<SettingsIssue> found;
+    for(auto& entry: unknown.entries) {
+        report_unknown(
+            entry,
+            [&](llvm::StringRef section) {
+                std::vector<std::string> keys;
+                if(auto* node = table->get(section); node && node->as_table()) {
+                    for(auto& [key, _]: *node->as_table()) {
+                        keys.emplace_back(key.str());
+                    }
+                }
+                return keys;
+            },
+            [&](Severity severity, codec::rich_error error) {
+                found.push_back(make_issue(severity, path, error, &*table));
+            });
+    }
+    // A table yields its keys in name order; the problems read in the
+    // file's.
+    ranges::stable_sort(found, {}, [](const SettingsIssue& issue) {
+        return std::pair(issue.line, issue.column);
+    });
+    issues.insert(issues.end(),
+                  std::make_move_iterator(found.begin()),
+                  std::make_move_iterator(found.end()));
+    // The file's rules go before those of the files below it: of the
+    // rules matching a file, the first to set a field decides it.
+    if(table->contains("rules")) {
+        for(auto& rule: decoded.rules) {
+            rule.layer = file.layer;
+        }
+        decoded.rules.insert(decoded.rules.end(), layered.rules.begin(), layered.rules.end());
+    }
+    layered = std::move(decoded);
+    return DecodedFile{.layer = file.layer, .path = path, .document = std::move(*table)};
+}
+
+/// Lay `overlay`, called `overlay_name` in messages, over `layered`, the
+/// files' settings: the values it sets replace theirs, and the rules it
+/// sets, at the editor's layer, replace all of theirs. Its problems join
+/// `issues`; an overlay that does not decode leaves `layered` as it was.
+void lay_overlay(const codec::dyn::Value& overlay,
+                 llvm::StringRef overlay_name,
+                 Settings& layered,
+                 std::vector<SettingsIssue>& issues) {
+    using Severity = SettingsIssue::Severity;
+    auto overlaid = layered;
+    codec::UnknownFields unknown;
+    auto result = [&] {
+        codec::scoped_context<codec::UnknownFields> collecting(unknown);
+        return codec::dyn::from_dyn(overlay, overlaid);
+    }();
+    auto issue = [&](Severity severity, const codec::rich_error& error) {
+        issues.push_back({.severity = severity,
+                          .message = std::format("{}: {}", overlay_name, error.to_string())});
+    };
+    if(!result) {
+        issue(Severity::Error, result.error());
+        return;
+    }
+    for(auto& entry: unknown.entries) {
+        report_unknown(
+            entry,
+            [&](llvm::StringRef name) {
+                std::vector<std::string> keys;
+                auto* object = overlay.get_object();
+                auto* section = object ? object->find(name) : nullptr;
+                if(auto* fields = section ? section->get_object() : nullptr) {
+                    for(auto& [key, _]: *fields) {
+                        keys.emplace_back(key);
+                    }
+                }
+                return keys;
+            },
+            issue);
+    }
+    if(sets(overlay, {"rules"})) {
+        for(auto& rule: overlaid.rules) {
+            rule.layer = SettingsLayer::Editor;
+        }
+    }
+    layered = std::move(overlaid);
+}
+
 /// The values of `actual` that `defaults` does not have, each at its key's
 /// path, as JSON.
 void differing(simdjson::dom::element actual,
@@ -812,150 +1008,24 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
     // every project falls back to when another project has it.
     std::string own_cache_dir;
     for(auto& file: loaded.files) {
-        auto& path = file.path;
-        auto content = vfs::read_text(path);
-        if(!content) {
-            issues.push_back(
-                {.severity = Severity::Error,
-                 .file = path,
-                 .message = std::format("cannot read it: {}", content.error().code.message())});
+        auto decoded = decode_file(file, layered, issues);
+        if(!decoded) {
             continue;
         }
-        auto table = codec::toml::parse_table(*content);
-        if(!table) {
-            issues.push_back(make_issue(Severity::Error, path, table.error(), nullptr));
-            continue;
+        if(file.layer != SettingsLayer::User && decoded->document.contains("cache_dir")) {
+            own_cache_dir = layered.cache_dir;
         }
-        auto decoded = layered;
-        codec::UnknownFields unknown;
-        auto result = [&] {
-            codec::scoped_context<codec::UnknownFields> collecting(unknown);
-            return codec::toml::from_toml(*table, decoded);
-        }();
-        if(!result) {
-            issues.push_back(make_issue(Severity::Error, path, result.error(), &*table));
-            continue;
-        }
-        std::vector<SettingsIssue> found;
-        for(auto& entry: unknown.entries) {
-            report_unknown(
-                entry,
-                [&](llvm::StringRef section) {
-                    std::vector<std::string> keys;
-                    if(auto* node = table->get(section); node && node->as_table()) {
-                        for(auto& [key, _]: *node->as_table()) {
-                            keys.emplace_back(key.str());
-                        }
-                    }
-                    return keys;
-                },
-                [&](Severity severity, codec::rich_error error) {
-                    found.push_back(make_issue(severity, path, error, &*table));
-                });
-        }
-        // A table yields its keys in name order; the problems read in the
-        // file's.
-        ranges::stable_sort(found, {}, [](const SettingsIssue& issue) {
-            return std::pair(issue.line, issue.column);
-        });
-        issues.insert(issues.end(),
-                      std::make_move_iterator(found.begin()),
-                      std::make_move_iterator(found.end()));
-        // The file's rules go before those of the files below it: of the
-        // rules matching a file, the first to set a field decides it.
-        if(table->contains("rules")) {
-            for(auto& rule: decoded.rules) {
-                rule.layer = file.layer;
-            }
-            decoded.rules.insert(decoded.rules.end(), layered.rules.begin(), layered.rules.end());
-        }
-        if(file.layer != SettingsLayer::User && table->contains("cache_dir")) {
-            own_cache_dir = decoded.cache_dir;
-        }
-        layered = std::move(decoded);
-        decoded_files.push_back({.layer = file.layer, .path = path, .document = std::move(*table)});
+        decoded_files.push_back(std::move(*decoded));
     }
 
     if(options.overlay) {
-        auto overlaid = layered;
-        codec::UnknownFields unknown;
-        auto result = [&] {
-            codec::scoped_context<codec::UnknownFields> collecting(unknown);
-            return codec::dyn::from_dyn(*options.overlay, overlaid);
-        }();
-        auto issue = [&](Severity severity, const codec::rich_error& error) {
-            issues.push_back(
-                {.severity = severity,
-                 .message = std::format("{}: {}", options.overlay_name, error.to_string())});
-        };
-        if(!result) {
-            issue(Severity::Error, result.error());
-        } else {
-            for(auto& entry: unknown.entries) {
-                report_unknown(
-                    entry,
-                    [&](llvm::StringRef name) {
-                        std::vector<std::string> keys;
-                        auto* object = options.overlay->get_object();
-                        auto* section = object ? object->find(name) : nullptr;
-                        if(auto* fields = section ? section->get_object() : nullptr) {
-                            for(auto& [key, _]: *fields) {
-                                keys.emplace_back(key);
-                            }
-                        }
-                        return keys;
-                    },
-                    issue);
-            }
-            if(sets(*options.overlay, {"rules"})) {
-                for(auto& rule: overlaid.rules) {
-                    rule.layer = SettingsLayer::Editor;
-                }
-            }
-            layered = std::move(overlaid);
-        }
+        lay_overlay(*options.overlay, options.overlay_name, layered, issues);
     }
-
-    // The highest file setting the value at `path`; null for none.
-    auto setting = [&](const SettingPath& path) -> const DecodedFile* {
-        for(auto& file: views::reverse(decoded_files)) {
-            if(node_at(file.document, path)) {
-                return &file;
-            }
-        }
-        return nullptr;
-    };
-    // A problem at `error.path` of the merged settings, where it is written:
-    // a rule's in its layer, at its index there; any other value's in the
-    // highest layer setting it.
-    auto report = [&](Severity severity, codec::rich_error error) {
-        auto& path = error.path;
-        auto* key = std::get_if<std::string>(&path.front());
-        bool overlay = false;
-        const DecodedFile* file = nullptr;
-        if(key && *key == "rules") {
-            auto index = std::get<std::size_t>(path[1]);
-            auto layer = layered.rules[index].layer;
-            path[1] = index_in_layer(layered.rules, index);
-            overlay = layer == SettingsLayer::Editor;
-            if(!overlay) {
-                file = &*ranges::find(decoded_files, layer, &DecodedFile::layer);
-            }
-        } else if(options.overlay && sets(*options.overlay, path)) {
-            overlay = true;
-        } else {
-            file = setting(path);
-        }
-        if(overlay) {
-            issues.push_back(
-                {.severity = severity,
-                 .message = std::format("{}: {}", options.overlay_name, error.to_string())});
-            return;
-        }
-        issues.push_back(make_issue(severity,
-                                    file ? llvm::StringRef(file->path) : llvm::StringRef(),
-                                    error,
-                                    file ? &file->document : nullptr));
+    const Layers layers{
+        .files = std::move(decoded_files),
+        .overlay = options.overlay,
+        .overlay_name = options.overlay_name,
+        .merged_rules = layered.rules,
     };
 
     // A cache directory serves one project (see owned_elsewhere), and one at
@@ -980,7 +1050,7 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
                           ? std::string("already serves another project")
                           : std::format("serves the project at {}", cache_dir_owner(requested));
         // One the user's file or the editor sets is every project's.
-        auto* writer = setting({"cache_dir"});
+        auto* writer = layers.file_setting({"cache_dir"});
         bool shared = (options.overlay && sets(*options.overlay, {"cache_dir"})) ||
                       (writer && writer->layer == SettingsLayer::User);
         for(auto& fallback: {own_cache_dir, std::string()}) {
@@ -1018,35 +1088,18 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
         }
     }
     for(auto& problem: problems) {
-        report(Severity::Error, std::move(problem));
+        issues.push_back(layers.issue(Severity::Error, std::move(problem)));
     }
 
     for(auto [index, rule]: views::enumerate(loaded.settings.compiled_rules)) {
-        auto at = index_in_layer(loaded.settings.compiled_rules, static_cast<std::size_t>(index));
-        if(rule.layer == SettingsLayer::Editor) {
-            rule.origin = std::format("{} rules[{}]", options.overlay_name, at);
-            continue;
-        }
-        auto& file = *ranges::find(decoded_files, rule.layer, &DecodedFile::layer);
-        if(auto* node = node_at(file.document, {"rules", at})) {
-            rule.origin = std::format("{}:{}", file.path, node->source().begin.line);
-        }
+        rule.origin = layers.origin(static_cast<std::size_t>(index));
     }
     report_shadowed(loaded.settings.compiled_rules, [&](codec::rich_error warning) {
-        report(Severity::Warning, std::move(warning));
+        issues.push_back(layers.issue(Severity::Warning, std::move(warning)));
     });
 
     loaded.changed = changed_settings(loaded.settings, root, [&](const SettingPath& path) {
-        // A cache directory that fell back is the project's files' own.
-        bool own = own_cache && path == SettingPath{"cache_dir"};
-        if(!own && options.overlay && sets(*options.overlay, path)) {
-            return options.overlay_name.str();
-        }
-        auto* file = setting(path);
-        return file ? std::format("{}:{}",
-                                  file->path,
-                                  node_at(file->document, path)->source().begin.line)
-                    : std::string();
+        return layers.origin(path, own_cache);
     });
     loaded.configuration =
         choose_configuration(loaded.settings, options.configuration, options.strict, issues);

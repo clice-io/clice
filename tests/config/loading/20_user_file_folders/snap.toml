@@ -1,0 +1,12 @@
+[test."config.toml"]
+pushes = [
+    [
+        {
+            at = 'default_configuration = ⟦"debug"⟧',
+            severity = "error",
+            message = "debug names a configuration, but no rule declares one at default_configuration",
+            source = "clice",
+        },
+        { at = "⟦inlay_hint⟧ = true", severity = "warning", message = "unknown field 'inlay_hint'", source = "clice" },
+    ],
+]
