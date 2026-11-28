@@ -69,9 +69,11 @@ export async function surface(clice: string): Promise<string[]> {
                     (command === subcommand || command.startsWith(`${subcommand} `)) &&
                     own(command).length > 0,
             );
-            const common = candidates
-                .map((command) => new Set(own(command)))
-                .reduce((all, each) => new Set([...all].filter((name) => each.has(name))));
+            const [first, ...rest] = candidates.map((command) => new Set(own(command)));
+            const common = rest.reduce(
+                (all, each) => new Set([...all].filter((name) => each.has(name))),
+                first ?? new Set<string>(),
+            );
             const operations = candidates.filter((command) =>
                 own(command).some((each) => !common.has(each)),
             );
