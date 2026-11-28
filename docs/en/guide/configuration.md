@@ -69,7 +69,17 @@ The build configuration to fall back on when neither `--configuration` nor a per
 | ----------- | -------- | ------- |
 | `cache_dir` | `string` | `""`    |
 
-Directory for the unified on-disk cache (PCHs, PCMs and the index), relative to the project root. Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. It must be a directory clice can write on a local disk: a project whose cache directory cannot be written or is on a network file system (NFS, SMB, a Windows drive under WSL) serves nothing, and clice says why. Files outside every workspace folder keep theirs in clice's temporary directory, removed when the server exits. The resolved path is printed at startup.
+Directory for the index, relative to the project root. Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. It must be a directory clice can write on a local disk: a project whose cache directory cannot be written or is on a network file system (NFS, SMB, a Windows drive under WSL) serves nothing, and clice says why. Files outside every workspace folder keep theirs in clice's temporary directory, removed when the server exits. The resolved path is printed at startup.
+
+</div>
+
+<div class="config-option">
+
+| Option            | Type     | Default |
+| ----------------- | -------- | ------- |
+| `precompiled_dir` | `string` | `""`    |
+
+Directory for the PCHs and PCMs clice builds, relative to the project root; each project keeps them in a subdirectory of its own. Empty defaults to clice's directory in the user's cache directory: `~/.cache/clice` (`$XDG_CACHE_HOME/clice` when set), `~/Library/Caches/clice` on macOS, `%LOCALAPPDATA%\clice` on Windows. A PCH or PCM no clice used for 15 days is removed, and so is the subdirectory of a project no clice opened for 15 days. A temporary directory makes a restart of the machine remove them, each built again when next needed; on many Linux systems `/tmp` is held in memory. Files outside every workspace folder keep theirs in clice's temporary directory, removed when the server exits.
 
 </div>
 
@@ -90,6 +100,34 @@ Directory for log files, relative to the project root; empty derives `${cache_di
 | `poll_seconds` | `uint32` | `30`    |
 
 Longest interval in seconds between two background looks at a project file: the interval doubles at every look that finds the file unchanged, up to this. 0 disables background polling, compilation databases included.
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
+## `[cache]`
+
+The `[cache]` section bounds the disk the PCHs and PCMs of each project take.
+
+<!-- BEGIN GENERATED CONFIG: cache -->
+
+<div class="config-option">
+
+| Option     | Type     | Default |
+| ---------- | -------- | ------- |
+| `pch_size` | `string` | `"4G"`  |
+
+The most disk the PCHs of a project take: a whole number followed by K, M, G or T, in binary multiples (`4G` is 4 GiB). Past it the least recently used go, each built again when a file needing it opens.
+
+</div>
+
+<div class="config-option">
+
+| Option     | Type     | Default |
+| ---------- | -------- | ------- |
+| `pcm_size` | `string` | `"8G"`  |
+
+The most disk the PCMs (C++20 module interfaces) of a project take, written as `pch_size`. Past it the least recently used go; a size below what the modules a file imports take together makes clice build them over and over.
 
 </div>
 

@@ -49,6 +49,8 @@ clice 会在后台检查磁盘上的文件，以便感知编辑器之外发生�
 
 索引存放在缓存目录中，因此该目录必须位于 clice 可写入的本地磁盘上：若项目的缓存目录位于网络文件系统（NFS、SMB、WSL 下的 Windows 盘符）上或无法写入，该项目将不提供任何服务，clice 会说明原因；此时请将 `cache_dir` 指向本地目录并重启 clice。在 macOS 上，Time Machine 和 iCloud 会备份并同步项目内的缓存目录，将 `cache_dir` 设在 `~/Library/Caches` 下即可避开它们。
 
+clice 构建的 PCH 和 PCM 与索引分开存放，每个项目各占 `precompiled_dir` 下的一个目录，默认位于用户的缓存目录中。丢失它们的代价只是重新构建一次，因此 clice 会删除连续 15 天未被任何 clice 使用的 PCH 和 PCM，把每个项目的这些文件控制在 `[cache]` 节规定的大小以内，并删除连续 15 天未被任何 clice 打开的项目的目录。
+
 <!-- BEGIN GENERATED CONFIG: root -->
 
 <div class="config-option">
@@ -67,7 +69,17 @@ clice 会在后台检查磁盘上的文件，以便感知编辑器之外发生�
 | ----------- | -------- | ------ |
 | `cache_dir` | `string` | `""`   |
 
-统一磁盘缓存（PCH、PCM 和索引）的目录，相对于项目根目录。留空默认为 `${workspace}/.clice`，该目录会自动生成 .gitignore 和 CACHEDIR.TAG 标记，将自身排除在版本控制和备份之外（`.clice/config.toml` 对 Git 保持可见；遵循 CACHEDIR.TAG 的备份工具会跳过整个目录）；显式配置的目录不会写入这些标记。该目录必须是 clice 可写入且位于本地磁盘上的目录：若项目的缓存目录无法写入，或位于网络文件系统（NFS、SMB、WSL 下的 Windows 盘符）上，该项目将不提供任何服务，clice 会说明原因。位于所有工作区文件夹之外的文件，其缓存保存在 clice 的临时目录中，并在服务器退出时删除。解析后的最终路径会在启动时打印。
+存放索引的目录，相对于项目根目录。留空默认为 `${workspace}/.clice`，该目录会自动生成 .gitignore 和 CACHEDIR.TAG 标记，将自身排除在版本控制和备份之外（`.clice/config.toml` 对 Git 保持可见；遵循 CACHEDIR.TAG 的备份工具会跳过整个目录）；显式配置的目录不会写入这些标记。该目录必须是 clice 可写入且位于本地磁盘上的目录：若项目的缓存目录无法写入，或位于网络文件系统（NFS、SMB、WSL 下的 Windows 盘符）上，该项目将不提供任何服务，clice 会说明原因。位于所有工作区文件夹之外的文件，其缓存保存在 clice 的临时目录中，并在服务器退出时删除。解析后的最终路径会在启动时打印。
+
+</div>
+
+<div class="config-option">
+
+| 选项              | 类型     | 默认值 |
+| ----------------- | -------- | ------ |
+| `precompiled_dir` | `string` | `""`   |
+
+存放 clice 所构建 PCH 和 PCM 的目录，相对于项目根目录；每个项目各自使用其中的一个子目录。留空时默认为用户缓存目录下 clice 的目录：`~/.cache/clice`（如已设置则为 `$XDG_CACHE_HOME/clice`），macOS 上为 `~/Library/Caches/clice`，Windows 上为 `%LOCALAPPDATA%\clice`。连续 15 天未被任何 clice 使用的 PCH 或 PCM 会被删除；连续 15 天未被任何 clice 打开的项目，其子目录也会被删除。若将其设为临时目录，机器重启后这些文件都会被清除，下次需要时再逐一重新构建；在许多 Linux 系统上，`/tmp` 位于内存中。位于所有工作区文件夹之外的文件，其 PCH 和 PCM 保存在 clice 的临时目录中，并在服务器退出时删除。
 
 </div>
 
@@ -88,6 +100,34 @@ clice 会在后台检查磁盘上的文件，以便感知编辑器之外发生�
 | `poll_seconds` | `uint32` | `30`   |
 
 后台两次检查同一项目文件之间的最长间隔（秒）：每次检查若发现文件未变，间隔时间翻倍，直至达到此上限。设为 0 会禁用后台轮询（包括编译数据库的轮询）。
+
+</div>
+
+<!-- END GENERATED CONFIG -->
+
+## `[cache]`
+
+`[cache]` 节限定每个项目的 PCH 和 PCM 最多占用的磁盘空间。
+
+<!-- BEGIN GENERATED CONFIG: cache -->
+
+<div class="config-option">
+
+| 选项       | 类型     | 默认值 |
+| ---------- | -------- | ------ |
+| `pch_size` | `string` | `"4G"` |
+
+项目的 PCH 最多占用的磁盘空间：一个整数后接 K、M、G 或 T，按二进制倍数计算（`4G` 即 4 GiB）。超出该值时删除最久未使用的 PCH，之后打开需要它的文件时再重新构建。
+
+</div>
+
+<div class="config-option">
+
+| 选项       | 类型     | 默认值 |
+| ---------- | -------- | ------ |
+| `pcm_size` | `string` | `"8G"` |
+
+项目的 PCM（C++20 模块接口）最多占用的磁盘空间，写法同 `pch_size`。超出该值时删除最久未使用的 PCM；若设定值小于一个文件所导入模块的总大小，clice 会反复重新构建这些模块。
 
 </div>
 
