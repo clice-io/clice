@@ -21,8 +21,9 @@ std::string real_path(const Spelling& database) {
 }
 
 /// What the rules active under `configuration` do besides naming
-/// databases, one string each in declaration order: configurations alike in
-/// it and in the databases they read build alike.
+/// databases, one string each in order, with the layer each is written in,
+/// which orders its edits: configurations alike in it and in the databases
+/// they read build alike.
 std::vector<std::string> edits_of(const Settings& settings, llvm::StringRef configuration) {
     std::vector<std::string> edits;
     for(auto rule: settings.rules) {
@@ -32,7 +33,9 @@ std::vector<std::string> edits_of(const Settings& settings, llvm::StringRef conf
         rule.configuration.clear();
         rule.compile_commands.clear();
         rule.resolve_symlinks = false;
-        edits.push_back(json::to_string(rule).value_or(""));
+        edits.push_back(std::format("{} {}",
+                                    static_cast<std::uint8_t>(rule.layer),
+                                    json::to_string(rule).value_or("")));
     }
     return edits;
 }

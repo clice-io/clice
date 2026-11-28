@@ -314,6 +314,27 @@ ZEST_CASE(Resolved) {
     ZEXPECT(key_of(settings, "active").configuration == "active");
 };
 
+ZEST_CASE(LayeredEdits) {
+    /// The same flags written in other files edit the command in another
+    /// order: another build, whose index is its own.
+    TempDir tmp;
+    tmp.touch("out/a/compile_commands.json", "[]");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    Settings settings;
+    settings.rules.push_back(Rule{.configuration = "active",
+                                  .compile_commands = {"out/a"},
+                                  .resolve_symlinks = true,
+                                  .append = {"-std=c++20"}});
+    settings.rules.push_back(
+        Rule{.configuration = "active", .append = {"-std=c++23"}, .layer = SettingsLayer::User});
+    settings.rules.push_back(
+        Rule{.configuration = "a", .compile_commands = {"out/a"}, .append = {"-std=c++20"}});
+    settings.rules.push_back(Rule{.configuration = "a", .append = {"-std=c++23"}});
+    settings.finalize(root);
+    Rules rules(settings, root, "active");
+    ZEXPECT(rules.database_key(rules.resolved_databases()).configuration == "active");
+};
+
 };  // ZEST_SUITE(DatabaseKey)
 
 }  // namespace
