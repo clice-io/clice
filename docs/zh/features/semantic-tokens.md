@@ -110,7 +110,7 @@ clice 为文档中的每个 Token 着色：名称按其声明或指代的实体�
 
 ## 配置
 
-`[semantic_tokens]` 配置节（位于 `clice.toml` 中，也可在编辑器的 `initializationOptions` 中设置同名键）包含词法 Token 的开关和两张重命名表。这些名称只在编辑器连接时公布一次：取自编辑器设置与第一个工作区文件夹的 `clice.toml`，修改后需重启服务器才能生效。详见[配置参考](../guide/configuration.md#semantic-tokens)。
+`[semantic_tokens]` 配置节（位于 `clice.toml` 中，也可在编辑器的 `initializationOptions` 中设置同名键）包含词法 Token 的开关和两张重命名表。这些名称只在编辑器连接时公布一次：取自编辑器设置与第一个工作区文件夹的各配置文件（包括用户配置文件），修改后需重启服务器才能生效。详见[配置参考](../guide/configuration.md#semantic-tokens)。
 
 <!-- BEGIN GENERATED ITEMS: semantic_tokens/options -->
 

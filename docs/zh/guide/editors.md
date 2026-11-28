@@ -5,7 +5,7 @@ clice 实现了[语言服务器协议（Language Server Protocol）](https://mic
 所有配置的前提：
 
 - `clice` 可执行文件位于 `PATH` 中（或在下面的代码片段中使用绝对路径）；VS Code 扩展自带一份可执行文件，Zed 扩展在找不到时会自动下载一份。
-- 项目提供 `compile_commands.json`（clice 默认先搜索项目根目录，再搜索其中每个不含独立 `clice.toml` 或 `.clice/config.toml` 的直接子目录）。
+- 项目提供 `compile_commands.json`（clice 默认先搜索项目根目录，再搜索其中每个不含独立 `clice.toml`、`.clice/config.toml` 或 `.clice/local.toml` 的直接子目录）。
 
 ## 编译器环境
 
