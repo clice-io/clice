@@ -96,7 +96,12 @@ export function runIndex(checkout: string): Promise<IndexRun> {
     const child = spawn(
         cliceExecutable(),
         ["index", "--json", "--workspace", checkout, "--jobs", String(os.availableParallelism())],
-        { stdio: ["ignore", "pipe", "pipe"] },
+        // The PCMs and PCHs it builds stay in the checkout, counted in its
+        // cache on disk.
+        {
+            stdio: ["ignore", "pipe", "pipe"],
+            env: { ...process.env, CLICE_TEST_PRECOMPILED_DIR: ".clice/precompiled" },
+        },
     );
     const memory = child.pid === undefined ? undefined : watchTree(child.pid);
     let stdout = "";

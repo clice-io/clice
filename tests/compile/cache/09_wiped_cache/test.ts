@@ -32,13 +32,13 @@ function wipe(target: string): void {
 test("wiped while running", async (t) => {
     const s = await t.start();
     expect(await s.errors("main.cpp")).toEqual([]);
-    // The user resets the cache without restarting the server; the next
-    // PCH build creates the store's directories again.
-    wipe(path.join(t.root, ".clice/cache"));
-    expect(t.disk.list(".clice/cache/**/*.pch")).toEqual([]);
+    // The user removes the PCHs and PCMs without restarting the server; the
+    // next PCH build creates the store's directories again.
+    wipe(path.join(t.root, ".clice/precompiled"));
+    expect(t.disk.list(".clice/precompiled/**/*.pch")).toEqual([]);
     t.disk.write("header.h", "#pragma once\n\nstruct W {\n    int x;\n    int y;\n};\n");
     expect(await s.errors("main.cpp")).toEqual([]);
     await s.sync();
     expect((await s.counts()).pch).toBe(2);
-    expect(t.disk.list(".clice/cache/*/pch/*.pch")).toHaveLength(1);
+    expect(t.disk.list(".clice/precompiled/*/*/pch/*.pch")).toHaveLength(1);
 });

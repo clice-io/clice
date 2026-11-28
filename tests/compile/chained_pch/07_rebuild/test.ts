@@ -6,7 +6,7 @@ import { test, type Serve, type TestContext } from "@clice/tools/testing";
 // target's PCH when it is built again, fails to build or is gone.
 
 const WRITER = "build/CMakeFiles/app.dir/cmake_pch.hxx.cxx";
-const PCH = ".clice/cache/*/pch/*.pch";
+const PCH = ".clice/precompiled/*/*/pch/*.pch";
 const UNINDEXED = { lastRule: { background_index: false } };
 
 async function builds(s: Serve): Promise<{ base: number; top: number }> {

@@ -66,7 +66,7 @@ test("the pch leaves the store", async (t) => {
     // they are built again over the PCH built again.
     const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("src/app.cpp")).toEqual([]);
-    for (const pch of t.disk.list(".clice/cache/*/pch/*.pch")) {
+    for (const pch of t.disk.list(".clice/precompiled/*/*/pch/*.pch")) {
         t.disk.rm(pch);
     }
     s.edit("src/app.cpp", { replace: "return twice();", with: "return twice() + 1;" });
@@ -81,7 +81,7 @@ test("the pch leaves the store after a restart", async (t) => {
     await first.stop();
     const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("src/app.cpp")).toEqual([]);
-    for (const pch of t.disk.list(".clice/cache/*/pch/*.pch")) {
+    for (const pch of t.disk.list(".clice/precompiled/*/*/pch/*.pch")) {
         t.disk.rm(pch);
     }
     s.edit("src/app.cpp", { replace: "return twice();", with: "return twice() + 1;" });

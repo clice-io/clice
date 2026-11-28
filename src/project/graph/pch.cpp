@@ -35,7 +35,7 @@ void forget_pairs(Project& project, llvm::StringRef pch_key) {
         return;
     }
     auto& entry = it->second;
-    entry.discard(*project.store, "pch");
+    entry.discard(*project.precompiled_store, "pch");
     entry.index_path.clear();
     entry.index_verified = false;
     entry.index.reset();
@@ -63,8 +63,8 @@ std::pair<Check, llvm::StringRef> pair_state(Project& project, llvm::StringRef p
         return {Check::ProductGone, "none is built yet for its command and preamble"};
     }
     auto& entry = it->second;
-    if(!project.store->lookup("pch", entry.blob) ||
-       (!entry.whole_file && !project.store->lookup_aux("pch", entry.blob)) ||
+    if(!project.precompiled_store->lookup("pch", entry.blob) ||
+       (!entry.whole_file && !project.precompiled_store->lookup_aux("pch", entry.blob)) ||
        !fs::exists(entry.path)) {
         return {Check::ProductGone, evicted};
     }
@@ -147,7 +147,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     // (fsync + rename) both on success, primary first. A whole file's build
     // that is its writing unit's compile sends the unit's index instead.
     auto blob = new_blob(pch_key);
-    auto pending = project.store->begin_store("pch", blob);
+    auto pending = project.precompiled_store->begin_store("pch", blob);
     auto& bp = request.params;
     bp.project_root = project.root.str();
     bp.output_path = pending.tmp_path;
@@ -155,7 +155,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     std::optional<CacheStore::PendingEntry> pending_idx;
     IndexTransfer transfer;
     if(!bp.whole_file) {
-        pending_idx = project.store->begin_store_aux("pch", blob);
+        pending_idx = project.precompiled_store->begin_store_aux("pch", blob);
         bp.indexing.output_path = pending_idx->tmp_path;
     } else if(request.writer) {
         bp.index = true;
@@ -230,7 +230,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     std::optional<std::string> index_path;
     std::shared_ptr<worker::PreambleIndex> loaded;
     co_await async::queue([&] {
-        auto committed = project.store->commit(std::move(pending));
+        auto committed = project.precompiled_store->commit(std::move(pending));
         if(!committed) {
             // pending_idx cleans its own tmp blob when the frame unwinds.
             return;
@@ -241,7 +241,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         }
         // The pair is only usable complete: when the index blob cannot be
         // published, discard the PCH too — the next attempt rebuilds both.
-        if(auto index = project.store->commit(std::move(*pending_idx))) {
+        if(auto index = project.precompiled_store->commit(std::move(*pending_idx))) {
             index_path = std::move(*index);
             loaded = worker::open_preamble_index(*index_path);
         }
@@ -249,7 +249,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
         // an uncommitted one: discard the pair rather than publish a PCH
         // whose preamble index every consumer would fail to load.
         if(!loaded) {
-            project.store->invalidate("pch", blob);
+            project.precompiled_store->invalidate("pch", blob);
         }
     });
     if(!pch_path) {
@@ -270,7 +270,7 @@ async::task<Result> build_pair(Project& project, Attempt& attempt, PCHRequest re
     }
 
     auto& entry = project.pchs[pch_key];
-    entry.publish(*project.store,
+    entry.publish(*project.precompiled_store,
                   "pch",
                   std::move(blob),
                   std::move(*pch_path),
@@ -661,7 +661,7 @@ void Project::pch_consume_failed(llvm::StringRef pch_key) {
         return;
     }
     auto& entry = it->second;
-    if(!entry.blob.empty() && store->lookup("pch", entry.blob)) {
+    if(!entry.blob.empty() && precompiled_store->lookup("pch", entry.blob)) {
         if(!entry.consumes) {
             entry.consumes.emplace();
         }
@@ -673,7 +673,7 @@ void Project::pch_consume_failed(llvm::StringRef pch_key) {
     if(!graph.is_compiling(pch_node(pch_key))) {
         forget_pairs(*this, pch_key);
     } else {
-        store->invalidate("pch", entry.blob);
+        precompiled_store->invalidate("pch", entry.blob);
     }
 }
 
@@ -699,7 +699,7 @@ std::shared_ptr<worker::PreambleIndex> Project::preamble_index(llvm::StringRef p
         // life. Discard it now; the entry itself stays until the next acquisition
         // re-checks the store and rebuilds the pair.
         LOG_WARN("Dropping the PCH {}, whose index does not read", pch_key);
-        store->invalidate("pch", entry.blob);
+        precompiled_store->invalidate("pch", entry.blob);
     }
     return loaded;
 }
@@ -708,7 +708,7 @@ void Project::forget_evicted_pchs() {
     // An entry mid-rebuild keeps its slot — its commit publishes a fresh
     // pair. A key rebuilt after the eviction was recorded names another
     // blob by now.
-    for(auto& evicted: store->take_evictions()) {
+    for(auto& evicted: precompiled_store->take_evictions()) {
         if(evicted.ns != "pch") {
             continue;
         }

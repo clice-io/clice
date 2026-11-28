@@ -309,6 +309,8 @@ ZEST_CASE(BornValidDefaults) {
     ZEXPECT(settings.code_completion.insert_imports == true);
     ZEXPECT(at_most(settings.code_completion.limit) == 100u);
     ZEXPECT(at_most(settings.references.limit) == 2000u);
+    ZEXPECT(settings.cache.pch_size == "4G");
+    ZEXPECT(settings.cache.pcm_size == "8G");
 }
 
 ZEST_CASE(FinalizeDerivesPaths) {
@@ -321,6 +323,45 @@ ZEST_CASE(FinalizeDerivesPaths) {
     ZEXPECT(settings.cache_dir == spelled(".clice"));
     ZEXPECT(settings.logging_dir == spelled(".clice/logs"));
     ZEXPECT(settings.cache_dir_defaulted == true);
+    // clice's directory in the user's cache directory.
+    ZEXPECT(path::is_absolute(settings.precompiled_dir));
+    ZEXPECT(llvm::StringRef(settings.precompiled_dir).ends_with("clice"));
+    ZEXPECT(settings.cache.pch_bytes == 4ull << 30);
+    ZEXPECT(settings.cache.pcm_bytes == 8ull << 30);
+}
+
+ZEST_CASE(PrecompiledDirAnchors) {
+    Settings settings;
+    settings.precompiled_dir = "build/precompiled";
+    CanonicalPath root(Spelling::absolute("/workspace"));
+    settings.finalize(root);
+    ZEXPECT(settings.precompiled_dir ==
+            CanonicalPath(Spelling::absolute(path::join(root, "build/precompiled"))).str());
+}
+
+ZEST_CASE(SizesRead) {
+    Settings settings;
+    settings.cache.pch_size = "500M";
+    settings.cache.pcm_size = "1T";
+    ZEXPECT(settings.finalize(CanonicalPath()).empty());
+    ZEXPECT(settings.cache.pch_bytes == 500ull << 20);
+    ZEXPECT(settings.cache.pcm_bytes == 1ull << 40);
+}
+
+ZEST_CASE(UnreadSizesRejected) {
+    // Anything but a whole number above 0 and one of K, M, G, T is an error
+    // at its key, the default standing meanwhile.
+    for(auto size: {"", "4", "4GB", "4g", "0G", "-1G", "1.5G", "99999999999999T"}) {
+        Settings settings;
+        settings.cache.pch_size = size;
+        auto problems = settings.finalize(CanonicalPath());
+        ZASSERT(problems.size() == 1u);
+        ZEXPECT(
+            problems[0].to_string() ==
+            R"(a size is a whole number above 0 followed by K, M, G or T, as "4G" at cache.pch_size)");
+        ZEXPECT(settings.cache.pch_size == "4G");
+        ZEXPECT(settings.cache.pch_bytes == 4ull << 30);
+    }
 }
 
 ZEST_CASE(FinalizeEmptyWorkspace) {

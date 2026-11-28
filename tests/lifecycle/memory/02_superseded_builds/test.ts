@@ -36,6 +36,7 @@ test(async (t) => {
         sessions: stats.sessions,
     });
     expect(t.disk.list(".clice/cache/*/tmp/**")).toEqual([]);
+    expect(t.disk.list(".clice/precompiled/*/*/tmp/**")).toEqual([]);
     // The C++ and TS shapes of the reply are written by hand on both
     // sides: a gauge added to one and not the other shows here.
     expect(Object.keys(stats).sort()).toEqual(

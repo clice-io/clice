@@ -288,6 +288,36 @@ struct Rule {
     std::optional<bool> format;
 };
 
+/// Corresponds to the `[cache]` section in clice.toml: the most disk a
+/// project's PCHs and PCMs take.
+KANNOTATE_TYPE(struct CacheSettings, presence_all = optional);
+struct CacheSettings {
+    KANNOTATE(&pch_size,
+              description =
+                  "The most disk the PCHs of a project take: a whole number "
+                  "followed by K, M, G or T, in binary multiples (`4G` is "
+                  "4 GiB). Past it the least recently used go, each built "
+                  "again when a file needing it opens.")
+    std::string pch_size = "4G";
+
+    KANNOTATE(&pcm_size,
+              description =
+                  "The most disk the PCMs (C++20 module interfaces) of a "
+                  "project take, written as `pch_size`. Past it the least "
+                  "recently used go; a size below what the modules a file "
+                  "imports take together makes clice build them over and "
+                  "over.")
+    std::string pcm_size = "8G";
+
+    /// pch_size and pcm_size in bytes, which finalize() reads them as; 0, no
+    /// limit, before it.
+    KANNOTATE(&pch_bytes, skip = true)
+    std::uint64_t pch_bytes = 0;
+
+    KANNOTATE(&pcm_bytes, skip = true)
+    std::uint64_t pcm_bytes = 0;
+};
+
 /// Corresponds to the `[workers]` section in clice.toml: the worker
 /// processes and when background work starts.
 KANNOTATE_TYPE(struct WorkersSettings, presence_all = optional);
@@ -454,8 +484,7 @@ struct Settings {
     /// cache_identity names the directory.
     KANNOTATE(&cache_dir,
               description =
-                  "Directory for the unified on-disk cache (PCHs, PCMs and "
-                  "the index), relative to the project root. Empty "
+                  "Directory for the index, relative to the project root. Empty "
                   "defaults to `${workspace}/.clice`, which keeps itself "
                   "out of version control and backups via generated "
                   ".gitignore and CACHEDIR.TAG markers (a "
@@ -482,6 +511,24 @@ struct Settings {
     KANNOTATE(&cache_identity, skip = true)
     CanonicalPath cache_identity;
 
+    KANNOTATE(&precompiled_dir,
+              description =
+                  "Directory for the PCHs and PCMs clice builds, relative "
+                  "to the project root; each project keeps them in a "
+                  "subdirectory of its own. Empty defaults to clice's directory in the "
+                  "user's cache directory: `~/.cache/clice` "
+                  "(`$XDG_CACHE_HOME/clice` when set), "
+                  "`~/Library/Caches/clice` on macOS, "
+                  "`%LOCALAPPDATA%\\clice` on Windows. A PCH or PCM no clice "
+                  "used for 15 days is removed, and so is the subdirectory "
+                  "of a project no clice opened for 15 days. A temporary "
+                  "directory makes a restart of the machine remove them, "
+                  "each built again when next needed; on many Linux "
+                  "systems `/tmp` is held in memory. Files outside every "
+                  "workspace folder keep theirs in clice's temporary "
+                  "directory, removed when the server exits.")
+    std::string precompiled_dir;
+
     KANNOTATE(&logging_dir,
               description =
                   "Directory for log files, relative to the project root; "
@@ -498,6 +545,9 @@ struct Settings {
                   "disables background polling, compilation databases "
                   "included.")
     std::uint32_t poll_seconds = 30;
+
+    KANNOTATE(&cache, description = "The [cache] section: the most disk PCHs and PCMs take.")
+    CacheSettings cache;
 
     KANNOTATE(&workers, description = "The [workers] section: the worker processes.")
     WorkersSettings workers;
@@ -562,15 +612,16 @@ struct Settings {
     feature::IncludeDelimiters include_delimiters;
 
     /// Compute the values derived from the final merged settings: default
-    /// cache/logging directories, variable substitution, path
-    /// canonicalization and anchoring at the project root, rule
-    /// compilation and the include delimiters' globs. Run once per load,
-    /// after every source has been overlaid. Returns the values clice
-    /// cannot honor, each at its key: a glob that does not compile or holds
-    /// a backslash, an environment variable that is not set,
-    /// `default_configuration` naming no declared tag, a zero worker count
-    /// or limit (each falls back to its default meanwhile, so the
-    /// process-wide settings read from it stay runnable).
+    /// cache, precompiled and logging directories, variable substitution,
+    /// path canonicalization and anchoring at the project root, the cache
+    /// sizes in bytes, rule compilation and the include delimiters' globs.
+    /// Run once per load, after every source has been overlaid. Returns the
+    /// values clice cannot honor, each at its key: a glob that does not
+    /// compile or holds a backslash, an environment variable that is not
+    /// set, `default_configuration` naming no declared tag, a zero worker
+    /// count or limit, a size it cannot read (each falls back to its
+    /// default meanwhile, so the process-wide settings read from it stay
+    /// runnable).
     std::vector<codec::rich_error> finalize(CanonicalRef project_root);
 
     /// The distinct configuration tags, in first-appearance order.

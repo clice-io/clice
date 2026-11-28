@@ -6,7 +6,7 @@ import { test } from "@clice/tools/testing";
 test(async (t) => {
     const s = await t.start({ lastRule: { background_index: false } });
     expect(await s.errors("main.cpp")).toEqual([]);
-    const lost = t.disk.list(".clice/cache/*/pcm/A-*.pcm");
+    const lost = t.disk.list(".clice/precompiled/*/*/pcm/A-*.pcm");
     expect(lost).toHaveLength(1);
     t.disk.rm(lost[0] ?? "");
     s.edit("main.cpp", { replace: "return a() + b();", with: "return b() + a();" });

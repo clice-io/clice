@@ -161,6 +161,43 @@ static std::expected<CompiledRule::Pattern, std::string>
                                  .root = std::move(root)};
 }
 
+/// A size as the `[cache]` section writes it — a whole number above 0
+/// followed by K, M, G or T, binary multiples — in bytes; nullopt for any
+/// other spelling.
+static std::optional<std::uint64_t> parse_size(llvm::StringRef text) {
+    unsigned shift = 0;
+    switch(text.empty() ? '\0' : text.back()) {
+        case 'K': shift = 10; break;
+        case 'M': shift = 20; break;
+        case 'G': shift = 30; break;
+        case 'T': shift = 40; break;
+        default: return std::nullopt;
+    }
+    std::uint64_t number = 0;
+    if(text.drop_back().getAsInteger(10, number) || number == 0 ||
+       number > (std::numeric_limits<std::uint64_t>::max() >> shift)) {
+        return std::nullopt;
+    }
+    return number << shift;
+}
+
+/// Where `precompiled_dir` defaults to: `clice` in the user's cache
+/// directory, empty when there is none. Test hook: CLICE_TEST_PRECOMPILED_DIR
+/// names it instead, as the setting would, so that a test keeps them with
+/// its workspace (none, relative, in a project without a folder, which
+/// keeps them in clice's temporary directory).
+static std::string default_precompiled_dir(CanonicalRef project_root) {
+    if(auto test = env_string("CLICE_TEST_PRECOMPILED_DIR")) {
+        auto spelled = setting_path(std::move(*test), project_root);
+        return spelled ? std::move(*spelled).str() : std::string();
+    }
+    std::string user;
+    if(sys::cache_dir(user)) {
+        return {};
+    }
+    return path::join(user, "clice");
+}
+
 std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
     std::vector<codec::rich_error> problems;
     auto problem = [&](std::string message, std::vector<codec::rich_error::path_segment> path) {
@@ -183,6 +220,19 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
             problem(R"(a worker count must be at least 1, or "auto")", {"workers", name});
             *count = Automatic::Auto;
         }
+    }
+    for(auto [name, size, bytes]: {
+            std::tuple{"pch_size", &CacheSettings::pch_size, &CacheSettings::pch_bytes},
+            {"pcm_size", &CacheSettings::pcm_size, &CacheSettings::pcm_bytes}
+    }) {
+        auto parsed = parse_size(cache.*size);
+        if(!parsed) {
+            problem(R"(a size is a whole number above 0 followed by K, M, G or T, as "4G")",
+                    {"cache", name});
+            cache.*size = CacheSettings().*size;
+            parsed = parse_size(cache.*size);
+        }
+        cache.*bytes = *parsed;
     }
     auto reject_zero = [&](Limit& limit,
                            const Limit& fallback,
@@ -252,6 +302,12 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
     };
     if(!cache_dir.empty()) {
         resolve_dir("cache_dir", cache_dir);
+    }
+    if(precompiled_dir.empty()) {
+        precompiled_dir = default_precompiled_dir(root);
+    }
+    if(!precompiled_dir.empty()) {
+        resolve_dir("precompiled_dir", precompiled_dir);
     }
     if(!logging_dir.empty()) {
         resolve_dir("logging_dir", logging_dir);

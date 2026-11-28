@@ -30,12 +30,12 @@ ZEST_CASE(StaleFormatDropsPch) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        auto pending = f.project.store->begin_store("pch", "k");
+        auto pending = f.project.precompiled_store->begin_store("pch", "k");
         ZASSERT(!fs::write_file(pending.tmp_path, "pch-bytes"));
-        ZASSERT(f.project.store->commit(std::move(pending)));
-        auto aux = f.project.store->begin_store_aux("pch", "k");
+        ZASSERT(f.project.precompiled_store->commit(std::move(pending)));
+        auto aux = f.project.precompiled_store->begin_store_aux("pch", "k");
         ZASSERT(!fs::write_file(aux.tmp_path, "idx-bytes"));
-        ZASSERT(f.project.store->commit(std::move(aux)));
+        ZASSERT(f.project.precompiled_store->commit(std::move(aux)));
 
         auto dep_id = f.project.file_table.intern(Spelling::absolute(dep_path));
         auto& st = f.project.pchs["k"];
@@ -86,9 +86,9 @@ ZEST_CASE(WholeFileLoadsUnindexed) {
         IndexerFixture f;
         open_store(tmp, f.project);
         for(auto key: {"whole", "preamble"}) {
-            auto pending = f.project.store->begin_store("pch", key);
+            auto pending = f.project.precompiled_store->begin_store("pch", key);
             ZASSERT(!fs::write_file(pending.tmp_path, "pch-bytes"));
-            ZASSERT(f.project.store->commit(std::move(pending)));
+            ZASSERT(f.project.precompiled_store->commit(std::move(pending)));
             auto& st = f.project.pchs[key];
             st.blob = key;
             st.path = std::string(key) + ".pch";
@@ -118,9 +118,9 @@ ZEST_CASE(LookedAgainNotRecorded) {
         IndexerFixture f;
         open_store(tmp, f.project);
         for(auto key: {"kept", "asked"}) {
-            auto pending = f.project.store->begin_store("pch", key);
+            auto pending = f.project.precompiled_store->begin_store("pch", key);
             ZASSERT(!fs::write_file(pending.tmp_path, "pch-bytes"));
-            ZASSERT(f.project.store->commit(std::move(pending)));
+            ZASSERT(f.project.precompiled_store->commit(std::move(pending)));
             auto& st = f.project.pchs[key];
             st.blob = key;
             st.path = std::string(key) + ".pch";
@@ -147,12 +147,12 @@ ZEST_CASE(OlderRecordsLoad) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        auto pending = f.project.store->begin_store("pch", "k");
+        auto pending = f.project.precompiled_store->begin_store("pch", "k");
         ZASSERT(!fs::write_file(pending.tmp_path, "pch-bytes"));
-        ZASSERT(f.project.store->commit(std::move(pending)));
-        auto aux = f.project.store->begin_store_aux("pch", "k");
+        ZASSERT(f.project.precompiled_store->commit(std::move(pending)));
+        auto aux = f.project.precompiled_store->begin_store_aux("pch", "k");
         ZASSERT(!fs::write_file(aux.tmp_path, "idx-bytes"));
-        ZASSERT(f.project.store->commit(std::move(aux)));
+        ZASSERT(f.project.precompiled_store->commit(std::move(aux)));
         auto dep_id = f.project.file_table.intern(Spelling::absolute(dep_path));
         auto& st = f.project.pchs["k"];
         st.blob = "k";
@@ -192,9 +192,9 @@ ZEST_CASE(DeplessPcmDropped) {
     {
         IndexerFixture f;
         open_store(tmp, f.project);
-        auto pending = f.project.store->begin_store("pcm", "k");
+        auto pending = f.project.precompiled_store->begin_store("pcm", "k");
         ZASSERT(!fs::write_file(pending.tmp_path, "pcm-bytes"));
-        ZASSERT(f.project.store->commit(std::move(pending)));
+        ZASSERT(f.project.precompiled_store->commit(std::move(pending)));
 
         auto& st =
             f.project.pcms[module_node(f.project.file_table.intern(Spelling::absolute(src)))];

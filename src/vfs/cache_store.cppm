@@ -5,7 +5,8 @@ import :support.prelude;
 namespace clice {
 
 /// Static configuration of a cache namespace: rebuildable large files
-/// (PCH, PCM), size-capped with least-recently-used eviction.
+/// (PCH, PCM), size-capped with least-recently-used eviction and removed
+/// once unused for long.
 struct CacheNamespace {
     /// Directory name under the store root, e.g. "pch".
     std::string name;
@@ -23,6 +24,10 @@ struct CacheNamespace {
 
     /// Size budget; 0 means unlimited.
     std::uint64_t max_bytes = 0;
+
+    /// The longest an entry stays unused (neither looked up nor committed)
+    /// before it is removed; 0 keeps it until the size budget evicts it.
+    chrono::milliseconds max_unused{0};
 };
 
 /// Content-addressed blob store with atomic writes, crash recovery and
@@ -30,7 +35,8 @@ struct CacheNamespace {
 ///
 /// Responsibility split: the store only manages blob lifecycle — atomic
 /// two-phase writes (begin_store/commit), LRU accounting and eviction,
-/// orphan cleanup and the manifest checkpoint.  Keys are opaque,
+/// the removal of entries unused for long, orphan cleanup and the manifest
+/// checkpoint.  Keys are opaque,
 /// filename-safe strings constructed by the caller (project convention:
 /// hex of llvm::xxh3_128bits, optionally with a readable prefix).
 /// Dependency tracking and staleness decisions are the caller's job.
@@ -42,7 +48,8 @@ struct CacheNamespace {
 /// name a blob of their own build (key plus nonce), never one another
 /// writer rewrites.
 ///
-/// On-disk layout under `{root}/cache/v{version}/`:
+/// On-disk layout under `{dir}/v{version}/`, beside the `store.lock` every
+/// layout of the directory shares:
 ///   manifest.json        last-accessed checkpoint (not a source of truth)
 ///   tmp/{pid}/           in-flight writes of one live instance
 ///   {ns}/{key}{ext}      committed blobs
@@ -112,18 +119,25 @@ public:
         void remove_tmp();
     };
 
-    /// Open (creating if necessary) the store under `root`.  Any sibling
-    /// version directory other than v{version} is deleted.  Loads the
-    /// manifest if present and removes tmp directories of dead instances.
+    /// Open (creating if necessary) the store in `dir`, its layout
+    /// `{dir}/v{version}`.  Any sibling version directory other than
+    /// v{version} is deleted.  Loads the manifest if present and removes tmp
+    /// directories of dead instances.
     ///
     /// `read_only` opens for inspection without touching the disk: nothing
     /// is created, removed or discarded — a store another process (possibly
     /// an older layout version) is live on must survive being inspected.
     /// Fails with `no_such_file_or_directory` when the versioned directory
     /// does not exist; only lookups may be used.
-    static std::expected<CacheStore, std::error_code> open(llvm::StringRef root,
+    static std::expected<CacheStore, std::error_code> open(llvm::StringRef dir,
                                                            std::uint32_t version,
                                                            bool read_only = false);
+
+    /// Remove the store in `dir` — every layout and the lock file — when no
+    /// live process uses it and none opened it or saved its list of entries
+    /// for `max_unused`; whether it did. A directory no store was opened in
+    /// (no lock file), or one a store is opening right now, stays.
+    static bool remove_unused(llvm::StringRef dir, chrono::milliseconds max_unused);
 
     /// Drop self-ignore markers into `root` (created if missing): a
     /// `.gitignore` and a CACHEDIR.TAG. Sessions call this right after
@@ -203,13 +217,13 @@ public:
     /// Drain the evictions recorded since the last call.
     std::vector<EvictedBlob> take_evictions();
 
-    /// The versioned root directory, e.g. `{root}/cache/v1`.  Callers may
-    /// place their own metadata files directly under it (the store only
-    /// manages namespace subdirectories); they die with the version.
+    /// The versioned layout directory, e.g. `{dir}/v1`.  Callers may place
+    /// their own metadata files directly under it (the store only manages
+    /// namespace subdirectories); they die with the version.
     llvm::StringRef base_dir() const;
 
-    /// The directory the store was opened under (`cache_dir`), which
-    /// outlives any layout version.
+    /// The directory the store was opened in, which outlives any layout
+    /// version.
     llvm::StringRef root_dir() const;
 
     /// Whether the store was opened in read-only inspection mode.

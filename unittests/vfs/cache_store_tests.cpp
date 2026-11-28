@@ -21,7 +21,7 @@ constexpr std::uint32_t version = 1;
 constexpr const char* dead_pid = "999999999";
 
 CacheStore open_store(const TempDir& tmp, std::uint32_t ver = version) {
-    auto store = CacheStore::open(tmp.path("root"), ver);
+    auto store = CacheStore::open(tmp.path("root/cache"), ver);
     ZASSERT(store.has_value());
     return std::move(*store);
 }
@@ -627,7 +627,7 @@ ZEST_CASE(ReadOnlyRequiresStore) {
     // The parent directory alone (config resolution creates it eagerly)
     // must not pass for an existing store.
     tmp.touch("root/cache/marker", "");
-    auto store = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
+    auto store = CacheStore::open(tmp.path("root/cache"), version, /*read_only=*/true);
     ZASSERT(!store.has_value());
     ZASSERT(store.error() == std::errc::no_such_file_or_directory);
 }
@@ -643,11 +643,11 @@ ZEST_CASE(ReadOnlyTouchesNothing) {
 
     // A newer-version inspector must neither create its own directory nor
     // remove the older version a live server may still be using.
-    auto store = CacheStore::open(tmp.path("root"), version + 1, /*read_only=*/true);
+    auto store = CacheStore::open(tmp.path("root/cache"), version + 1, /*read_only=*/true);
     ZASSERT(!store.has_value());
     ZASSERT(!fs::exists(tmp.path("root/cache/v2")));
 
-    auto reader = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
+    auto reader = CacheStore::open(tmp.path("root/cache"), version, /*read_only=*/true);
     ZASSERT(reader);
     register_lru(*reader);
     ZASSERT(reader->lookup("pch", "k1"));
@@ -666,7 +666,7 @@ ZEST_CASE(ReadOnlyNeverWrites) {
     auto manifest_before = read_file(tmp.path("root/cache/v1/manifest.json"));
     ZASSERT(manifest_before);
 
-    auto reader = CacheStore::open(tmp.path("root"), version, /*read_only=*/true);
+    auto reader = CacheStore::open(tmp.path("root/cache"), version, /*read_only=*/true);
     ZASSERT(reader);
     // A budget below the blob size must not evict at registration, an
     // invalidate must not delete the live server's blob, and the atime
@@ -679,6 +679,61 @@ ZEST_CASE(ReadOnlyNeverWrites) {
 
     ZASSERT(read_file(tmp.path("root/cache/v1/pch/k1.pch")).value_or("") == "blob");
     ZASSERT(read_file(tmp.path("root/cache/v1/manifest.json")).value_or("") == *manifest_before);
+}
+
+ZEST_CASE(UnusedEntriesGo) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp);
+        register_lru(store);
+        put(store, "pch", "old", "used long ago");
+        put(store, "pch", "new", "used just now");
+        store.shutdown();
+    }
+    // The list of entries says "old" was last used in 1970; "new", missing
+    // from it, when its file was written.
+    tmp.touch("root/cache/v1/manifest.json", R"({"entries":[{"ns":"pch","key":"old","atime":1}]})");
+
+    auto store = open_store(tmp);
+    store.register_namespace({.name = "pch", .extension = ".pch", .max_unused = chrono::days(15)});
+    ZEXPECT(!store.lookup("pch", "old"));
+    ZEXPECT(!fs::exists(tmp.path("root/cache/v1/pch/old.pch")));
+    ZEXPECT(store.lookup("pch", "new"));
+    auto evicted = store.take_evictions();
+    ZASSERT(evicted.size() == 1u);
+    ZEXPECT(evicted[0].key == "old");
+}
+
+ZEST_CASE(UnusedStoreRemoved) {
+    TempDir tmp;
+    {
+        auto store = open_store(tmp);
+        register_lru(store);
+        put(store, "pch", "k1", "blob");
+        store.shutdown();
+    }
+    // Used just now, then unused for longer than none at all.
+    ZEXPECT(!CacheStore::remove_unused(tmp.path("root/cache"), chrono::days(15)));
+    ZEXPECT(fs::exists(tmp.path("root/cache/v1/pch/k1.pch")));
+    ZEXPECT(CacheStore::remove_unused(tmp.path("root/cache"), chrono::milliseconds(0)));
+    ZEXPECT(!fs::exists(tmp.path("root/cache")));
+}
+
+ZEST_CASE(StoreInUseKept) {
+    TempDir tmp;
+    auto store = open_store(tmp);
+    register_lru(store);
+    put(store, "pch", "k1", "blob");
+    ZEXPECT(!CacheStore::remove_unused(tmp.path("root/cache"), chrono::milliseconds(0)));
+    ZEXPECT(store.lookup("pch", "k1"));
+    ZEXPECT(fs::exists(tmp.path("root/cache/v1/pch/k1.pch")));
+}
+
+ZEST_CASE(NoStoreNotRemoved) {
+    TempDir tmp;
+    tmp.touch("other/v1/data", "another program's");
+    ZEXPECT(!CacheStore::remove_unused(tmp.path("other"), chrono::milliseconds(0)));
+    ZEXPECT(fs::exists(tmp.path("other/v1/data")));
 }
 
 };  // ZEST_SUITE(CacheStore)

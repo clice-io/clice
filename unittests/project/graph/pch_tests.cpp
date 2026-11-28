@@ -252,7 +252,8 @@ ZEST_CASE(EvictedPairNotCounted) {
     std::optional<Result> first, second;
     execute([&]() -> async::task<> {
         auto evict = [&] {
-            project.store->invalidate("pch", project.pchs.find("shared-key")->second.blob);
+            project.precompiled_store->invalidate("pch",
+                                                  project.pchs.find("shared-key")->second.blob);
         };
         ZASSERT(co_await acquire(request("#define X 1\n")) == Result::Success);
         evict();

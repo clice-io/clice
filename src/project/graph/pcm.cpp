@@ -136,13 +136,13 @@ llvm::StringRef revalidate(Project& project, NodeId module, llvm::StringRef pcm_
         miss = "its command, an import or its PCH changed";
     } else if(!inputs_hold(project.file_table, entry.inputs)) {
         miss = "a file it read changed";
-    } else if(entry.path.empty() || !project.store->lookup("pcm", entry.blob) ||
+    } else if(entry.path.empty() || !project.precompiled_store->lookup("pcm", entry.blob) ||
               !fs::exists(entry.path)) {
         miss = "the last one left the cache";
     } else {
         return {};
     }
-    entry.retire(*project.store, "pcm");
+    entry.retire(*project.precompiled_store, "pcm");
     entry.key.clear();
     entry.pch.clear();
     return miss;
@@ -338,7 +338,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
                 co_return Result::Failed;
             }
             auto& entry = project.pcms[node];
-            entry.retire(*project.store, "pcm");
+            entry.retire(*project.precompiled_store, "pcm");
             entry.key.clear();
             entry.pch.clear();
             entry.failure = {{.import = failed_import}, std::move(imports.inputs)};
@@ -411,7 +411,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
 
     bp.module_name = module_name;
     auto blob = new_blob(pcm_key);
-    auto pending = project.store->begin_store("pcm", blob);
+    auto pending = project.precompiled_store->begin_store("pcm", blob);
     bp.output_path = pending.tmp_path;
     bp.pcms = project.imported_pcms(resolved);
     IndexTransfer transfer;
@@ -462,7 +462,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
         });
     if(!built) {
         if(built.error() == Result::Failed) {
-            project.pcms[node].retire(*project.store, "pcm");
+            project.pcms[node].retire(*project.precompiled_store, "pcm");
         }
         co_return built.error();
     }
@@ -471,15 +471,15 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
     }
 
     // Commit on the thread pool: it fsyncs the freshly written PCM.
-    auto committed =
-        co_await async::queue([&] { return project.store->commit(std::move(pending)); });
+    auto committed = co_await async::queue(
+        [&] { return project.precompiled_store->commit(std::move(pending)); });
     auto& entry = project.pcms[node];
     if(!committed.has_value()) {
-        entry.retire(*project.store, "pcm");
+        entry.retire(*project.precompiled_store, "pcm");
         LOG_WARN("Cannot store the PCM of module {}", module_name);
         co_return Result::Failed;
     }
-    entry.publish(*project.store,
+    entry.publish(*project.precompiled_store,
                   "pcm",
                   std::move(blob),
                   std::move(committed.value()),

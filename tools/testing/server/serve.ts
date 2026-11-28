@@ -1352,11 +1352,13 @@ export class Serve extends Client {
         });
     }
 
-    /// Stop the server, remove its cache (the logs stay), start one again.
+    /// Stop the server, remove its cache, PCHs and PCMs (the logs stay),
+    /// start one again.
     cold(): Promise<void> {
         return this.steps.run("cold start", async () => {
             await this.stop();
             this.workspace.rm(".clice/cache");
+            this.workspace.rm(".clice/precompiled");
             await this.start();
         });
     }

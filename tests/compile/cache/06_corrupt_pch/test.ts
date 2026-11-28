@@ -5,7 +5,7 @@ import { test, type Serve, type TestContext } from "@clice/tools/testing";
 // no freshness check notices. main.cpp has an error of its own: a file the
 // damaged PCH bricked would publish nothing instead.
 
-const PCH = ".clice/cache/*/pch/*.pch";
+const PCH = ".clice/precompiled/*/*/pch/*.pch";
 
 /// Damage the PCH offline; once the server is back, main.cpp reports its
 /// own error again over a PCH built anew.

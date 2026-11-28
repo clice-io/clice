@@ -1,7 +1,7 @@
 import { expect } from "vitest";
 import { test } from "@clice/tools/testing";
 
-const TMP = ".clice/cache/*/tmp/**";
+const TMP = ".clice/precompiled/*/*/tmp/**";
 
 test("killed mid-build", async (t) => {
     const s = await t.start();
@@ -18,5 +18,5 @@ test("killed mid-build", async (t) => {
     expect(t.disk.list(TMP)).toEqual([]);
     await s.sync();
     expect((await s.counts()).pch).toBe(1);
-    expect(t.disk.list(".clice/cache/*/pch/*")).toHaveLength(2);
+    expect(t.disk.list(".clice/precompiled/*/*/pch/*")).toHaveLength(2);
 });

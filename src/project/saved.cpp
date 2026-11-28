@@ -319,7 +319,10 @@ void Project::reconcile_index(index::IndexReport& report) {
 }
 
 async::task<> Project::checkpoint() {
-    co_await async::queue([this] { store->checkpoint(); });
+    co_await async::queue([this] {
+        store->checkpoint();
+        precompiled_store->checkpoint();
+    });
     // A full search build or a fold here could still be running on the
     // thread pool when a shutdown cancels the checkpoint, holding up the
     // final save behind seconds of derived work: the pass end does them,
@@ -394,6 +397,21 @@ async::task<> Project::shutdown() {
     // A worker still finishing a cancelled build then only fails its write.
     if(store) {
         store->shutdown();
+    }
+    if(precompiled_store) {
+        // What the last builds replaced was kept for a compile about to read
+        // it; none will now, and nothing names it for the next session.
+        for(auto& entry: pchs) {
+            if(!entry.second.previous.empty()) {
+                precompiled_store->invalidate("pch", entry.second.previous);
+            }
+        }
+        for(auto& entry: pcms) {
+            if(!entry.second.previous.empty()) {
+                precompiled_store->invalidate("pcm", entry.second.previous);
+            }
+        }
+        precompiled_store->shutdown();
     }
 }
 
@@ -811,60 +829,68 @@ void Project::load_precompiled_records(llvm::StringRef bytes) {
         return inputs;
     };
 
-    bool pch_format_ok = data.pch_index_format == index::index_format_version;
-    for(auto& entry: data.pch) {
-        if(!pch_format_ok) {
-            break;
-        }
-        if(!entry.blob) {
-            store->invalidate("pch", entry.key);
-            continue;
-        }
-        auto pch_path = store->lookup("pch", *entry.blob);
-        if(!pch_path)
-            continue;
-        // A preamble's PCH without its pch.idx index is an incomplete pair
-        // (crash between the two commits): drop it so the next compile
-        // rebuilds both.
-        std::optional<std::string> index_path;
-        if(!entry.whole_file) {
-            index_path = store->lookup_aux("pch", *entry.blob);
-            if(!index_path) {
-                store->invalidate("pch", *entry.blob);
+    // A run reading the index alone opens no store of PCHs and PCMs. A
+    // record dropped takes its blob along: nothing else names it.
+    if(precompiled_store) {
+        auto& precompiled = *precompiled_store;
+        bool pch_format_ok = data.pch_index_format == index::index_format_version;
+        for(auto& entry: data.pch) {
+            if(!entry.blob) {
+                precompiled.invalidate("pch", entry.key);
                 continue;
             }
+            if(!pch_format_ok) {
+                precompiled.invalidate("pch", *entry.blob);
+                continue;
+            }
+            auto pch_path = precompiled.lookup("pch", *entry.blob);
+            if(!pch_path)
+                continue;
+            // A preamble's PCH without its pch.idx index is an incomplete pair
+            // (crash between the two commits): drop it so the next compile
+            // rebuilds both.
+            std::optional<std::string> index_path;
+            if(!entry.whole_file) {
+                index_path = precompiled.lookup_aux("pch", *entry.blob);
+                if(!index_path) {
+                    precompiled.invalidate("pch", *entry.blob);
+                    continue;
+                }
+            }
+
+            auto& st = pchs[entry.key];
+            st.blob = std::move(*entry.blob);
+            st.path = *pch_path;
+            st.bound = entry.bound;
+            st.whole_file = entry.whole_file;
+            st.inputs = load_deps(entry.deps);
+            st.base = entry.base.value_or("");
+            st.base_blob = entry.base_blob.value_or("");
+            st.index_path = index_path.value_or("");
         }
 
-        auto& st = pchs[entry.key];
-        st.blob = std::move(*entry.blob);
-        st.path = *pch_path;
-        st.bound = entry.bound;
-        st.whole_file = entry.whole_file;
-        st.inputs = load_deps(entry.deps);
-        st.base = entry.base.value_or("");
-        st.base_blob = entry.base_blob.value_or("");
-        st.index_path = index_path.value_or("");
-    }
-
-    for(auto& entry: data.pcm) {
-        if(!entry.blob) {
-            store->invalidate("pcm", entry.key);
-            continue;
+        for(auto& entry: data.pcm) {
+            if(!entry.blob) {
+                precompiled.invalidate("pcm", entry.key);
+                continue;
+            }
+            auto pcm_path = precompiled.lookup("pcm", *entry.blob);
+            if(!pcm_path)
+                continue;
+            // A dep-less entry is an unvalidatable snapshot that would blindly
+            // serve a stale PCM (the key embeds no content). Drop it and let
+            // the module rebuild once.
+            auto source = table.file(entry.source_file);
+            if(entry.deps.empty() || !source) {
+                precompiled.invalidate("pcm", *entry.blob);
+                continue;
+            }
+            auto& st = pcms[module_node(*source, entry.context.value_or(0))];
+            st.path = *pcm_path;
+            st.key = entry.key;
+            st.blob = std::move(*entry.blob);
+            st.inputs = load_deps(entry.deps);
         }
-        auto pcm_path = store->lookup("pcm", *entry.blob);
-        // A dep-less entry is an unvalidatable snapshot that would blindly
-        // serve a stale PCM (the key embeds no content). Drop it and let
-        // the module rebuild once.
-        if(!pcm_path || entry.deps.empty())
-            continue;
-        auto source = table.file(entry.source_file);
-        if(!source)
-            continue;
-        auto& st = pcms[module_node(*source, entry.context.value_or(0))];
-        st.path = *pcm_path;
-        st.key = entry.key;
-        st.blob = std::move(*entry.blob);
-        st.inputs = load_deps(entry.deps);
     }
 
     if(data.trials_scoring != self_containment_rule) {

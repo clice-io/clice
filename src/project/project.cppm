@@ -42,9 +42,13 @@ import :worker.protocol;
 
 namespace clice {
 
-/// On-disk cache layout version (CacheStore root `cache/v{N}`).
+/// On-disk cache layout version (the stores' `v{N}`).
 /// Bump to discard the whole cache after incompatible format changes.
 constexpr inline std::uint32_t cache_format_version = 15;
+
+/// How long a PCH or PCM, or a project's whole directory of them, stays
+/// unused before it is removed.
+constexpr inline chrono::days precompiled_unused{15};
 
 /// The editor's context choices of the project, as its index database
 /// carries them beside the index. A save moves bytes only: the server keeps
@@ -159,13 +163,19 @@ struct Project {
 
     ProvisionalMembers provisional;
 
-    /// Unified on-disk blob store for PCH, PCM and index blobs.  Opened by
-    /// open(): a run that builds has it — one whose store does not open
-    /// runs nothing (Opened::unwritable) — and a run reading the index has
-    /// it once an index was built.  Owns blob lifecycle (atomic writes, LRU,
+    /// The store in the cache directory holding the index database and
+    /// the blobs a worker hands over in a file.  Opened by open(): a run
+    /// that builds has it — one whose store does not open runs nothing
+    /// (Opened::unwritable) — and a run reading the index has it once an
+    /// index was built.
+    std::optional<CacheStore> store;
+
+    /// The store of the PCHs and PCMs, the project's directory in
+    /// `precompiled_dir`, opened by open() for a run that compiles.  Owns
+    /// blob lifecycle (atomic writes, LRU, removal of what goes unused,
     /// crash recovery); validity metadata (deps snapshots) lives in the
     /// index database, written by write_database.
-    std::optional<CacheStore> store;
+    std::optional<CacheStore> precompiled_store;
 
     /// The cache directory's writer lock, taken by a session that persists
     /// its index and held until the project dies — after `database`, so
@@ -362,8 +372,8 @@ struct Project {
             Members,
         };
 
-        /// How the cache — the store of PCHs and PCMs, the index database in
-        /// it — opens.
+        /// How the cache — the index database in its store, and the store
+        /// of PCHs and PCMs — opens.
         enum class Cache : std::uint8_t {
             None,
             /// Both read-only, without the writer lock, for a run reading

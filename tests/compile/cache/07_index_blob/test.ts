@@ -5,7 +5,7 @@ import { test, type Serve, type TestContext } from "@clice/tools/testing";
 // navigation into the preamble's headers reads. A PCH without a sound
 // index is no hit: both are built again.
 
-const INDEX = ".clice/cache/*/pch/*.pch.idx";
+const INDEX = ".clice/precompiled/*/*/pch/*.pch.idx";
 
 async function rebuilt(t: TestContext, s: Serve, damaged: string | undefined): Promise<void> {
     await t.show("foo", s.definition(t.at("main.cpp", "|foo();")));
