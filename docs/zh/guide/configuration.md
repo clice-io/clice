@@ -6,7 +6,7 @@ outline: 2
 
 本页列出所有选项；常见用法见[配置指南](./config-guide.md)。
 
-clice 从三个文件读取配置，后一个叠加在前一个之上：用户配置文件，即用户配置目录下的 `clice/config.toml`（设置了 `$XDG_CONFIG_HOME` 时为该目录，否则 Linux 与 macOS 上为 `~/.config`，Windows 上为 `%APPDATA%`），作用于每个项目；项目根目录下的 `clice.toml`，若该文件不存在则为 `.clice/config.toml`；以及项目的本地配置文件 `.clice/local.toml`，存放开发者本人的设置，与已提交的 `clice.toml` 并存，默认缓存目录中的 `.gitignore` 会把它排除在 Git 之外（若 `cache_dir` 设在别处，需要自行忽略它）。配置也可以由 LSP 的 `initializationOptions`（JSON 格式）传入，叠加在这三个文件之上。后一层的值会替换前一层的值，表中的各个键分别替换，列表和名称表（`[semantic_tokens.kinds]`）则整体替换。规则则是累加：本地配置文件的规则排在最前，其次是项目的规则，最后是用户配置文件的规则，从而由越具体的文件的规则先决定某个字段；而越具体的文件，其规则的 `append` 和 `remove` 越晚编辑命令，从而让它的编译选项排在最后；`initializationOptions` 中给出的规则会替换所有文件中的规则。合并后仍未设置的项由默认值填充。`clice inspect config` 会列出项目读取的文件，以及这些文件中改变了默认值的每项设置，并标明设置它的文件和行号；`clice command <file>` 会指出决定某个文件每项设置的规则。
+clice 从三个文件读取配置，后一个叠加在前一个之上：用户配置文件，即用户配置目录下的 `clice/config.toml`（`$XDG_CONFIG_HOME` 设为绝对路径时为该目录，否则 Linux 与 macOS 上为 `~/.config`，Windows 上为 `%APPDATA%`），作用于每个项目；项目根目录下的 `clice.toml`，若该文件不存在则为 `.clice/config.toml`；以及项目的本地配置文件 `.clice/local.toml`，存放开发者本人的设置，与已提交的 `clice.toml` 并存，默认缓存目录中的 `.gitignore` 会把它排除在 Git 之外（若 `cache_dir` 设在别处，需要自行忽略它）。配置也可以由 LSP 的 `initializationOptions`（JSON 格式）传入，叠加在这三个文件之上。后一层的值会替换前一层的值，表中的各个键分别替换，列表和名称表（`[semantic_tokens.kinds]`）则整体替换。规则则是累加：本地配置文件的规则排在最前，其次是项目的规则，最后是用户配置文件的规则，从而由越具体的文件的规则先决定某个字段；而越具体的文件，其规则的 `append` 和 `remove` 越晚编辑命令，从而让它的编译选项排在最后；`initializationOptions` 中给出的规则会替换所有文件中的规则。合并后仍未设置的项由默认值填充。`clice inspect config` 会列出项目读取的文件，以及这些文件中改变了默认值的每项设置，并标明设置它的文件和行号；`clice command <file>` 会指出决定某个文件每项设置的规则。
 
 配置仅在服务器启动时读取一次，不支持热重载。当项目的配置文件、其本地配置文件或用户配置文件被保存、创建或删除时，服务器会请求编辑器重启自身：VS Code（通过 socket 连接服务器时除外）以及 Neovim 0.12 及更高版本会自动重启它；其他编辑器会在该文件上显示一条诊断（文件被删除时则显示一条消息），说明修改将在 clice 重启后生效。
 

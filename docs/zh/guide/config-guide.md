@@ -4,7 +4,7 @@
 
 ## 配置文件
 
-clice 在服务器启动时读取一次项目根目录下的 `clice.toml`，若该文件不存在则读取 `.clice/config.toml`；保存配置文件后，服务器会请求编辑器重启自身。适用于所有项目的设置——worker、各功能的偏好设置、针对每个项目都有的那类文件的规则——写在用户配置文件中，即 `$XDG_CONFIG_HOME`（已设置时）或 `~/.config`（Windows 上为 `%APPDATA%`）下的 `clice/config.toml`，项目自身的设置优先于它；用户配置文件中指定编译数据库或默认命令的规则会关闭所有项目的数据库自动发现，因此这类规则应留在各项目自己的配置文件中。开发者本人针对某个项目的设置写在 `.clice/local.toml` 中，它优先于项目自身的设置；只要缓存目录仍是默认的 `.clice`，Git 就看不到这个文件。编辑器也可以通过 `initializationOptions` 发送设置，这些设置会取代各配置文件中的同名设置。`clice inspect config` 会显示一个项目读取了哪些文件，以及它改动的每项设置来自何处。
+clice 在服务器启动时读取一次项目根目录下的 `clice.toml`，若该文件不存在则读取 `.clice/config.toml`；保存配置文件后，服务器会请求编辑器重启自身。适用于所有项目的设置——worker、各功能的偏好设置、针对每个项目都有的那类文件的规则——写在用户配置文件中，即 `$XDG_CONFIG_HOME`（设为绝对路径时）或 `~/.config`（Windows 上为 `%APPDATA%`）下的 `clice/config.toml`，项目自身的设置优先于它；用户配置文件中指定编译数据库或默认命令的规则会关闭所有项目的数据库自动发现，因此这类规则应留在各项目自己的配置文件中。开发者本人针对某个项目的设置写在 `.clice/local.toml` 中，它优先于项目自身的设置；只要缓存目录仍是默认的 `.clice`，Git 就看不到这个文件。编辑器也可以通过 `initializationOptions` 发送设置，这些设置会取代各配置文件中的同名设置。`clice inspect config` 会显示一个项目读取了哪些文件，以及它改动的每项设置来自何处。
 
 <!-- BEGIN GENERATED ITEMS: config/loading -->
 
@@ -46,7 +46,7 @@ tests/config/layers/01_editor_overrides
 
 适用于所有项目的设置写在用户配置文件中，各项目自身的设置优先于它
 
-用户配置目录（Linux 与 macOS 上为 `~/.config`，Windows 上为 `%APPDATA%`，设置了 `$XDG_CONFIG_HOME` 时一律为它）下的 `clice/config.toml` 作用于每个项目，项目的 `clice.toml` 优先于它。本例中用户配置文件的规则与项目的规则各为 `main.cpp` 提供一个宏，文件得以正常编译；`clice inspect config` 会列出读取了哪些文件，以及每项设置来自何处。
+用户配置目录（Linux 与 macOS 上为 `~/.config`，Windows 上为 `%APPDATA%`，`$XDG_CONFIG_HOME` 设为绝对路径时一律为它）下的 `clice/config.toml` 作用于每个项目，项目的 `clice.toml` 优先于它。本例中用户配置文件的规则与项目的规则各为 `main.cpp` 提供一个宏，文件得以正常编译；`clice inspect config` 会列出读取了哪些文件，以及每项设置来自何处。
 
 ```case
 tests/config/layers/03_user_file
