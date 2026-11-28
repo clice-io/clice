@@ -3314,6 +3314,7 @@ ZEST_CASE(DependentNameForms) {
             typename T::template rebind<int> other;
             template <typename U = typename T::type>
             void take(U);
+            enum class Kind : typename T::type {};
         };
         Box<A> box;
     )");
@@ -3321,6 +3322,7 @@ ZEST_CASE(DependentNameForms) {
                               {"T", Base, "A", "Box"},
                               {"type", Reference, "type"},
                               {"rebind", Reference, "rebind"},
+                              {"type", Reference, "type"},
                               {"type", Reference, "type"},
     });
 }

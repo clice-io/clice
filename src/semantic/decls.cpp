@@ -383,6 +383,8 @@ auto member_types(const clang::CXXRecordDecl& record) -> llvm::SmallVector<clang
             add(typed->getTypeSourceInfo());
         } else if(const auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(declared)) {
             add(alias->getTypeSourceInfo());
+        } else if(const auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(declared)) {
+            add(enumeration->getIntegerTypeSourceInfo());
         }
     }
     return types;
