@@ -1598,6 +1598,22 @@ lint = true
     ZEXPECT(issue.message.find("at rules[1].lint") != std::string::npos);
 }
 
+ZEST_CASE(RejectedOverlayOwnsNothing) {
+    /// An overlay that does not decode sets nothing: a problem of a value it
+    /// names is the file's that sets it.
+    TempDir tmp;
+    tmp.touch("clice.toml", "[workers]\nforeground = 0\n");
+    CanonicalPath root(Spelling::absolute(tmp.root));
+    auto loaded = load_settings(root, {.overlay = overlay(R"({
+        "workers": { "foreground": 4 }, "poll_seconds": "bad"
+    })")});
+    ZASSERT(loaded.issues.size() == 2u);
+    auto at_file =
+        ranges::find(loaded.issues, path::join(root, "clice.toml"), &SettingsIssue::file);
+    ZASSERT(at_file != loaded.issues.end());
+    ZEXPECT(at_file->line == 2u);
+}
+
 ZEST_CASE(BrokenLayerLeftOut) {
     /// A file that does not decode is left out, the others applying.
     TempDir tmp;

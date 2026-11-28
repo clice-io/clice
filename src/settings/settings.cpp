@@ -725,11 +725,11 @@ struct DecodedFile {
 using SettingPath = std::vector<codec::rich_error::path_segment>;
 
 /// The layers of a load — the configuration files that decoded, lowest
-/// first, then the overlay — and where each value of the merged settings is
-/// written in them.
+/// first, then the overlay, null when none was laid — and where each value
+/// of the merged settings is written in them.
 struct Layers {
     std::vector<DecodedFile> files;
-    const std::optional<codec::dyn::Value>& overlay;
+    const codec::dyn::Value* overlay;
     llvm::StringRef overlay_name;
     llvm::ArrayRef<Rule> merged_rules;
 
@@ -876,8 +876,9 @@ std::optional<DecodedFile> decode_file(const SettingsFile& file,
 /// Lay `overlay`, called `overlay_name` in messages, over `layered`, the
 /// files' settings: the values it sets replace theirs, and the rules it
 /// sets, at the editor's layer, replace all of theirs. Its problems join
-/// `issues`; an overlay that does not decode leaves `layered` as it was.
-void lay_overlay(const codec::dyn::Value& overlay,
+/// `issues`; an overlay that does not decode leaves `layered` as it was,
+/// and false is returned.
+bool lay_overlay(const codec::dyn::Value& overlay,
                  llvm::StringRef overlay_name,
                  Settings& layered,
                  std::vector<SettingsIssue>& issues) {
@@ -894,7 +895,7 @@ void lay_overlay(const codec::dyn::Value& overlay,
     };
     if(!result) {
         issue(Severity::Error, result.error());
-        return;
+        return false;
     }
     for(auto& entry: unknown.entries) {
         report_unknown(
@@ -918,6 +919,7 @@ void lay_overlay(const codec::dyn::Value& overlay,
         }
     }
     layered = std::move(overlaid);
+    return true;
 }
 
 /// The values of `actual` that `defaults` does not have, each at its key's
@@ -1018,12 +1020,11 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
         decoded_files.push_back(std::move(*decoded));
     }
 
-    if(options.overlay) {
-        lay_overlay(*options.overlay, options.overlay_name, layered, issues);
-    }
+    bool overlaid =
+        options.overlay && lay_overlay(*options.overlay, options.overlay_name, layered, issues);
     const Layers layers{
         .files = std::move(decoded_files),
-        .overlay = options.overlay,
+        .overlay = overlaid ? &*options.overlay : nullptr,
         .overlay_name = options.overlay_name,
         .merged_rules = layered.rules,
     };
@@ -1051,7 +1052,7 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
                           : std::format("serves the project at {}", cache_dir_owner(requested));
         // One the user's file or the editor sets is every project's.
         auto* writer = layers.file_setting({"cache_dir"});
-        bool shared = (options.overlay && sets(*options.overlay, {"cache_dir"})) ||
+        bool shared = (layers.overlay && sets(*layers.overlay, {"cache_dir"})) ||
                       (writer && writer->layer == SettingsLayer::User);
         for(auto& fallback: {own_cache_dir, std::string()}) {
             loaded.settings = layered;
