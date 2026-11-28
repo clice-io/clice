@@ -59,6 +59,34 @@ const clang::NamedDecl* Builder::in_pattern(const clang::NamedDecl* decl) {
     return found->second;
 }
 
+namespace {
+
+/// The places a template writes a type by a dependent name, which each
+/// instantiation names a type of its own: `typename T::type`,
+/// `T::template rebind<U>`, the type a dependent using-declaration brings.
+struct DependentNameFinder : clang::RecursiveASTVisitor<DependentNameFinder> {
+    bool VisitDependentNameTypeLoc(clang::DependentNameTypeLoc loc) {
+        found.insert(loc.getNameLoc());
+        return true;
+    }
+
+    bool VisitTemplateSpecializationTypeLoc(clang::TemplateSpecializationTypeLoc loc) {
+        if(!loc.getTypePtr()->getTemplateName().getAsTemplateDecl()) {
+            found.insert(loc.getTemplateNameLoc());
+        }
+        return true;
+    }
+
+    bool VisitUnresolvedUsingTypeLoc(clang::UnresolvedUsingTypeLoc loc) {
+        found.insert(loc.getNameLoc());
+        return true;
+    }
+
+    llvm::DenseSet<clang::SourceLocation> found;
+};
+
+}  // namespace
+
 /// The declaration whose place is the home of `decl` (Builder::home_of).
 const static clang::Decl* pattern_of(const clang::Decl* decl) {
     const clang::Decl* pattern = nullptr;
@@ -93,12 +121,17 @@ bool Builder::walks(const clang::Decl* pattern, clang::FileID home) {
 std::vector<const clang::Decl*> Builder::walked_instantiations() {
     std::vector<const clang::Decl*> walked;
     for(const auto* decl: unit.instantiations()) {
-        if(llvm::isa<clang::CXXRecordDecl>(decl)) {
-            continue;
-        }
         // An instantiation runs its template's body, where the template is.
         auto home = home_of(decl);
-        if(!walks(pattern_of(decl), home)) {
+        const auto* pattern = pattern_of(decl);
+        if(!walks(pattern, home)) {
+            continue;
+        }
+        bool writes = note_dependent_types(pattern);
+        // A class's member declarations resolve something only where they
+        // write a type by a dependent name; a local class is its function's.
+        if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
+           record && (!writes || record->isLocalClass())) {
             continue;
         }
         auto key = unit.get<EntityTable>().entity(llvm::cast<clang::NamedDecl>(decl));
@@ -109,6 +142,28 @@ std::vector<const clang::Decl*> Builder::walked_instantiations() {
         walked.push_back(decl);
     }
     return walked;
+}
+
+bool Builder::note_dependent_types(const clang::Decl* pattern) {
+    if(auto it = scanned_patterns.find(pattern); it != scanned_patterns.end()) {
+        return it->second;
+    }
+    DependentNameFinder finder;
+    if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(pattern)) {
+        for(auto type: decls::member_types(*record)) {
+            finder.TraverseTypeLoc(type);
+        }
+    } else {
+        // An instantiation can take its signature from a declaration before
+        // the definition.
+        for(auto* redecl: pattern->redecls()) {
+            finder.TraverseDecl(redecl);
+        }
+    }
+    bool writes = !finder.found.empty();
+    dependent_type_names.insert(finder.found.begin(), finder.found.end());
+    scanned_patterns.try_emplace(pattern, writes);
+    return writes;
 }
 
 std::vector<const clang::Decl*> Builder::expanding_decls() {
@@ -225,11 +280,13 @@ void Builder::project_instantiations(llvm::ArrayRef<const clang::Decl*> walked) 
              [&](const clang::Decl* root) {
                  instantiation_entries = &entries;
                  instantiated_function = llvm::dyn_cast<clang::FunctionDecl>(root);
+                 instantiated_class = llvm::isa<clang::CXXRecordDecl>(root);
              },
          .leave =
              [&](const clang::Decl* root) {
                  instantiation_entries = nullptr;
                  instantiated_function = nullptr;
+                 instantiated_class = false;
                  close_instantiation(llvm::cast<clang::NamedDecl>(root), entries);
                  entries.clear();
              },

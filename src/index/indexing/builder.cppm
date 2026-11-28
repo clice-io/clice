@@ -244,9 +244,20 @@ private:
     /// are indexed (CompilationUnit::indexes_bodies).
     bool walks(const clang::Decl* pattern, clang::FileID home);
 
-    /// The function and variable instantiations to walk; the known ones a
-    /// file holds go to its skipped keys.
+    /// The instantiations to walk: of functions and variables, and of the
+    /// classes but local ones whose member declarations write a type by a
+    /// dependent name; the known ones a file holds go to its skipped keys.
     std::vector<const clang::Decl*> walked_instantiations();
+
+    /// In an instantiation, what the type at `index` names where its
+    /// template writes a dependent name (dependent_type_names).
+    void add_instantiated_type(const Semantics& semantics, std::uint32_t index);
+
+    /// Adds to dependent_type_names the places `pattern` writes a type by a
+    /// dependent name (`typename T::type`): a function's or a variable's
+    /// whole text, the types a class's members declare
+    /// (decls::member_types). Whether there is any.
+    bool note_dependent_types(const clang::Decl* pattern);
 
     /// The top-level declarations the focus file does not own that expand a
     /// macro it defines: `#define TYPE isl_space` before `#include
@@ -363,6 +374,9 @@ private:
     /// its calls.
     const clang::FunctionDecl* instantiated_function = nullptr;
 
+    /// Whether the instantiation projecting is a class's.
+    bool instantiated_class = false;
+
     /// Where the expression being projected begins (in_pattern).
     clang::SourceLocation expression_begin;
 
@@ -371,6 +385,14 @@ private:
         const clang::FunctionDecl*,
         llvm::DenseMap<std::pair<clang::SourceLocation, unsigned>, const clang::NamedDecl*>>
         pattern_locals;
+
+    /// The places the walked patterns write a type by a dependent name: an
+    /// instantiation's type says there what the template's own entries
+    /// leave open, and elsewhere only what they say.
+    llvm::DenseSet<clang::SourceLocation> dependent_type_names;
+
+    /// Per pattern, note_dependent_types's answer.
+    llvm::DenseMap<const clang::Decl*, bool> scanned_patterns;
 
     std::vector<BodyName> body_names;
 };

@@ -96,7 +96,7 @@ stdout = '''
 file ${WS}/main.cpp
   blob=# B  content size=40  content hash=#1a667a99fd0a2c5a
   variants=1
-    #6ac1df6667aef4d3  contributed by 1 unit
+    #bd8f31d8026241e9  contributed by 1 unit
       ${WS}/main.cpp
   symbols=3  local symbols=2  occurrences=5  relations=5
     Definition=3

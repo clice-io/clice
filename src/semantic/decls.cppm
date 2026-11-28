@@ -200,6 +200,14 @@ auto only_instantiation(clang::NamedDecl* templated_decl) -> clang::NamedDecl*;
 /// parameter in the template's only instantiation.
 auto only_instantiation(clang::ParmVarDecl* param) -> clang::ParmVarDecl*;
 
+/// The types a class's member declarations write, which an instantiation
+/// of the class substitutes with it: an alias's or a typedef's, a field's, a
+/// static member's, an enumeration's underlying type, a member function's
+/// return and parameter types, a member template's parameters' — no default
+/// argument, initializer or body, which an instantiation reaches only when a
+/// use needs them, and nothing of a nested class, a class of its own.
+auto member_types(const clang::CXXRecordDecl& record) -> llvm::SmallVector<clang::TypeLoc>;
+
 /// The declaration `function` was instantiated from. A member template of a
 /// class template's specialization keeps no link of its own: its template
 /// does.

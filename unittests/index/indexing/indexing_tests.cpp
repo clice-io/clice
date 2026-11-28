@@ -3227,6 +3227,183 @@ ZEST_CASE(EachInstantiationItsResolution) {
     ZEXPECT(resolved().size() == 4u);
 }
 
+ZEST_CASE(DependentTypesResolved) {
+    // A dependent type name names what each instantiation resolves it to, in
+    // a function's body and in a class's members; a type the template writes
+    // is its written entry, and a class's expressions resolve nothing.
+    build(R"(
+        struct A {
+            using type = int;
+            static constexpr bool ok = true;
+        };
+        template <typename T>
+        void run() { typename T::type local{}; }
+        template <typename T>
+        struct Box {
+            using alias = typename T::type;
+            typename T::type field;
+            void take(typename T::type value);
+            A held;
+            static_assert(T::ok);
+        };
+        void use() { run<A>(); }
+        template struct Box<A>;
+    )");
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"type", Reference, "type"},
+                              {"type", Reference, "type"},
+                              {"type", Reference, "type"},
+                              {"type", Reference, "type"},
+    });
+}
+
+ZEST_CASE(HeaderDependentNamesOnly) {
+    // An open file's compile holds no entries of its headers to tell what a
+    // header template's text names already: its instantiation records the
+    // dependent name alone.
+    add_file("box.h", R"(
+        struct A { using type = int; };
+        template <typename T>
+        struct Box {
+            typename T::type field;
+            A held;
+        };
+    )");
+    build(R"(
+        #include "box.h"
+        Box<A> box;
+    )",
+          {},
+          CompilationKind::Content);
+    auto section = section_of("box.h");
+    ZASSERT(section);
+    std::vector<std::string> targets;
+    view.instantiation_shard(*section).for_each_record(
+        [&](const index::InstantiationRecord& record) {
+            targets.push_back(name_of(record.target));
+            return true;
+        });
+    ZEXPECT(targets == std::vector<std::string>{"type"});
+}
+
+ZEST_CASE(PlainClassUnwalked) {
+    // The dependent name in a body no use instantiates makes no class walk.
+    build(R"(
+        struct A { using type = int; };
+        template <typename T>
+        struct Plain {
+            T value;
+            void show() { typename T::type shown{}; }
+        };
+        Plain<A> plain;
+    )");
+    ZEXPECT(keys().empty());
+}
+
+ZEST_CASE(DependentNameForms) {
+    build(R"(
+        struct A {
+            using type = int;
+            template <typename U>
+            struct rebind {};
+        };
+        template <typename T>
+        struct Box : T {
+            using typename T::type;
+            type value;
+            typename T::template rebind<int> other;
+            template <typename U = typename T::type>
+            void take(U);
+            enum class Kind : typename T::type {};
+        };
+        Box<A> box;
+    )");
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"T", Base, "A", "Box"},
+                              {"type", Reference, "type"},
+                              {"rebind", Reference, "rebind"},
+                              {"type", Reference, "type"},
+                              {"type", Reference, "type"},
+    });
+}
+
+ZEST_CASE(ClassKeepsSignatures) {
+    // What a class's members declare does not hang on which member
+    // definitions its unit instantiates: `Box<A>` and `put` each resolve
+    // `type`, the one resolution both keys hold.
+    build(R"(
+        struct A { using type = int; };
+        template <typename T>
+        struct Box {
+            void put(typename T::type) {}
+        };
+        void use() { Box<A>{}.put(1); }
+    )");
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"type", Reference, "type"},
+    });
+    auto found = keys();
+    ZEXPECT(found.size() == 2u);
+    ZEXPECT(ranges::all_of(found, [](const index::InstantiationShard::Key& key) {
+        return key.resolution.has_value();
+    }));
+}
+
+ZEST_CASE(ClassGuessesNothing) {
+    // `val` is still a template in `Box<A>`: what its `auto` stands for is
+    // no instantiation's to say.
+    build(R"(
+        struct A { using type = int; };
+        struct S {};
+        template <typename U>
+        struct Helper { static constexpr S make() { return {}; } };
+        template <typename T>
+        struct Box {
+            typename T::type field;
+            template <typename U>
+            static constexpr auto val = Helper<U>::make();
+        };
+        Box<A> box;
+    )",
+          {},
+          CompilationKind::Content);
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"type", Reference, "type"},
+    });
+}
+
+ZEST_CASE(DeclaredSignatureResolved) {
+    // The instantiation takes its signature from the declaration before the
+    // definition.
+    build(R"(
+        struct A { using type = int; };
+        template <typename T>
+        typename T::type twice(typename T::type value);
+        int use() { return twice<A>(1); }
+        template <typename T>
+        typename T::type twice(typename T::type value) { return value; }
+    )");
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"type", Reference, "type"},
+                              {"type", Reference, "type"},
+    });
+}
+
+ZEST_CASE(LocalClassResolved) {
+    // A local class is its function's: what its default member initializer
+    // calls is a resolution of the function's instantiation.
+    build(R"(
+        struct A { static int make(); };
+        template <typename T>
+        int run() {
+            struct Local { int value = T::make(); };
+            return Local{}.value;
+        }
+        int use() { return run<A>(); }
+    )");
+    ZEXPECT(ranges::contains(resolved(), Resolved{"make", Reference, "make"}));
+}
+
 ZEST_CASE(ConfirmedGuessRecorded) {
     // The written code only guesses the dependent name; the instantiation
     // resolving it alike is recorded all the same.

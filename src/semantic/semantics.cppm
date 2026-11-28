@@ -288,12 +288,14 @@ struct SemanticsOptions {
     /// With all_files, each AST node as the traversal reaches it.
     llvm::function_ref<void(const Semantics& path, std::uint32_t index)> visit;
 
-    /// With all_files, also traverse these function and variable
-    /// definitions the unit instantiated (CompilationUnit::instantiations),
-    /// each a root of its own after the written declarations, its nodes
-    /// flagged in_instantiation and handed to `visit` between the root's
-    /// `enter` and `leave`. An implicit definition (a lambda's call
-    /// operator) has no node of its own: its children are its first nodes.
+    /// With all_files, also traverse these definitions the unit
+    /// instantiated (CompilationUnit::instantiations), each a root of its
+    /// own after the written declarations, its nodes flagged
+    /// in_instantiation and handed to `visit` between the root's `enter`
+    /// and `leave`. An implicit definition (a lambda's call operator) has no
+    /// node of its own: its children are its first nodes. Nor has a class:
+    /// the types its members declare are (decls::member_types). A local
+    /// class is no root: its function's walk holds it.
     llvm::ArrayRef<const clang::Decl*> instantiations;
 
     llvm::function_ref<void(const clang::Decl* root)> enter;

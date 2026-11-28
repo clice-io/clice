@@ -340,6 +340,56 @@ const clang::CXXRecordDecl* getDeclContextForTemplateInstationPattern(const clan
 
 }  // namespace
 
+auto member_types(const clang::CXXRecordDecl& record) -> llvm::SmallVector<clang::TypeLoc> {
+    llvm::SmallVector<clang::TypeLoc> types;
+    auto add = [&](const clang::TypeSourceInfo* written) {
+        if(written) {
+            types.push_back(written->getTypeLoc());
+        }
+    };
+    for(const auto* member: record.decls()) {
+        const clang::Decl* declared = member;
+        if(const auto* befriended = llvm::dyn_cast<clang::FriendDecl>(member)) {
+            if(!befriended->getFriendDecl()) {
+                add(befriended->getFriendType());
+                continue;
+            }
+            declared = befriended->getFriendDecl();
+        }
+        if(llvm::isa<clang::ClassTemplateDecl, clang::CXXRecordDecl>(declared)) {
+            continue;
+        }
+        if(const auto* templated = llvm::dyn_cast<clang::TemplateDecl>(declared)) {
+            for(const auto* parameter: *templated->getTemplateParameters()) {
+                if(const auto* type = llvm::dyn_cast<clang::TemplateTypeParmDecl>(parameter)) {
+                    if(type->hasDefaultArgument()) {
+                        add(type->getDefaultArgument().getTypeSourceInfo());
+                    }
+                } else if(const auto* value =
+                              llvm::dyn_cast<clang::NonTypeTemplateParmDecl>(parameter)) {
+                    add(value->getTypeSourceInfo());
+                }
+            }
+            declared = templated->getTemplatedDecl();
+        }
+        if(const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declared)) {
+            if(auto written = function->getFunctionTypeLoc()) {
+                types.push_back(written.getReturnLoc());
+            }
+            for(const auto* parameter: function->parameters()) {
+                add(parameter->getTypeSourceInfo());
+            }
+        } else if(const auto* typed = llvm::dyn_cast<clang::DeclaratorDecl>(declared)) {
+            add(typed->getTypeSourceInfo());
+        } else if(const auto* alias = llvm::dyn_cast<clang::TypedefNameDecl>(declared)) {
+            add(alias->getTypeSourceInfo());
+        } else if(const auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(declared)) {
+            add(enumeration->getIntegerTypeSourceInfo());
+        }
+    }
+    return types;
+}
+
 auto function_pattern(const clang::FunctionDecl& function) -> const clang::FunctionDecl* {
     if(const auto* pattern = function.getTemplateInstantiationPattern()) {
         return pattern;

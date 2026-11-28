@@ -1,0 +1,17 @@
+[answers.member_alias]
+definition = ["using ⟦view⟧ = Narrow;", "using ⟦view⟧ = Wide;"]
+
+[answers.nested]
+definition = ["using ⟦unit⟧ = char;", "using ⟦unit⟧ = char8_t;"]
+
+[answers.field]
+definition = ["using ⟦view⟧ = Narrow;", "using ⟦view⟧ = Wide;"]
+
+[answers.parameter]
+definition = ["using ⟦view⟧ = Narrow;", "using ⟦view⟧ = Wide;"]
+
+[answers.local]
+definition = ["using ⟦view⟧ = Wide;"]
+
+[answers.uninstantiated]
+definition = []

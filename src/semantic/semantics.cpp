@@ -543,7 +543,13 @@ private:
             }
             visiting_root = decl;
             options.enter(decl);
-            TraverseDecl(const_cast<clang::Decl*>(decl));
+            if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+                for(auto type: decls::member_types(*record)) {
+                    TraverseTypeLoc(type);
+                }
+            } else {
+                TraverseDecl(const_cast<clang::Decl*>(decl));
+            }
             options.leave(decl);
         }
         instantiation_depth -= 1;

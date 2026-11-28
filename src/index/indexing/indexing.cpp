@@ -392,9 +392,20 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
     enclosing_memo.resize(std::min<std::size_t>(enclosing_memo.size(), i));
     top_level_memo.resize(std::min<std::size_t>(top_level_memo.size(), i));
     // What an instantiation resolves are the calls and member accesses
-    // its body's expressions and constructor initializers make and the
-    // types its placeholders deduce; it declares nothing its template does
-    // not, and the types it substitutes are no references.
+    // its expressions and constructor initializers make, the types its
+    // dependent names come to name and the types its placeholders deduce;
+    // it declares nothing its template does not. A class's resolves its
+    // members' types alone: the expressions they hold, template arguments
+    // above all, resolve anew in each of the class's instantiations, an
+    // Eigen expression type's thousands, which doubles the index for what
+    // the template's own entries mostly tell.
+    const auto* type = semantics.node(i).node.get<clang::TypeLoc>();
+    if(instantiated_class) {
+        if(type) {
+            add_instantiated_type(semantics, i);
+        }
+        return;
+    }
     const auto* stmt = semantics.node(i).node.get<clang::Stmt>();
     expression_begin = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
     see_from(semantics, i);
@@ -406,6 +417,9 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
         return;
     }
     if(instantiation_entries && !stmt && !semantics.node(i).node.get<clang::CXXCtorInitializer>()) {
+        if(type) {
+            add_instantiated_type(semantics, i);
+        }
         project_placeholder(semantics, i);
         if(const auto* value = semantics.node(i).node.get<clang::ValueDecl>()) {
             add_deduced_type(value);
@@ -466,6 +480,17 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
 
     project_placeholder(semantics, i);
     project_relations(semantics, i);
+}
+
+void Builder::add_instantiated_type(const Semantics& semantics, std::uint32_t index) {
+    // A name the instantiation leaves dependent stays a guess, which no
+    // record keeps; the type a construction names gives way to the
+    // constructor it calls, which the construction records.
+    for(auto& occurrence: resolve_occurrences(semantics, index, nullptr)) {
+        if(!occurrence.outranked && dependent_type_names.contains(occurrence.location)) {
+            add_name(occurrence);
+        }
+    }
 }
 
 void Builder::project_macros() {
