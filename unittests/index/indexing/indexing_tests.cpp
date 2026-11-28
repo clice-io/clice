@@ -3253,6 +3253,46 @@ ZEST_CASE(DependentTypesResolved) {
     });
 }
 
+ZEST_CASE(HeaderTypesAtDependentNames) {
+    // An open file's compile holds no entries of its headers to tell what a
+    // header template's text names already: its instantiation records the
+    // dependent name alone.
+    add_file("box.h", R"(
+        struct A { using type = int; };
+        template <typename T>
+        struct Box {
+            typename T::type field;
+            A held;
+        };
+    )");
+    build(R"(
+        #include "box.h"
+        Box<A> box;
+    )",
+          {},
+          CompilationKind::Content);
+    auto section = section_of("box.h");
+    ZASSERT(section);
+    std::vector<std::string> targets;
+    view.instantiation_shard(*section).for_each_record(
+        [&](const index::InstantiationRecord& record) {
+            targets.push_back(name_of(record.target));
+            return true;
+        });
+    ZEXPECT(targets == std::vector<std::string>{"type"});
+}
+
+ZEST_CASE(ClassWritingNoDependentTypeUnwalked) {
+    build(R"(
+        template <typename T>
+        struct Plain {
+            T value;
+        };
+        Plain<int> plain;
+    )");
+    ZEXPECT(keys().empty());
+}
+
 ZEST_CASE(ConfirmedGuessRecorded) {
     // The written code only guesses the dependent name; the instantiation
     // resolving it alike is recorded all the same.

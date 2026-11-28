@@ -59,6 +59,34 @@ const clang::NamedDecl* Builder::in_pattern(const clang::NamedDecl* decl) {
     return found->second;
 }
 
+namespace {
+
+/// The places a template writes a type by a dependent name, which each
+/// instantiation names a type of its own: `typename T::type`,
+/// `T::template rebind<U>`, the type a dependent using-declaration brings.
+struct DependentNameFinder : clang::RecursiveASTVisitor<DependentNameFinder> {
+    bool VisitDependentNameTypeLoc(clang::DependentNameTypeLoc loc) {
+        found.insert(loc.getNameLoc());
+        return true;
+    }
+
+    bool VisitTemplateSpecializationTypeLoc(clang::TemplateSpecializationTypeLoc loc) {
+        if(!loc.getTypePtr()->getTemplateName().getAsTemplateDecl()) {
+            found.insert(loc.getTemplateNameLoc());
+        }
+        return true;
+    }
+
+    bool VisitUnresolvedUsingTypeLoc(clang::UnresolvedUsingTypeLoc loc) {
+        found.insert(loc.getNameLoc());
+        return true;
+    }
+
+    llvm::DenseSet<clang::SourceLocation> found;
+};
+
+}  // namespace
+
 /// The declaration whose place is the home of `decl` (Builder::home_of).
 const static clang::Decl* pattern_of(const clang::Decl* decl) {
     const clang::Decl* pattern = nullptr;
@@ -95,7 +123,9 @@ std::vector<const clang::Decl*> Builder::walked_instantiations() {
     for(const auto* decl: unit.instantiations()) {
         // An instantiation runs its template's body, where the template is.
         auto home = home_of(decl);
-        if(!walks(pattern_of(decl), home)) {
+        const auto* pattern = pattern_of(decl);
+        if(!walks(pattern, home) ||
+           (!writes_dependent_types(pattern) && llvm::isa<clang::CXXRecordDecl>(decl))) {
             continue;
         }
         auto key = unit.get<EntityTable>().entity(llvm::cast<clang::NamedDecl>(decl));
@@ -106,6 +136,30 @@ std::vector<const clang::Decl*> Builder::walked_instantiations() {
         walked.push_back(decl);
     }
     return walked;
+}
+
+bool Builder::writes_dependent_types(const clang::Decl* pattern) {
+    if(auto it = scanned_patterns.find(pattern); it != scanned_patterns.end()) {
+        return it->second;
+    }
+    DependentNameFinder finder;
+    if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(pattern)) {
+        for(auto* member: record->decls()) {
+            if(const auto* function = member->getAsFunction()) {
+                if(auto* written = function->getTypeSourceInfo()) {
+                    finder.TraverseTypeLoc(written->getTypeLoc());
+                }
+            } else if(!llvm::isa<clang::CXXRecordDecl>(member)) {
+                finder.TraverseDecl(member);
+            }
+        }
+    } else {
+        finder.TraverseDecl(const_cast<clang::Decl*>(pattern));
+    }
+    bool writes = !finder.found.empty();
+    dependent_type_names.insert(finder.found.begin(), finder.found.end());
+    scanned_patterns.try_emplace(pattern, writes);
+    return writes;
 }
 
 std::vector<const clang::Decl*> Builder::expanding_decls() {

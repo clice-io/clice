@@ -413,10 +413,15 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
         }
         return;
     }
-    for(auto& occurrence: resolve_occurrences(semantics, i, place_resolver)) {
-        // The type a construction names gives way to the constructor it
-        // calls, which the construction records.
-        if(instantiation_entries && occurrence.outranked) {
+    // An instantiation's type names something of its own only at a
+    // dependent name, and a name it leaves dependent stays a guess, which
+    // no record keeps; the type a construction names gives way to the
+    // constructor it calls, which the construction records.
+    bool instantiated_type = instantiation_entries && semantics.node(i).node.get<clang::TypeLoc>();
+    for(auto& occurrence:
+        resolve_occurrences(semantics, i, instantiated_type ? nullptr : place_resolver)) {
+        if(instantiated_type &&
+           (occurrence.outranked || !dependent_type_names.contains(occurrence.location))) {
             continue;
         }
         auto name = add_name(occurrence);
