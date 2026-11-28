@@ -10,13 +10,20 @@ import :vfs.path;
 
 namespace clice {
 
-/// What a setting's `${...}` names: the project root, or `env:NAME`, an
-/// environment variable. An unset variable, or a word naming none, is an
-/// error naming it.
+/// What a setting's `${...}` names: the project root; `workspace_id`, a
+/// name of the project root's own, its directory's name and a hash of its
+/// path; or `env:NAME`, an environment variable. An unset variable, or a
+/// word naming none, is an error naming it.
 static std::expected<std::string, std::string> variable(llvm::StringRef name,
                                                         CanonicalRef project_root) {
     if(name == "workspace") {
         return project_root.str();
+    }
+    if(name == "workspace_id") {
+        llvm::StringRef root = project_root;
+        return std::format("{}-{:08x}",
+                           path::filename(root),
+                           static_cast<std::uint32_t>(llvm::xxh3_64bits(root)));
     }
     if(auto env = name; env.consume_front("env:")) {
         if(auto value = env_string(env)) {
@@ -32,8 +39,9 @@ static std::expected<std::string, std::string> variable(llvm::StringRef name,
 }
 
 /// `value` with its variables substituted, each value escaped by `escape`
-/// (a glob's, so that a path stays a path). `${workspace}` stays as written
-/// in a project without a folder, where it names nothing.
+/// (a glob's, so that a path stays a path). `${workspace}` and
+/// `${workspace_id}` stay as written in a project without a folder, where
+/// they name nothing.
 static std::expected<std::string, std::string>
     substitute(llvm::StringRef value,
                CanonicalRef project_root,
@@ -48,7 +56,7 @@ static std::expected<std::string, std::string>
         }
         result += value.take_front(open);
         auto name = value.slice(open + 2, close);
-        if(name == "workspace" && project_root.empty()) {
+        if((name == "workspace" || name == "workspace_id") && project_root.empty()) {
             result += value.slice(open, close + 1);
         } else {
             auto replaced = variable(name, project_root);
@@ -346,6 +354,7 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
         compiled.other_contexts = rule.other_contexts;
         compiled.lint = rule.lint;
         compiled.format = rule.format;
+        compiled.layer = rule.layer;
         compiled_rules.push_back(std::move(compiled));
     }
     if(!root.empty() && !default_configuration.empty() && !declares(default_configuration)) {
@@ -628,8 +637,19 @@ static bool written(const auto& field) {
     }
 }
 
-/// Report each field a rule writes that an earlier rule for every file,
-/// active whenever it is, writes too: the earlier one decides every file.
+/// The index of `rules[index]` among the rules of its layer, which stand
+/// together: its index in the file or the settings it is written in.
+static std::size_t index_in_layer(const auto& rules, std::size_t index) {
+    auto first = index;
+    while(first > 0 && rules[first - 1].layer == rules[index].layer) {
+        first -= 1;
+    }
+    return index - first;
+}
+
+/// Report each field a rule writes that an earlier rule of its layer for
+/// every file, active whenever it is, writes too: the earlier one decides
+/// every file. A higher layer deciding over a lower one is what it is for.
 static void report_shadowed(llvm::ArrayRef<CompiledRule> rules,
                             llvm::function_ref<void(codec::rich_error)> report) {
     for(auto [later, rule]: views::enumerate(rules)) {
@@ -639,12 +659,12 @@ static void report_shadowed(llvm::ArrayRef<CompiledRule> rules,
             }
             for(auto [earlier, other]:
                 views::enumerate(rules.take_front(static_cast<std::size_t>(later)))) {
-                if(other.patterns.empty() && !other.unmatchable &&
+                if(other.layer == rule.layer && other.patterns.empty() && !other.unmatchable &&
                    other.active_under(rule.configuration) && written(other.*field)) {
                     codec::rich_error error(std::format(
                         "never applies: rules[{}], a rule for every file, sets {} first; a rule "
                         "for some files goes before the rule for all",
-                        earlier,
+                        index_in_layer(rules, static_cast<std::size_t>(earlier)),
                         name));
                     error.path = {"rules", static_cast<std::size_t>(later), name.str()};
                     report(std::move(error));
@@ -665,48 +685,155 @@ static void report_shadowed(llvm::ArrayRef<CompiledRule> rules,
     }
 }
 
+std::string user_settings_file() {
+    std::string dir;
+    if(auto xdg = env_string("XDG_CONFIG_HOME"); xdg && path::is_absolute(*xdg)) {
+        dir = std::move(*xdg);
+    } else {
+#ifdef _WIN32
+        if(sys::config_dir(dir)) {
+            return {};
+        }
+#else
+        if(sys::home_dir(dir)) {
+            return {};
+        }
+        dir = path::join(dir, ".config");
+#endif
+    }
+    return path::join(dir, "clice", "config.toml");
+}
+
+namespace {
+
+/// A configuration file a project's settings decoded.
+struct DecodedFile {
+    SettingsLayer layer;
+    std::string path;
+    toml::table document;
+};
+
+using SettingPath = std::vector<codec::rich_error::path_segment>;
+
+/// The values of `actual` that `defaults` does not have, each at its key's
+/// path, as JSON.
+void differing(simdjson::dom::element actual,
+               simdjson::dom::element defaults,
+               std::vector<std::string>& path,
+               std::vector<std::pair<std::vector<std::string>, std::string>>& out) {
+    simdjson::dom::object fields, default_fields;
+    if(!actual.get_object().get(fields) && !defaults.get_object().get(default_fields)) {
+        for(auto [key, value]: fields) {
+            path.emplace_back(key);
+            simdjson::dom::element default_value;
+            if(default_fields[key].get(default_value)) {
+                out.emplace_back(path, simdjson::minify(value));
+            } else {
+                differing(value, default_value, path, out);
+            }
+            path.pop_back();
+        }
+        return;
+    }
+    auto text = simdjson::minify(actual);
+    if(text != simdjson::minify(defaults)) {
+        out.emplace_back(path, std::move(text));
+    }
+}
+
+/// The settings of `settings` that are not their defaults for a project at
+/// `root`, the rules aside, each with where `origin` says it is set.
+std::vector<ChangedSetting>
+    changed_settings(const Settings& settings,
+                     CanonicalRef root,
+                     llvm::function_ref<std::string(const SettingPath&)> origin) {
+    std::vector<ChangedSetting> changed;
+    // Against the defaults as the project's root derives them: its cache
+    // and logging directories are no setting of the user's.
+    Settings unset;
+    unset.finalize(root);
+    auto actual = json::to_string(settings);
+    auto defaults = json::to_string(unset);
+    simdjson::dom::parser actual_parser, defaults_parser;
+    simdjson::dom::element actual_root, defaults_root;
+    if(!actual || !defaults || actual_parser.parse(*actual).get(actual_root) ||
+       defaults_parser.parse(*defaults).get(defaults_root)) {
+        return changed;
+    }
+    std::vector<std::string> path;
+    std::vector<std::pair<std::vector<std::string>, std::string>> found;
+    differing(actual_root, defaults_root, path, found);
+    for(auto& [keys, value]: found) {
+        if(keys.front() == "rules") {
+            continue;
+        }
+        changed.push_back({
+            .key = llvm::join(keys, "."),
+            .value = std::move(value),
+            .origin = origin(SettingPath(keys.begin(), keys.end())),
+        });
+    }
+    return changed;
+}
+
+}  // namespace
+
 LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& options) {
     using Severity = SettingsIssue::Severity;
     LoadedSettings loaded;
     auto& issues = loaded.issues;
-    Settings layered;
-    std::optional<toml::table> parsed;
-    for(auto name: root.empty() ? llvm::ArrayRef<llvm::StringRef>() : settings_file_names) {
-        auto path = path::join(root, name);
-        if(!fs::exists(path)) {
-            continue;
+    if(!options.user_file.empty() && fs::exists(options.user_file)) {
+        loaded.files.push_back({.layer = SettingsLayer::User, .path = options.user_file.str()});
+    }
+    if(!root.empty()) {
+        for(auto name: settings_file_names) {
+            if(auto path = path::join(root, name); fs::exists(path)) {
+                loaded.files.push_back({.layer = SettingsLayer::Project, .path = std::move(path)});
+                break;
+            }
         }
-        loaded.file = path;
+        if(auto path = path::join(root, local_settings_file_name); fs::exists(path)) {
+            loaded.files.push_back({.layer = SettingsLayer::Local, .path = std::move(path)});
+        }
+    }
+
+    Settings layered;
+    std::vector<DecodedFile> decoded_files;
+    // What the project's own files name, where a cache directory set for
+    // every project falls back to when another project has it.
+    std::string own_cache_dir;
+    for(auto& file: loaded.files) {
+        auto& path = file.path;
         auto content = vfs::read_text(path);
         if(!content) {
             issues.push_back(
                 {.severity = Severity::Error,
                  .file = path,
                  .message = std::format("cannot read it: {}", content.error().code.message())});
-            break;
+            continue;
         }
         auto table = codec::toml::parse_table(*content);
         if(!table) {
             issues.push_back(make_issue(Severity::Error, path, table.error(), nullptr));
-            break;
+            continue;
         }
-        parsed = std::move(*table);
-        Settings decoded;
+        auto decoded = layered;
         codec::UnknownFields unknown;
         auto result = [&] {
             codec::scoped_context<codec::UnknownFields> collecting(unknown);
-            return codec::toml::from_toml(*parsed, decoded);
+            return codec::toml::from_toml(*table, decoded);
         }();
         if(!result) {
-            issues.push_back(make_issue(Severity::Error, path, result.error(), &*parsed));
-            break;
+            issues.push_back(make_issue(Severity::Error, path, result.error(), &*table));
+            continue;
         }
+        std::vector<SettingsIssue> found;
         for(auto& entry: unknown.entries) {
             report_unknown(
                 entry,
                 [&](llvm::StringRef section) {
                     std::vector<std::string> keys;
-                    if(auto* node = parsed->get(section); node && node->as_table()) {
+                    if(auto* node = table->get(section); node && node->as_table()) {
                         for(auto& [key, _]: *node->as_table()) {
                             keys.emplace_back(key.str());
                         }
@@ -714,18 +841,31 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
                     return keys;
                 },
                 [&](Severity severity, codec::rich_error error) {
-                    issues.push_back(make_issue(severity, path, error, &*parsed));
+                    found.push_back(make_issue(severity, path, error, &*table));
                 });
         }
         // A table yields its keys in name order; the problems read in the
         // file's.
-        ranges::stable_sort(issues, {}, [](const SettingsIssue& issue) {
+        ranges::stable_sort(found, {}, [](const SettingsIssue& issue) {
             return std::pair(issue.line, issue.column);
         });
+        issues.insert(issues.end(),
+                      std::make_move_iterator(found.begin()),
+                      std::make_move_iterator(found.end()));
+        // The file's rules go before those of the files below it: of the
+        // rules matching a file, the first to set a field decides it.
+        if(table->contains("rules")) {
+            for(auto& rule: decoded.rules) {
+                rule.layer = file.layer;
+            }
+            decoded.rules.insert(decoded.rules.end(), layered.rules.begin(), layered.rules.end());
+        }
+        if(file.layer != SettingsLayer::User && table->contains("cache_dir")) {
+            own_cache_dir = decoded.cache_dir;
+        }
         layered = std::move(decoded);
-        break;
+        decoded_files.push_back({.layer = file.layer, .path = path, .document = std::move(*table)});
     }
-    std::string file_cache_dir = layered.cache_dir;
 
     if(options.overlay) {
         auto overlaid = layered;
@@ -758,16 +898,62 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
                     },
                     issue);
             }
-            overlaid.rules_from_editor = sets(*options.overlay, {"rules"});
+            if(sets(*options.overlay, {"rules"})) {
+                for(auto& rule: overlaid.rules) {
+                    rule.layer = SettingsLayer::Editor;
+                }
+            }
             layered = std::move(overlaid);
         }
     }
 
+    // The highest file setting the value at `path`; null for none.
+    auto setting = [&](const SettingPath& path, bool own) -> const DecodedFile* {
+        for(auto& file: views::reverse(decoded_files)) {
+            if((!own || file.layer != SettingsLayer::User) && node_at(file.document, path)) {
+                return &file;
+            }
+        }
+        return nullptr;
+    };
+    // A problem at `error.path` of the merged settings, where it is written:
+    // a rule's in its layer, at its index there; any other value's in the
+    // highest layer setting it.
+    auto report = [&](Severity severity, codec::rich_error error) {
+        auto& path = error.path;
+        auto* key = path.empty() ? nullptr : std::get_if<std::string>(&path.front());
+        bool overlay = false;
+        const DecodedFile* file = nullptr;
+        if(key && *key == "rules" && path.size() >= 2) {
+            auto index = std::get<std::size_t>(path[1]);
+            auto layer = layered.rules[index].layer;
+            path[1] = index_in_layer(layered.rules, index);
+            overlay = layer == SettingsLayer::Editor;
+            if(!overlay) {
+                file = &*ranges::find(decoded_files, layer, &DecodedFile::layer);
+            }
+        } else if(options.overlay && sets(*options.overlay, path)) {
+            overlay = true;
+        } else {
+            file = setting(path, false);
+        }
+        if(overlay) {
+            issues.push_back(
+                {.severity = severity,
+                 .message = std::format("{}: {}", options.overlay_name, error.to_string())});
+            return;
+        }
+        issues.push_back(make_issue(severity,
+                                    file ? llvm::StringRef(file->path) : llvm::StringRef(),
+                                    error,
+                                    file ? &file->document : nullptr));
+    };
+
     // A cache directory serves one project (see owned_elsewhere), and one at
     // a time: its writer lock is the process's, so a second project of the
     // server would take it too. The merged configuration's falls back to the
-    // file's own, then the default; with those taken too the project runs
-    // nothing.
+    // project's files' own, then the default; with those taken too the
+    // project runs nothing.
     loaded.settings = layered;
     auto problems = loaded.settings.finalize(root);
     auto& cache_dir = loaded.settings.cache_dir;
@@ -778,15 +964,17 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
     auto taken = [&] {
         return !cache_dir.empty() && (taken_here() || owned_elsewhere(cache_dir, root));
     };
+    bool own_cache = false;
     if(!root.empty() && taken()) {
         std::string requested = cache_dir;
         auto reason = taken_here()
                           ? std::string("already serves another project")
                           : std::format("serves the project at {}", cache_dir_owner(requested));
-        for(auto& fallback: {file_cache_dir, std::string()}) {
+        for(auto& fallback: {own_cache_dir, std::string()}) {
             loaded.settings = layered;
             loaded.settings.cache_dir = fallback;
             problems = loaded.settings.finalize(root);
+            own_cache = !fallback.empty();
             if(!taken()) {
                 break;
             }
@@ -806,43 +994,46 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
                     shown),
             });
         } else {
-            LOG_GUIDANCE("Cache directory {} {}; {} keeps its cache in {}",
-                         requested,
-                         reason,
-                         shown,
-                         cache_dir);
+            LOG_GUIDANCE(
+                "Cache directory {} {}; {} keeps its cache in {} (a cache_dir set for every "
+                "project gives each a directory of its own with ${{workspace_id}})",
+                requested,
+                reason,
+                shown,
+                cache_dir);
         }
     }
     for(auto& problem: problems) {
-        if(options.overlay && sets(*options.overlay, problem.path)) {
-            issues.push_back(
-                {.severity = Severity::Error,
-                 .message = std::format("{}: {}", options.overlay_name, problem.to_string())});
-        } else {
-            issues.push_back(
-                make_issue(Severity::Error, loaded.file, problem, parsed ? &*parsed : nullptr));
-        }
+        report(Severity::Error, std::move(problem));
     }
 
-    bool from_editor = loaded.settings.rules_from_editor;
     for(auto [index, rule]: views::enumerate(loaded.settings.compiled_rules)) {
-        auto at = static_cast<std::size_t>(index);
-        if(from_editor) {
+        auto at = index_in_layer(loaded.settings.compiled_rules, static_cast<std::size_t>(index));
+        if(rule.layer == SettingsLayer::Editor) {
             rule.origin = std::format("{} rules[{}]", options.overlay_name, at);
-        } else if(auto* node = node_at(*parsed, {"rules", at})) {
-            rule.origin = std::format("{}:{}", loaded.file, node->source().begin.line);
+            continue;
+        }
+        auto& file = *ranges::find(decoded_files, rule.layer, &DecodedFile::layer);
+        if(auto* node = node_at(file.document, {"rules", at})) {
+            rule.origin = std::format("{}:{}", file.path, node->source().begin.line);
         }
     }
     report_shadowed(loaded.settings.compiled_rules, [&](codec::rich_error warning) {
-        if(from_editor) {
-            issues.push_back(
-                {.severity = Severity::Warning,
-                 .message = std::format("{}: {}", options.overlay_name, warning.to_string())});
-        } else {
-            issues.push_back(make_issue(Severity::Warning, loaded.file, warning, &*parsed));
-        }
+        report(Severity::Warning, std::move(warning));
     });
 
+    loaded.changed = changed_settings(loaded.settings, root, [&](const SettingPath& path) {
+        // A cache directory that fell back is the project's files' own.
+        bool own = own_cache && path == SettingPath{"cache_dir"};
+        if(!own && options.overlay && sets(*options.overlay, path)) {
+            return options.overlay_name.str();
+        }
+        auto* file = setting(path, own);
+        return file ? std::format("{}:{}",
+                                  file->path,
+                                  node_at(file->document, path)->source().begin.line)
+                    : std::string();
+    });
     loaded.configuration =
         choose_configuration(loaded.settings, options.configuration, options.strict, issues);
     return loaded;

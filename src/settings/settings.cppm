@@ -36,9 +36,42 @@ void set_cache_dir_owner(llvm::StringRef cache_dir,
                          CanonicalRef project_root,
                          llvm::StringRef shown);
 
-/// The configuration files a project root may hold, in lookup order.
+/// The configuration files a project root may hold, in lookup order: the
+/// first there is the project's.
 constexpr inline std::array<llvm::StringRef, 2> settings_file_names = {"clice.toml",
                                                                        ".clice/config.toml"};
+
+/// The personal configuration file a project root may hold beside the
+/// project's, which the default cache directory's .gitignore keeps out of
+/// Git.
+constexpr inline llvm::StringRef local_settings_file_name = ".clice/local.toml";
+
+/// The user's configuration file, laid under every project's: `clice/config.toml`
+/// in XDG_CONFIG_HOME when it is absolute, on every platform, else in
+/// ~/.config, on Windows in the roaming application data. Its name is none
+/// of a project root's, so its directory is never taken for a project.
+/// Empty when the home directory is unknown.
+std::string user_settings_file();
+
+/// Where settings come from, lowest first: a higher one's value replaces a
+/// lower one's, field by field.
+enum class SettingsLayer : std::uint8_t {
+    /// The user's file (user_settings_file), for every project.
+    User,
+    /// The project's file (settings_file_names).
+    Project,
+    /// The project's personal file (local_settings_file_name).
+    Local,
+    /// The editor's initializationOptions, for every project; its rules
+    /// replace those of every file.
+    Editor,
+};
+
+/// A configuration file a project's settings were read from.
+struct SettingsFile {
+    SettingsLayer layer;
+    std::string path;
+};
 
 /// A compile command written by hand: one string tokenized like a shell
 /// command line, or an argv array.
@@ -72,7 +105,8 @@ enum class ReadonlyMode : std::uint8_t {
 /// from, how those commands are edited, and how the files are served,
 /// indexed, linted and formatted. Corresponds to `[[rules]]` in clice.toml.
 /// Every field a rule leaves out it has no say in: of the rules matching a
-/// file, the first to set a field decides it (Rules).
+/// file, the first to set a field decides it (Rules). The rules of every
+/// file add up, a higher layer's first.
 KANNOTATE_TYPE(struct Rule, presence_all = optional);
 struct Rule {
     KANNOTATE(&patterns,
@@ -116,9 +150,9 @@ struct Rule {
                   "compile_commands.json in the project root and its "
                   "immediate subdirectories loads, and so do the ones in "
                   "the directories above a file when it is opened; a "
-                  "directory below the root with a clice.toml or "
-                  ".clice/config.toml of its own is another project, and "
-                  "none in it loads.")
+                  "directory below the root with a clice.toml, "
+                  ".clice/config.toml or .clice/local.toml of its own is "
+                  "another project, and none in it loads.")
     std::vector<std::string> compile_commands;
 
     KANNOTATE(&resolve_symlinks,
@@ -159,7 +193,10 @@ struct Rule {
               description =
                   "Compilation flags appended for matching files, e.g. "
                   "`[\"-std=c++20\", \"-DNDEBUG\"]`. The flags of every "
-                  "matching rule apply, in declaration order.")
+                  "matching rule apply: those of the user's file first, "
+                  "then the project's, then its local file's, each "
+                  "file's in declaration order, so that a more specific "
+                  "file's flags come last.")
     std::vector<std::string> append;
 
     KANNOTATE(&remove,
@@ -286,6 +323,10 @@ struct Rule {
                   "`false` keeps them out. Files outside the project "
                   "are never formatted. Unset means `true`.")
     std::optional<bool> format;
+
+    /// Where the rule is written.
+    KANNOTATE(&layer, skip = true)
+    SettingsLayer layer = SettingsLayer::Project;
 };
 
 /// Corresponds to the `[workers]` section in clice.toml: the worker
@@ -385,6 +426,8 @@ struct CompiledRule {
     /// sources it declares still load.
     bool unmatchable = false;
 
+    SettingsLayer layer = SettingsLayer::Project;
+
     /// Where the rule is written, as `clice command` names it: the file and
     /// line, or the editor's setting and the rule's index there.
     std::string origin;
@@ -429,17 +472,17 @@ struct SettingsIssue {
     std::uint32_t end_column = 0;
 };
 
-/// Configuration for the clice LSP server, loadable from clice.toml
-/// or passed via LSP initializationOptions.
+/// Configuration for the clice LSP server, loadable from the configuration
+/// files or passed via LSP initializationOptions.
 ///
 /// A default-constructed Settings is fully valid: every option holds its
 /// real default (single source: the field initializers, including the
 /// feature options structs, which double as their config sections).
-/// Loading is layering (load_settings) — each source is decoded onto the
-/// same object in precedence order (clice.toml, then initializationOptions)
-/// and only touches the fields it names, nested sections merging per field.
-/// finalize() never fills option defaults; it only computes derived
-/// values from the merged result.
+/// Loading is layering (load_settings) — each layer is decoded onto the
+/// same object in precedence order (SettingsLayer) and only touches the
+/// fields it names, nested sections merging per field, but for the rules,
+/// which add up. finalize() never fills option defaults; it only computes
+/// derived values from the merged result.
 KANNOTATE_TYPE(struct Settings, presence_all = optional);
 struct Settings {
     KANNOTATE(&default_configuration,
@@ -459,9 +502,13 @@ struct Settings {
                   "defaults to `${workspace}/.clice`, which keeps itself "
                   "out of version control and backups via generated "
                   ".gitignore and CACHEDIR.TAG markers (a "
-                  "`.clice/config.toml` stays visible to Git; backup tools "
-                  "honoring CACHEDIR.TAG skip the whole directory); an "
-                  "explicitly configured directory is never marked. It "
+                  "`.clice/config.toml` stays visible to Git, a "
+                  "`.clice/local.toml` does not; backup tools honoring "
+                  "CACHEDIR.TAG skip the whole directory); an explicitly "
+                  "configured directory is never marked. A cache "
+                  "directory serves one project: one set for every "
+                  "project, in the user's file or the editor's settings, "
+                  "takes `${workspace_id}` to give each its own. It "
                   "must be a directory clice can write on a local disk: a "
                   "project whose cache directory cannot be written or is "
                   "on a network file system (NFS, SMB, a Windows drive "
@@ -545,14 +592,12 @@ struct Settings {
               description =
                   "File-pattern rules: where files take their commands "
                   "from and how they are compiled, served, indexed, "
-                  "linted and formatted ([[rules]] in clice.toml). Rules "
-                  "given through initializationOptions replace the file's.")
+                  "linted and formatted ([[rules]] in clice.toml). The "
+                  "rules of the configuration files add up, the local "
+                  "file's first, then the project's, then the user's; "
+                  "rules given through initializationOptions replace them "
+                  "all.")
     std::vector<Rule> rules;
-
-    /// Whether `rules` came from initializationOptions: they apply to every
-    /// project of the editor, a project without C/C++ files among them.
-    KANNOTATE(&rules_from_editor, skip = true)
-    bool rules_from_editor = false;
 
     KANNOTATE(&compiled_rules, skip = true)
     std::vector<CompiledRule> compiled_rules;
@@ -611,21 +656,43 @@ struct LoadSettingsOptions {
     /// The cache directories other projects of this process use.
     llvm::ArrayRef<CanonicalPath> taken_cache_dirs;
 
+    /// The user's configuration file (user_settings_file), laid under the
+    /// project's; empty for none.
+    llvm::StringRef user_file;
+
     /// The root as the user spelled it, for messages; empty shows its
     /// canonical path.
     llvm::StringRef root_name;
 };
 
-/// A project's configuration as read: the configuration, the file it came
+/// A setting whose value is not its default, and where it is set.
+struct ChangedSetting {
+    /// Its key, dotted: `workers.max`, `inlay_hints.max_length.types`.
+    std::string key;
+
+    /// Its value, as JSON.
+    std::string value;
+
+    /// Where it is set: `<file>:<line>`, or the overlay's name; empty for a
+    /// value no layer sets, which follows from others (`logging_dir` from
+    /// `cache_dir`).
+    std::string origin;
+};
+
+/// A project's configuration as read: the configuration, the files it came
 /// from, the problems found and the build configuration that applies.
 struct LoadedSettings {
     /// The layers that decode, merged and finalized: what process-wide
     /// settings are read from even when the configuration has errors.
     Settings settings;
 
-    /// The configuration file found, also one that does not parse; empty
-    /// for none.
-    std::string file;
+    /// The configuration files found, lowest first, also those that do not
+    /// parse.
+    std::vector<SettingsFile> files;
+
+    /// The settings the layers change from their defaults, but for the
+    /// rules (CompiledRule::origin), in declaration order.
+    std::vector<ChangedSetting> changed;
 
     std::vector<SettingsIssue> issues;
 
@@ -641,16 +708,19 @@ struct LoadedSettings {
 bool has_error(llvm::ArrayRef<SettingsIssue> issues);
 
 /// Read the configuration of the project at `root` (empty for a project
-/// without a folder): find its file (clice.toml, else .clice/config.toml,
-/// either anchoring its relative paths at `root`), decode it, lay the
-/// overlay over it, finalize and check every value;
+/// without a folder): find its files — the user's, the project's
+/// (clice.toml, else .clice/config.toml) and its local one, every one
+/// anchoring its relative paths at `root` —, decode them in that order,
+/// lay the overlay over them, finalize and check every value;
 /// choose the cache directory — the one the merged configuration names,
-/// else the one the file names, else the default, else none, passing over
-/// those taken (LoadSettingsOptions::taken_cache_dirs) or owned by another
-/// project (owned_elsewhere); then resolve the build configuration from
-/// that directory's selection. A layer that does not decode is left out;
-/// a key clice 1.0 moved is an error naming its new place, any other
-/// unknown key a warning, and the rest of its layer applies.
+/// else the one the project's files name, else the default, else none,
+/// passing over those taken (LoadSettingsOptions::taken_cache_dirs) or
+/// owned by another project (owned_elsewhere); then resolve the build
+/// configuration from that directory's selection. A layer that does not
+/// decode is left out; a key clice 1.0 moved is an error naming its new
+/// place, any other unknown key a warning, and the rest of its layer
+/// applies. Each problem is the file's that sets the value, a rule's the
+/// file's it is written in.
 LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& options = {});
 
 }  // namespace clice

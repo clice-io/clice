@@ -340,12 +340,12 @@ void LSPClient::push_output(ServedProject& project, const Session& session, bool
     }
 }
 
-/// Publish clice.toml load problems as diagnostics, each on its own file's
-/// URI (multiple files can contribute issues when the first configuration file candidate
-/// is malformed and the next one loads). The files are usually not open in
-/// the editor — publishing to a closed file is fine, the client shows it in
-/// the problems panel. The loaded file always gets a publish, so a clean
-/// load clears diagnostics from a previous (broken) state.
+/// Publish the configuration files' load problems as diagnostics, each on
+/// its own file's URI: the user's file, a project's and its local one. The
+/// files are usually not open in the editor — publishing to a closed file
+/// is fine, the client shows it in the problems panel. Every loaded file
+/// gets a publish, so a clean load clears diagnostics from a previous
+/// (broken) state.
 void LSPClient::publish_settings_diagnostics() {
     if(!client_ready) {
         return;
@@ -366,17 +366,19 @@ void LSPClient::publish_settings_diagnostics() {
         by_file.try_emplace(file.getKey());
     }
     published_settings_files.clear();
+    // The user's file is every project's: its problems are listed once.
+    llvm::StringSet<> listed;
     for(auto& project: server.projects) {
-        if(project->settings_file.empty()) {
-            continue;
+        for(auto& file: project->settings_files) {
+            by_file.try_emplace(file.path);
+            published_settings_files.insert(file.path);
         }
-        // The loaded file always gets a publish (even with zero issues), so
-        // a clean load clears diagnostics from a previous broken state.
-        by_file.try_emplace(project->settings_file);
+        llvm::StringSet<> listing;
         for(auto& issue: project->settings_issues) {
-            if(issue.file.empty()) {
+            if(issue.file.empty() || listed.contains(issue.file)) {
                 continue;
             }
+            listing.insert(issue.file);
             // Issue positions are 1-based, their columns counted in code
             // points. An unknown position (0) maps to the file top.
             auto positions = text_of(issue.file).positions();
@@ -393,9 +395,10 @@ void LSPClient::publish_settings_diagnostics() {
                              : DiagnosticLevel::Warning,
                 .message = issue.message,
             });
-            published_settings_files.insert(issue.file);
         }
-        published_settings_files.insert(project->settings_file);
+        for(auto& file: listing) {
+            listed.insert(file.getKey());
+        }
     }
     // A client that restarts the server when asked is restarting it.
     for(auto& reason: server.restart_reasons) {

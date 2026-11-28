@@ -22,9 +22,9 @@ import :worker.protocol;
 namespace clice::driver {
 
 /// The root `where` names, found from `start`, and its configuration
-/// (load_settings, `options` beside the configuration asked for): its
-/// warnings logged, its errors the run's, each where it is, as compilers
-/// name a place.
+/// (load_settings, `options` beside the configuration asked for and the
+/// user's file): its warnings logged, its errors the run's, each where it
+/// is, as compilers name a place.
 inline std::expected<std::pair<Spelling, LoadedSettings>, ProjectError>
     read_project(const ProjectOptions& where,
                  LoadSettingsOptions options = {},
@@ -38,6 +38,8 @@ inline std::expected<std::pair<Spelling, LoadedSettings>, ProjectError>
     logging::set_project_roots({canonical.str()});
     auto shown = root->str();
     options.root_name = shown;
+    auto user_file = user_settings_file();
+    options.user_file = user_file;
     auto loaded = load_settings(canonical, options);
     std::vector<std::string> errors;
     for(auto& issue: loaded.issues) {

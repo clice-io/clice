@@ -192,8 +192,10 @@ void look_at_database(Project& project, WatchedDatabase& database, bool force, C
 }  // namespace
 
 bool has_configuration_file(const Spelling& dir) {
-    return ranges::any_of(settings_file_names,
-                          [&](llvm::StringRef name) { return fs::exists(Spelling(name, dir)); });
+    auto holds = [&](llvm::StringRef name) {
+        return fs::exists(Spelling(name, dir));
+    };
+    return ranges::any_of(settings_file_names, holds) || holds(local_settings_file_name);
 }
 
 CanonicalPath nested_project(CanonicalRef project_root, CanonicalRef path) {

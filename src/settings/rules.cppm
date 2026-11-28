@@ -10,8 +10,9 @@ import :vfs.path;
 namespace clice {
 
 /// The rules-applied edits of a set of files: every matching active rule
-/// in declaration order, each once, its removes before its appends; the
-/// toolchain query as the first of them to say decides.
+/// once, its removes before its appends, layer by layer from the lowest
+/// (SettingsLayer), each layer's in declaration order; the toolchain query
+/// as the first of them to say decides.
 struct Edits {
     std::vector<CommandEdit> edits;
     bool query_toolchain = true;
@@ -82,8 +83,7 @@ public:
     /// which hide a registered database instead of leaving it to discovery.
     llvm::SmallVector<const Spelling*> hiding_databases() const;
 
-    /// The edits the rules matching any of `paths` contribute, in
-    /// declaration order, each rule once.
+    /// The edits the rules matching any of `paths` contribute (Edits).
     Edits edits(llvm::ArrayRef<RulePath> paths) const;
 
     /// The first matching active rule declaring a default command.

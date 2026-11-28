@@ -1,0 +1,5 @@
+[workers]
+foreground = 1
+
+[[rules]]
+append = ["-DFROM_USER"]

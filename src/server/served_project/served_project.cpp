@@ -79,17 +79,53 @@ std::string place(llvm::StringRef file, const SettingsIssue& issue) {
     return issue.line == 0 ? file.str() : std::format("{}:{}:{}", file, issue.line, issue.column);
 }
 
+/// Log where the project's settings came from and what they change from
+/// the defaults, each with where it is set.
+void log_settings(const Project& project,
+                  llvm::ArrayRef<SettingsFile> files,
+                  llvm::ArrayRef<ChangedSetting> changed,
+                  bool overlay) {
+    std::vector<std::string> sources;
+    for(auto& file: files) {
+        sources.push_back(file.path);
+    }
+    if(overlay) {
+        sources.emplace_back("initializationOptions");
+    }
+    std::vector<std::string> values;
+    for(auto& setting: changed) {
+        values.push_back(
+            setting.origin.empty()
+                ? std::format("{} = {}", setting.key, setting.value)
+                : std::format("{} = {} ({})", setting.key, setting.value, setting.origin));
+    }
+    for(auto& rule: project.settings.compiled_rules) {
+        values.push_back(std::format("the rule at {}", rule.origin));
+    }
+    LOG_INFO("Settings of the project at {}, from {}: {}",
+             project.root,
+             sources.empty() ? "the defaults alone" : llvm::join(sources, " and "),
+             values.empty() ? "the defaults" : llvm::join(values, ", "));
+}
+
 /// Whether the project has its build to open before a document of it
 /// opens: a database to index, one its rules name or one discovery finds,
 /// or the index an earlier session built.
 bool has_build(const Project& project) {
-    // The editor's rules apply to every folder, one without C/C++ files
-    // among them: theirs count by a database they name that is there.
-    bool declared =
-        project.settings.rules_from_editor
-            ? ranges::any_of(project.rules.declared_databases(),
-                             [](const Spelling& database) { return fs::exists(database.str()); })
-            : project.rules.declares_sources();
+    // The rules of the user's file and the editor's apply to every folder,
+    // one without C/C++ files among them: theirs count by a database they
+    // name that is there.
+    bool declared = ranges::any_of(project.settings.compiled_rules, [&](const CompiledRule& rule) {
+        if(!rule.active_under(project.rules.configuration())) {
+            return false;
+        }
+        if(rule.layer == SettingsLayer::User || rule.layer == SettingsLayer::Editor) {
+            return ranges::any_of(rule.compile_commands, [](const Spelling& database) {
+                return fs::exists(database.str());
+            });
+        }
+        return rule.declares_sources();
+    });
     if(declared || !discovered_databases(project.root).empty()) {
         return true;
     }
@@ -129,19 +165,21 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
                                     .configuration = server.requested_configuration,
                                     .strict = false,
                                     .taken_cache_dirs = taken_cache_dirs,
+                                    .user_file = server.user_settings.path,
                                     .root_name = shown,
                                 });
     project.settings = std::move(loaded.settings);
     configuration = std::move(loaded.configuration);
-    settings_file = std::move(loaded.file);
+    settings_files = std::move(loaded.files);
     settings_issues = std::move(loaded.issues);
+    log_settings(project, settings_files, loaded.changed, init_options.has_value());
     if(project.root.empty()) {
         if(auto error = use_temporary_cache(project.settings)) {
             refuse_cache(*error);
         }
     }
 
-    // The file's problems are listed as its diagnostics, with one message;
+    // The files' problems are listed as their diagnostics, with one message;
     // the editor settings' are told each, the client showing a message once
     // however many projects find it.
     auto unserved = project.root.empty()
@@ -160,7 +198,7 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
             }
             continue;
         }
-        LOG_WARN("clice.toml {}: {}", place(issue.file, issue), issue.message);
+        LOG_WARN("{}: {}", place(issue.file, issue), issue.message);
         if(!first || (first->severity != issue.severity &&
                       issue.severity == SettingsIssue::Severity::Error)) {
             first = &issue;
@@ -173,11 +211,18 @@ void ServedProject::configure(const std::optional<codec::dyn::Value>& init_optio
             place(project.file_table.display_identity(first->file), *first),
             first->message,
             count == 1 ? std::string()
-                       : std::format(" (and {} more, listed as its problems)", count - 1),
+                       : std::format(" (and {} more, listed as the files' problems)", count - 1),
             first->severity == SettingsIssue::Severity::Error
                 ? std::format(". {} is served until it is fixed and clice restarts", unserved)
                 : std::string());
     }
+}
+
+llvm::StringRef ServedProject::settings_file() const {
+    auto own = ranges::find_if(settings_files, [](const SettingsFile& file) {
+        return file.layer == SettingsLayer::Project || file.layer == SettingsLayer::Local;
+    });
+    return own == settings_files.end() ? llvm::StringRef() : llvm::StringRef(own->path);
 }
 
 void ServedProject::start() {

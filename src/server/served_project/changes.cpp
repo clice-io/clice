@@ -117,7 +117,7 @@ bool ServedProject::reload_databases(bool force) {
     // index was built with.
     if(project.databases_moved()) {
         server.ask_restart({
-            .file = settings_file,
+            .file = settings_file().str(),
             .message = std::format("The compilation databases of {} now resolve to another build",
                                    project.file_table.display(project.root)),
         });

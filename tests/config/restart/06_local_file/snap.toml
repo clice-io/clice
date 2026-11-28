@@ -1,0 +1,5 @@
+[written.asked]
+value = "${WS}/.clice/local.toml changed"
+
+[deleted.asked]
+value = "The local configuration file of ${WS} was deleted"

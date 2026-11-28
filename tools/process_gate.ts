@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 
 /// Sanitizer/crash fingerprints scanned in server stderr: a report names
@@ -19,12 +20,23 @@ export const SANITIZER_MARKERS = [
 
 export const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
 
+/// Where the servers under test look for the user's configuration file: a
+/// directory holding none, so that the settings of the machine running the
+/// tests never reach them.
+const NO_USER_SETTINGS = path.join(os.tmpdir(), "clice-tests-no-user-settings");
+
 /// The environment servers under test run in: every freshness answer given
 /// without a look at the disk is checked against one, a contradiction
-/// being an anomaly the gates catch, and the test hooks are on (the
-/// clice/internal requests the tests wait through).
+/// being an anomaly the gates catch, the test hooks are on (the
+/// clice/internal requests the tests wait through), and no user's
+/// configuration file is read.
 export function serverEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-    return { ...base, CLICE_SHADOW_FRESHNESS: "1", CLICE_TEST_HOOKS: "1" };
+    return {
+        ...base,
+        CLICE_SHADOW_FRESHNESS: "1",
+        CLICE_TEST_HOOKS: "1",
+        XDG_CONFIG_HOME: NO_USER_SETTINGS,
+    };
 }
 
 /// A session directory's name: when its process started and its pid,

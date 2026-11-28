@@ -1,0 +1,42 @@
+[test."main.cpp"]
+diagnostics = []
+
+[test."$ clice inspect config"]
+stdout = '''
+{
+  "files": [
+    {
+      "layer": "User",
+      "path": "${WS}/user/clice/config.toml",
+      "read": true
+    },
+    {
+      "layer": "Project",
+      "path": "${WS}/clice.toml",
+      "read": true
+    },
+    {
+      "layer": "Project",
+      "path": "${WS}/.clice/config.toml",
+      "read": false
+    },
+    {
+      "layer": "Local",
+      "path": "${WS}/.clice/local.toml",
+      "read": false
+    }
+  ],
+  "settings": [
+    {
+      "key": "workers.foreground",
+      "value": 1,
+      "origin": "${WS}/user/clice/config.toml:2"
+    }
+  ],
+  "rules": [
+    "${WS}/clice.toml:1",
+    "${WS}/user/clice/config.toml:4"
+  ]
+}
+'''
+exit = 0

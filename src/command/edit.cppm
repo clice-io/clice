@@ -18,8 +18,8 @@ struct CommandEdit {
     Kind kind;
     std::vector<std::string> flags;
 
-    /// Where the rule's relative paths are relative to: its configuration
-    /// file's directory.
+    /// Where the rule's relative paths are relative to: the project root,
+    /// whichever file the rule is written in.
     Spelling directory;
 };
 

@@ -4,7 +4,7 @@ clice needs no configuration once it finds a compilation database (see [Project 
 
 ## The Configuration File
 
-clice reads `clice.toml` in the project root, or `.clice/config.toml` when there is none, once, when the server starts; saving the file makes the server ask the editor to restart it. An editor can send settings too, in `initializationOptions`, and those take the place of the same settings in the file.
+clice reads `clice.toml` in the project root, or `.clice/config.toml` when there is none, once, when the server starts; saving the file makes the server ask the editor to restart it. Settings for every project — the workers, the features' preferences, rules for the paths every project shares — go in the user's file, `~/.config/clice/config.toml` (`%APPDATA%\clice\config.toml` on Windows), under the project's; a developer's own settings for one project go in `.clice/local.toml`, over the project's, which Git does not see. An editor can send settings too, in `initializationOptions`, and those take the place of the same settings in the files. `clice inspect config` shows which files a project reads and where each setting it changes comes from.
 
 <!-- BEGIN GENERATED ITEMS: config/loading -->
 
@@ -293,3 +293,4 @@ A unity build lists only the generated files including the sources, so clangd fi
 | `--limit-results`                        | `[code_completion] limit`                                    |
 | `--limit-references`                     | `[references] limit`                                         |
 | `-j`                                     | `[workers] background` and `[workers] max`                   |
+| `~/.config/clangd/config.yaml`           | the user's file, `~/.config/clice/config.toml`               |

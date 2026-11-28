@@ -115,12 +115,18 @@ Edits Rules::edits(llvm::ArrayRef<RulePath> paths) const {
     }
     Edits result;
     std::optional<bool> query_toolchain;
-    Spelling directory(root);
+    llvm::SmallVector<const CompiledRule*> ordered;
     for(auto* rule: active) {
-        if(!ranges::contains(matched, rule)) {
-            continue;
+        if(ranges::contains(matched, rule)) {
+            query_toolchain = query_toolchain ? query_toolchain : rule->query_toolchain;
+            ordered.push_back(rule);
         }
-        query_toolchain = query_toolchain ? query_toolchain : rule->query_toolchain;
+    }
+    // A higher layer's rules come first and edit last: its flags stand
+    // after a lower one's.
+    ranges::stable_sort(ordered, {}, &CompiledRule::layer);
+    Spelling directory(root);
+    for(auto* rule: ordered) {
         if(!rule->remove.empty()) {
             result.edits.push_back(
                 {.kind = CommandEdit::Kind::Remove, .flags = rule->remove, .directory = directory});
