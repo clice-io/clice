@@ -17,6 +17,7 @@ import {
     type DatabaseEntry,
 } from "../compat/database.ts";
 import type { Configuration } from "./project.ts";
+import { withoutUserSettings } from "../process_gate.ts";
 
 /// Where a job's own database goes, checkout-relative.
 const JOB_DATABASE = ".ecosystem/compile_commands.json";
@@ -135,6 +136,7 @@ const QUERY_MS = 30 * 60_000;
 /// The JSON a clice subcommand prints over the checkout.
 async function cliceJson<T>(checkout: string, args: string[]): Promise<T> {
     const ran = await runProcess(cliceExecutable(), [...args, "--workspace", checkout], {
+        env: withoutUserSettings(process.env),
         timeout: QUERY_MS,
     });
     if (ran.status !== 0) {

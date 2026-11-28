@@ -37,6 +37,7 @@ import {
     VISIBLE,
     type PerfContext,
 } from "./session.ts";
+import { withoutUserSettings } from "../../process_gate.ts";
 
 /// A file a scenario opens: its path alone, or with its request positions.
 export type FileArg = string | PerfFile;
@@ -908,7 +909,7 @@ export class Perf {
                 clice,
                 ["scan", "--workspace", this.root, "--runs", String(options.runs ?? 20)],
                 // Hang detection: twenty scans of LLVM take minutes.
-                { timeout: 60 * 60_000 },
+                { env: withoutUserSettings(process.env), timeout: 60 * 60_000 },
             );
             if (ran.status !== 0) {
                 // The bound kills the run, a signal of its own a crash.
