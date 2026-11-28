@@ -394,7 +394,14 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
     // What an instantiation resolves are the calls and member accesses
     // its expressions and constructor initializers make, the types its
     // dependent names come to name and the types its placeholders deduce;
-    // it declares nothing its template does not.
+    // it declares nothing its template does not. A class's resolves its
+    // member declarations' types alone: the expressions they hold, template
+    // arguments above all, resolve anew in each of the class's
+    // instantiations, an Eigen expression type's thousands, which doubles
+    // the index for what the template's own entries mostly tell.
+    if(instantiated_class && !semantics.node(i).node.get<clang::TypeLoc>()) {
+        return;
+    }
     const auto* stmt = semantics.node(i).node.get<clang::Stmt>();
     expression_begin = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
     see_from(semantics, i);

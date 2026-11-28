@@ -276,11 +276,13 @@ void Builder::project_instantiations(llvm::ArrayRef<const clang::Decl*> walked) 
              [&](const clang::Decl* root) {
                  instantiation_entries = &entries;
                  instantiated_function = llvm::dyn_cast<clang::FunctionDecl>(root);
+                 instantiated_class = llvm::isa<clang::CXXRecordDecl>(root);
              },
          .leave =
              [&](const clang::Decl* root) {
                  instantiation_entries = nullptr;
                  instantiated_function = nullptr;
+                 instantiated_class = false;
                  close_instantiation(llvm::cast<clang::NamedDecl>(root), entries);
                  entries.clear();
              },

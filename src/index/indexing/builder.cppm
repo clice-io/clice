@@ -370,6 +370,9 @@ private:
     /// its calls.
     const clang::FunctionDecl* instantiated_function = nullptr;
 
+    /// Whether the instantiation projecting is a class's.
+    bool instantiated_class = false;
+
     /// Where the expression being projected begins (in_pattern).
     clang::SourceLocation expression_begin;
 
