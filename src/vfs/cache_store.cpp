@@ -109,8 +109,14 @@ bool remove_layouts_unused(llvm::StringRef dir,
     if(!lock) {
         return false;
     }
-    // Held by a store opening in the directory right now.
+    // Held by a store opening in the directory right now; or no longer the
+    // lock file, which another removal unlinked.
     if(auto held = lock->try_lock(); !held || !*held) {
+        return false;
+    }
+    auto locked = lock->status();
+    auto there = fs::status(lock_path);
+    if(!locked || !there || there->id != locked->id) {
         return false;
     }
     auto entries = fs::Directory::open(dir);
