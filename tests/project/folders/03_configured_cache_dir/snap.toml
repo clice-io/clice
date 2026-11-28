@@ -7,6 +7,6 @@ workspace_symbols = [
 
 ["configured cache directory serves once".guidance]
 value = [
-    "Cache directory ${WS}/.clice already serves another project; ${WS}/beta keeps its cache in ${WS}/shared",
-    "Cache directory ${WS}/.clice already serves another project; ${WS}/gamma keeps its cache in ${WS}/gamma/.clice",
+    "Cache directory ${WS}/.clice already serves another project; ${WS}/beta keeps its cache in ${WS}/shared (a cache_dir set for every project gives each a directory of its own with ${workspace_id})",
+    "Cache directory ${WS}/.clice already serves another project; ${WS}/gamma keeps its cache in ${WS}/gamma/.clice (a cache_dir set for every project gives each a directory of its own with ${workspace_id})",
 ]

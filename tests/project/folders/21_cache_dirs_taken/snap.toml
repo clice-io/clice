@@ -1,5 +1,5 @@
 ["every cache directory taken".guidance]
 value = [
-    "Cache directory ${WS}/.clice already serves another project; ${WS}/b keeps its cache in ${WS}/c/.clice",
+    "Cache directory ${WS}/.clice already serves another project; ${WS}/b keeps its cache in ${WS}/c/.clice (a cache_dir set for every project gives each a directory of its own with ${workspace_id})",
     "Cache directory ${WS}/.clice already serves another project, and the other ones ${WS}/c can use are taken too; set `cache_dir` in its clice.toml to a directory of its own. Nothing under ${WS}/c is served until they are fixed and clice restarts",
 ]
