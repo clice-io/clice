@@ -49,8 +49,8 @@ struct PCMEntry : Precompiled<ModuleBuildFailed> {
     /// anywhere below the module changes its key too.
     std::string key;
 
-    /// The PCH the PCM was built over, which its importers read with it;
-    /// empty for none.
+    /// The blob of the PCH the PCM was built over, which its importers read
+    /// with it; empty for none.
     std::string pch;
 };
 

@@ -239,7 +239,7 @@ bool open_precompiled_store(Project& project, bool read_only, Project::Opened& o
         opened.unwritable = std::format(
             "Cannot use {} for PCHs and PCMs: {}; give clice write access to it, or "
             "set `precompiled_dir` in clice.toml to a directory it can write",
-            dir,
+            settings.precompiled_dir,
             store.error().message());
         return false;
     }

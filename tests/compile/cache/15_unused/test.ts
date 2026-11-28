@@ -7,9 +7,13 @@ import { test, type TestContext } from "@clice/tools/testing";
 
 const DAY = 24 * 3600 * 1000;
 
-/// The directory in `shared` each project keeps its PCHs and PCMs in.
+/// The directory in `shared` each project keeps its PCHs and PCMs in, named
+/// by a cache key.
 function projects(t: TestContext): string[] {
-    return t.disk.list("shared/*/store.lock").map((lock) => path.posix.dirname(lock));
+    return t.disk
+        .list("shared/*/store.lock")
+        .map((lock) => path.posix.dirname(lock))
+        .filter((dir) => /^shared\/[0-9a-f]{32}$/.test(dir));
 }
 
 /// Make the project in `dir` look last used 16 days ago: its list of

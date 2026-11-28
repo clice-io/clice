@@ -32,16 +32,20 @@ namespace {
 constexpr llvm::StringRef pcm_version = "7";
 
 /// The entry's PCM, or the PCH it was built over, left the disk: forget it,
-/// so the module's next attempt builds again. Returns whether it had. A PCM
-/// still there is used: importers read it while its node stays clean, which
-/// looks it up nowhere else.
+/// so the module's next attempt builds again. Returns whether it had. Both
+/// still there are used: importers read them while the node stays clean,
+/// which looks them up nowhere else.
 bool drop_evicted(CacheStore& store, PCMEntry& entry) {
     if(entry.path.empty()) {
         return false;
     }
-    if(!store.lookup("pcm", entry.blob) || !fs::exists(entry.path)) {
+    auto present = [&](llvm::StringRef ns, llvm::StringRef blob) {
+        auto path = store.lookup(ns, blob);
+        return path && fs::exists(*path);
+    };
+    if(!present("pcm", entry.blob)) {
         entry.blob.clear();
-    } else if(entry.pch.empty() || fs::exists(entry.pch)) {
+    } else if(entry.pch.empty() || present("pch", entry.pch)) {
         return false;
     }
     entry.path.clear();
@@ -403,7 +407,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
     if(why.empty()) {
         LOG_PERF("cache", "ns=pcm event=hit key={} module={}", pcm_key, module_name);
         // A record read back from the database names no PCH.
-        project.pcms.find(node)->second.pch = std::move(bp.pch);
+        project.pcms.find(node)->second.pch = std::move(pch_blob);
         co_return Result::Success;
     }
     LOG_PERF("cache", "ns=pcm event=miss key={} module={}", pcm_key, module_name);
@@ -488,7 +492,7 @@ async::task<Result> build_module(Project& project, Attempt& attempt, NodeId node
                   std::move(committed.value()),
                   project.read_inputs(*built, before));
     entry.key = std::move(pcm_key);
-    entry.pch = std::move(bp.pch);
+    entry.pch = std::move(pch_blob);
     LOG_DEBUG("The PCM of module {} is stored at {}", module_name, entry.path);
 
     project.mark_precompiled_dirty();
