@@ -191,7 +191,16 @@ void look_at_database(Project& project, WatchedDatabase& database, bool force, C
 
 }  // namespace
 
+/// Whether `dir` is a project's `.clice`, which holds its configuration and
+/// is no project of its own, whatever it holds.
+static bool settings_directory(llvm::StringRef dir) {
+    return path::filename(dir) == ".clice";
+}
+
 bool has_configuration_file(const Spelling& dir) {
+    if(settings_directory(dir)) {
+        return false;
+    }
     auto holds = [&](llvm::StringRef name) {
         return fs::exists(Spelling(name, dir));
     };
@@ -601,6 +610,7 @@ std::vector<CanonicalPath> Project::configuration_dirs(llvm::ArrayRef<Fid> open)
     for(auto file: open) {
         down_to(file_table.resolve(file));
     }
+    std::erase_if(dirs, [](const CanonicalPath& dir) { return settings_directory(dir); });
     ranges::sort(dirs);
     dirs.erase(ranges::unique(dirs).begin(), dirs.end());
     return dirs;
