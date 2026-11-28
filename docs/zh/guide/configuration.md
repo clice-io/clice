@@ -10,13 +10,13 @@ clice 从项目根目录的 `clice.toml` 读取配置；若该文件不存在，
 
 配置仅在服务器启动时读取一次，不支持热重载。当项目的配置文件被保存、创建或删除时，服务器会请求编辑器重启自身：VS Code（通过 socket 连接服务器时除外）以及 Neovim 0.12 及更高版本会自动重启它；其他编辑器会在该文件上显示一条诊断（文件被删除时则显示一条消息），说明修改将在 clice 重启后生效。
 
-clice 无法采纳的配置会视为错误：无法解析的文件、类型错误的值、超出选项可选范围的值、为零的 worker 数量或上限、无法编译或含有反斜杠的模式、未设置的变量、没有任何规则标签声明的 `default_configuration`，以及 clice 1.0 之前旧版布局中的键（错误信息会指明它迁移到了何处）。服务器会将每个问题作为错误诊断显示在该文件上，并在修正后的文件保存之前暂停该项目的所有服务；命令行运行则会逐一指出每个问题及其位置，并以退出码 2 退出。clice 不认识的键只会在文件上产生一条警告，其余配置照常生效。来自 `initializationOptions` 的设置若有错误，会以消息形式提示，且在修正这些设置并重启 clice 之前不会为该项目提供任何服务。
+clice 无法采纳的配置会视为错误：无法解析的文件、类型错误的值、超出选项可选范围的值、为零的 worker 数量或上限、clice 无法读取的 `[cache]` 大小、无法编译或含有反斜杠的模式、未设置的变量、没有任何规则标签声明的 `default_configuration`，以及 clice 1.0 之前旧版布局中的键（错误信息会指明它迁移到了何处）。服务器会将每个问题作为错误诊断显示在该文件上，并在修正后的文件保存之前暂停该项目的所有服务；命令行运行则会逐一指出每个问题及其位置，并以退出码 2 退出。clice 不认识的键只会在文件上产生一条警告，其余配置照常生效。来自 `initializationOptions` 的设置若有错误，会以消息形式提示，且在修正这些设置并重启 clice 之前不会为该项目提供任何服务。
 
 完整配置的 JSON Schema 发布在 [`clice-config.schema.json`](/clice-config.schema.json)；支持按 Schema 校验 TOML 或 JSON 的编辑器均可指向该地址。VS Code 扩展已为 [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml) 将其关联到这两个配置文件，提供补全与校验；在其他环境中，在文件首行写入 `#:schema https://docs.clice.io/clice-config.schema.json` 即可让 taplo（Zed 与 Neovim 配置中常用的 TOML 语言服务器）使用该 Schema。
 
 相对路径和模式均相对于项目根目录解析，无论它们写在 `clice.toml`、`.clice/config.toml` 还是 `initializationOptions` 中。
 
-配置项分为两类。作用于整个服务器的选项——缓存与日志目录、检查磁盘的频率、运行的 worker 数量——是顶层键，或位于 `[workers]` 中。可按文件分别设定的选项——后台索引是否编译该文件、是否解析并索引其函数体、如何为其提供服务、做 Lint 和格式化——是 `[[rules]]` 的字段：若要对所有文件生效，请将其写在最后一条不带 `patterns` 的规则上。各功能配置节（`[hover]`、`[inlay_hints]` 等）存放对应功能的偏好设置。
+配置项分为两类。作用于整个服务器的选项——缓存、PCH 与日志目录、检查磁盘的频率、运行的 worker 数量——是顶层键，或位于 `[cache]` 或 `[workers]` 中。可按文件分别设定的选项——后台索引是否编译该文件、是否解析并索引其函数体、如何为其提供服务、做 Lint 和格式化——是 `[[rules]]` 的字段：若要对所有文件生效，请将其写在最后一条不带 `patterns` 的规则上。各功能配置节（`[hover]`、`[inlay_hints]` 等）存放对应功能的偏好设置。
 
 ## 多个文件夹
 
@@ -32,7 +32,7 @@ clice 无法采纳的配置会视为错误：无法解析的文件、类型错�
 
 ## 变量替换
 
-`cache_dir`、`logging_dir`，以及规则的 `patterns`、`compile_commands`、`default_command`、`append` 和 `remove` 支持以下变量：
+`cache_dir`、`precompiled_dir`、`logging_dir`，以及规则的 `patterns`、`compile_commands`、`default_command`、`append` 和 `remove` 支持以下变量：
 
 | 变量           | 说明                                                                                                              |
 | -------------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -69,7 +69,7 @@ clice 构建的 PCH 和 PCM 与索引分开存放，每个项目各占 `precompi
 | ----------- | -------- | ------ |
 | `cache_dir` | `string` | `""`   |
 
-存放索引的目录，相对于项目根目录。留空默认为 `${workspace}/.clice`，该目录会自动生成 .gitignore 和 CACHEDIR.TAG 标记，将自身排除在版本控制和备份之外（`.clice/config.toml` 对 Git 保持可见；遵循 CACHEDIR.TAG 的备份工具会跳过整个目录）；显式配置的目录不会写入这些标记。该目录必须是 clice 可写入且位于本地磁盘上的目录：若项目的缓存目录无法写入，或位于网络文件系统（NFS、SMB、WSL 下的 Windows 盘符）上，该项目将不提供任何服务，clice 会说明原因。位于所有工作区文件夹之外的文件，其缓存保存在 clice 的临时目录中，并在服务器退出时删除。解析后的最终路径会在启动时打印。
+存放索引的目录，相对于项目根目录。留空默认为 `${workspace}/.clice`，该目录会自动生成 .gitignore 和 CACHEDIR.TAG 标记，将自身排除在版本控制和备份之外（`.clice/config.toml` 对 Git 保持可见；遵循 CACHEDIR.TAG 的备份工具会跳过整个目录）；显式配置的目录不会写入这些标记。该目录必须是 clice 可写入且位于本地磁盘上的目录：若项目的缓存目录无法写入，或位于网络文件系统（NFS、SMB、WSL 下的 Windows 盘符）上，该项目将不提供任何服务，clice 会说明原因。不属于任何项目、单独提供服务的文件，其缓存保存在 clice 的临时目录中，并在服务器退出时删除。解析后的最终路径会在启动时打印。
 
 </div>
 
@@ -79,7 +79,7 @@ clice 构建的 PCH 和 PCM 与索引分开存放，每个项目各占 `precompi
 | ----------------- | -------- | ------ |
 | `precompiled_dir` | `string` | `""`   |
 
-存放 clice 所构建 PCH 和 PCM 的目录，相对于项目根目录；每个项目各自使用其中的一个子目录。留空时默认为用户缓存目录下 clice 的目录：`~/.cache/clice`（如已设置则为 `$XDG_CACHE_HOME/clice`），macOS 上为 `~/Library/Caches/clice`，Windows 上为 `%LOCALAPPDATA%\clice`。连续 15 天未被任何 clice 使用的 PCH 或 PCM 会被删除；连续 15 天未被任何 clice 打开的项目，其子目录也会被删除。若将其设为临时目录，机器重启后这些文件都会被清除，下次需要时再逐一重新构建；在许多 Linux 系统上，`/tmp` 位于内存中。位于所有工作区文件夹之外的文件，其 PCH 和 PCM 保存在 clice 的临时目录中，并在服务器退出时删除。
+存放 clice 所构建 PCH 和 PCM 的目录，相对于项目根目录；每个项目各自使用其中的一个子目录。留空时默认为用户缓存目录下 clice 的目录：`~/.cache/clice`（XDG_CACHE_HOME 为绝对路径时则为 `$XDG_CACHE_HOME/clice`），macOS 上为 `~/Library/Caches/clice`，Windows 上为 `%LOCALAPPDATA%\clice`。连续 15 天未被任何 clice 使用的 PCH 或 PCM 会被删除；连续 15 天未被任何 clice 打开的项目，其子目录也会被删除。若将其设为临时目录，机器重启后这些文件都会被清除，下次需要时再逐一重新构建；在许多 Linux 系统上，`/tmp` 位于内存中。不属于任何项目、单独提供服务的文件，其 PCH 和 PCM 保存在 clice 的临时目录中，并在服务器退出时删除。
 
 </div>
 
@@ -117,7 +117,7 @@ clice 构建的 PCH 和 PCM 与索引分开存放，每个项目各占 `precompi
 | ---------- | -------- | ------ |
 | `pch_size` | `string` | `"4G"` |
 
-项目的 PCH 最多占用的磁盘空间：一个整数后接 K、M、G 或 T，按二进制倍数计算（`4G` 即 4 GiB）。超出该值时删除最久未使用的 PCH，之后打开需要它的文件时再重新构建。
+项目的 PCH 最多占用的磁盘空间：一个大于 0 的整数后接 K、M、G 或 T，按二进制倍数计算（`4G` 即 4 GiB）。超出该值时删除最久未使用的 PCH，之后打开需要它的文件时再重新构建。
 
 </div>
 
