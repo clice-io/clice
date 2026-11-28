@@ -79,7 +79,7 @@ clice 构建的 PCH 和 PCM 与索引分开存放，每个项目各占 `precompi
 | ----------------- | -------- | ------ |
 | `precompiled_dir` | `string` | `""`   |
 
-存放 clice 所构建 PCH 和 PCM 的目录，相对于项目根目录；每个项目各自使用其中的一个子目录。留空时默认为用户缓存目录下 clice 的目录：`~/.cache/clice`（XDG_CACHE_HOME 为绝对路径时则为 `$XDG_CACHE_HOME/clice`），macOS 上为 `~/Library/Caches/clice`，Windows 上为 `%LOCALAPPDATA%\clice`。连续 15 天未被任何 clice 使用的 PCH 或 PCM 会被删除；连续 15 天未被任何 clice 打开的项目，其子目录也会被删除。若将其设为临时目录，机器重启后这些文件都会被清除，下次需要时再逐一重新构建；在许多 Linux 系统上，`/tmp` 位于内存中。不属于任何项目、单独提供服务的文件，其 PCH 和 PCM 保存在 clice 的临时目录中，并在服务器退出时删除。
+存放 clice 所构建 PCH 和 PCM 的目录，相对于项目根目录；每个项目各自使用其中的一个子目录。留空时默认为用户缓存目录下 clice 的目录：`~/.cache/clice`（XDG_CACHE_HOME 为绝对路径时则为 `$XDG_CACHE_HOME/clice`），macOS 上为 `~/Library/Caches/clice`，Windows 上为 `%LOCALAPPDATA%\clice`。连续 15 天未被任何 clice 使用的 PCH 或 PCM 会被删除；连续 15 天未被任何 clice 打开的项目，其子目录也会被删除。若将其设为系统启动时会清空的目录，机器重启后这些文件都会被清除，下次需要时再逐一重新构建；在许多 Linux 系统上，`/tmp` 就是这样的目录，它位于内存中。不属于任何项目、单独提供服务的文件，其 PCH 和 PCM 保存在 clice 的临时目录中，并在服务器退出时删除。
 
 </div>
 

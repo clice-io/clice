@@ -79,7 +79,7 @@ Directory for the index, relative to the project root. Empty defaults to `${work
 | ----------------- | -------- | ------- |
 | `precompiled_dir` | `string` | `""`    |
 
-Directory for the PCHs and PCMs clice builds, relative to the project root; each project keeps them in a subdirectory of its own. Empty defaults to clice's directory in the user's cache directory: `~/.cache/clice` (`$XDG_CACHE_HOME/clice` when it is an absolute path), `~/Library/Caches/clice` on macOS, `%LOCALAPPDATA%\clice` on Windows. A PCH or PCM no clice used for 15 days is removed, and so is the subdirectory of a project no clice opened for 15 days. A temporary directory makes a restart of the machine remove them, each built again when next needed; on many Linux systems `/tmp` is held in memory. A file served apart from every project keeps them in clice's temporary directory, removed when the server exits.
+Directory for the PCHs and PCMs clice builds, relative to the project root; each project keeps them in a subdirectory of its own. Empty defaults to clice's directory in the user's cache directory: `~/.cache/clice` (`$XDG_CACHE_HOME/clice` when it is an absolute path), `~/Library/Caches/clice` on macOS, `%LOCALAPPDATA%\clice` on Windows. A PCH or PCM no clice used for 15 days is removed, and so is the subdirectory of a project no clice opened for 15 days. A directory the system empties at boot makes a restart of the machine remove them, each built again when next needed; on many Linux systems `/tmp` is one, held in memory. A file served apart from every project keeps them in clice's temporary directory, removed when the server exits.
 
 </div>
 
