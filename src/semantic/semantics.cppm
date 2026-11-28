@@ -294,8 +294,8 @@ struct SemanticsOptions {
     /// in_instantiation and handed to `visit` between the root's `enter`
     /// and `leave`. An implicit definition (a lambda's call operator) has no
     /// node of its own: its children are its first nodes. Nor has a class:
-    /// its members' declarations are its first nodes, its bases none, and a
-    /// member that is an instantiated definition is a root of its own.
+    /// the types its members declare are (decls::member_types). A local
+    /// class is no root: its function's walk holds it.
     llvm::ArrayRef<const clang::Decl*> instantiations;
 
     llvm::function_ref<void(const clang::Decl* root)> enter;

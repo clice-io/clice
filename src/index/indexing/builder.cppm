@@ -245,15 +245,15 @@ private:
     bool walks(const clang::Decl* pattern, clang::FileID home);
 
     /// The instantiations to walk: of functions and variables, and of the
-    /// classes whose member declarations write a type by a dependent name;
-    /// the known ones a file holds go to its skipped keys.
+    /// classes but local ones whose member declarations write a type by a
+    /// dependent name; the known ones a file holds go to its skipped keys.
     std::vector<const clang::Decl*> walked_instantiations();
 
-    /// Whether `pattern` writes a type by a dependent name (`typename
-    /// T::type`), in a function's or a variable's whole text, in a class's
-    /// member declarations but its function bodies and nested classes. The
-    /// places it does join dependent_type_names.
-    bool writes_dependent_types(const clang::Decl* pattern);
+    /// Adds to dependent_type_names the places `pattern` writes a type by a
+    /// dependent name (`typename T::type`): a function's or a variable's
+    /// whole text, the types a class's members declare
+    /// (decls::member_types). Whether there is any.
+    bool note_dependent_types(const clang::Decl* pattern);
 
     /// The top-level declarations the focus file does not own that expand a
     /// macro it defines: `#define TYPE isl_space` before `#include
@@ -387,7 +387,7 @@ private:
     /// leave open, and elsewhere only what they say.
     llvm::DenseSet<clang::SourceLocation> dependent_type_names;
 
-    /// Per pattern, writes_dependent_types's answer.
+    /// Per pattern, note_dependent_types's answer.
     llvm::DenseMap<const clang::Decl*, bool> scanned_patterns;
 
     std::vector<BodyName> body_names;

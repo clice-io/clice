@@ -124,8 +124,14 @@ std::vector<const clang::Decl*> Builder::walked_instantiations() {
         // An instantiation runs its template's body, where the template is.
         auto home = home_of(decl);
         const auto* pattern = pattern_of(decl);
-        if(!walks(pattern, home) ||
-           (!writes_dependent_types(pattern) && llvm::isa<clang::CXXRecordDecl>(decl))) {
+        if(!walks(pattern, home)) {
+            continue;
+        }
+        bool writes = note_dependent_types(pattern);
+        // A class's member declarations resolve something only where they
+        // write a type by a dependent name; a local class is its function's.
+        if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl);
+           record && (!writes || record->isLocalClass())) {
             continue;
         }
         auto key = unit.get<EntityTable>().entity(llvm::cast<clang::NamedDecl>(decl));
@@ -138,23 +144,21 @@ std::vector<const clang::Decl*> Builder::walked_instantiations() {
     return walked;
 }
 
-bool Builder::writes_dependent_types(const clang::Decl* pattern) {
+bool Builder::note_dependent_types(const clang::Decl* pattern) {
     if(auto it = scanned_patterns.find(pattern); it != scanned_patterns.end()) {
         return it->second;
     }
     DependentNameFinder finder;
     if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(pattern)) {
-        for(auto* member: record->decls()) {
-            if(const auto* function = member->getAsFunction()) {
-                if(auto* written = function->getTypeSourceInfo()) {
-                    finder.TraverseTypeLoc(written->getTypeLoc());
-                }
-            } else if(!llvm::isa<clang::CXXRecordDecl>(member)) {
-                finder.TraverseDecl(member);
-            }
+        for(auto type: decls::member_types(*record)) {
+            finder.TraverseTypeLoc(type);
         }
     } else {
-        finder.TraverseDecl(const_cast<clang::Decl*>(pattern));
+        // An instantiation can take its signature from a declaration before
+        // the definition.
+        for(auto* redecl: pattern->redecls()) {
+            finder.TraverseDecl(redecl);
+        }
     }
     bool writes = !finder.found.empty();
     dependent_type_names.insert(finder.found.begin(), finder.found.end());
@@ -277,6 +281,10 @@ void Builder::project_instantiations(llvm::ArrayRef<const clang::Decl*> walked) 
                  instantiation_entries = &entries;
                  instantiated_function = llvm::dyn_cast<clang::FunctionDecl>(root);
                  instantiated_class = llvm::isa<clang::CXXRecordDecl>(root);
+                 // A class's walk passes no declaration to see from.
+                 if(instantiated_class) {
+                     place_resolver = nullptr;
+                 }
              },
          .leave =
              [&](const clang::Decl* root) {
