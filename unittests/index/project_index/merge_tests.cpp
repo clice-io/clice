@@ -852,7 +852,7 @@ void a() {}
 }
 
 ZEST_CASE(GoneRunKeysCompacted) {
-    // Box<A>::show resolves nothing: box.h holds its key alone.
+    // Box<A> and Box<A>::show resolve nothing: box.h holds their keys alone.
     tmp.touch("box.h", R"(#pragma once
 template <typename T>
 struct Box {
@@ -862,7 +862,7 @@ struct Box {
     ZASSERT(index("a.cpp"));
     ZASSERT(box());
     ZEXPECT(box()->resolutions().empty());
-    ZEXPECT(box()->keys().size() == 1u);
+    ZEXPECT(box()->keys().size() == 2u);
 
     // a.cpp's next run instantiates Box<A> no more: nothing of box.h's
     // instantiation shard holds, and the save retires it.

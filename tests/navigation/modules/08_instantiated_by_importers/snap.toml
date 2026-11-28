@@ -1,0 +1,8 @@
+["instantiated by an importer".member_alias]
+definition = ["text.cppm │ using ⟦view⟧ = Narrow;", "text.cppm │ using ⟦view⟧ = Wide;"]
+
+["instantiated by an importer".nested]
+definition = ["text.cppm │ using ⟦unit⟧ = char;", "text.cppm │ using ⟦unit⟧ = char8_t;"]
+
+["instantiated by an importer".field]
+definition = ["text.cppm │ using ⟦view⟧ = Narrow;", "text.cppm │ using ⟦view⟧ = Wide;"]

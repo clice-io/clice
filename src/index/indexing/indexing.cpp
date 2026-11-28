@@ -392,9 +392,9 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
     enclosing_memo.resize(std::min<std::size_t>(enclosing_memo.size(), i));
     top_level_memo.resize(std::min<std::size_t>(top_level_memo.size(), i));
     // What an instantiation resolves are the calls and member accesses
-    // its body's expressions and constructor initializers make and the
-    // types its placeholders deduce; it declares nothing its template does
-    // not, and the types it substitutes are no references.
+    // its expressions and constructor initializers make, the types its
+    // dependent names come to name and the types its placeholders deduce;
+    // it declares nothing its template does not.
     const auto* stmt = semantics.node(i).node.get<clang::Stmt>();
     expression_begin = stmt ? stmt->getBeginLoc() : clang::SourceLocation();
     see_from(semantics, i);
@@ -405,7 +405,8 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
     if(!place_resolver && stmt && llvm::isa<clang::OverloadExpr>(stmt)) {
         return;
     }
-    if(instantiation_entries && !stmt && !semantics.node(i).node.get<clang::CXXCtorInitializer>()) {
+    if(instantiation_entries && !stmt && !semantics.node(i).node.get<clang::CXXCtorInitializer>() &&
+       !semantics.node(i).node.get<clang::TypeLoc>()) {
         project_placeholder(semantics, i);
         if(const auto* value = semantics.node(i).node.get<clang::ValueDecl>()) {
             add_deduced_type(value);
@@ -413,6 +414,11 @@ void Builder::project_node(const Semantics& semantics, std::uint32_t i) {
         return;
     }
     for(auto& occurrence: resolve_occurrences(semantics, i, place_resolver)) {
+        // The type a construction names gives way to the constructor it
+        // calls, which the construction records.
+        if(instantiation_entries && occurrence.outranked) {
+            continue;
+        }
         auto name = add_name(occurrence);
         if(instantiation_entries || occurrence.later_piece) {
             continue;

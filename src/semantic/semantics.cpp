@@ -530,11 +530,7 @@ private:
         if(options.instantiations.empty()) {
             return;
         }
-        for(const auto* decl: unit.instantiations()) {
-            if(!llvm::isa<clang::CXXRecordDecl>(decl)) {
-                root_set.insert(decl);
-            }
-        }
+        root_set.insert(unit.instantiations().begin(), unit.instantiations().end());
         // An implicit definition skips the head that flags its nodes.
         instantiation_depth += 1;
         for(const auto* decl: options.instantiations) {
@@ -543,7 +539,15 @@ private:
             }
             visiting_root = decl;
             options.enter(decl);
-            TraverseDecl(const_cast<clang::Decl*>(decl));
+            if(const auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+                for(auto* member: record->decls()) {
+                    if(!canIgnoreChildDeclWhileTraversingDeclContext(member)) {
+                        TraverseDecl(member);
+                    }
+                }
+            } else {
+                TraverseDecl(const_cast<clang::Decl*>(decl));
+            }
             options.leave(decl);
         }
         instantiation_depth -= 1;

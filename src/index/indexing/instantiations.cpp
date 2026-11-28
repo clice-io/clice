@@ -93,9 +93,6 @@ bool Builder::walks(const clang::Decl* pattern, clang::FileID home) {
 std::vector<const clang::Decl*> Builder::walked_instantiations() {
     std::vector<const clang::Decl*> walked;
     for(const auto* decl: unit.instantiations()) {
-        if(llvm::isa<clang::CXXRecordDecl>(decl)) {
-            continue;
-        }
         // An instantiation runs its template's body, where the template is.
         auto home = home_of(decl);
         if(!walks(pattern_of(decl), home)) {

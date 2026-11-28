@@ -3227,6 +3227,32 @@ ZEST_CASE(EachInstantiationItsResolution) {
     ZEXPECT(resolved().size() == 4u);
 }
 
+ZEST_CASE(DependentTypesResolved) {
+    // A dependent type name names what each instantiation resolves it to, in
+    // a function's body and in a class's members; a type the template writes
+    // is its written entry.
+    build(R"(
+        struct A { using type = int; };
+        template <typename T>
+        void run() { typename T::type local{}; }
+        template <typename T>
+        struct Box {
+            using alias = typename T::type;
+            typename T::type field;
+            void take(typename T::type value);
+            A held;
+        };
+        void use() { run<A>(); }
+        template struct Box<A>;
+    )");
+    ZEXPECT(resolved() == std::vector<Resolved>{
+                              {"type", Reference, "type"},
+                              {"type", Reference, "type"},
+                              {"type", Reference, "type"},
+                              {"type", Reference, "type"},
+    });
+}
+
 ZEST_CASE(ConfirmedGuessRecorded) {
     // The written code only guesses the dependent name; the instantiation
     // resolving it alike is recorded all the same.
