@@ -68,7 +68,7 @@ The build configuration to fall back on when neither `--configuration` nor a per
 | ----------- | -------- | ------- |
 | `cache_dir` | `string` | `""`    |
 
-Directory for the unified on-disk cache (PCHs, PCMs and the index), relative to the project root. Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. It must be a directory clice can write on a local disk: a project whose cache directory cannot be written or is on a network file system (NFS, SMB, a Windows drive under WSL) serves nothing, and clice says why. Files outside every workspace folder keep theirs in clice's temporary directory, removed when the server exits. The resolved path is printed at startup.
+Directory for the unified on-disk cache (PCHs, PCMs and the index), relative to the project root. Empty defaults to `${workspace}/.clice`, which keeps itself out of version control and backups via generated .gitignore and CACHEDIR.TAG markers (a `.clice/config.toml` stays visible to Git, a `.clice/local.toml` does not; backup tools honoring CACHEDIR.TAG skip the whole directory); an explicitly configured directory is never marked. A cache directory serves one project: one set for every project, in the user's file or the editor's settings, takes `${workspace_id}` to give each its own. It must be a directory clice can write on a local disk: a project whose cache directory cannot be written or is on a network file system (NFS, SMB, a Windows drive under WSL) serves nothing, and clice says why. Files outside every workspace folder keep theirs in clice's temporary directory, removed when the server exits. The resolved path is printed at startup.
 
 </div>
 
@@ -686,7 +686,7 @@ Build configuration tag. A tagged rule applies only while that configuration is 
 | ------------------ | ----------------- | ------- |
 | `compile_commands` | `array of string` | `[]`    |
 
-Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to the project root. All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the project's databases. When no rule declares a source, every compile_commands.json in the project root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened; a directory below the root with a clice.toml or .clice/config.toml of its own is another project, and none in it loads.
+Compilation databases, in priority order: a compile_commands.json or a directory containing one, relative to the project root. All of them load, and every entry applies to its own file whatever the patterns say; the patterns and the order decide which entry a file present in several databases gets by default. A rule without patterns names the project's databases. When no rule declares a source, every compile_commands.json in the project root and its immediate subdirectories loads, and so do the ones in the directories above a file when it is opened; a directory below the root with a clice.toml, .clice/config.toml or .clice/local.toml of its own is another project, and none in it loads.
 
 </div>
 
@@ -716,7 +716,7 @@ The compile command for matching files without a database entry, without the sou
 | -------- | ----------------- | ------- |
 | `append` | `array of string` | `[]`    |
 
-Compilation flags appended for matching files, e.g. `["-std=c++20", "-DNDEBUG"]`. The flags of every matching rule apply, in declaration order.
+Compilation flags appended for matching files, e.g. `["-std=c++20", "-DNDEBUG"]`. The flags of every matching rule apply: those of the user's file first, then the project's, then its local file's, each file's in declaration order, so that a more specific file's flags come last.
 
 </div>
 

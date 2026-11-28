@@ -970,6 +970,10 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
         auto reason = taken_here()
                           ? std::string("already serves another project")
                           : std::format("serves the project at {}", cache_dir_owner(requested));
+        // One the user's file or the editor sets is every project's.
+        auto* writer = setting({"cache_dir"}, false);
+        bool shared = (options.overlay && sets(*options.overlay, {"cache_dir"})) ||
+                      (writer && writer->layer == SettingsLayer::User);
         for(auto& fallback: {own_cache_dir, std::string()}) {
             loaded.settings = layered;
             loaded.settings.cache_dir = fallback;
@@ -994,13 +998,14 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
                     shown),
             });
         } else {
-            LOG_GUIDANCE(
-                "Cache directory {} {}; {} keeps its cache in {} (a cache_dir set for every "
-                "project gives each a directory of its own with ${{workspace_id}})",
-                requested,
-                reason,
-                shown,
-                cache_dir);
+            LOG_GUIDANCE("Cache directory {} {}; {} keeps its cache in {}{}",
+                         requested,
+                         reason,
+                         shown,
+                         cache_dir,
+                         shared ? " (a cache_dir set for every project gives each a directory "
+                                  "of its own with ${workspace_id})"
+                                : "");
         }
     }
     for(auto& problem: problems) {
