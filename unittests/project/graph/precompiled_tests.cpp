@@ -215,6 +215,7 @@ ZEST_CASE(DeplessPcmDropped) {
     open_store(tmp, f.project);
     f.load();
     ZASSERT(f.project.pcms.empty());
+    ZEXPECT(!f.project.precompiled_store->find("pcm", "k"));
 }
 
 ZEST_CASE(SelfContainmentPersisted) {

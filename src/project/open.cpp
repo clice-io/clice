@@ -259,7 +259,8 @@ bool open_precompiled_store(Project& project, bool read_only, Project::Opened& o
     return true;
 }
 
-/// Open the cache store and the index database as `options` say; why the
+/// Open the cache store and the index database, and for a run compiling the
+/// build's members the store of its PCHs and PCMs, as `options` say; why the
 /// index cannot be read, for a run that reads it, or the cache cannot be
 /// used, for a run building into it, in `opened`.
 void open_store(Project& project, const Project::OpenOptions& options, Project::Opened& opened) {

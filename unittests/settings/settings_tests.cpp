@@ -314,6 +314,7 @@ ZEST_CASE(BornValidDefaults) {
 }
 
 ZEST_CASE(FinalizeDerivesPaths) {
+    ScopedEnv real("CLICE_TEST_PRECOMPILED_DIR", std::nullopt);
     Settings settings;
     CanonicalPath root(Spelling::absolute("/workspace"));
     settings.finalize(root);
@@ -328,6 +329,15 @@ ZEST_CASE(FinalizeDerivesPaths) {
     ZEXPECT(llvm::StringRef(settings.precompiled_dir).ends_with("clice"));
     ZEXPECT(settings.cache.pch_bytes == 4ull << 30);
     ZEXPECT(settings.cache.pcm_bytes == 8ull << 30);
+}
+
+ZEST_CASE(PrecompiledDirOfTests) {
+    // A test keeps its PCHs and PCMs with its cache.
+    ScopedEnv test("CLICE_TEST_PRECOMPILED_DIR", "precompiled");
+    Settings settings;
+    CanonicalPath root(Spelling::absolute("/workspace"));
+    settings.finalize(root);
+    ZEXPECT(settings.precompiled_dir == path::join(settings.cache_dir, "precompiled"));
 }
 
 ZEST_CASE(PrecompiledDirAnchors) {

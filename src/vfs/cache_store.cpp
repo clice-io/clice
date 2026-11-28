@@ -279,7 +279,7 @@ std::expected<CacheStore, std::error_code> CacheStore::open(llvm::StringRef dir,
     }
 
     // Only the parent may exist before the lock is held: it holds the lock
-    // file and is never removed.
+    // file, and goes only with the whole store (remove_unused).
     if(auto made = fs::create_directories(parent); !made) {
         return std::unexpected(made.error());
     }
@@ -516,7 +516,8 @@ void CacheStore::register_namespace(CacheNamespace ns) {
         }
     }
 
-    // Enforce the budget immediately in case it shrank since the last run.
+    // Enforce the budget immediately in case it shrank since the last run,
+    // and remove what went unused meanwhile.
     state->evict_locked(ns_state, "");
 }
 

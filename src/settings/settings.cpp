@@ -183,10 +183,9 @@ static std::optional<std::uint64_t> parse_size(llvm::StringRef text) {
 
 /// Where `precompiled_dir` defaults to: `clice` in the user's cache
 /// directory, empty when there is none. Test hook: CLICE_TEST_PRECOMPILED_DIR
-/// names it instead, relative to the cache directory, so that a test keeps
-/// them with its cache, which goes with its workspace (none without a cache
-/// directory: a project without a folder keeps them in clice's temporary
-/// directory).
+/// names it instead, relative to the cache directory, so that a test's
+/// PCHs and PCMs go with its cache (none without a cache directory: a
+/// project without a folder keeps them in clice's temporary directory).
 static std::string default_precompiled_dir(llvm::StringRef cache_dir) {
     if(auto test = env_string("CLICE_TEST_PRECOMPILED_DIR")) {
         return cache_dir.empty() ? std::string() : path::join(cache_dir, *test);

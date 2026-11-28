@@ -309,7 +309,7 @@ struct Project {
 
     /// The PCHs the cache holds, keyed by content key (preamble text +
     /// canonical flags), so files with identical preambles share one PCH:
-    /// a mirror of the cache store's state, which names their paths, with
+    /// a mirror of the precompiled store's state, which names their paths, with
     /// what failed of building and reading them.
     llvm::StringMap<PCHEntry> pchs;
 
@@ -1268,7 +1268,7 @@ struct Project {
     /// (on_index_changed).
     void take_report(const index::IndexReport& report);
 
-    /// Persist the index and the cache store's manifest as they stand, a
+    /// Persist the index and the precompiled store's manifest as they stand, a
     /// pass running or not: a cold pass covers the whole project, and a
     /// process killed mid-pass loses only what merged since the last
     /// checkpoint; then forget the PCHs the store evicted.
@@ -1343,7 +1343,7 @@ struct Project {
     std::string serialize_precompiled_records();
 
     /// Restore the precompiled records a database held: the PCH and PCM entries
-    /// whose blobs the cache store still has, and the self-containment checks.
+    /// whose blobs the precompiled store still has, and the self-containment checks.
     void load_precompiled_records(llvm::StringRef bytes);
 };
 

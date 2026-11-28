@@ -28,7 +28,7 @@ test("cache gone with the server", async (t) => {
     expect(await s.errors("big.cpp")).toEqual([]);
     const dir = cache(s);
     expect((await s.stats()).pchCacheEntries).toBe(1);
-    expect(fs.existsSync(dir)).toBe(true);
+    expect(fs.globSync("precompiled/*/*/pch/*.pch", { cwd: dir })).toHaveLength(1);
     await s.stop();
     expect(fs.existsSync(dir)).toBe(false);
 });

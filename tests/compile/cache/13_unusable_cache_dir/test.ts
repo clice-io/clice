@@ -11,6 +11,14 @@ test("server", { errors: ["Cannot create the log directory"] }, async (t) => {
     await t.show("guidance", await s.guidance());
 });
 
+// The directory for PCHs and PCMs cannot be created either: the same.
+test("precompiled directory", async (t) => {
+    t.disk.write("blocked", "not a directory\n");
+    const s = await t.start({ config: { precompiled_dir: "blocked" } });
+    expect(await s.errors("main.cpp")).toEqual([]);
+    await t.show("guidance", await s.guidance());
+});
+
 // A lint run builds its preambles into the cache too: it stops at once.
 test(
     "lint",

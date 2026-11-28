@@ -198,7 +198,8 @@ public:
 
     /// Finish a two-phase write: fsync the tmp file and atomically rename
     /// it to its final path.  Triggers LRU eviction when the namespace
-    /// exceeds its budget.  Returns the final blob path.
+    /// exceeds its budget, and removes the entries unused for long.
+    /// Returns the final blob path.
     ///
     /// On a rename collision (Windows, destination open) the existing blob
     /// is kept only when verified byte-identical to the new one; otherwise
@@ -216,7 +217,7 @@ public:
     /// for the stats endpoint; scans the directory, so not free.
     std::size_t pending_tmp_files() const;
 
-    /// A blob the LRU budget evicted, reported so owners of derived
+    /// A blob the LRU budget evicted, or one unused for long, reported so owners of derived
     /// in-memory state (e.g. the PCH cache's entry metadata) can drop it:
     /// eviction happens inside commit — possibly on a worker thread — so
     /// the store records instead of calling back, and the owner drains on
