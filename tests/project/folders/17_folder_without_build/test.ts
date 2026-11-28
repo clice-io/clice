@@ -1,3 +1,5 @@
+import * as path from "node:path";
+
 import { expect } from "vitest";
 import { test, type TestContext } from "@clice/tools/testing";
 
@@ -57,6 +59,18 @@ test("the editor's default command opens no folder", async (t) => {
     const s = await t.start({
         folders: ["alpha", "plain"],
         config: { rules: [{ default_command: "clang++ -std=c++20" }] },
+    });
+    await s.indexed();
+    await s.stop();
+    expect(exists(t, "plain/.clice")).toBe(false);
+});
+
+// A rule of the user's file applies to every folder too.
+test("the user's default command opens no folder", async (t) => {
+    t.disk.write("user/clice/config.toml", '[[rules]]\ndefault_command = "clang++ -std=c++20"\n');
+    const s = await t.start({
+        folders: ["alpha", "plain"],
+        env: { XDG_CONFIG_HOME: path.join(t.root, "user") },
     });
     await s.indexed();
     await s.stop();

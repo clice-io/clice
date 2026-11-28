@@ -300,7 +300,12 @@ bool MasterServer::test_hooks() const {
 }
 
 feature::SemanticTokensOptions MasterServer::startup_token_options() const {
-    return load_settings(project_roots().front(), {.overlay = init_options, .strict = false})
+    return load_settings(project_roots().front(),
+                         {
+                             .overlay = init_options,
+                             .strict = false,
+                             .user_file = user_settings.path,
+                         })
         .settings.semantic_tokens;
 }
 

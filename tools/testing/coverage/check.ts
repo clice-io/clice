@@ -54,20 +54,28 @@ export async function surface(clice: string): Promise<string[]> {
             continue;
         }
         // A flag every operation of a subcommand takes is the subcommand's;
-        // an operation taking no flag of its own (`inspect config-schema`)
-        // has no say.
+        // an operation taking no flag but those all of them take
+        // (`inspect config-schema`, `inspect config`) has no say.
         const bySubcommand = new Map<string, string[]>();
         for (const owner of owners) {
             const subcommand = owner.split(" ")[0] ?? owner;
             bySubcommand.set(subcommand, [...(bySubcommand.get(subcommand) ?? []), owner]);
         }
         for (const [subcommand, held] of bySubcommand) {
-            const operations = commands.filter(
+            const own = (command: string): string[] =>
+                (byCommand.get(command) ?? []).filter((each) => !everywhere.has(each));
+            const candidates = commands.filter(
                 (command) =>
                     (command === subcommand || command.startsWith(`${subcommand} `)) &&
-                    (byCommand.get(command) ?? []).some((each) => !everywhere.has(each)),
+                    own(command).length > 0,
             );
-            if (held.length === operations.length) {
+            const common = candidates
+                .map((command) => new Set(own(command)))
+                .reduce((all, each) => new Set([...all].filter((name) => each.has(name))));
+            const operations = candidates.filter((command) =>
+                own(command).some((each) => !common.has(each)),
+            );
+            if (operations.every((command) => held.includes(command))) {
                 flagItems.push(`flag ${subcommand} ${flag}`);
             } else {
                 flagItems.push(...held.map((owner) => `flag ${owner} ${flag}`));

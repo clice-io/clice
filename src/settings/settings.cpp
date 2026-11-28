@@ -34,8 +34,9 @@ static std::expected<std::string, std::string> variable(llvm::StringRef name,
             "the shell's environment; VS Code passes one through `clice.serverEnv`)",
             env));
     }
-    return std::unexpected(
-        std::format("${{{}}} names nothing: write ${{workspace}} or ${{env:NAME}}", name));
+    return std::unexpected(std::format(
+        "${{{}}} names nothing: write ${{workspace}}, ${{workspace_id}} or ${{env:NAME}}",
+        name));
 }
 
 /// `value` with its variables substituted, each value escaped by `escape`
@@ -247,6 +248,12 @@ std::vector<codec::rich_error> Settings::finalize(CanonicalRef project_root) {
         auto substituted = substitute(dir, root);
         if(!substituted) {
             problem(std::move(substituted.error()), {name.str()});
+            dir.clear();
+            return;
+        }
+        // A directory of the project's own, set for every project, is none
+        // without a folder.
+        if(root.empty() && llvm::StringRef(*substituted).contains("${workspace")) {
             dir.clear();
             return;
         }
@@ -701,7 +708,9 @@ std::string user_settings_file() {
         dir = path::join(dir, ".config");
 #endif
     }
-    return path::join(dir, "clice", "config.toml");
+    auto file = path::join(dir, "clice", "config.toml");
+    path::canonicalize(file);
+    return file;
 }
 
 namespace {
@@ -908,9 +917,9 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
     }
 
     // The highest file setting the value at `path`; null for none.
-    auto setting = [&](const SettingPath& path, bool own) -> const DecodedFile* {
+    auto setting = [&](const SettingPath& path) -> const DecodedFile* {
         for(auto& file: views::reverse(decoded_files)) {
-            if((!own || file.layer != SettingsLayer::User) && node_at(file.document, path)) {
+            if(node_at(file.document, path)) {
                 return &file;
             }
         }
@@ -921,10 +930,10 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
     // highest layer setting it.
     auto report = [&](Severity severity, codec::rich_error error) {
         auto& path = error.path;
-        auto* key = path.empty() ? nullptr : std::get_if<std::string>(&path.front());
+        auto* key = std::get_if<std::string>(&path.front());
         bool overlay = false;
         const DecodedFile* file = nullptr;
-        if(key && *key == "rules" && path.size() >= 2) {
+        if(key && *key == "rules") {
             auto index = std::get<std::size_t>(path[1]);
             auto layer = layered.rules[index].layer;
             path[1] = index_in_layer(layered.rules, index);
@@ -935,7 +944,7 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
         } else if(options.overlay && sets(*options.overlay, path)) {
             overlay = true;
         } else {
-            file = setting(path, false);
+            file = setting(path);
         }
         if(overlay) {
             issues.push_back(
@@ -971,7 +980,7 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
                           ? std::string("already serves another project")
                           : std::format("serves the project at {}", cache_dir_owner(requested));
         // One the user's file or the editor sets is every project's.
-        auto* writer = setting({"cache_dir"}, false);
+        auto* writer = setting({"cache_dir"});
         bool shared = (options.overlay && sets(*options.overlay, {"cache_dir"})) ||
                       (writer && writer->layer == SettingsLayer::User);
         for(auto& fallback: {own_cache_dir, std::string()}) {
@@ -1033,7 +1042,7 @@ LoadedSettings load_settings(CanonicalRef root, const LoadSettingsOptions& optio
         if(!own && options.overlay && sets(*options.overlay, path)) {
             return options.overlay_name.str();
         }
-        auto* file = setting(path, own);
+        auto* file = setting(path);
         return file ? std::format("{}:{}",
                                   file->path,
                                   node_at(file->document, path)->source().begin.line)

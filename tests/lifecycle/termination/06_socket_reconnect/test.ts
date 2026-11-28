@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import * as net from "node:net";
 import { test } from "@clice/tools/testing";
+import { withoutUserSettings } from "@clice/tools/process_gate";
 import { cliceExecutable } from "@clice/tools/session";
 
 // A socket server outlives its editor's connection: an editor connecting
@@ -75,6 +76,7 @@ test("an editor connecting again shuts the server down", async (t) => {
     const port = await freePort();
     const server = spawn(cliceExecutable(), ["serve", "--mode=socket", `--port=${port}`], {
         cwd: t.root,
+        env: withoutUserSettings(process.env),
         stdio: ["ignore", "ignore", "pipe"],
     });
     const exited = once(server, "exit");

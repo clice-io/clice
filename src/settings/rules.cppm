@@ -12,7 +12,7 @@ namespace clice {
 /// The rules-applied edits of a set of files: every matching active rule
 /// once, its removes before its appends, layer by layer from the lowest
 /// (SettingsLayer), each layer's in declaration order; the toolchain query
-/// as the first of them to say decides.
+/// as the first of them in the rules' order (Rules) to say decides.
 struct Edits {
     std::vector<CommandEdit> edits;
     bool query_toolchain = true;
@@ -41,12 +41,14 @@ struct SourceWalk {
     CanonicalPath cache_dir;
 };
 
-/// The rules of clice.toml under one configuration: which a file matches,
-/// how they edit its command, whether it is indexed, linted and formatted,
-/// which default command covers it, which databases it compiles from in
-/// what order, and which index database the configuration's build reads —
-/// the one place that knows rule priority. A view of the settings it was
-/// made over, which outlive it unchanged.
+/// The rules of the configuration files under one configuration: which a
+/// file matches, how they edit its command, whether it is indexed, linted
+/// and formatted, which default command covers it, which databases it
+/// compiles from in what order, and which index database the
+/// configuration's build reads — the one place that knows rule priority.
+/// Their order is the settings' (Settings::rules): a higher layer's first,
+/// each layer's in declaration order. A view of the settings it was made
+/// over, which outlive it unchanged.
 class Rules {
 public:
     /// The rules of `settings` under `configuration` — a declared tag, or
@@ -60,7 +62,7 @@ public:
         return tag;
     }
 
-    /// The active rules matching `path`, in declaration order.
+    /// The active rules matching `path`, in order.
     llvm::SmallVector<const CompiledRule*> matching(const RulePath& path) const;
 
     /// Whether an active rule declares a command source — a database or a
@@ -69,13 +71,13 @@ public:
         return declares;
     }
 
-    /// The databases the active rules declare, in declaration order, each
+    /// The databases the active rules declare, in order, each
     /// once. Empty when no rule declares one — discovery's cue.
     llvm::SmallVector<Spelling> declared_databases() const;
 
     /// The databases `path` compiles from as the rules declare them, in
     /// priority order: those of the active rules matching it, then those of
-    /// the other active rules, each in declaration order.
+    /// the other active rules, each in order.
     llvm::SmallVector<const Spelling*> database_order(const RulePath& path) const;
 
     /// The databases discovery leaves to the rules: those of the active
@@ -176,7 +178,7 @@ private:
 
     std::string tag;
 
-    /// The rules active under the configuration, in declaration order.
+    /// The rules active under the configuration, in order.
     llvm::SmallVector<const CompiledRule*> active;
 
     bool declares = false;

@@ -20,23 +20,19 @@ export const SANITIZER_MARKERS = [
 
 export const ANOMALY_PATTERN = /\[anomaly:([A-Za-z]+)\]/;
 
-/// Where the servers under test look for the user's configuration file: a
-/// directory holding none, so that the settings of the machine running the
-/// tests never reach them.
-const NO_USER_SETTINGS = path.join(os.tmpdir(), "clice-tests-no-user-settings");
+/// `env` for a clice under test: its XDG_CONFIG_HOME names a directory
+/// holding no user's configuration file, so that the settings of the
+/// machine running the tests never reach it.
+export function withoutUserSettings(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+    return { ...env, XDG_CONFIG_HOME: path.join(os.tmpdir(), "clice-tests-no-user-settings") };
+}
 
-/// The environment servers under test run in: every freshness answer given
-/// without a look at the disk is checked against one, a contradiction
-/// being an anomaly the gates catch, the test hooks are on (the
-/// clice/internal requests the tests wait through), and no user's
-/// configuration file is read.
+/// The environment servers under test run in (withoutUserSettings): every
+/// freshness answer given without a look at the disk is checked against
+/// one, a contradiction being an anomaly the gates catch, and the test
+/// hooks are on (the clice/internal requests the tests wait through).
 export function serverEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-    return {
-        ...base,
-        CLICE_SHADOW_FRESHNESS: "1",
-        CLICE_TEST_HOOKS: "1",
-        XDG_CONFIG_HOME: NO_USER_SETTINGS,
-    };
+    return withoutUserSettings({ ...base, CLICE_SHADOW_FRESHNESS: "1", CLICE_TEST_HOOKS: "1" });
 }
 
 /// A session directory's name: when its process started and its pid,

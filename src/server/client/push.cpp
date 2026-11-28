@@ -366,19 +366,19 @@ void LSPClient::publish_settings_diagnostics() {
         by_file.try_emplace(file.getKey());
     }
     published_settings_files.clear();
-    // The user's file is every project's: its problems are listed once.
-    llvm::StringSet<> listed;
+    // The user's file is every project's: a problem several projects find
+    // in it is listed once.
+    std::set<std::tuple<llvm::StringRef, std::uint32_t, std::uint32_t, llvm::StringRef>> listed;
     for(auto& project: server.projects) {
         for(auto& file: project->settings_files) {
             by_file.try_emplace(file.path);
             published_settings_files.insert(file.path);
         }
-        llvm::StringSet<> listing;
         for(auto& issue: project->settings_issues) {
-            if(issue.file.empty() || listed.contains(issue.file)) {
+            if(issue.file.empty() ||
+               !listed.emplace(issue.file, issue.line, issue.column, issue.message).second) {
                 continue;
             }
-            listing.insert(issue.file);
             // Issue positions are 1-based, their columns counted in code
             // points. An unknown position (0) maps to the file top.
             auto positions = text_of(issue.file).positions();
@@ -395,9 +395,6 @@ void LSPClient::publish_settings_diagnostics() {
                              : DiagnosticLevel::Warning,
                 .message = issue.message,
             });
-        }
-        for(auto& file: listing) {
-            listed.insert(file.getKey());
         }
     }
     // A client that restarts the server when asked is restarting it.

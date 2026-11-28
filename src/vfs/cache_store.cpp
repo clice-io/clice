@@ -282,9 +282,9 @@ void CacheStore::write_ignore_markers(llvm::StringRef root) {
     // The root ignores itself, so the project-local default never
     // pollutes the repository: `*` covers git and everything honoring
     // gitignore (ripgrep, editor search), except `config.toml` — the root
-    // doubles as the `.clice/config.toml` location, and user configuration
-    // must stay visible, while a developer's own `.clice/local.toml` stays
-    // out with the rest. CACHEDIR.TAG (the standard marker backup and
+    // doubles as the `.clice/config.toml` location, and the project's
+    // configuration must stay visible, while a developer's own
+    // `.clice/local.toml` stays out with the rest. CACHEDIR.TAG (the standard marker backup and
     // scanning tools skip) sits at the root too: it must cover generated
     // content outside the store (logs), and
     // root-level files are safe from open()'s layout removal, which only

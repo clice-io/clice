@@ -133,7 +133,8 @@ The `[semantic_tokens]` section of `clice.toml`, or the same keys in the
 editor's `initializationOptions`, holds the switch for lexical tokens and the
 two renaming tables. The names are announced once, when the editor connects:
 they come from the editor's settings and the first workspace folder's
-`clice.toml`, and a change takes a server restart. See the
+configuration files, the user's among them, and a change takes a server
+restart. See the
 [configuration reference](../guide/configuration.md#semantic-tokens) for details.
 
 <!-- BEGIN GENERATED ITEMS: semantic_tokens/options -->

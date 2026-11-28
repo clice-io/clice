@@ -4,7 +4,7 @@ clice needs no configuration once it finds a compilation database (see [Project 
 
 ## The Configuration File
 
-clice reads `clice.toml` in the project root, or `.clice/config.toml` when there is none, once, when the server starts; saving the file makes the server ask the editor to restart it. Settings for every project — the workers, the features' preferences, rules for the paths every project shares — go in the user's file, `~/.config/clice/config.toml` (`%APPDATA%\clice\config.toml` on Windows), under the project's; a developer's own settings for one project go in `.clice/local.toml`, over the project's, which Git does not see. An editor can send settings too, in `initializationOptions`, and those take the place of the same settings in the files. `clice inspect config` shows which files a project reads and where each setting it changes comes from.
+clice reads `clice.toml` in the project root, or `.clice/config.toml` when there is none, once, when the server starts; saving the file makes the server ask the editor to restart it. Settings for every project — the workers, the features' preferences, rules for the files every project has — go in the user's file, `clice/config.toml` in `$XDG_CONFIG_HOME` where it is set, else in `~/.config` (`%APPDATA%` on Windows), under the project's; a rule there naming databases or a default command turns the discovery of databases off in every project, so those stay in the project's files. A developer's own settings for one project go in `.clice/local.toml`, over the project's, which Git does not see while the cache directory is the default one, `.clice`. An editor can send settings too, in `initializationOptions`, and those take the place of the same settings in the files. `clice inspect config` shows which files a project reads and where each setting it changes comes from.
 
 <!-- BEGIN GENERATED ITEMS: config/loading -->
 
@@ -70,7 +70,7 @@ tests/config/layers/04_local_file
 
 <!-- END GENERATED ITEMS -->
 
-Most of what follows is written as rules. A `[[rules]]` entry names files by `patterns`, relative to the project root, and sets fields for them. Every rule matching a file applies, in order: their `append` and `remove` add up, and each other field is decided by the first rule setting it, so a rule for some files goes before a rule for all of them, and a rule without `patterns` goes last. `clice command <file>` shows what the rules make of a file: each command its databases list for it, with the rules' edits, and the value of each per-file setting with the rule deciding it. In VS Code, Show Compile Command shows the command an open file compiles with, wherever it comes from.
+Most of what follows is written as rules. A `[[rules]]` entry names files by `patterns`, relative to the project root, and sets fields for them. Every rule matching a file applies, in order: their `append` and `remove` add up, and each other field is decided by the first rule setting it, so a rule for some files goes before a rule for all of them, and a rule without `patterns` goes last. Across files, the local file's rules come first, then the project's, then the user's, while their `append` and `remove` edit the command the other way round, the user's first: the more specific file decides, and its flags come last. `clice command <file>` shows what the rules make of a file: each command its databases list for it, with the rules' edits, and the value of each per-file setting with the rule deciding it. In VS Code, Show Compile Command shows the command an open file compiles with, wherever it comes from.
 
 ## Compile Commands
 
@@ -304,21 +304,21 @@ A unity build lists only the generated files including the sources, so clangd fi
 
 ### `.clangd` Settings in `clice.toml`
 
-| `.clangd` or clangd's option             | `clice.toml`                                                 |
-| ---------------------------------------- | ------------------------------------------------------------ |
-| `If: PathMatch`                          | a rule's `patterns` (globs, not regular expressions)         |
-| `CompileFlags: Add`                      | a rule's `append`                                            |
-| `CompileFlags: Remove`                   | a rule's `remove`                                            |
-| `CompileFlags: CompilationDatabase`      | a rule's `compile_commands`                                  |
-| `Index: Background: Skip`                | a rule's `background_index = false`                          |
-| `--background-index=false`               | `background_index = false` on a last rule without `patterns` |
-| `Diagnostics: Suppress`                  | `[diagnostics] suppress`                                     |
-| `Diagnostics: ClangTidy`, `--clang-tidy` | the project's `.clang-tidy`; `[diagnostics] clang_tidy`      |
-| `InlayHints`                             | `[inlay_hints]`                                              |
-| `Hover: ShowAKA`                         | `[hover] show_aka`                                           |
-| `Completion: AllScopes`                  | `[code_completion] all_scopes`                               |
-| `--function-arg-placeholders=0`          | `[code_completion] arguments = "delimiters"`                 |
-| `--limit-results`                        | `[code_completion] limit`                                    |
-| `--limit-references`                     | `[references] limit`                                         |
-| `-j`                                     | `[workers] background` and `[workers] max`                   |
-| `~/.config/clangd/config.yaml`           | the user's file, `~/.config/clice/config.toml`               |
+| `.clangd` or clangd's option             | `clice.toml`                                                            |
+| ---------------------------------------- | ----------------------------------------------------------------------- |
+| `If: PathMatch`                          | a rule's `patterns` (globs, not regular expressions)                    |
+| `CompileFlags: Add`                      | a rule's `append`                                                       |
+| `CompileFlags: Remove`                   | a rule's `remove`                                                       |
+| `CompileFlags: CompilationDatabase`      | a rule's `compile_commands`                                             |
+| `Index: Background: Skip`                | a rule's `background_index = false`                                     |
+| `--background-index=false`               | `background_index = false` on a last rule without `patterns`            |
+| `Diagnostics: Suppress`                  | `[diagnostics] suppress`                                                |
+| `Diagnostics: ClangTidy`, `--clang-tidy` | the project's `.clang-tidy`; `[diagnostics] clang_tidy`                 |
+| `InlayHints`                             | `[inlay_hints]`                                                         |
+| `Hover: ShowAKA`                         | `[hover] show_aka`                                                      |
+| `Completion: AllScopes`                  | `[code_completion] all_scopes`                                          |
+| `--function-arg-placeholders=0`          | `[code_completion] arguments = "delimiters"`                            |
+| `--limit-results`                        | `[code_completion] limit`                                               |
+| `--limit-references`                     | `[references] limit`                                                    |
+| `-j`                                     | `[workers] background` and `[workers] max`                              |
+| clangd's user `config.yaml`              | the user's file (see [The Configuration File](#the-configuration-file)) |
